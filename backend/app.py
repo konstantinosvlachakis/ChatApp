@@ -1,6 +1,7 @@
 # app.py
 from flask import Flask, request
 from flask_socketio import SocketIO, emit
+import pandas as pd
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
