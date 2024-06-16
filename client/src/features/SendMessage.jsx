@@ -1,6 +1,6 @@
 import io from "socket.io-client";
 import React, { useState, useEffect } from "react";
-
+import SendIcon from "@mui/icons-material/Send";
 const socket = io.connect("http://localhost:3001");
 
 function SendMessage({ onSendMessage, clientId }) {
@@ -29,19 +29,19 @@ function SendMessage({ onSendMessage, clientId }) {
   };
 
   return (
-    <div className="bg-black flex items-center p-4">
+    <div className="flex items-center p-4">
       <input
         type="text"
-        placeholder="Message..."
+        placeholder="Aa"
         value={message || ""}
         onChange={handleInputChange}
-        className="flex-1 p-2 border rounded"
+        className="flex-1 p-2 rounded-3xl"
       />
       <button
         onClick={sendMessage}
-        className="ml-2 bg-blue-500 text-white p-2 rounded"
+        className="ml-2 text-white p-2 hover:bg-slate-300 rounded-full"
       >
-        Send Message
+        <SendIcon />
       </button>
     </div>
   );

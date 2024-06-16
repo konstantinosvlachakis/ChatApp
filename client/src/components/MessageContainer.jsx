@@ -11,8 +11,8 @@ const MessageContainer = () => {
   };
 
   return (
-    <div className="relative w-full h-screen bg-cover bg-center animate-zoom bg-slate-500">
-      <div className="absolute inset-0 bg-white bg-opacity-10 backdrop-blur-lg border border-white border-opacity-30 rounded-lg transition-transform transform-gpu hover:scale-105 w-[400px] aspect-[13/16] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+    <div className="relative w-full h-screen bg-cover bg-center bg-slate-500">
+      <div className="absolute inset-0 bg-white bg-opacity-10 backdrop-blur-lg border border-white border-opacity-30 rounded-lg transition-transform transform-gpu  w-[400px] aspect-[13/16] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         <div className="header flex items-center p-5 text-white">
           <i className="fas fa-arrow-left cursor-pointer"></i>
           <div className="notifications bg-green-500 rounded-full aspect-square w-6 flex justify-center items-center ml-2 cursor-pointer transition-transform duration-200 hover:scale-125"></div>
