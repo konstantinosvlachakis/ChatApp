@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import SendMessage from "../features/SendMessage"; // Ensure this matches the file casing
 import { v4 as uuidv4 } from "uuid";
 

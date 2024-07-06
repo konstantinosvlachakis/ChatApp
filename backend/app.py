@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 from flask_socketio import SocketIO, emit
 import os
 import random
@@ -37,22 +37,47 @@ def generate_token(user):
     return token
 
 
+# Simulated user database (replace with actual database integration)
+connected_users = [
+    {"id": 1, "username": "kostas", "avatar_url": "https://i.pravatar.cc/150?img=1"},
+    {"id": 2, "username": "user2", "avatar_url": "https://i.pravatar.cc/150?img=2"},
+]
+
+
+@app.route("/connected-users", methods=["GET"])
+def get_connected_users():
+    return jsonify(connected_users)
+
+
 # Endpoint to handle user login
-@app.route("/login", methods=["POST"])
+@app.route("/", methods=["GET"])
+def default_route():
+    return redirect("/login")
+
+
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    auth = request.get_json()
-    if not auth or not auth.get("username") or not auth.get("password"):
-        return jsonify({"message": "Invalid credentials"}), 401
+    if request.method == "POST":
+        auth = request.get_json()
+        if not auth or not auth.get("username") or not auth.get("password"):
+            return jsonify({"message": "Invalid credentials"}), 401
 
-    user = next((user for user in users if user["username"] == auth["username"]), None)
+        user = next(
+            (user for user in users if user["username"] == auth["username"]), None
+        )
 
-    if user and user["password"] == auth["password"]:
-        print("Login successful")
-        token = generate_token(user)
-        return jsonify({"token": token}), 200
-    else:
-        print("Invalid username or password")
-        return jsonify({"message": "Invalid username or password"}), 401
+        if user and user["password"] == auth["password"]:
+            print("Login successful")
+            token = generate_token(user)
+            return jsonify({"token": token}), 200
+        else:
+            print("Invalid username or password")
+            return jsonify({"message": "Invalid username or password"}), 401
+
+    # Handle GET request for login page rendering or redirect
+    return (
+        "This is the login page"  # Replace with your actual login page HTML or template
+    )
 
 
 # SocketIO event handlers
@@ -73,4 +98,6 @@ def handle_send_message(data):
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=3001, debug=True)
+    socketio.run(
+        app, host="0.0.0.0", port=3001, debug=False
+    )  # Set debug=False in production-like environment
