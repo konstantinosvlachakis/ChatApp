@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, redirect
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, disconnect
 import os
 import random
 import string
@@ -29,6 +29,9 @@ users = [
 # Simple token storage (for testing purposes)
 tokens = {}
 
+# List to store connected users
+connected_users = []
+
 
 # Function to generate a simple token
 def generate_token(user):
@@ -37,13 +40,12 @@ def generate_token(user):
     return token
 
 
-# Simulated user database (replace with actual database integration)
-connected_users = [
-    {"id": 1, "username": "kostas", "avatar_url": "https://i.pravatar.cc/150?img=1"},
-    {"id": 2, "username": "user2", "avatar_url": "https://i.pravatar.cc/150?img=2"},
-]
+# Function to generate a session ID
+def generate_session_id():
+    return "".join(random.choices(string.ascii_letters + string.digits, k=32))
 
 
+# Endpoint to get the list of connected users
 @app.route("/connected-users", methods=["GET"])
 def get_connected_users():
     return jsonify(connected_users)
@@ -68,8 +70,24 @@ def login():
 
         if user and user["password"] == auth["password"]:
             print("Login successful")
+
             token = generate_token(user)
-            return jsonify({"token": token}), 200
+            session_id = generate_session_id()
+
+            # Check if user is already in connected_users
+            if not any(u["id"] == user["id"] for u in connected_users):
+                connected_users.append(
+                    {
+                        "id": user["id"],
+                        "username": user["username"],
+                        "avatar_url": f"https://i.pravatar.cc/150?img={user['id']}",
+                        "sid": session_id,  # Assign the generated session ID
+                    }
+                )
+            else:
+                print(f"User {user['username']} is already connected")
+
+            return jsonify({"token": token, "session_id": session_id}), 200
         else:
             print("Invalid username or password")
             return jsonify({"message": "Invalid username or password"}), 401
@@ -89,6 +107,9 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     print(f"Client {request.sid} disconnected")
+    # Remove user from the connected_users list
+    global connected_users
+    connected_users = [user for user in connected_users if user["sid"] != request.sid]
 
 
 @socketio.on("send_message")
