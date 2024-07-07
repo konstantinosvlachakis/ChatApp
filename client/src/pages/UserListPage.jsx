@@ -7,12 +7,23 @@ const UserListPage = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        const token = localStorage.getItem("token"); // Retrieve token from localStorage
+        if (!token) {
+          throw new Error("Token not found");
+        }
+
         const response = await axios.get(
-          "http://localhost:3001/connected-users"
+          "http://localhost:3001/connected-users",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`, // Send token in Authorization header
+            },
+          }
         );
         setUsers(response.data);
       } catch (error) {
         console.error("Error fetching connected users:", error);
+        // Handle error: for example, redirect to login or display an error message
       }
     };
 
