@@ -10,7 +10,6 @@ __pycache__/
 venv/
 env/
 .venv/
-.env/
 
 # Ignore macOS specific files
 .DS_Store
@@ -20,6 +19,10 @@ env/
 
 # Ignore log files
 *.log
+
+# Ignore cmd files
+*.cmd
+
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
@@ -47,3 +50,10 @@ build/
 
 # Ignore system files
 Thumbs.db
+
+# Ignore additional directories and files
+.tox/
+.idea/
+.vscode/
+Pipfile.lock
+docs/_build/
