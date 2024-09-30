@@ -10,7 +10,7 @@ const UserListPage = () => {
     const fetchUsers = async () => {
       try {
         const response = await axios.get(
-          "http://localhost:3001/connected-users",
+          "http://localhost:8000/connected-users",
           {
             withCredentials: true, // This ensures cookies are sent with the request
           }
