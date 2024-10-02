@@ -2,31 +2,46 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
 
 const LoginPage = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError(""); // Reset error state
+
     try {
       const response = await fetch("http://localhost:8000/api/login/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password }), // Replace with actual state variables
+        credentials: "include", // Include credentials for session cookies if needed
       });
+
       if (response.ok) {
-        console.log("Login successful");
-        navigate("/connected-users"); // Redirect to your desired page
+        const data = await response.json(); // Parse the JSON response
+        const accessToken = data.access; // Adjust according to your API response
+        localStorage.setItem("accessToken", accessToken); // Store the token in local storage
+        console.log("Login successful, access token obtained:", accessToken);
+        navigate("/profile"); // Redirect to the profile page
       } else {
         const errorData = await response.json();
+        setError(errorData.error || "Login failed. Please try again.");
         console.error("Error during login:", errorData.error);
       }
     } catch (error) {
+      setError(error.message);
       console.error("Error during login:", error.message);
+    } finally {
+      setLoading(false); // Stop loading state
     }
   };
 
@@ -47,6 +62,7 @@ const LoginPage = () => {
             onChange={(e) => setUsername(e.target.value)}
             variant="outlined"
             margin="normal"
+            required // Ensures the field is required
           />
           <TextField
             id="password"
@@ -57,15 +73,22 @@ const LoginPage = () => {
             onChange={(e) => setPassword(e.target.value)}
             variant="outlined"
             margin="normal"
+            required // Ensures the field is required
           />
+          {error && (
+            <div className="text-red-500 text-center mt-2">{error}</div>
+          )}{" "}
+          {/* Display error message */}
           <Button
             type="submit"
             variant="contained"
             color="primary"
             fullWidth
             style={{ marginTop: "1rem" }}
+            disabled={loading} // Disable button when loading
           >
-            Login
+            {loading ? <CircularProgress size={24} color="inherit" /> : "Login"}{" "}
+            {/* Loading indicator */}
           </Button>
         </form>
 

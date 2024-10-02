@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import SendMessage from "../features/SendMessage"; // Ensure this matches the file casing
+// import SendMessage from "../features/SendMessage"; // Ensure this matches the file casing
 import { v4 as uuidv4 } from "uuid";
 
 const MessageContainer = () => {
@@ -53,7 +53,7 @@ const MessageContainer = () => {
         </div>
 
         <div className="footer absolute bottom-0 w-full">
-          <SendMessage onSendMessage={handleSendMessage} clientId={clientId} />
+          {/* <SendMessage onSendMessage={handleSendMessage} clientId={clientId} /> */}
         </div>
       </div>
     </div>
