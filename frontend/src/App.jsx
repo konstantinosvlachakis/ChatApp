@@ -4,7 +4,7 @@ import MessageContainer from "./components/MessageContainer";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 // import SendMessage from "./features/SendMessage";
-import ProfilePage from "./pages/Profile";
+import ProfilePage from "./pages/Profile/page";
 
 function App() {
   return (
