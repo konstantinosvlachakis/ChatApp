@@ -56,3 +56,4 @@ Thumbs.db
 .vscode/
 Pipfile.lock
 docs/_build/
+node_modules
