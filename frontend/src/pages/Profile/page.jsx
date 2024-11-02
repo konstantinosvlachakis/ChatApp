@@ -51,21 +51,13 @@ const ProfilePage = () => {
       <Sidebar />
 
       {/* Profile Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center p-8 space-y-6">
         <div className="absolute top-5 right-5 flex items-center space-x-3">
-          <img
-            src={
-              "https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg"
-            }
-            alt={`${user.name}'s profile`}
-            className="w-10 h-10 rounded-full object-cover"
-          />
-
           <span
             className="text-gray-800 font-semibold cursor-pointer flex items-center space-x-1"
             onClick={handleClick}
           >
-            {user.username}
+            Profile
             {menuOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </span>
 
@@ -79,10 +71,86 @@ const ProfilePage = () => {
           </Menu>
         </div>
 
-        <h1 className="text-3xl font-bold">My Profile</h1>
-        <h2 className="text-blue-300 mt-2">About me</h2>
+        {/* User Profile Picture */}
+        <img
+          src="https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg"
+          alt={`${user.name}'s profile`}
+          className="w-40 h-40 rounded-full object-cover mb-4 shadow-sm"
+        />
 
-        {error && <div className="mt-4 text-red-500">{error}</div>}
+        {/* Edit Profile Button */}
+        <button className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2">
+          Edit
+        </button>
+
+        {/* Profile Info Container */}
+        <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">Name:</h2>
+              <p className="text-gray-800">{user.name || "John Doe"}</p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">
+                Date of Birth:
+              </h2>
+              <p className="text-gray-800">
+                {user.dateOfBirth || "Not provided"}
+              </p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">Location:</h2>
+              <p className="text-gray-800">
+                {user.location || "Not specified"}
+              </p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">
+                Native Language:
+              </h2>
+              <p className="text-gray-800">
+                {user.nativeLanguage || "English"}
+              </p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">
+                Languages Practicing:
+              </h2>
+              <p className="text-gray-800">
+                {user.languages || "Spanish, French"}
+              </p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">
+                Learning Goal:
+              </h2>
+              <p className="text-gray-800">
+                {user.learningGoal || "Become fluent for travel"}
+              </p>
+            </div>
+            <hr className="border-gray-200" />
+
+            <div>
+              <h2 className="text-lg font-semibold text-gray-600">
+                Date Joined:
+              </h2>
+              <p className="text-gray-800">
+                {user.dateJoined || "January 1, 2023"}
+              </p>
+            </div>
+          </div>
+          {error && <div className="mt-4 text-red-500">{error}</div>}
+        </div>
       </div>
     </div>
   );

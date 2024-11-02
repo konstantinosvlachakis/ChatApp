@@ -10,6 +10,7 @@ class User(models.Model):
         max_length=128
     )  # 128 is typically used for hashed passwords
     profile_image_url = models.CharField(max_length=255, blank=True, null=True)
+    nativeLanguage = models.CharField(max_length=255, null=False)
 
     def __str__(self):
         return self.username
