@@ -4,12 +4,14 @@ import { Menu, MenuItem } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Sidebar from "../../components/Sidebar";
+import ModalComponent from "../../components/Modals/Modal";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
   const [error, setError] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [modalNameOpen, setModalNameOpen] = useState(false);
 
   const navigate = useNavigate();
 
@@ -39,6 +41,10 @@ const ProfilePage = () => {
 
     fetchUserProfile();
   }, [navigate]);
+
+  const handleEditNameClick = (event) => {
+    setModalNameOpen((prev) => !prev);
+  };
 
   const handleClick = (event) => {
     setAnchorEl(menuOpen ? null : event.currentTarget);
@@ -87,7 +93,17 @@ const ProfilePage = () => {
         <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50">
           <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-600">Name:</h2>
+              <div className="flex flex-row justify-between ">
+                <h2 className="text-lg font-semibold text-gray-600">Name:</h2>
+                {/* Edit Profile Button */}
+                <button
+                  className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2"
+                  onClick={handleEditNameClick}
+                >
+                  Edit
+                </button>
+                {modalNameOpen ? <ModalComponent></ModalComponent> : ""}
+              </div>
               <p className="text-gray-800">{user.name || "John Doe"}</p>
             </div>
             <hr className="border-gray-200" />
