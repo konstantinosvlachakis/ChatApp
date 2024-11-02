@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
+
 import json
 
 
@@ -63,9 +64,24 @@ def register_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@require_http_methods(["PATCH"])  # PATCH is more appropriate for partial updates
 @csrf_exempt
 def profile_view(request):
+    if request.method == "GET":
+        try:
+            user = request.user
+            profile_data = {
+                "username": user.username,
+            }
+            return JsonResponse(profile_data, status=200)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format"}, status=400)
+    else:
+        return JsonResponse({"error": "Only GET method allowed"}, status=405)
+
+
+@require_http_methods(["PATCH"])  # PATCH is more appropriate for partial updates
+@csrf_exempt
+def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
         user = request.user
