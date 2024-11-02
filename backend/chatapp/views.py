@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_http_methods
 import json
 
 
@@ -62,16 +63,39 @@ def register_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
+@require_http_methods(["PATCH"])  # PATCH is more appropriate for partial updates
 @csrf_exempt
 def profile_view(request):
-    if request.method == "GET":
-        if request.user.is_authenticated:
-            user = request.user
-            profile_data = {
-                "username": user.username,
-            }
-            return JsonResponse(profile_data, status=200)
-        else:
-            return JsonResponse({"error": "User is not authenticated"}, status=401)
-    else:
-        return JsonResponse({"error": "Only GET method allowed"}, status=405)
+    try:
+        data = json.loads(request.body)  # Parse the JSON request body
+        user = request.user
+
+        # Update fields if they are present in the request body
+        username = data.get("username")
+        nativeLanguage = data.get("nativeLanguage")
+
+        # Update only if data is provided; avoid empty fields if validation needed
+        if username:
+            user.username = username
+        if nativeLanguage:
+            user.nativeLanguage = nativeLanguage
+
+        # Save the updated user object
+        user.save()
+
+        # Return the updated user data
+        return JsonResponse(
+            {
+                "message": "Profile updated successfully",
+                "updated_profile": {
+                    "username": user.username,
+                    "nativeLanguage": user.nativeLanguage,
+                },
+            },
+            status=200,
+        )
+
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

@@ -1,4 +1,3 @@
-// src/data/conversations.js
 export const conversations = [
     {
       id: 1,
@@ -14,8 +13,7 @@ export const conversations = [
       lastMessage: 'See you later!',
       timestamp: 'Yesterday',
       profilePicture: 'https://randomuser.me/api/portraits/women/2.jpg',
-      unreadCount: 0,
+      unreadCount: 3,
     },
-    // ...more conversations
   ];
   
