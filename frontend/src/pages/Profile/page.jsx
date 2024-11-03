@@ -5,6 +5,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Sidebar from "../../components/Sidebar";
 import ModalComponent from "../../components/Modals/Modal";
+import { editProfile } from "../Profile/api/editProfile";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -12,6 +13,7 @@ const ProfilePage = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modalNameOpen, setModalNameOpen] = useState(false);
+  const [newName, setNewName] = useState(user.name);
 
   const navigate = useNavigate();
 
@@ -42,8 +44,22 @@ const ProfilePage = () => {
     fetchUserProfile();
   }, [navigate]);
 
-  const handleEditNameClick = (event) => {
-    setModalNameOpen((prev) => !prev);
+  const handleSaveName = async () => {
+    try {
+      const updatedUser = await editProfile(newName); // Use editProfile to update the name
+      setUser(updatedUser); // Update the local user state with the updated profile data
+      setModalNameOpen(false); // Close the modal
+    } catch (error) {
+      setError(error.message); // Set error if the update fails
+    }
+  };
+
+  const handleEditNameClick = () => {
+    setModalNameOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setModalNameOpen(false);
   };
 
   const handleClick = (event) => {
@@ -102,7 +118,35 @@ const ProfilePage = () => {
                 >
                   Edit
                 </button>
-                {modalNameOpen ? <ModalComponent></ModalComponent> : ""}
+                {modalNameOpen && (
+                  <ModalComponent
+                    open={modalNameOpen}
+                    setOpen={setModalNameOpen}
+                  >
+                    <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
+                    <input
+                      type="text"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="w-full p-2 mb-4 border rounded"
+                      placeholder="Enter new name"
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        className="bg-gray-300 text-gray-800 py-1 px-4 rounded"
+                        onClick={handleCloseModal}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="bg-blue-500 text-white py-1 px-4 rounded"
+                        onClick={handleSaveName}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </ModalComponent>
+                )}
               </div>
               <p className="text-gray-800">{user.name || "John Doe"}</p>
             </div>

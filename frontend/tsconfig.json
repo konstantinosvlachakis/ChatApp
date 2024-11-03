@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "es2020",                                    // Update to a newer JavaScript version
+    "module": "ESNext",                                   // Use ESNext modules for better tree-shaking
+    "lib": ["dom", "dom.iterable", "esnext"],            // Include libraries for DOM and ES features
+    "jsx": "react-jsx",                                   // Use the new JSX transform
+    "strict": true,                                       // Enable all strict type-checking options
+    "esModuleInterop": true,                              // Enable interoperability between ES Modules and CommonJS
+    "forceConsistentCasingInFileNames": true,            // Ensure consistent casing in imports
+    "skipLibCheck": true,                                 // Skip type checking of declaration files
+    "noEmit": true,
+    "moduleResolution": "node", // or "nodenext"
+    // Disable emitting files, useful in React apps
+  }
+}
