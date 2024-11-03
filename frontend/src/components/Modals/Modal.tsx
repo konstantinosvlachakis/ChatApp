@@ -2,8 +2,8 @@ import Modal from "@mui/material/Modal";
 import CloseIcon from "@mui/icons-material/Close";
 import { IconButton } from "@mui/material";
 import React from "react";
-import { cn } from "../../libs/utils";
 import Heading from "../Typography/Heading";
+import { cn } from "../../libs/utils";
 
 export interface IModalComponentProps {
   title?: string | React.ReactNode;
