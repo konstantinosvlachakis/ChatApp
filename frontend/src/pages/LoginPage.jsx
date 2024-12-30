@@ -17,25 +17,38 @@ const LoginPage = () => {
     setError(""); // Reset error state
 
     try {
-      const response = await fetch("http://localhost:8000/api/login/", {
+      const response = await fetch("http://localhost:8000/api/token/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }), // Replace with actual state variables
+        body: JSON.stringify({ username, password }),
         credentials: "include", // Include credentials for session cookies if needed
       });
 
       if (response.ok) {
         const data = await response.json(); // Parse the JSON response
         const accessToken = data.access; // Adjust according to your API response
+        const refreshToken = data.refresh; // Handle refresh token
         localStorage.setItem("accessToken", accessToken); // Store the token in local storage
+        localStorage.setItem("refreshToken", refreshToken); // Store refresh token if using it
+        // Later, when you want to use the token
+        const tokenFromStorage = localStorage.getItem("accessToken");
+        console.log("Original token:", data.token); // Log the original token
+        console.log("Token from storage:", tokenFromStorage); // Log the token from storage
+
+        // Compare tokens
+        if (data.token === tokenFromStorage) {
+          console.log("Tokens match!");
+        } else {
+          console.log("Tokens do not match!");
+        }
         console.log("Login successful, access token obtained:", accessToken);
         navigate("/profile"); // Redirect to the profile page
       } else {
         const errorData = await response.json();
-        setError(errorData.error || "Login failed. Please try again.");
-        console.error("Error during login:", errorData.error);
+        setError(errorData.message || "Login failed. Please try again.");
+        console.error("Error during login:", errorData.message);
       }
     } catch (error) {
       setError(error.message);

@@ -7,6 +7,7 @@ const RegisterPage = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [nativeLanguage, setNativeLanguage] = useState("English");
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
@@ -21,7 +22,7 @@ const RegisterPage = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, nativeLanguage }),
       });
       if (response.ok) {
         console.log("User registered successfully");
@@ -46,6 +47,15 @@ const RegisterPage = () => {
             fullWidth
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            variant="outlined"
+            margin="normal"
+          />
+          <TextField
+            id="nativeLanguage"
+            label="nativeLanguage"
+            fullWidth
+            value={nativeLanguage}
+            onChange={(e) => setNativeLanguage(e.target.value)}
             variant="outlined"
             margin="normal"
           />

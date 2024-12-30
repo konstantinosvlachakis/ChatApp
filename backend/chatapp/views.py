@@ -1,14 +1,13 @@
-from django.contrib.auth import authenticate, login
-from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_http_methods
-
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
+from .models import Token, Profile
 import json
+import logging
 
 
-@csrf_exempt  # Consider using CSRF tokens instead of disabling CSRF
+@csrf_exempt
 def login_view(request):
     if request.method == "POST":
         try:
@@ -21,10 +20,14 @@ def login_view(request):
                     {"error": "Username and password required"}, status=400
                 )
 
-            user = authenticate(username=username, password=password)
-            if user is not None:
-                login(request, user)
-                return JsonResponse({"message": "Login successful"}, status=200)
+            # Retrieve the user from the Profile model
+            user = Profile.objects.filter(username=username).first()
+
+            # Check if the user exists and if the password is correct
+            if user and user.check_password(password):
+                # Create or retrieve the token
+                token, _ = Token.objects.get_or_create(user=user)
+                return JsonResponse({"token": token.key}, status=200)
             else:
                 return JsonResponse({"error": "Invalid credentials"}, status=400)
 
@@ -39,21 +42,29 @@ def register_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
+            print(data)
             username = data.get("username")
             password = data.get("password")
+            native_language = data.get(
+                "nativeLanguage"
+            )  # Get native_language from the request
 
-            if not username or not password:
+            if not username or not password or not native_language:
                 return JsonResponse(
-                    {"error": "Username and password required"}, status=400
+                    {"error": "Username, password, and native language required"},
+                    status=400,
                 )
 
             # Check if the username already exists
-            if User.objects.filter(username=username).exists():
+            if Profile.objects.filter(
+                username=username
+            ).exists():  # Change User to Profile
                 return JsonResponse({"error": "Username already exists"}, status=400)
 
             # Create the new user
-            user = User.objects.create_user(username=username, password=password)
-            user.save()
+            user = Profile.objects.create_user(
+                username=username, password=password, native_language=native_language
+            )
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
         except json.JSONDecodeError:
@@ -64,37 +75,43 @@ def register_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@csrf_exempt
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def profile_view(request):
-    if request.method == "GET":
-        try:
-            user = request.user
-            profile_data = {
-                "username": user.username,
-            }
-            return JsonResponse(profile_data, status=200)
-        except json.JSONDecodeError:
-            return JsonResponse({"error": "Invalid JSON format"}, status=400)
-    else:
-        return JsonResponse({"error": "Only GET method allowed"}, status=405)
+    user = request.user
+    profile_data = {
+        "username": user.username,
+        "native_language": user.native_language,  # Include the native language
+        "profile_image_url": user.profile_image_url,  # Include the profile image URL
+    }
+    return JsonResponse(profile_data, status=200)
 
 
-@require_http_methods(["PATCH"])  # PATCH is more appropriate for partial updates
-@csrf_exempt
+logger = logging.getLogger(__name__)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
 def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
+        print(data)
         user = request.user
 
         # Update fields if they are present in the request body
         username = data.get("username")
-        nativeLanguage = data.get("nativeLanguage")
+        native_language = data.get("native_language")
+        profile_image_url = data.get(
+            "profile_image_url"
+        )  # Include profile image URL if necessary
 
-        # Update only if data is provided; avoid empty fields if validation needed
+        # Update only if data is provided
         if username:
             user.username = username
-        if nativeLanguage:
-            user.nativeLanguage = nativeLanguage
+        if native_language:
+            user.native_language = native_language
+        if profile_image_url:
+            user.profile_image_url = profile_image_url  # Update profile image URL
 
         # Save the updated user object
         user.save()
@@ -105,7 +122,8 @@ def profile_edit_view(request):
                 "message": "Profile updated successfully",
                 "updated_profile": {
                     "username": user.username,
-                    "nativeLanguage": user.nativeLanguage,
+                    "native_language": user.native_language,
+                    "profile_image_url": user.profile_image_url,
                 },
             },
             status=200,
