@@ -1,30 +1,36 @@
-// src/api.js
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-type editProfileDTO = {
-    name: string;
+// Define the structure of the user profile data
+interface UserProfile {
+  username?: string;
+  nativeLanguage?: string;
+  // Add other fields if needed
 }
 
-export async function editProfile({name}: editProfileDTO) {
-    try {
-        const response = await fetch("http://localhost:8000/api/profile/edit/", {  // Add trailing slash here
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // To include cookies, if required by your API
-        body: JSON.stringify({ name }), // Payload with the new name
-      });
-      console.log(response.json())
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update profile");
-      }
-  
-      const data = await response.json();
-      return data; // Return the updated profile data
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      throw error; // Re-throw to handle it in the calling component
-    }
+// Function to edit the user profile
+async function editProfile(userData: UserProfile): Promise<UserProfile> {
+  const token = localStorage.getItem('accessToken');
+  console.log('Retrieved token:', token); // Log the retrieved token
+  if (!token) {
+    throw new Error('No token found in localStorage');
   }
-  
+
+  const response = await fetch('http://localhost:8000/api/profile/edit/', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`, 
+    },
+    body: JSON.stringify(userData),
+  });
+
+  if (!response.ok) {
+    const errorResponse = await response.json();
+    console.error('Error response:', errorResponse);
+    throw new Error(`Error updating profile: ${errorResponse.detail}`);
+  }
+
+  const updatedProfile = await response.json();
+  return updatedProfile;
+}
+
