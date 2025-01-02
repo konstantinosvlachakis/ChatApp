@@ -11,7 +11,6 @@ type UserProfileDTO = {
 // Function to update the user's native language
 const editNativeLanguage = async (userData: UserProfileDTO): Promise<UserProfileDTO> => {
   const token = localStorage.getItem("accessToken"); // Retrieve the token from local storage
-  console.log(token);
   const response = await axios.patch(
     "http://localhost:8000/api/profile/edit/",
     userData,
