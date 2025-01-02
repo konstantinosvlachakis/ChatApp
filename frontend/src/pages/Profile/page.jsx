@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { fetchUserProfile } from "./api/fetchUserProfile";
 import { Menu, MenuItem } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Sidebar from "../../components/Sidebar";
 import ModalComponent from "../../components/Modals/Modal";
-// import { editProfile } from "../Profile/api/editProfile";
+import { useEditNativeLanguage } from "../Profile/api/editProfile";
+import { useNavigate } from "react-router-dom";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -14,52 +15,22 @@ const ProfilePage = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modalNameOpen, setModalNameOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
-  // const editProfileMutation = useEditProfile();
-
+  const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const token = localStorage.getItem("accessToken"); // Retrieve the token from local storage
-        console.log(token);
-        const response = await fetch("http://localhost:8000/api/profile/", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // Include the token in the Authorization header
-          },
-          credentials: "include",
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-          setNewDate(userData.newDate); // Set the initial newName to the user's name
-          console.log("User profile fetched successfully");
-        } else {
-          const errorData = await response.json();
-          setError(errorData.error);
-          console.error("Error fetching profile:", errorData.error);
-        }
-      } catch (error) {
-        setError(error.message);
-        console.error("Error fetching profile:", error.message);
-      }
-    };
-
-    fetchUserProfile();
-  }, [navigate]);
+    fetchUserProfile(setUser, setNewDate, setError, navigate);
+  }, []);
 
   const handleSaveName = async () => {
     try {
       const userData = { dateOfBirth: newDate }; // Ensure you include the username
 
-      // Call the editProfile function to update the user profile
-      // const updatedProfile = await editProfile(userData);
+      // Call the editNativeLanguage function to update the user profile
+      await editNativeLanguageMutation.mutateAsync(userData);
 
       // Update the local user state with the updated profile data
-      setUser("updatedProfile");
+      setUser((prevUser) => ({ ...prevUser, dateOfBirth: newDate }));
       setModalNameOpen(false); // Close the modal after saving
     } catch (error) {
       // Set error if the update fails

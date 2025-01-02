@@ -137,7 +137,7 @@ CORS_ALLOW_CREDENTIALS = (
     True  # This allows cookies to be included in cross-origin requests
 )
 
-AUTH_USER_MODEL = "chatapp.Profile"
+AUTH_USER_MODEL = 'chatapp.Profile'
 
 
 SIMPLE_JWT = {
