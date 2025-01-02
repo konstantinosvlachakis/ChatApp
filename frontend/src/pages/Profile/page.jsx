@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchUserProfile } from "./api/fetchUserProfile";
 import { Menu, MenuItem } from "@mui/material";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Sidebar from "../../components/Sidebar";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
@@ -11,10 +9,10 @@ import { useNavigate } from "react-router-dom";
 const ProfilePage = () => {
   const [user, setUser] = useState({});
   const [error, setError] = useState(null);
-  const [anchorEl, setAnchorEl] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [modalNameOpen, setModalNameOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
+  const [newName, setNewName] = useState("");
   const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
 
@@ -30,7 +28,7 @@ const ProfilePage = () => {
       await editNativeLanguageMutation.mutateAsync(userData);
 
       // Update the local user state with the updated profile data
-      setUser((prevUser) => ({ ...prevUser, dateOfBirth: newDate }));
+      setUser((prevUser) => ({ ...prevUser, name: newName }));
       setModalNameOpen(false); // Close the modal after saving
     } catch (error) {
       // Set error if the update fails
@@ -46,21 +44,25 @@ const ProfilePage = () => {
     setModalNameOpen(false);
   };
 
-  const handleClick = (event) => {
-    setAnchorEl(menuOpen ? null : event.currentTarget);
-    setMenuOpen(!menuOpen);
+  // Handle sign-out
+  const handleSignOut = () => {
+    // Clear the authentication token
+    localStorage.removeItem("accessToken"); // or sessionStorage if you are using that
+
+    // Redirect to the login page
+    navigate("/login");
   };
 
   function handleModal() {
     return (
       <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
-        <h2 className="text-lg font-semibold mb-4">Edit Date of birth</h2>
+        <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
         <input
           type="text"
           value={newDate}
-          onChange={(e) => setNewDate(e.target.value)}
+          onChange={(e) => setNewName(e.target.value)}
           className="w-full p-2 mb-4 border rounded"
-          placeholder="Enter new date of birth"
+          placeholder="Enter new Name"
         />
         <div className="flex justify-end space-x-2">
           <button
@@ -88,22 +90,13 @@ const ProfilePage = () => {
       {/* Profile Content */}
       <div className="flex-1 flex flex-col items-center p-8 space-y-6">
         <div className="absolute top-5 right-5 flex items-center space-x-3">
-          <span
-            className="text-gray-800 font-semibold cursor-pointer flex items-center space-x-1"
-            onClick={handleClick}
+          {/* Sign Out Button */}
+          <button
+            className="text-sm font-medium bg-red-500 text-white py-1 px-4 rounded-full mt-4"
+            onClick={handleSignOut}
           >
-            Profile
-            {menuOpen ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-          </span>
-
-          <Menu
-            anchorEl={anchorEl}
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-          >
-            <MenuItem>About me: {user.about_me || "N/A"}</MenuItem>
-            <MenuItem>Languages: {user.languages || "N/A"}</MenuItem>
-          </Menu>
+            Sign Out
+          </button>
         </div>
 
         {/* User Profile Picture */}
@@ -114,9 +107,13 @@ const ProfilePage = () => {
         />
 
         {/* Edit Profile Button */}
-        <button className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2">
+        <button
+          className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2"
+          onClick={handleEditNameClick}
+        >
           Edit
         </button>
+        {modalNameOpen && handleModal()}
 
         {/* Profile Info Container */}
         <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50">
@@ -133,13 +130,7 @@ const ProfilePage = () => {
               <h2 className="text-lg font-semibold text-gray-600">
                 Date of Birth:
               </h2>
-              <button
-                className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2"
-                onClick={handleEditNameClick}
-              >
-                Edit
-              </button>
-              {modalNameOpen && handleModal()}
+
               <p className="text-gray-800">
                 {user.dateOfBirth || "Not provided"}
               </p>
