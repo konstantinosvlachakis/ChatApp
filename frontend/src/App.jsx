@@ -1,11 +1,11 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"; // Correct imports
 import MessageContainer from "./components/MessageContainer";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProfilePage from "./pages/Profile/page";
 import MainLayout from "./components/Layout/MainLayout";
-import { QueryClient, QueryClientProvider } from "react-query"; // Import QueryClient and QueryClientProvider
 
 function App() {
   const queryClient = new QueryClient(); // Create a QueryClient instance
