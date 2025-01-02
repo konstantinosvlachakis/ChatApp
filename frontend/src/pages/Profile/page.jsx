@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { fetchUserProfile } from "./api/fetchUserProfile";
-import { Menu, MenuItem } from "@mui/material";
 import Sidebar from "../../components/Sidebar";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
@@ -9,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 const ProfilePage = () => {
   const [user, setUser] = useState({});
   const [error, setError] = useState(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [modalNameOpen, setModalNameOpen] = useState(false);
   const [newDate, setNewDate] = useState("");
   const [newName, setNewName] = useState("");
