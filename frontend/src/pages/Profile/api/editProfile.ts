@@ -19,7 +19,9 @@ const editNativeLanguage = async (userData: UserProfileDTO): Promise<UserProfile
         Authorization: `Bearer ${token}`,  // Include the token in the header
       },
     }
-  );  return response.data;
+  );  
+  console.log(response.data)
+  return response.data;
 };
 
 type UseEditNativeLanguageOptions = {

@@ -1,28 +1,18 @@
-// src/components/ConversationList.jsx
 import React from "react";
 import { conversations } from "../data/conversations";
 
-function ConversationList({ onSelectConversation }) {
-  console.log(
-    "onSelectConversation in ConversationList:",
-    typeof onSelectConversation
-  ); // Check if it's a function
-
+function ConversationList({ onSelectConversation, activeConversationId }) {
   return (
     <div className="overflow-y-auto">
       {conversations.map((conversation) => (
         <div
           key={conversation.id}
-          className="flex items-center p-2 cursor-pointer hover:bg-gray-200"
-          onClick={() => {
-            if (typeof onSelectConversation === "function") {
-              onSelectConversation(conversation);
-            } else {
-              console.error(
-                "onSelectConversation is not defined as a function in ConversationList."
-              );
-            }
-          }}
+          className={`flex items-center p-2 cursor-pointer ${
+            activeConversationId === conversation.id
+              ? "bg-gray-300"
+              : "hover:bg-gray-200"
+          }`}
+          onClick={() => onSelectConversation(conversation)}
         >
           <img
             src={conversation.profilePicture}
