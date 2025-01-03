@@ -2,6 +2,46 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import ListItemText from "@mui/material/ListItemText";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import Avatar from "@mui/material/Avatar";
+
+const languageOptions = [
+  {
+    value: "English",
+    label: "English",
+    flag: "https://flagcdn.com/w320/us.png",
+  },
+  {
+    value: "Greek",
+    label: "Greek",
+    flag: "https://flagcdn.com/w320/gr.png",
+  },
+  {
+    value: "French",
+    label: "French",
+    flag: "https://flagcdn.com/w320/fr.png",
+  },
+  {
+    value: "German",
+    label: "German",
+    flag: "https://flagcdn.com/w320/de.png",
+  },
+  {
+    value: "Portuguese",
+    label: "Portuguese",
+    flag: "https://flagcdn.com/w320/pt.png",
+  },
+  {
+    value: "Russian",
+    label: "Russian",
+    flag: "https://flagcdn.com/w320/ru.png",
+  },
+];
 
 const RegisterPage = () => {
   const [username, setUsername] = useState("");
@@ -50,15 +90,47 @@ const RegisterPage = () => {
             variant="outlined"
             margin="normal"
           />
-          <TextField
-            id="nativeLanguage"
-            label="nativeLanguage"
-            fullWidth
-            value={nativeLanguage}
-            onChange={(e) => setNativeLanguage(e.target.value)}
-            variant="outlined"
-            margin="normal"
-          />
+          <FormControl fullWidth variant="outlined" margin="normal">
+            <InputLabel id="native-language-label">Native Language</InputLabel>
+            <Select
+              labelId="native-language-label"
+              id="native-language"
+              value={nativeLanguage}
+              onChange={(e) => setNativeLanguage(e.target.value)}
+              label="Native Language"
+              renderValue={(selected) => {
+                const selectedOption = languageOptions.find(
+                  (option) => option.value === selected
+                );
+                return (
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <Avatar
+                      alt={selectedOption.label}
+                      src={selectedOption.flag}
+                      style={{ width: 24, height: 24, marginRight: 8 }}
+                    />
+                    {selectedOption.label}
+                  </div>
+                );
+              }}
+            >
+              {languageOptions.map((option) => (
+                <MenuItem
+                  key={option.value}
+                  value={option.value}
+                  style={{ display: "flex", alignItems: "center" }}
+                >
+                  <Avatar
+                    alt={option.label}
+                    src={option.flag}
+                    style={{ width: 24, height: 24, marginRight: 8 }}
+                  />
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <TextField
             id="password"
             label="Password"

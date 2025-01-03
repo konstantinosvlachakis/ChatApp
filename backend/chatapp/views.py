@@ -42,7 +42,6 @@ def register_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            print(data)
             username = data.get("username")
             password = data.get("password")
             native_language = data.get(
@@ -95,11 +94,11 @@ logger = logging.getLogger(__name__)
 def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
-        print(data)
         user = request.user
 
         # Update fields if they are present in the request body
         username = data.get("username")
+        print(username)
         native_language = data.get("native_language")
         profile_image_url = data.get(
             "profile_image_url"
