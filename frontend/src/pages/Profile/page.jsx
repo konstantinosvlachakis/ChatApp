@@ -5,6 +5,8 @@ import ChatRoom from "../../components/ChatRoom";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
 import { useNavigate } from "react-router-dom";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import IconButton from "@mui/material/IconButton";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -94,13 +96,16 @@ const ProfilePage = () => {
         {activeConversation ? (
           <div className="flex flex-col h-full">
             {/* Back Button */}
-            <button
-              className="text-sm font-medium bg-gray-300 text-gray-800 py-1 px-4 rounded mb-4"
-              onClick={handleBackToProfile}
-            >
-              Back to Profile
-            </button>
-            {/* Chat Room */}
+            <div className="absolute top-4 right-4 flex items-center">
+              <IconButton
+                color="primary"
+                onClick={handleBackToProfile}
+                aria-label="Back to Profile"
+              >
+                <ArrowBackIcon />
+              </IconButton>
+              <span className="ml-2 font-medium text-gray-700">Profile</span>
+            </div>
             <ChatRoom conversation={activeConversation} />
           </div>
         ) : (
