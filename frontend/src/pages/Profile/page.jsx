@@ -121,7 +121,7 @@ const ProfilePage = () => {
 
             <img
               src="https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg"
-              alt={`${user.name}'s profile`}
+              alt={`${user.username}'s profile`}
               className="w-40 h-40 rounded-full object-cover mb-4 shadow-sm"
             />
 
@@ -146,7 +146,7 @@ const ProfilePage = () => {
                     Date of Birth:
                   </h2>
                   <p className="text-gray-800">
-                    {user.dateOfBirth || "Not provided"}
+                    {user.date_of_birth || "Not provided"}
                   </p>
                 </div>
                 <hr className="border-gray-200" />
