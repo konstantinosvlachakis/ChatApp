@@ -6,8 +6,6 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
-import ListItemText from "@mui/material/ListItemText";
-import ListItemIcon from "@mui/material/ListItemIcon";
 import Avatar from "@mui/material/Avatar";
 
 const languageOptions = [
@@ -44,29 +42,45 @@ const languageOptions = [
 ];
 
 const RegisterPage = () => {
+  // State variables
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [profileImageUrl, setProfileImageUrl] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [nativeLanguage, setNativeLanguage] = useState("English");
+
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
     e.preventDefault();
+
+    // Password confirmation check
     if (password !== confirmPassword) {
       console.error("Passwords do not match");
       return;
     }
+
     try {
       const response = await fetch("http://localhost:8000/api/register/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password, nativeLanguage }),
+        body: JSON.stringify({
+          username,
+          email,
+          dateOfBirth,
+          profileImageUrl,
+          password,
+          nativeLanguage,
+        }),
       });
+
       if (response.ok) {
         console.log("User registered successfully");
-        navigate("/login"); // Redirect to login after successful registration
+        navigate("/login");
       } else {
         const errorData = await response.json();
         console.error("Error during registration:", errorData.error);
@@ -81,6 +95,7 @@ const RegisterPage = () => {
       <div className="bg-white p-8 rounded-lg shadow-lg w-96">
         <h2 className="text-2xl font-bold mb-4 text-center">Register</h2>
         <form onSubmit={handleRegister}>
+          {/* Username Field */}
           <TextField
             id="username"
             label="Username"
@@ -90,6 +105,44 @@ const RegisterPage = () => {
             variant="outlined"
             margin="normal"
           />
+
+          {/* Email Field */}
+          <TextField
+            id="email"
+            label="Email"
+            type="email"
+            fullWidth
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            variant="outlined"
+            margin="normal"
+          />
+
+          {/* Date of Birth Field */}
+          <TextField
+            id="date-of-birth"
+            label="Date of Birth"
+            type="date"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
+            variant="outlined"
+            margin="normal"
+          />
+
+          {/* Profile Image URL Field */}
+          <TextField
+            id="profile-image-url"
+            label="Profile Image URL"
+            fullWidth
+            value={profileImageUrl}
+            onChange={(e) => setProfileImageUrl(e.target.value)}
+            variant="outlined"
+            margin="normal"
+          />
+
+          {/* Native Language Selector */}
           <FormControl fullWidth variant="outlined" margin="normal">
             <InputLabel id="native-language-label">Native Language</InputLabel>
             <Select
@@ -131,6 +184,7 @@ const RegisterPage = () => {
             </Select>
           </FormControl>
 
+          {/* Password Field */}
           <TextField
             id="password"
             label="Password"
@@ -141,6 +195,8 @@ const RegisterPage = () => {
             variant="outlined"
             margin="normal"
           />
+
+          {/* Confirm Password Field */}
           <TextField
             id="confirm-password"
             label="Confirm Password"
@@ -151,6 +207,8 @@ const RegisterPage = () => {
             variant="outlined"
             margin="normal"
           />
+
+          {/* Register Button */}
           <Button
             type="submit"
             variant="contained"
@@ -161,6 +219,8 @@ const RegisterPage = () => {
             Register
           </Button>
         </form>
+
+        {/* Redirect to Login */}
         <p className="text-center mt-4">
           Already have an account?{" "}
           <span

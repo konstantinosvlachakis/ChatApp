@@ -26,19 +26,17 @@ class ProfileManager(BaseUserManager):
 
 class Profile(AbstractBaseUser):
     username = models.CharField(max_length=30, unique=True)
+    email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
     profile_image_url = models.CharField(max_length=255, blank=True, null=True)
-    password = models.CharField(
-        max_length=128, blank=True, null=True
-    )  # Allow null initially
+    password = models.CharField(max_length=128, blank=True, null=True)
 
     # Define the manager for the Profile model
     objects = ProfileManager()
 
-    # Specify which field will be used as the username
     USERNAME_FIELD = "username"
-    # Specify any additional required fields when creating a superuser
-    REQUIRED_FIELDS = []
+    REQUIRED_FIELDS = ["email"]
 
     def __str__(self):
         return self.username
