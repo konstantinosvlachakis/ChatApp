@@ -42,28 +42,40 @@ def register_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
+            print(data)
+            # Extract data from request
             username = data.get("username")
             password = data.get("password")
-            native_language = data.get(
-                "nativeLanguage"
-            )  # Get native_language from the request
+            native_language = data.get("nativeLanguage")
+            email = data.get("email")
+            date_of_birth = data.get("dateOfBirth")
+            profile_image_url = data.get("profileImageUrl", "")
 
-            if not username or not password or not native_language:
+            # Validate required fields
+            if not username or not password or not native_language or not email:
                 return JsonResponse(
-                    {"error": "Username, password, and native language required"},
+                    {"error": "Username, password, native language, and email are required"},
                     status=400,
                 )
 
             # Check if the username already exists
-            if Profile.objects.filter(
-                username=username
-            ).exists():  # Change User to Profile
+            if Profile.objects.filter(username=username).exists():
                 return JsonResponse({"error": "Username already exists"}, status=400)
+
+            # Check if the email already exists
+            if Profile.objects.filter(email=email).exists():
+                return JsonResponse({"error": "Email already exists"}, status=400)
 
             # Create the new user
             user = Profile.objects.create_user(
-                username=username, password=password, native_language=native_language
+                username=username,
+                password=password,
+                native_language=native_language,
+                email=email,
+                profile_image_url=profile_image_url,
+                date_of_birth=date_of_birth,
             )
+
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
         except json.JSONDecodeError:
@@ -73,7 +85,6 @@ def register_view(request):
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
@@ -82,11 +93,12 @@ def profile_view(request):
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": user.profile_image_url,  # Include the profile image URL
+        "date_of_birth": user.date_of_birth,  # Include the date of birth
+        "email": user.email,  # Include the email
+        
     }
     return JsonResponse(profile_data, status=200)
 
-
-logger = logging.getLogger(__name__)
 
 
 @api_view(["PATCH"])
