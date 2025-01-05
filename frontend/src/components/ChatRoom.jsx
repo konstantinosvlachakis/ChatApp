@@ -1,18 +1,35 @@
-import React, { useState } from "react";
-import EmojiPicker from "emoji-picker-react";
+import React, { useState, useRef, useEffect } from "react";
+import "emoji-picker-element"; // Import the emoji picker web component
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 import SendIcon from "@mui/icons-material/Send";
-import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
 
 const ChatRoom = ({ conversation }) => {
-  const [message, setMessage] = useState(""); // State for the message input
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // State to toggle emoji picker
+  const [message, setMessage] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+  const emojiPickerRef = useRef(null);
 
   // Handle emoji selection
-  const onEmojiClick = (event, emojiObject) => {
-    setMessage((prev) => prev + emojiObject.emoji); // Append emoji to the input
-    setShowEmojiPicker(false); // Close the picker after selection
-  };
+  useEffect(() => {
+    const emojiPicker = emojiPickerRef.current;
+
+    const handleEmojiSelect = (event) => {
+      const emoji = event.detail.unicode; // Selected emoji
+      setMessage((prev) => prev + emoji);
+      setShowPicker(false); // Hide picker after selection
+    };
+
+    // Attach event listener
+    if (emojiPicker) {
+      emojiPicker.addEventListener("emoji-click", handleEmojiSelect);
+    }
+
+    // Cleanup event listener on unmount
+    return () => {
+      if (emojiPicker) {
+        emojiPicker.removeEventListener("emoji-click", handleEmojiSelect);
+      }
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -29,19 +46,16 @@ const ChatRoom = ({ conversation }) => {
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4 bg-gray-50 flex flex-col">
         {conversation.messages?.length > 0 ? (
-          conversation.messages.map((message, index) => (
+          conversation.messages.map((msg, index) => (
             <div
               key={index}
               className={`max-w-fit px-4 py-2 mb-2 rounded-full ${
-                message.isSentByUser
+                msg.isSentByUser
                   ? "bg-blue-100 self-end"
                   : "bg-gray-200 self-start"
               }`}
-              style={{
-                display: "inline-block", // Dynamically size the bubble to the text
-              }}
             >
-              {message.text}
+              {msg.text}
             </div>
           ))
         ) : (
@@ -49,37 +63,40 @@ const ChatRoom = ({ conversation }) => {
         )}
       </div>
 
-      {/* Message Input with Icons */}
+      {/* Message Input */}
       <div className="p-4 border-t bg-white flex items-center relative">
-        {/* Emoji Picker Icon */}
-        <div className="relative">
-          <EmojiEmotionsIcon
-            className="text-gray-500 cursor-pointer mr-3"
-            onClick={() => setShowEmojiPicker((prev) => !prev)} // Toggle emoji picker
-          />
-          {showEmojiPicker && (
-            <div className="absolute bottom-10 left-0 z-50">
-              <EmojiPicker onEmojiClick={onEmojiClick} />
-            </div>
-          )}
-        </div>
+        {/* Emoji Picker Toggle Button */}
+        <button
+          onClick={() => setShowPicker((prev) => !prev)}
+          className="mr-2 p-2 bg-gray-200 rounded-full"
+        >
+          😊
+        </button>
 
-        {/* Input Field with Microphone */}
-        <div className="relative flex items-center w-1/2">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message..."
-            className="w-full p-2 border border-gray-300 rounded-lg pr-10"
-          />
-          <SettingsVoiceIcon className="absolute right-3 text-gray-500 cursor-pointer" />
-        </div>
+        {/* Emoji Picker */}
+        {showPicker && (
+          <div className="absolute bottom-16 left-0 z-50">
+            <emoji-picker ref={emojiPickerRef}></emoji-picker>
+          </div>
+        )}
 
-        {/* Send Button */}
+        {/* Input Field */}
+        <input
+          type="text"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Type your message..."
+          className="flex-1 p-2 border border-gray-300 rounded-lg"
+        />
+        <SettingsVoiceIcon className="ml-2 text-gray-500 cursor-pointer" />
         <button
           type="button"
-          className="bg-blue-500 text-white p-2 rounded-lg ml-3 flex items-center justify-center"
+          className="bg-blue-500 text-white p-2 rounded-lg ml-3"
+          onClick={() => {
+            // Logic to send the message
+            console.log("Message sent:", message);
+            setMessage(""); // Clear the input after sending
+          }}
         >
           <SendIcon />
         </button>
