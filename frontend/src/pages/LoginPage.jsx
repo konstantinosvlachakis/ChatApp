@@ -63,7 +63,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-cover bg-center bg-slate-500 flex items-center justify-center">
+    <div className="min-h-screen bg-cover bg-center bg-slate-100 flex items-center justify-center">
       <div className="bg-white p-8 rounded-lg shadow-lg w-96">
         <h2 className="text-2xl font-bold mb-4 text-center">Sign in</h2>
         <form onSubmit={handleLogin}>
