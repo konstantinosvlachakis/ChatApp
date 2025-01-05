@@ -1,11 +1,11 @@
 {
     "python.terminal.activateEnvInCurrentTerminal": true,
-    "python.defaultInterpreterPath": "/Users/Dinos/Desktop/VirtualEnvs/socket/Scripts/python.exe",
+    "python.defaultInterpreterPath": "/Users/Vlachakis/Desktop/VirtualEnvs/chatApp/Scripts/python.exe",
     "terminal.integrated.profiles.windows": {
         "PowerShell": {
             "source": "PowerShell",
             "icon": "terminal-powershell",
-            "args": ["-NoExit", "-Command", "& { . 'C:\\Users\\Dinos\\Desktop\\VirtualEnvs\\socket\\Scripts\\Activate.ps1' }"]
+            "args": ["-NoExit", "-Command", "& { . 'C:\\Users\\Vlachakis\\Desktop\\VirtualEnvs\\chatApp\\Scripts\\Activate.ps1' }"]
         }
     },
     "terminal.integrated.defaultProfile.windows": "PowerShell"

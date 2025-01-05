@@ -1,35 +1,15 @@
-import React, { useState, useRef, useEffect } from "react";
-import "emoji-picker-element"; // Import the emoji picker web component
-import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
-import SendIcon from "@mui/icons-material/Send";
+import React, { useState } from "react";
+import { EmojiPickerWrapper } from "./EmojuPickerWrapper";
 
 const ChatRoom = ({ conversation }) => {
-  const [message, setMessage] = useState("");
-  const [showPicker, setShowPicker] = useState(false);
-  const emojiPickerRef = useRef(null);
+  const [message, setMessage] = useState(""); // State for the message input
+  const [showPicker, setShowPicker] = useState(false); // Toggle for emoji picker
 
   // Handle emoji selection
-  useEffect(() => {
-    const emojiPicker = emojiPickerRef.current;
-
-    const handleEmojiSelect = (event) => {
-      const emoji = event.detail.unicode; // Selected emoji
-      setMessage((prev) => prev + emoji);
-      setShowPicker(false); // Hide picker after selection
-    };
-
-    // Attach event listener
-    if (emojiPicker) {
-      emojiPicker.addEventListener("emoji-click", handleEmojiSelect);
-    }
-
-    // Cleanup event listener on unmount
-    return () => {
-      if (emojiPicker) {
-        emojiPicker.removeEventListener("emoji-click", handleEmojiSelect);
-      }
-    };
-  }, []);
+  const handleEmojiSelect = (emoji) => {
+    console.log("Selected emoji:", emoji);
+    setMessage((prev) => prev + emoji); // Append emoji to the input field
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -65,18 +45,15 @@ const ChatRoom = ({ conversation }) => {
 
       {/* Message Input */}
       <div className="p-4 border-t bg-white flex items-center relative">
-        {/* Emoji Picker Toggle Button */}
-        <button
-          onClick={() => setShowPicker((prev) => !prev)}
-          className="mr-2 p-2 bg-gray-200 rounded-full"
-        >
+        {/* Emoji Picker Toggle */}
+        <button onClick={() => setShowPicker((prev) => !prev)} className="mr-2">
           😊
         </button>
 
         {/* Emoji Picker */}
         {showPicker && (
           <div className="absolute bottom-16 left-0 z-50">
-            <emoji-picker ref={emojiPickerRef}></emoji-picker>
+            <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
           </div>
         )}
 
@@ -88,17 +65,16 @@ const ChatRoom = ({ conversation }) => {
           placeholder="Type your message..."
           className="flex-1 p-2 border border-gray-300 rounded-lg"
         />
-        <SettingsVoiceIcon className="ml-2 text-gray-500 cursor-pointer" />
         <button
           type="button"
           className="bg-blue-500 text-white p-2 rounded-lg ml-3"
           onClick={() => {
-            // Logic to send the message
+            if (message.trim() === "") return; // Avoid sending empty messages
             console.log("Message sent:", message);
             setMessage(""); // Clear the input after sending
           }}
         >
-          <SendIcon />
+          Send
         </button>
       </div>
     </div>
