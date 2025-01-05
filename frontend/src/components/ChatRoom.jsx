@@ -1,15 +1,35 @@
-import React, { useState } from "react";
-import { EmojiPickerWrapper } from "./EmojuPickerWrapper";
+import React, { useState, useRef, useEffect } from "react";
+import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
+import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
+import SendIcon from "@mui/icons-material/Send";
 
 const ChatRoom = ({ conversation }) => {
   const [message, setMessage] = useState(""); // State for the message input
   const [showPicker, setShowPicker] = useState(false); // Toggle for emoji picker
+  const emojiPickerRef = useRef(null); // Ref for the emoji picker
 
   // Handle emoji selection
   const handleEmojiSelect = (emoji) => {
     console.log("Selected emoji:", emoji);
     setMessage((prev) => prev + emoji); // Append emoji to the input field
   };
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowPicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
 
   return (
     <div className="flex flex-col h-full">
@@ -52,29 +72,34 @@ const ChatRoom = ({ conversation }) => {
 
         {/* Emoji Picker */}
         {showPicker && (
-          <div className="absolute bottom-16 left-0 z-50">
+          <div ref={emojiPickerRef} className="absolute bottom-16 left-0 z-50">
             <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
           </div>
         )}
 
         {/* Input Field */}
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type your message..."
-          className="flex-1 p-2 border border-gray-300 rounded-lg"
-        />
+        <div className="relative flex w-1/2 items-center">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type your message..."
+            className="w-full p-2 border border-gray-300 rounded-lg pr-10"
+          />
+          <SettingsVoiceIcon className="absolute right-2 text-gray-500 cursor-pointer" />
+        </div>
+
+        {/* Send Button */}
         <button
           type="button"
-          className="bg-blue-500 text-white p-2 rounded-lg ml-3"
+          className="ml-3 text-blue-500"
           onClick={() => {
             if (message.trim() === "") return; // Avoid sending empty messages
             console.log("Message sent:", message);
             setMessage(""); // Clear the input after sending
           }}
         >
-          Send
+          <SendIcon />
         </button>
       </div>
     </div>
