@@ -2,11 +2,15 @@ import React, { useState, useRef, useEffect } from "react";
 import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 import SendIcon from "@mui/icons-material/Send";
+import axios from "axios";
+import { useUser } from "../../../context/UserContext";
 
 const ChatRoom = ({ conversation }) => {
   const [messages, setMessages] = useState(conversation.messages || []); // Use all messages
   const [message, setMessage] = useState("");
   const [showPicker, setShowPicker] = useState(false);
+  const { user } = useUser(); // Access the current user
+  console.log("Current User:", user);
   const emojiPickerRef = useRef(null);
 
   const handleEmojiSelect = (emoji) => {
@@ -29,17 +33,51 @@ const ChatRoom = ({ conversation }) => {
     };
   }, []);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (message.trim() === "") return;
 
     const newMessage = {
       id: messages.length + 1,
       text: message,
-      isSentByUser: true,
+      sender: { id: user.user_id }, // Use current user ID dynamically
+      timestamp: new Date().toISOString(),
     };
-
+    console.log(conversation);
+    // Optimistically update the UI
     setMessages((prevMessages) => [...prevMessages, newMessage]);
     setMessage("");
+
+    try {
+      // Make an API call to save the message in the database
+      const response = await axios.post(
+        `http://localhost:8000/api/conversations/${conversation.id}/messages/`,
+        {
+          text: message, // Message text
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      // Replace the temporary message with the saved message from backend
+      const savedMessage = response.data;
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === newMessage.id ? savedMessage : msg
+        )
+      );
+    } catch (error) {
+      console.error("Error sending message:", error);
+
+      // Optionally, revert the optimistic UI update
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.id !== newMessage.id)
+      );
+
+      alert("Failed to send the message. Please try again.");
+    }
   };
 
   return (
@@ -55,13 +93,17 @@ const ChatRoom = ({ conversation }) => {
         </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50 flex flex-col">
+      <div
+        className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container"
+        style={{ maxHeight: "500px" }}
+      >
+        {" "}
         {messages.length > 0 ? (
           messages.map((msg, index) => (
             <div
               key={index}
               className={`max-w-fit px-4 py-2 mb-2 rounded-full ${
-                msg.sender?.id === conversation.sender.id
+                msg.sender?.id === user.user_id // Compare sender ID with current user ID
                   ? "bg-blue-100 self-end"
                   : "bg-gray-200 self-start"
               }`}
