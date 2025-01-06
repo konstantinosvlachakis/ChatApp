@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import axios from "axios";
 
 const LoginPage = () => {
   const [username, setUsername] = useState("");
@@ -14,47 +15,26 @@ const LoginPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(""); // Reset error state
+    setError("");
 
     try {
-      const response = await fetch("http://localhost:8000/api/token/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
-        credentials: "include", // Include credentials for session cookies if needed
+      const response = await axios.post("http://localhost:8000/api/token/", {
+        username,
+        password,
       });
 
-      if (response.ok) {
-        const data = await response.json(); // Parse the JSON response
-        const accessToken = data.access; // Adjust according to your API response
-        const refreshToken = data.refresh; // Handle refresh token
-        localStorage.setItem("accessToken", accessToken); // Store the token in local storage
-        localStorage.setItem("refreshToken", refreshToken); // Store refresh token if using it
-        // Later, when you want to use the token
-        const tokenFromStorage = localStorage.getItem("accessToken");
-        console.log("Original token:", data.token); // Log the original token
-        console.log("Token from storage:", tokenFromStorage); // Log the token from storage
+      const { access, refresh } = response.data;
 
-        // Compare tokens
-        if (data.token === tokenFromStorage) {
-          console.log("Tokens match!");
-        } else {
-          console.log("Tokens do not match!");
-        }
-        console.log("Login successful, access token obtained:", accessToken);
-        navigate("/profile"); // Redirect to the profile page
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || "Login failed. Please try again.");
-        console.error("Error during login:", errorData.message);
-      }
+      localStorage.setItem("accessToken", access);
+      localStorage.setItem("refreshToken", refresh);
+
+      console.log("Login successful. Access token:", access);
+      navigate("/profile");
     } catch (error) {
-      setError(error.message);
-      console.error("Error during login:", error.message);
+      setError(error.response?.data?.detail || "Login failed.");
+      console.error("Login error:", error);
     } finally {
-      setLoading(false); // Stop loading state
+      setLoading(false);
     }
   };
 

@@ -10,3 +10,29 @@ export interface User {
     native_language?: string;
   }
   
+
+
+export interface Conversation {
+    id: number;
+    sender: {
+      id: number;
+      username: string;
+      profile_image_url: string;
+    };
+    receiver: {
+      id: number;
+      username: string;
+      profile_image_url: string;
+    };
+    updated_at: string;
+    last_message?: {
+      id: number;
+      text: string;
+      sender: {
+        id: number;
+        username: string;
+      };
+      timestamp: string;
+    };
+  }
+  

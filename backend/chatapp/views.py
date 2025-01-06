@@ -5,7 +5,14 @@ from rest_framework.decorators import api_view, permission_classes
 from .models import Token, Profile
 import json
 import logging
-
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from .models import Conversation, Message
+from .serializers import MessageSerializer
+from rest_framework.permissions import AllowAny
+from .serializers import ConversationSerializer
 
 @csrf_exempt
 def login_view(request):
@@ -144,3 +151,37 @@ def profile_edit_view(request):
         return JsonResponse({"error": "Invalid JSON format"}, status=400)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+
+class MessageListView(APIView):
+    def get(self, request, conversation_id):
+        print(f"Authorization Header: {request.headers.get('Authorization')}")
+
+        conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        messages = conversation.messages.all()
+        serializer = MessageSerializer(messages, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, conversation_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        text = request.data.get("text", "")
+        if not text:
+            return Response({"error": "Message content is required"}, status=status.HTTP_400_BAD_REQUEST)
+        message = Message.objects.create(conversation=conversation, sender=request.user, text=text)
+        serializer = MessageSerializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class MessageDeleteView(APIView):
+    def delete(self, request, message_id):
+        message = get_object_or_404(Message, id=message_id, sender=request.user)
+        message.delete()
+        return Response({"message": "Message deleted successfully"}, status=status.HTTP_200_OK)
+    
+class ConversationListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        conversations = Conversation.objects.all()
+        serializer = ConversationSerializer(conversations, many=True)
+        return Response(serializer.data)
