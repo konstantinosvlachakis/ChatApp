@@ -14,9 +14,9 @@ export const fetchConversations = async (
     navigate("/login"); // Redirect to login if no token
     return;
   }
+  console.log(token)
 
   try {
-    console.log(token)
     const response = await axios.get<Conversation[]>(
       "http://localhost:8000/api/conversations/",
       {

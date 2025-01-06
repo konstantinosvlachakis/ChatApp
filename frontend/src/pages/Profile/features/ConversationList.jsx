@@ -23,7 +23,6 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
             },
           }
         );
-        console.log(response.data);
         setConversations(response.data);
       } catch (err) {
         console.error("Error fetching conversations:", err);

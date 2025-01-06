@@ -13,6 +13,7 @@ from .models import Conversation, Message
 from .serializers import MessageSerializer
 from rest_framework.permissions import AllowAny
 from .serializers import ConversationSerializer
+from rest_framework.parsers import QueryDict
 
 @csrf_exempt
 def login_view(request):
@@ -97,6 +98,7 @@ def register_view(request):
 def profile_view(request):
     user = request.user
     profile_data = {
+        "user_id": user.id,
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": user.profile_image_url,  # Include the profile image URL
@@ -154,21 +156,52 @@ def profile_edit_view(request):
 
 
 
+
 class MessageListView(APIView):
     def get(self, request, conversation_id):
+        # Debug: Print authorization header for troubleshooting
         print(f"Authorization Header: {request.headers.get('Authorization')}")
-
-        conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        
+        # Fetch conversation where the user is either the sender or receiver
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            sender=request.user
+        )
+        
+        # Fetch all messages in the conversation
         messages = conversation.messages.all()
         serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data)
 
     def post(self, request, conversation_id):
-        conversation = get_object_or_404(Conversation, id=conversation_id, participants=request.user)
+        # If request.data is a QueryDict, convert it to a dictionary
+        print(request.user)
+        print(request.user.id)
+
+        # Fetch conversation where the user is the sender
+        conversation = get_object_or_404(
+            Conversation,
+            id=conversation_id,
+            
+        )
+
+        # Get the message text from the request body
         text = request.data.get("text", "")
         if not text:
-            return Response({"error": "Message content is required"}, status=status.HTTP_400_BAD_REQUEST)
-        message = Message.objects.create(conversation=conversation, sender=request.user, text=text)
+            return Response(
+                {"error": "Message content is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create a new message
+        message = Message.objects.create(
+            conversation=conversation,
+            text=text,
+            sender=request.user
+        )
+
+        # Serialize and return the new message
         serializer = MessageSerializer(message)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

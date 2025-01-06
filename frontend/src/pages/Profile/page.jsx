@@ -96,7 +96,7 @@ const ProfilePage = () => {
         {activeConversation ? (
           <div className="flex flex-col h-full">
             {/* Back Button */}
-            <div className="absolute top-4 right-4 flex items-center">
+            <div className="absolute top-4 right-4 mr-12 flex items-center">
               <IconButton
                 color="primary"
                 onClick={handleBackToProfile}
@@ -104,7 +104,6 @@ const ProfilePage = () => {
               >
                 <ArrowBackIcon />
               </IconButton>
-              <span className="ml-2 font-medium text-gray-700">Profile</span>
             </div>
             <ChatRoom conversation={activeConversation} />
           </div>
