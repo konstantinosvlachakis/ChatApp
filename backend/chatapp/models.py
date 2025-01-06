@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
@@ -20,19 +21,18 @@ class ProfileManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
 
-        # Create a superuser by calling the create_user method
         return self.create_user(username, password, **extra_fields)
 
 
 class Profile(AbstractBaseUser):
-    username = models.CharField(max_length=30, unique=True)
+    username = models.CharField(max_length=30, unique=True, db_index=True)
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
     profile_image_url = models.CharField(max_length=255, blank=True, null=True)
     password = models.CharField(max_length=128, blank=True, null=True)
 
-    # Define the manager for the Profile model
+    # Manager for the Profile model
     objects = ProfileManager()
 
     USERNAME_FIELD = "username"
@@ -59,15 +59,66 @@ class CustomTokenAuthentication(BaseAuthentication):
         if not token_key:
             return None  # No token in request
 
-        # Strip the prefix 'Token ' if provided
         if token_key.startswith("Token "):
             token_key = token_key[6:]
 
         try:
             token = Token.objects.get(key=token_key)
             return (
-                token.user,  # This should be a Profile instance now
+                token.user,
                 token,
             )
         except Token.DoesNotExist:
             raise AuthenticationFailed("Invalid or expired token")
+
+
+# Messaging Models
+class Conversation(models.Model):
+    sender = models.ForeignKey(
+        Profile, related_name="sent_conversations", on_delete=models.CASCADE
+    )
+    receiver = models.ForeignKey(
+        Profile,
+        related_name="received_conversations",
+        on_delete=models.CASCADE,
+        default=1,  # Temporarily use the primary key (e.g., ID of Alma)
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        # Set the receiver to Alma by default
+        if not self.receiver:
+            self.receiver = Profile.objects.get(username="Alma")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Conversation between {self.sender.username} and {self.receiver.username}"
+
+
+class Message(models.Model):
+    MESSAGE_STATUSES = [
+        ("sent", "Sent"),
+        ("delivered", "Delivered"),
+        ("read", "Read"),
+    ]
+
+    conversation = models.ForeignKey(
+        Conversation, related_name="messages", on_delete=models.CASCADE
+    )
+    sender = models.ForeignKey(
+        Profile, related_name="sent_messages", on_delete=models.CASCADE
+    )
+    text = models.TextField()
+    
+    status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def save(self, *args, **kwargs):
+        # Update the conversation's updated_at field when a message is created
+        self.conversation.updated_at = timezone.now()
+        self.conversation.save()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Message by {self.sender.username} in {self.conversation.id}"

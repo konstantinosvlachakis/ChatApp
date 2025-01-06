@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchUserProfile } from "./api/fetchUserProfile";
 import Sidebar from "../../components/Sidebar";
-import ChatRoom from "../../components/ChatRoom";
+import ChatRoom from "./features/ChatRoom";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
 import { useNavigate } from "react-router-dom";
