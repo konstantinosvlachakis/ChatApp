@@ -5,7 +5,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const [conversations, setConversations] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-
+  console.log(conversations);
   useEffect(() => {
     const fetchConversations = async () => {
       try {
@@ -73,9 +73,9 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
               {conversation.sender.username || "Unknown Participant"}
             </p>
             <p className="text-sm text-gray-500">
-              {conversation.sender.last_message?.text || "No messages yet"}{" "}
+              {conversation.last_message?.text || "No messages yet"}{" "}
               <span className="text-gray-400">
-                ({new Date(conversation.sender.updated_at).toLocaleString()})
+                ({new Date(conversation.updated_at).toLocaleString()})
               </span>
             </p>
           </div>

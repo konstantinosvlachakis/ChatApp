@@ -46,12 +46,12 @@ const ChatRoom = ({ conversation }) => {
     <div className="flex flex-col h-full">
       <div className="p-4 border-b bg-white flex items-center">
         <img
-          src={conversation.receiver.profile_image_url}
-          alt={conversation.receiver.username}
+          src={conversation.sender.profile_image_url}
+          alt={conversation.sender.username}
           className="w-10 h-10 rounded-full mr-3"
         />
         <h2 className="font-semibold text-lg">
-          {conversation.receiver.username}
+          {conversation.sender.username}
         </h2>
       </div>
 
