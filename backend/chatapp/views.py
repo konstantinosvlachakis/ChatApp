@@ -57,7 +57,6 @@ def register_view(request):
             native_language = data.get("nativeLanguage")
             email = data.get("email")
             date_of_birth = data.get("dateOfBirth")
-            profile_image_url = data.get("profileImageUrl", "")
 
             # Validate required fields
             if not username or not password or not native_language or not email:
@@ -80,7 +79,6 @@ def register_view(request):
                 password=password,
                 native_language=native_language,
                 email=email,
-                profile_image_url=profile_image_url,
                 date_of_birth=date_of_birth,
             )
 
