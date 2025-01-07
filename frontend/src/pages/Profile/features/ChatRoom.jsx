@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import axios from "axios";
 import { useUser } from "../../../context/UserContext";
@@ -135,6 +136,7 @@ const ChatRoom = ({ conversation }) => {
             placeholder="Type your message..."
             className="w-full p-2 border border-gray-300 rounded-lg pr-10"
           />
+          <AttachFileIcon className="absolute right-10 text-gray-500 cursor-pointer" />
           <SettingsVoiceIcon className="absolute right-2 text-gray-500 cursor-pointer" />
         </div>
 

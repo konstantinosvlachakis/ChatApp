@@ -50,7 +50,6 @@ def register_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            print(data)
             # Extract data from request
             username = data.get("username")
             password = data.get("password")
@@ -117,7 +116,6 @@ def profile_edit_view(request):
 
         # Update fields if they are present in the request body
         username = data.get("username")
-        print(username)
         native_language = data.get("native_language")
         profile_image_url = data.get(
             "profile_image_url"
@@ -157,8 +155,6 @@ def profile_edit_view(request):
 
 class MessageListView(APIView):
     def get(self, request, conversation_id):
-        # Debug: Print authorization header for troubleshooting
-        print(f"Authorization Header: {request.headers.get('Authorization')}")
         
         # Fetch conversation where the user is either the sender or receiver
         conversation = get_object_or_404(
@@ -173,9 +169,6 @@ class MessageListView(APIView):
         return Response(serializer.data)
 
     def post(self, request, conversation_id):
-        # If request.data is a QueryDict, convert it to a dictionary
-        print(request.user)
-        print(request.user.id)
 
         # Fetch conversation where the user is the sender
         conversation = get_object_or_404(
