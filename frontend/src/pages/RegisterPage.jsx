@@ -46,7 +46,6 @@ const RegisterPage = () => {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
-  const [profileImageUrl, setProfileImageUrl] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [nativeLanguage, setNativeLanguage] = useState("English");
@@ -72,7 +71,6 @@ const RegisterPage = () => {
           username,
           email,
           dateOfBirth,
-          profileImageUrl,
           password,
           nativeLanguage,
         }),
@@ -127,17 +125,6 @@ const RegisterPage = () => {
             InputLabelProps={{ shrink: true }}
             value={dateOfBirth}
             onChange={(e) => setDateOfBirth(e.target.value)}
-            variant="outlined"
-            margin="normal"
-          />
-
-          {/* Profile Image URL Field */}
-          <TextField
-            id="profile-image-url"
-            label="Profile Image URL"
-            fullWidth
-            value={profileImageUrl}
-            onChange={(e) => setProfileImageUrl(e.target.value)}
             variant="outlined"
             margin="normal"
           />
