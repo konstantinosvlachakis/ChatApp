@@ -14,6 +14,7 @@ from .serializers import MessageSerializer
 from rest_framework.permissions import AllowAny
 from .serializers import ConversationSerializer
 from rest_framework.parsers import QueryDict
+from rest_framework.parsers import MultiPartParser, FormParser
 
 @csrf_exempt
 def login_view(request):
@@ -151,37 +152,36 @@ def profile_edit_view(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-
-
 class MessageListView(APIView):
     def get(self, request, conversation_id):
-        
         # Fetch conversation where the user is either the sender or receiver
         conversation = get_object_or_404(
             Conversation,
             id=conversation_id,
-            sender=request.user
+            sender=request.user  # Update this condition if receiver is also valid
         )
         
         # Fetch all messages in the conversation
         messages = conversation.messages.all()
         serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data)
-
+    
+    parser_classes = (MultiPartParser, FormParser)  # Allow handling of file uploads
+    
     def post(self, request, conversation_id):
-
         # Fetch conversation where the user is the sender
         conversation = get_object_or_404(
             Conversation,
             id=conversation_id,
-            
         )
+        # Extract text and file from the request
+        text = request.data.get("text", "").strip()
+        attachment = request.FILES.get("attachment")
 
-        # Get the message text from the request body
-        text = request.data.get("text", "")
-        if not text:
+        # Validate: at least text or attachment should be provided
+        if not text and not attachment:
             return Response(
-                {"error": "Message content is required"},
+                {"error": "Message content or attachment is required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -189,13 +189,14 @@ class MessageListView(APIView):
         message = Message.objects.create(
             conversation=conversation,
             text=text,
-            sender=request.user
+            sender=request.user,
+            attachment=attachment  # Save the file if provided
         )
 
         # Serialize and return the new message
-        serializer = MessageSerializer(message)
+        serializer = MessageSerializer(message, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
+    
 class MessageDeleteView(APIView):
     def delete(self, request, message_id):
         message = get_object_or_404(Message, id=message_id, sender=request.user)

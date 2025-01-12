@@ -1,7 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"; // Correct imports
-import MessageContainer from "./components/MessageContainer";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProfilePage from "./pages/Profile/page";
@@ -24,8 +23,6 @@ function App() {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/messages" element={<MainLayout />} />{" "}
-              {/* Main chat layout */}
-              <Route path="/connected-users" element={<MessageContainer />} />
             </Routes>
           </div>
         </UserProvider>

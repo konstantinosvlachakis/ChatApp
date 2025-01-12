@@ -35,4 +35,16 @@ export interface Conversation {
       timestamp: string;
     };
   }
+
+  export interface Message {
+    id: number;
+    text: string;
+    sender: {
+      id: number;
+      username: string;
+    };
+    timestamp: string;
+    attachment_url?: string; // Optional field for attachment URL
+
+  }
   
