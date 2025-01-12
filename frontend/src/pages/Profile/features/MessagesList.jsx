@@ -2,6 +2,7 @@ import React, { useState } from "react";
 
 const MessagesList = ({ messages, userId, onDeleteMessage }) => {
   const [dropdownIndex, setDropdownIndex] = useState(null); // Tracks which message's dropdown is open
+
   const toggleDropdown = (index) => {
     setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
   };
@@ -10,7 +11,10 @@ const MessagesList = ({ messages, userId, onDeleteMessage }) => {
     <div className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
-          const isImageMessage = !!msg.attachment_url; // Check if this is an image message
+          // Fallback logic: Use attachment_url if available, else fallback to attachment
+          const attachmentUrl = msg.attachment_url || msg.attachment;
+
+          const isImageMessage = !!attachmentUrl; // Check if there's an attachment
           const isSentByUser = msg.sender?.id === userId; // Check if the message was sent by the user
 
           return (
@@ -58,25 +62,35 @@ const MessagesList = ({ messages, userId, onDeleteMessage }) => {
               )}
 
               {isImageMessage ? (
-                /\.(jpeg|jpg|png|gif|mp4|webm)$/i.test(msg.attachment_url) ? (
+                /\.(jpeg|jpg|png|gif|mp4|webm)$/i.test(attachmentUrl) ? (
                   <div className="w-40 h-40 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
-                    <img
-                      src={msg.attachment_url}
-                      alt="Attachment"
-                      className="object-cover w-40 h-40"
-                    />
+                    {/* Render the image or video attachment */}
+                    {attachmentUrl.match(/\.(mp4|webm)$/i) ? (
+                      <video
+                        src={attachmentUrl}
+                        controls
+                        className="object-cover w-full h-full"
+                      />
+                    ) : (
+                      <img
+                        src={attachmentUrl}
+                        alt="Attachment"
+                        className="object-cover w-full h-full"
+                      />
+                    )}
                   </div>
                 ) : (
                   <a
-                    href={msg.attachment_url}
+                    href={attachmentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="text-blue-500 underline"
                   >
                     📎 View Attachment
                   </a>
                 )
               ) : (
-                <p>{msg.text}</p>
+                <p>{msg.text || "No content available"}</p>
               )}
             </div>
           );
