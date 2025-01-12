@@ -5,7 +5,6 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const [conversations, setConversations] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  console.log(conversations);
   useEffect(() => {
     const fetchConversations = async () => {
       try {
