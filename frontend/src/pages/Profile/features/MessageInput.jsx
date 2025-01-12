@@ -16,18 +16,27 @@ const MessageInput = ({ onSendMessage }) => {
 
   const handleFileAttach = (event) => {
     const file = event.target.files[0];
-    if (file?.type.startsWith("image/") || file?.type.startsWith("video/")) {
-      const imageUrl = URL.createObjectURL(file);
-      setPreviewImage(imageUrl);
-      setAttachedFile(file);
+    if (!file) return;
+
+    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
+      const imageUrl = URL.createObjectURL(file); // Generate preview URL
+      setPreviewImage(imageUrl); // Set the preview image
+      setAttachedFile(file); // Store the file for sending
     } else {
       alert("Please select a valid image or video file.");
     }
+    fileInputRef.current.value = null; // Reset input for re-selection
   };
 
   const handleSend = () => {
+    if (!message.trim() && !attachedFile) {
+      alert("Please enter a message or attach a file.");
+      return;
+    }
+
     onSendMessage(message, attachedFile, previewImage);
-    setMessage("");
+    setMessage(""); // Clear message
+    if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup Blob URL
     setPreviewImage(null);
     setAttachedFile(null);
   };
@@ -47,12 +56,13 @@ const MessageInput = ({ onSendMessage }) => {
           {previewImage && (
             <div className="flex items-center space-x-2">
               <img
-                src={previewImage}
+                src={previewImage} // Display the preview image
                 alt="Preview"
                 className="h-10 w-10 object-cover rounded"
               />
               <button
                 onClick={() => {
+                  if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup
                   setPreviewImage(null);
                   setAttachedFile(null);
                 }}

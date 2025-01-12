@@ -29,8 +29,6 @@ const ChatRoom = ({ conversation }) => {
       attachmentUrl: previewImage || null, // Temporary preview for the attachment
     };
 
-    console.log("Temporary message added to the frontend:", tempMessage);
-
     setMessages((prevMessages) => [...prevMessages, tempMessage]);
 
     try {
@@ -55,8 +53,6 @@ const ChatRoom = ({ conversation }) => {
         !savedMessage.attachmentUrl.startsWith("http")
           ? `${baseURL}${savedMessage.attachmentUrl}`
           : savedMessage.attachmentUrl;
-
-      console.log("Message received from the backend:", savedMessage);
 
       // Replace temporary message with the saved message from the backend
       setMessages((prevMessages) =>
@@ -92,8 +88,6 @@ const ChatRoom = ({ conversation }) => {
 
       // Call the API to delete the message
       await deleteMessage(messageId);
-
-      console.log("Message deleted successfully.");
     } catch (error) {
       console.error("Failed to delete message:", error);
 
@@ -105,7 +99,7 @@ const ChatRoom = ({ conversation }) => {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-y-hidden">
+    <div className="flex flex-col h-screen overflow-y-hidden ">
       <ChatHeader conversation={conversation} />
       <MessagesList
         messages={messages}
