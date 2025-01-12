@@ -1,6 +1,8 @@
 from django.urls import path
 from .views import *
 from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     # Authentication
@@ -27,3 +29,7 @@ urlpatterns = [
         name="delete_message"  # Delete a specific message
     ),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

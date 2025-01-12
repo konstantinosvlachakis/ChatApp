@@ -110,7 +110,8 @@ class Message(models.Model):
         Profile, related_name="sent_messages", on_delete=models.CASCADE
     )
     text = models.TextField()
-    
+    attachment = models.FileField(upload_to='attachments/', blank=True, null=True)  # File uploads
+
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
