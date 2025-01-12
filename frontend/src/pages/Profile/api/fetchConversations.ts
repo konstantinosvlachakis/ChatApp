@@ -14,7 +14,6 @@ export const fetchConversations = async (
     navigate("/login"); // Redirect to login if no token
     return;
   }
-  console.log(token)
 
   try {
     const response = await axios.get<Conversation[]>(
