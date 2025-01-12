@@ -1,153 +1,118 @@
-import React, { useState, useRef, useEffect } from "react";
-import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
-import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
-import SendIcon from "@mui/icons-material/Send";
-import axios from "axios";
+import React, { useState } from "react";
+import ChatHeader from "./ChatHeader";
+import MessagesList from "./MessagesList";
+import MessageInput from "./MessageInput";
 import { useUser } from "../../../context/UserContext";
+import axios from "axios";
+import { deleteMessage } from "../api/deleteMessage";
 
 const ChatRoom = ({ conversation }) => {
-  const [messages, setMessages] = useState(conversation.messages || []); // Use all messages
-  const [message, setMessage] = useState("");
-  const [showPicker, setShowPicker] = useState(false);
-  const { user } = useUser(); // Access the current user
-  console.log("Current User:", user);
-  const emojiPickerRef = useRef(null);
+  const [messages, setMessages] = useState(conversation.messages || []);
+  const { user } = useUser();
 
-  const handleEmojiSelect = (emoji) => {
-    setMessage((prev) => prev + emoji);
-  };
+  const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
+    const formData = new FormData();
+    if (newMessage.trim()) {
+      formData.append("text", newMessage);
+    }
+    if (attachedFile) {
+      formData.append("attachment", attachedFile);
+    }
 
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (
-        emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(event.target)
-      ) {
-        setShowPicker(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
-
-  const handleSendMessage = async () => {
-    if (message.trim() === "") return;
-
-    const newMessage = {
-      id: messages.length + 1,
-      text: message,
-      sender: { id: user.user_id }, // Use current user ID dynamically
+    // Generate a temporary message
+    const tempMessage = {
+      id: Date.now(), // Temporary unique ID
+      text: newMessage.trim() || null,
+      sender: { id: user.user_id, username: user.username },
       timestamp: new Date().toISOString(),
+      attachment: null, // Placeholder for the attachment
+      attachmentUrl: previewImage || null, // Temporary preview for the attachment
     };
-    console.log(conversation);
-    // Optimistically update the UI
-    setMessages((prevMessages) => [...prevMessages, newMessage]);
-    setMessage("");
+
+    console.log("Temporary message added to the frontend:", tempMessage);
+
+    setMessages((prevMessages) => [...prevMessages, tempMessage]);
 
     try {
-      // Make an API call to save the message in the database
+      // Send the message to the backend
       const response = await axios.post(
         `http://localhost:8000/api/conversations/${conversation.id}/messages/`,
-        {
-          text: message, // Message text
-        },
+        formData,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+            "Content-Type": "multipart/form-data",
           },
         }
       );
 
-      // Replace the temporary message with the saved message from backend
       const savedMessage = response.data;
+      const baseURL = "http://localhost:8000";
+
+      // Construct the full attachment URL
+      const fullUrl =
+        savedMessage.attachmentUrl &&
+        !savedMessage.attachmentUrl.startsWith("http")
+          ? `${baseURL}${savedMessage.attachmentUrl}`
+          : savedMessage.attachmentUrl;
+
+      console.log("Message received from the backend:", savedMessage);
+
+      // Replace temporary message with the saved message from the backend
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
-          msg.id === newMessage.id ? savedMessage : msg
+          msg.id === tempMessage.id
+            ? {
+                ...msg, // Keep the existing temporary message structure
+                id: savedMessage.id, // Update with backend-generated ID
+                text: savedMessage.text || msg.text,
+                attachment: savedMessage.attachment || msg.attachment,
+                attachmentUrl: fullUrl, // Use the fully qualified URL
+              }
+            : msg
         )
       );
     } catch (error) {
       console.error("Error sending message:", error);
-
-      // Optionally, revert the optimistic UI update
+      // Remove the temporarily added message in case of error
       setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg.id !== newMessage.id)
+        prevMessages.filter((msg) => msg.id !== tempMessage.id)
       );
-
       alert("Failed to send the message. Please try again.");
     }
   };
 
+  // Handle deleting a message
+  const handleDeleteMessage = async (messageId) => {
+    try {
+      // Optimistic UI Update: Remove the message from the state before the API call
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.id !== messageId)
+      );
+
+      // Call the API to delete the message
+      await deleteMessage(messageId);
+
+      console.log("Message deleted successfully.");
+    } catch (error) {
+      console.error("Failed to delete message:", error);
+
+      // If there's an error, rollback the UI to its previous state
+      setMessages(
+        (prevMessages) => prevMessages // Add the message back in case of error
+      );
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b bg-white flex items-center">
-        <img
-          src={conversation.sender.profile_image_url}
-          alt={conversation.sender.username}
-          className="w-10 h-10 rounded-full mr-3"
-        />
-        <h2 className="font-semibold text-lg">
-          {conversation.sender.username}
-        </h2>
-      </div>
-
-      <div
-        className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container"
-        style={{ maxHeight: "500px" }}
-      >
-        {" "}
-        {messages.length > 0 ? (
-          messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`max-w-fit px-4 py-2 mb-2 rounded-full ${
-                msg.sender?.id === user.user_id // Compare sender ID with current user ID
-                  ? "bg-blue-100 self-end"
-                  : "bg-gray-200 self-start"
-              }`}
-            >
-              {msg.text}
-            </div>
-          ))
-        ) : (
-          <div className="text-gray-500">No messages yet!</div>
-        )}
-      </div>
-
-      <div className="p-4 border-t bg-white flex items-center relative">
-        <button onClick={() => setShowPicker((prev) => !prev)} className="mr-2">
-          😊
-        </button>
-
-        {showPicker && (
-          <div ref={emojiPickerRef} className="absolute bottom-16 left-0 z-50">
-            <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
-          </div>
-        )}
-
-        <div className="relative flex w-1/2 items-center">
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message..."
-            className="w-full p-2 border border-gray-300 rounded-lg pr-10"
-          />
-          <AttachFileIcon className="absolute right-10 text-gray-500 cursor-pointer" />
-          <SettingsVoiceIcon className="absolute right-2 text-gray-500 cursor-pointer" />
-        </div>
-
-        <button
-          type="button"
-          className="ml-3 text-blue-500"
-          onClick={handleSendMessage}
-        >
-          <SendIcon />
-        </button>
-      </div>
+    <div className="flex flex-col h-full overflow-y-hidden">
+      <ChatHeader conversation={conversation} />
+      <MessagesList
+        messages={messages}
+        userId={user.user_id}
+        onDeleteMessage={handleDeleteMessage}
+      />
+      <MessageInput onSendMessage={handleSendMessage} />
     </div>
   );
 };

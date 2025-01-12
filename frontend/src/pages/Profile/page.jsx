@@ -17,7 +17,9 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null); // Track active chat
   const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
-
+  const imageUrl = "http://127.0.0.1:8000/media/attachments/MainAfter.jpg";
+  const imageUrlConstantinos =
+    "https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg";
   useEffect(() => {
     fetchUserProfile(setUser, setNewDate, setError, navigate);
   }, []);
@@ -119,7 +121,7 @@ const ProfilePage = () => {
             </div>
 
             <img
-              src="https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg"
+              src={imageUrl}
               alt={`${user.username}'s profile`}
               className="w-40 h-40 rounded-full object-cover mb-4 shadow-sm"
             />
