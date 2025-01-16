@@ -1,12 +1,5 @@
-import React, {
-  createContext,
-  useState,
-  useEffect,
-  useContext,
-  ReactNode,
-} from "react";
+import React, { createContext, useState, useContext, ReactNode } from "react";
 import { fetchUserProfile } from "../pages/Profile/api/fetchUserProfile";
-import { useNavigate } from "react-router-dom";
 import { User } from "../pages/Profile/types";
 
 interface UserContextType {
@@ -26,15 +19,23 @@ export interface UserProviderProps {
 export const UserProvider = ({ children }: UserProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
 
   const refreshUserProfile = async () => {
-    await fetchUserProfile(setUser, () => {}, setError, navigate);
-  };
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) return; // Don't attempt to fetch profile if no token exists
+      await fetchUserProfile(
+        setUser,
+        () => {},
+        setError,
+        () => {}
+      );
+    } catch (err) {
+      setError((err as Error).message); // Set error state for better UI feedback
 
-  useEffect(() => {
-    refreshUserProfile();
-  }, [navigate]);
+      console.error("Error refreshing user profile:", err);
+    }
+  };
 
   return (
     <UserContext.Provider

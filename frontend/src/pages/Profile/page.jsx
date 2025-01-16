@@ -7,6 +7,7 @@ import { useEditNativeLanguage } from "../Profile/api/editProfile";
 import { useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import IconButton from "@mui/material/IconButton";
+import DragDropImage from "../../components/Images/DragDropImage";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -23,6 +24,11 @@ const ProfilePage = () => {
   useEffect(() => {
     fetchUserProfile(setUser, setNewDate, setError, navigate);
   }, []);
+
+  const handleImageDrop = (file) => {
+    console.log("Image dropped:", file); // Handle file upload or processing here
+    // Example: Upload file to server
+  };
 
   const handleSaveName = async () => {
     try {
@@ -120,10 +126,10 @@ const ProfilePage = () => {
               </button>
             </div>
 
-            <img
-              src={imageUrl}
-              alt={`${user.username}'s profile`}
-              className="w-40 h-40 rounded-full object-cover mb-4 shadow-sm"
+            {/* DragDropImage Replacing the Current img */}
+            <DragDropImage
+              onImageDrop={handleImageDrop}
+              initialImage={imageUrl} // Pass initial profile image
             />
 
             <button
