@@ -1,4 +1,10 @@
-import React, { createContext, useState, useContext, ReactNode } from "react";
+import React, {
+  createContext,
+  useState,
+  useContext,
+  useEffect,
+  ReactNode,
+} from "react";
 import { fetchUserProfile } from "../pages/Profile/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 
@@ -23,7 +29,7 @@ export const UserProvider = ({ children }: UserProviderProps) => {
   const refreshUserProfile = async () => {
     try {
       const token = localStorage.getItem("accessToken");
-      if (!token) return; // Don't attempt to fetch profile if no token exists
+      if (!token) return;
       await fetchUserProfile(
         setUser,
         () => {},
@@ -31,11 +37,15 @@ export const UserProvider = ({ children }: UserProviderProps) => {
         () => {}
       );
     } catch (err) {
-      setError((err as Error).message); // Set error state for better UI feedback
-
+      setError((err as Error).message);
       console.error("Error refreshing user profile:", err);
     }
   };
+
+  // Automatically fetch user profile when the provider is mounted
+  useEffect(() => {
+    refreshUserProfile();
+  }, []);
 
   return (
     <UserContext.Provider
