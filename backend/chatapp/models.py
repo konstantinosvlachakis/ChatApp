@@ -29,7 +29,7 @@ class Profile(AbstractBaseUser):
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
-    profile_image_url = models.CharField(max_length=255, blank=True, null=True)
+    profile_image_url = models.ImageField(upload_to='profile_images/', null=True, blank=True)
     password = models.CharField(max_length=128, blank=True, null=True)
 
     # Manager for the Profile model
