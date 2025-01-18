@@ -15,6 +15,7 @@ from rest_framework.permissions import AllowAny
 from .serializers import ConversationSerializer
 from rest_framework.parsers import QueryDict
 from rest_framework.parsers import MultiPartParser, FormParser
+from django.conf import settings
 
 @csrf_exempt
 def login_view(request):
@@ -99,7 +100,7 @@ def profile_view(request):
         "user_id": user.id,
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
-        "profile_image_url": user.profile_image_url,  # Include the profile image URL
+        "profile_image_url": settings.MEDIA_URL + user.profile_image_url.name if user.profile_image_url else None,
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
         
@@ -210,3 +211,27 @@ class ConversationListView(APIView):
         conversations = Conversation.objects.all()
         serializer = ConversationSerializer(conversations, many=True)
         return Response(serializer.data)
+    
+
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_profile_image(request, user_id):
+    try:
+        # Only the logged-in user can update their own image
+        if request.user.id != user_id:
+            return Response({"error": "You can only update your own profile image."}, status=status.HTTP_403_FORBIDDEN)
+
+        profile = Profile.objects.get(id=user_id)
+
+        # Check if an image is being uploaded
+        if 'profile_image' in request.FILES:
+            profile.profile_image_url = request.FILES['profile_image']
+            profile.save()
+            return Response({"message": "Profile image updated successfully."}, status=status.HTTP_200_OK)
+        
+        return Response({"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Profile.DoesNotExist:
+        return Response({"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
