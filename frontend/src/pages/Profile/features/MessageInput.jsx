@@ -4,7 +4,7 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 
-const MessageInput = ({ onSendMessage }) => {
+const MessageInput = ({ onSendMessage, currentUser, onMessageReceived }) => {
   const [message, setMessage] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
@@ -34,8 +34,8 @@ const MessageInput = ({ onSendMessage }) => {
       return;
     }
 
-    onSendMessage(message, attachedFile, previewImage);
-    setMessage(""); // Clear message
+    onSendMessage(message, attachedFile, previewImage); // Send message
+    setMessage(""); // Clear message input
     if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup Blob URL
     setPreviewImage(null);
     setAttachedFile(null);

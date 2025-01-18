@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useUser } from "../../../context/UserContext";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
   const [conversations, setConversations] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useUser();
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const token = localStorage.getItem("accessToken");
+        const token = sessionStorage.getItem("accessToken");
         if (!token) {
           setError("Unauthorized access. Please log in again.");
           return;
@@ -48,37 +50,46 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
 
   return (
     <div className="overflow-y-auto">
-      {conversations.map((conversation) => (
-        <div
-          key={conversation.id}
-          className={`flex items-center p-2 cursor-pointer ${
-            activeConversationId === conversation.id
-              ? "bg-gray-300"
-              : "hover:bg-gray-200"
-          }`}
-          onClick={() => onSelectConversation(conversation)}
-        >
-          <img
-            src={
-              conversation.sender.profile_image_url ||
-              "https://via.placeholder.com/50"
-            }
-            alt={conversation.name || "Participant"}
-            className="w-12 h-12 rounded-full mr-3"
-          />
-          <div className="flex-1">
-            <p className="font-semibold">
-              {conversation.sender.username || "Unknown Participant"}
-            </p>
-            <p className="text-sm text-gray-500">
-              {conversation.last_message?.text || "No messages yet"}{" "}
-              <span className="text-gray-400">
-                ({new Date(conversation.updated_at).toLocaleString()})
-              </span>
-            </p>
+      {conversations.map((conversation) => {
+        // Safely access sender and receiver
+
+        const otherUser =
+          conversation.sender?.username === user?.username
+            ? conversation.receiver
+            : conversation.sender;
+        return (
+          <div
+            key={conversation.id}
+            className={`flex items-center p-2 cursor-pointer ${
+              activeConversationId === conversation.id
+                ? "bg-gray-300"
+                : "hover:bg-gray-200"
+            }`}
+            onClick={() => onSelectConversation(conversation)}
+          >
+            <img
+              src={
+                "http://127.0.0.1:8000" +
+                  (otherUser?.profile_image_url || "") ||
+                "https://via.placeholder.com/50"
+              }
+              alt={otherUser?.username || "Participant"}
+              className="w-12 h-12 rounded-full mr-3"
+            />
+            <div className="flex-1">
+              <p className="font-semibold">
+                {otherUser?.username || "Unknown Participant"}
+              </p>
+              <p className="text-sm text-gray-500">
+                {conversation.last_message?.text || "No messages yet"}{" "}
+                <span className="text-gray-400">
+                  ({new Date(conversation.updated_at).toLocaleString()})
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
