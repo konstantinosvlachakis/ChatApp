@@ -7,7 +7,7 @@ export const fetchConversations = async (
   setError: React.Dispatch<React.SetStateAction<string | null>>,
   navigate: NavigateFunction
 ): Promise<void> => {
-  const token = localStorage.getItem("accessToken");
+  const token = sessionStorage.getItem("accessToken");
 
   if (!token) {
     setError("Authentication token is missing. Please log in.");
@@ -32,7 +32,7 @@ export const fetchConversations = async (
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 401) {
         // Handle unauthorized access
-        localStorage.removeItem("accessToken");
+        sessionStorage.removeItem("accessToken");
         navigate("/login");
       } else {
         setError(error.response?.data?.detail || "Failed to fetch conversations");

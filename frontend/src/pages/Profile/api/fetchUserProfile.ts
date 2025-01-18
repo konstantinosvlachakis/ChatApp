@@ -9,7 +9,7 @@ export const fetchUserProfile = async (
   navigate: NavigateFunction // Pass navigate as an argument
 ): Promise<void> => {
   try {
-    const token = localStorage.getItem("accessToken");
+    const token = sessionStorage.getItem("accessToken");
     const response = await fetch("http://localhost:8000/api/profile/", {
       method: "GET",
       headers: {
@@ -26,7 +26,7 @@ export const fetchUserProfile = async (
       console.log("User profile fetched successfully");
     } else if (response.status === 401) {
       // If unauthorized, clear the token and navigate to login
-      localStorage.removeItem("accessToken");
+      sessionStorage.removeItem("accessToken");
       navigate("/login");
     } else {
       const errorData = await response.json();

@@ -18,9 +18,9 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null); // Track active chat
   const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
-  const imageUrl = "http://127.0.0.1:8000/media/attachments/MainAfter.jpg";
-  const imageUrlConstantinos =
-    "https://live-s3-bucket-sjwburhj9xhf.cdn.live.tandem.net/dd/99/e31704e1e56b8550d431f660276fe183.jpg";
+  const { profile_image_url } = user;
+  const imageUrl = "http://127.0.0.1:8000" + profile_image_url;
+
   useEffect(() => {
     fetchUserProfile(setUser, setNewDate, setError, navigate);
   }, []);
@@ -41,6 +41,7 @@ const ProfilePage = () => {
       setError(error.message);
     }
   };
+
   const handleEditNameClick = () => {
     setModalNameOpen(true);
   };
@@ -50,7 +51,7 @@ const ProfilePage = () => {
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem("accessToken");
+    sessionStorage.removeItem("accessToken");
     navigate("/login");
   };
 
@@ -147,7 +148,6 @@ const ProfilePage = () => {
                   <p className="text-gray-800">{user.username || "John Doe"}</p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Date of Birth:
@@ -157,7 +157,6 @@ const ProfilePage = () => {
                   </p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Location:
@@ -167,7 +166,6 @@ const ProfilePage = () => {
                   </p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Native Language:
@@ -177,7 +175,6 @@ const ProfilePage = () => {
                   </p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Languages Practicing:
@@ -187,7 +184,6 @@ const ProfilePage = () => {
                   </p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Learning Goal:
@@ -197,7 +193,6 @@ const ProfilePage = () => {
                   </p>
                 </div>
                 <hr className="border-gray-200" />
-
                 <div>
                   <h2 className="text-lg font-semibold text-gray-600">
                     Date Joined:
