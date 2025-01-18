@@ -13,7 +13,7 @@ export const deleteMessage = async (messageId: number): Promise<{ messageId: num
   try {
     await axios.delete(`http://localhost:8000/api/messages/${messageId}/delete/`, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
       },
     });
     return { messageId };

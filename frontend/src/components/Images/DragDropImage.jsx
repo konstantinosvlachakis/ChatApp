@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 
 const DragDropImage = ({ onImageDrop, initialImage }) => {
-  const [droppedImage, setDroppedImage] = useState(initialImage || null); // Stores the current image
+  const [droppedImage, setDroppedImage] = useState(initialImage); // Stores the current image
   const [isDraggingOver, setIsDraggingOver] = useState(false); // Tracks drag state
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false); // Tracks zoom modal state
-
   const handleDragOver = (event) => {
     event.preventDefault();
     setIsDraggingOver(true); // Set dragging state
@@ -56,7 +55,7 @@ const DragDropImage = ({ onImageDrop, initialImage }) => {
     >
       {/* Background Image */}
       <img
-        src={droppedImage || initialImage}
+        src={initialImage}
         alt="Profile"
         className="absolute top-0 left-0 w-full h-full object-cover cursor-pointer"
         onClick={() => setIsZoomModalOpen(true)} // Open zoom modal on click
@@ -82,7 +81,7 @@ const DragDropImage = ({ onImageDrop, initialImage }) => {
       {isZoomModalOpen && (
         <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-75 flex items-center justify-center z-50">
           <img
-            src={droppedImage || initialImage}
+            src={initialImage}
             alt="Zoomed"
             className="w-auto max-w-full h-auto max-h-full"
           />

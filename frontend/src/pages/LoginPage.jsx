@@ -25,8 +25,9 @@ const LoginPage = () => {
 
       const { access, refresh } = response.data;
 
-      localStorage.setItem("accessToken", access);
-      localStorage.setItem("refreshToken", refresh);
+      // Store tokens in sessionStorage to maintain separate sessions per tab
+      sessionStorage.setItem("accessToken", access);
+      sessionStorage.setItem("refreshToken", refresh);
 
       console.log("Login successful. Access token:", access);
       navigate("/profile");

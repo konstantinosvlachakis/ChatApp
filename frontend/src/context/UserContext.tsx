@@ -28,7 +28,7 @@ export const UserProvider = ({ children }: UserProviderProps) => {
 
   const refreshUserProfile = async () => {
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = sessionStorage.getItem("accessToken");
       if (!token) return;
       await fetchUserProfile(
         setUser,
