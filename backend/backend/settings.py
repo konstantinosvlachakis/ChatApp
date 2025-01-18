@@ -29,10 +29,22 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+ASGI_APPLICATION = 'backend.asgi.application'
+
+# Redis setup for channels layers
+CHANNEL_LAYERS = {
+    'default':{
+        'BACKEND':'channels.layers.InMemoryChannelLayer'
+    }
+}
+
+
 
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
+    "channels",
     "chatapp",
     "corsheaders",
     "django.contrib.admin",
@@ -55,6 +67,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+
+# Session settings
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Store sessions in the database
+SESSION_COOKIE_NAME = 'sessionid'  # Default session cookie name
 
 ROOT_URLCONF = "backend.urls"
 
