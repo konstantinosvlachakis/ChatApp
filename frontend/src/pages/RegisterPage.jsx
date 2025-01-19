@@ -7,6 +7,7 @@ import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import Avatar from "@mui/material/Avatar";
+import { BASE_URL } from "../constants/constants";
 
 const languageOptions = [
   {
@@ -62,7 +63,7 @@ const RegisterPage = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/register/", {
+      const response = await fetch(BASE_URL + "/api/register/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

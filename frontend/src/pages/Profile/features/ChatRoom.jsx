@@ -1,56 +1,100 @@
 import React, { useState, useRef, useEffect } from "react";
 import ChatHeader from "./ChatHeader";
-import MessagesList from "./MessagesList";
+import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
-import { useUser } from "../../../context/UserContext";
 import axios from "axios";
 import { deleteMessage } from "../api/deleteMessage";
+import { BASE_URL } from "../../../constants/constants";
 
-const ChatRoom = ({ conversation }) => {
+const ChatRoom = ({ conversation, user }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
-  const { user } = useUser();
-  const socket = useRef(null); // Use a ref to persist the socket connection
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const socket = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  // Fetch messages from the server to ensure sync
+  const fetchMessages = async () => {
+    try {
+      const response = await axios.get(
+        BASE_URL + `/api/conversations/${conversation.id}/messages/`,
+        {
+          headers: {
+            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+      setMessages(response.data);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  };
 
   useEffect(() => {
-    // Create a new WebSocket connection
-    let url = `ws://localhost:8000/api/ws/socket-server/${conversation.id}/`;
+    // Fetch messages when the component loads
+    fetchMessages();
 
-    // Set up WebSocket connection
+    // Initialize WebSocket connection
+    const roomName = conversation.id; // Use the appropriate value for room name
+    const url = `ws://127.0.0.1:8000/ws/socket-server/${roomName}/`;
     socket.current = new WebSocket(url);
 
-    // Listen for incoming messages
-    socket.current.onmessage = function (e) {
-      let data = JSON.parse(e.data);
-      console.log("Received WebSocket data:", data);
+    socket.current.onopen = () => {
+      console.log("WebSocket connection established.");
+    };
+
+    socket.current.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      console.log("WebSocket message received:", data);
 
       if (data.type === "chat") {
-        setMessages((prevMessages) => {
-          console.log(
-            "Checking for duplicates:",
-            prevMessages.some((msg) => msg.id === data.id)
-          );
-          if (prevMessages.some((msg) => msg.id === data.id)) {
-            return prevMessages; // Prevent duplicate addition
-          }
+        // Check if the message is from the current user
+        if (data.senderId === user.user_id) {
+          console.log("Ignoring message sent by self.");
+          return; // Ignore messages sent by the current user
+        }
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          {
+            id: data.id,
+            text: data.message,
+            sender: { username: data.sender },
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      } else if (data.type === "user_typing") {
+        if (data.sender !== user.username) {
+          setIsOtherUserTyping(true);
 
-          return [
-            ...prevMessages,
-            {
-              id: data.id,
-              text: data.message,
-              sender: { username: data.sender },
-              timestamp: new Date().toISOString(),
-            },
-          ];
-        });
+          // Hide typing indicator after 3 seconds of no updates
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+          typingTimeoutRef.current = setTimeout(() => {
+            setIsOtherUserTyping(false);
+          }, 3000);
+        }
+      } else if (data.type === "user_stopped_typing") {
+        if (data.sender !== user.username) {
+          setIsOtherUserTyping(false);
+        }
       }
     };
 
-    // Cleanup WebSocket connection when the component unmounts
+    socket.current.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    socket.current.onclose = () => {
+      console.log("WebSocket connection closed.");
+    };
+
+    // Cleanup WebSocket connection
     return () => {
       socket.current.close();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
     };
-  }, [conversation.id]);
+  }, [conversation.id, user.username]);
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     const formData = new FormData();
@@ -62,7 +106,7 @@ const ChatRoom = ({ conversation }) => {
     }
 
     const tempMessage = {
-      id: Date.now(), // Temporary unique ID
+      id: Date.now(),
       text: newMessage.trim() || null,
       sender: { id: user.user_id, username: user.username },
       timestamp: new Date().toISOString(),
@@ -74,7 +118,7 @@ const ChatRoom = ({ conversation }) => {
 
     try {
       const response = await axios.post(
-        `http://localhost:8000/api/conversations/${conversation.id}/messages/`,
+        BASE_URL + `/api/conversations/${conversation.id}/messages/`,
         formData,
         {
           headers: {
@@ -85,42 +129,48 @@ const ChatRoom = ({ conversation }) => {
       );
 
       const savedMessage = response.data;
-      const baseURL = "http://localhost:8000";
-      const fullUrl =
-        savedMessage.attachmentUrl &&
-        !savedMessage.attachmentUrl.startsWith("http")
-          ? `${baseURL}${savedMessage.attachmentUrl}`
-          : savedMessage.attachmentUrl;
 
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg.id === tempMessage.id
-            ? {
-                ...msg,
-                id: savedMessage.id,
-                text: savedMessage.text || msg.text,
-                attachment: savedMessage.attachment || msg.attachment,
-                attachmentUrl: fullUrl,
-              }
-            : msg
-        )
-      );
-
+      // Emit the message to other users via WebSocket
       socket.current.send(
         JSON.stringify({
           type: "chat",
-          id: savedMessage.id, // Include the unique ID
+          id: savedMessage.id,
           message: savedMessage.text,
           sender: user.username,
+          senderId: user.user_id, // Optional: Include sender ID for clarity
         })
       );
+      console.log("WebSocket message sent:", {
+        type: "chat",
+        id: savedMessage.id,
+        message: savedMessage.text,
+        sender: user.username,
+      });
     } catch (error) {
       console.error("Error sending message:", error);
+      // Remove the temporary message in case of error
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => msg.id !== tempMessage.id)
       );
-      alert("Failed to send the message. Please try again.");
     }
+  };
+
+  const handleTyping = () => {
+    socket.current.send(
+      JSON.stringify({
+        type: "user_typing",
+        sender: user.username,
+      })
+    );
+  };
+
+  const handleStopTyping = () => {
+    socket.current.send(
+      JSON.stringify({
+        type: "user_stopped_typing",
+        sender: user.username,
+      })
+    );
   };
 
   const handleDeleteMessage = async (messageId) => {
@@ -146,12 +196,21 @@ const ChatRoom = ({ conversation }) => {
   return (
     <div className="flex flex-col h-screen overflow-y-hidden">
       <ChatHeader conversation={conversation} />
-      <MessagesList
+      <Conversation
         messages={messages}
         userId={user.user_id}
         onDeleteMessage={handleDeleteMessage}
       />
-      <MessageInput onSendMessage={handleSendMessage} />
+      {isOtherUserTyping && (
+        <div className="text-gray-500 text-sm p-2">
+          The other user is typing...
+        </div>
+      )}
+      <MessageInput
+        onSendMessage={handleSendMessage}
+        onTyping={handleTyping}
+        onStopTyping={handleStopTyping}
+      />
     </div>
   );
 };

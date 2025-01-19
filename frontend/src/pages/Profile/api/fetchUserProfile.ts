@@ -1,6 +1,7 @@
 // api/userApi.ts
 import { User } from "../types";
 import { NavigateFunction } from "react-router-dom";
+import { BASE_URL } from "../../../constants/constants";
 
 export const fetchUserProfile = async (
   setUser: React.Dispatch<React.SetStateAction<User | null>>,
@@ -10,7 +11,7 @@ export const fetchUserProfile = async (
 ): Promise<void> => {
   try {
     const token = sessionStorage.getItem("accessToken");
-    const response = await fetch("http://localhost:8000/api/profile/", {
+    const response = await fetch(BASE_URL + "/api/profile/", {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

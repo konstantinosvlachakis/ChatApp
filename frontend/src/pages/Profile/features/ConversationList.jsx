@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useUser } from "../../../context/UserContext";
+import { BASE_URL } from "../../../constants/constants";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
   const [conversations, setConversations] = useState([]);
@@ -16,14 +17,11 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
           return;
         }
 
-        const response = await axios.get(
-          "http://localhost:8000/api/conversations/",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await axios.get(BASE_URL + "/api/conversations/", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
         setConversations(response.data);
       } catch (err) {
         console.error("Error fetching conversations:", err);
@@ -69,8 +67,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
           >
             <img
               src={
-                "http://127.0.0.1:8000" +
-                  (otherUser?.profile_image_url || "") ||
+                BASE_URL + (otherUser?.profile_image_url || "") ||
                 "https://via.placeholder.com/50"
               }
               alt={otherUser?.username || "Participant"}

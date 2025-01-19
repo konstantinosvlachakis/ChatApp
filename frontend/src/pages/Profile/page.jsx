@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import IconButton from "@mui/material/IconButton";
 import DragDropImage from "../../components/Images/DragDropImage";
+import { BASE_URL } from "../../constants/constants";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -18,9 +19,9 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null); // Track active chat
   const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
-  const { profile_image_url } = user;
-  const imageUrl = "http://127.0.0.1:8000" + profile_image_url;
 
+  const { profile_image_url } = user;
+  const imageUrl = BASE_URL + profile_image_url;
   useEffect(() => {
     fetchUserProfile(setUser, setNewDate, setError, navigate);
   }, []);
@@ -114,7 +115,7 @@ const ProfilePage = () => {
                 <ArrowBackIcon />
               </IconButton>
             </div>
-            <ChatRoom conversation={activeConversation} />
+            <ChatRoom conversation={activeConversation} user={user} />
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-6">
