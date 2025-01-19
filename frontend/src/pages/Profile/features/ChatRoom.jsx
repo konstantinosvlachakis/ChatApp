@@ -34,7 +34,7 @@ const ChatRoom = ({ conversation, user }) => {
 
     // Initialize WebSocket connection
     const roomName = conversation.id; // Use the appropriate value for room name
-    const url = `ws://127.0.0.1:8000/ws/socket-server/${roomName}/`;
+    const url = `ws://localhost:8000/ws/socket-server/${roomName}/`;
     socket.current = new WebSocket(url);
 
     socket.current.onopen = () => {
