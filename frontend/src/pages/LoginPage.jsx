@@ -4,6 +4,7 @@ import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
+import { BASE_URL } from "../constants/constants";
 
 const LoginPage = () => {
   const [username, setUsername] = useState("");
@@ -18,7 +19,7 @@ const LoginPage = () => {
     setError("");
 
     try {
-      const response = await axios.post("http://localhost:8000/api/token/", {
+      const response = await axios.post(BASE_URL + "/api/token/", {
         username,
         password,
       });

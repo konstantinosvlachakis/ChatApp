@@ -29,15 +29,10 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-ASGI_APPLICATION = 'backend.asgi.application'
+ASGI_APPLICATION = "backend.asgi.application"
 
 # Redis setup for channels layers
-CHANNEL_LAYERS = {
-    'default':{
-        'BACKEND':'channels.layers.InMemoryChannelLayer'
-    }
-}
-
+CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 
 # Application definition
@@ -70,8 +65,8 @@ MIDDLEWARE = [
 
 
 # Session settings
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Store sessions in the database
-SESSION_COOKIE_NAME = 'sessionid'  # Default session cookie name
+SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
+SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
 ROOT_URLCONF = "backend.urls"
 
@@ -150,12 +145,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 CORS_ALLOW_CREDENTIALS = (
     True  # This allows cookies to be included in cross-origin requests
 )
 
-AUTH_USER_MODEL = 'chatapp.Profile'
+AUTH_USER_MODEL = "chatapp.Profile"
 
 
 SIMPLE_JWT = {
@@ -185,7 +181,6 @@ REST_FRAMEWORK = {
 }
 
 
-
-MEDIA_URL = '/media/'  # URL prefix for media files
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # Directory where media files are stored
+MEDIA_URL = "/media/"  # URL prefix for media files
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
 BASE_URL = "http://localhost:8000"  # Base URL for your backend
