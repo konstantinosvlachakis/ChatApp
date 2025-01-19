@@ -1,6 +1,7 @@
 import { useMutation, UseMutationOptions } from '@tanstack/react-query';
 import axios, { AxiosError } from 'axios';
 import { queryClient } from '../../../libs/react-query';
+import { BASE_URL } from '../../../constants/constants';
 
 type UserProfileDTO = {
   username?: string;
@@ -12,7 +13,7 @@ type UserProfileDTO = {
 const editNativeLanguage = async (userData: UserProfileDTO): Promise<UserProfileDTO> => {
   const token = sessionStorage.getItem("accessToken"); // Retrieve the token from local storage
   const response = await axios.patch(
-    "http://localhost:8000/api/profile/edit/",
+    BASE_URL + "/api/profile/edit/",
     userData,
     {
       headers: {

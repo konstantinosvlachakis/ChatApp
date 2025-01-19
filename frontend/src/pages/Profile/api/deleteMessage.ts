@@ -1,4 +1,5 @@
 import axios from "axios";
+import { BASE_URL } from "../../../constants/constants";
 
 export type DeleteMessageDTO = {
   messageId: number;
@@ -11,7 +12,7 @@ export type DeleteMessageDTO = {
  */
 export const deleteMessage = async (messageId: number): Promise<{ messageId: number }> => {
   try {
-    await axios.delete(`http://localhost:8000/api/messages/${messageId}/delete/`, {
+    await axios.delete(BASE_URL + `/api/messages/${messageId}/delete/`, {
       headers: {
         Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
       },

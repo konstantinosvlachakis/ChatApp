@@ -1,6 +1,7 @@
 import axios from "axios";
 import { Conversation } from "../types";
 import { NavigateFunction } from "react-router-dom";
+import { BASE_URL } from "../../../constants/constants";
 
 export const fetchConversations = async (
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>,
@@ -17,7 +18,7 @@ export const fetchConversations = async (
 
   try {
     const response = await axios.get<Conversation[]>(
-      "http://localhost:8000/api/conversations/",
+      BASE_URL + "/api/conversations/",
       {
         headers: {
           Authorization: `Bearer ${token}`, // Use Bearer for JWT tokens

@@ -1,41 +1,38 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+
+# In your WebSocket consumer
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # Get the conversation_id from the URL
-        self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
-        
-        # Add the WebSocket connection to a group based on the conversation_id
-        self.room_group_name = f'conversation_{self.conversation_id}'
-
-        # Join the group
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
-        
-        # Accept the WebSocket connection
+        self.room_group_name = self.scope["url_route"]["kwargs"]["room_name"]
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
 
-    async def receive(self, text_data):
-        text_data_json = json.loads(text_data)
-        message = text_data_json['message']
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
 
-        # Send the message to the group (no need to use async_to_sync)
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        message = data["message"]
+
+        # Broadcast the message to the group
         await self.channel_layer.group_send(
             self.room_group_name,
             {
-                'type': 'chat_message',
-                'message': message
-            }
+                "type": "chat_message",
+                "message": message,
+                "sender_channel_name": self.channel_name,  # Include the sender's channel name
+            },
         )
 
     async def chat_message(self, event):
-        message = event['message']
+        message = event["message"]
+        sender_channel_name = event["sender_channel_name"]
 
-        # Send the message to WebSocket
-        await self.send(text_data=json.dumps({
-            'type': 'chat',
-            'message': message
-        }))
+        # Skip sending the message to the sender
+        if self.channel_name == sender_channel_name:
+            return
+
+        # Send the message to the WebSocket
+        await self.send(text_data=json.dumps({"type": "chat", "message": message}))
