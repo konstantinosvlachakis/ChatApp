@@ -1,19 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 const Conversation = ({ messages, userId, onDeleteMessage }) => {
   const [dropdownIndex, setDropdownIndex] = useState(null); // Tracks which message's dropdown is open
+  const messagesEndRef = useRef(null); // Ref for the end of the messages list
 
   const toggleDropdown = (index) => {
     setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
   };
 
+  // Scroll to the last message whenever the messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   return (
     <div className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
-          // Fallback logic: Use attachment_url if available, else fallback to attachment
           const attachmentUrl = msg.attachment_url || msg.attachment;
-
           const isImageMessage = !!attachmentUrl; // Check if there's an attachment
           const isSentByUser = msg.sender?.id === userId; // Check if the message was sent by the user
 
@@ -21,16 +25,13 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
             <div
               key={index}
               className={`relative max-w-fit ${
-                !isImageMessage && isSentByUser
-                  ? "bg-blue-100" // Apply bg-blue-100 for text messages sent by the user
-                  : ""
+                !isImageMessage && isSentByUser ? "bg-blue-100" : ""
               } ${isImageMessage ? "" : "px-4 py-2"} mb-2 rounded-full ${
                 isSentByUser ? "self-end" : "bg-gray-200 self-start"
               }`}
             >
               {isSentByUser && (
                 <div className="absolute -left-6 top-1/2 transform -translate-y-1/2 z-20 group">
-                  {/* Three dots */}
                   <button
                     className="text-gray-500 hover:text-gray-700 focus:outline-none"
                     onClick={() => toggleDropdown(index)}
@@ -39,8 +40,6 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
                     <span className="inline-block w-1.5 h-1.5 bg-gray-500 rounded-full mx-0.5"></span>
                     <span className="inline-block w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
                   </button>
-
-                  {/* Dropdown */}
                   {dropdownIndex === index && (
                     <div
                       className="absolute right-full top-0 mr-2 mt-0 bg-white border shadow-lg rounded z-50 group-hover:block"
@@ -64,7 +63,6 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
               {isImageMessage ? (
                 /\.(jpeg|jpg|png|gif|mp4|webm)$/i.test(attachmentUrl) ? (
                   <div className="w-40 h-40 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
-                    {/* Render the image or video attachment */}
                     {attachmentUrl.match(/\.(mp4|webm)$/i) ? (
                       <video
                         src={attachmentUrl}
@@ -98,6 +96,8 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
       ) : (
         <div className="text-gray-500">No messages yet!</div>
       )}
+      {/* Add a reference to the end of the messages */}
+      <div ref={messagesEndRef}></div>
     </div>
   );
 };
