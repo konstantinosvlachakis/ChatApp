@@ -1,5 +1,5 @@
 import React from "react";
-import ConversationList from "../pages/Profile/features/ConversationList";
+import ConversationList from "./ConversationList";
 
 function Sidebar({ onSelectConversation, activeConversationId }) {
   return (
