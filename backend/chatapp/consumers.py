@@ -36,3 +36,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Send the message to the WebSocket
         await self.send(text_data=json.dumps({"type": "chat", "message": message}))
+
+    async def delete_message(self, event):
+        message_id = event["messageId"]
+        sender_channel_name = event["sender_channel_name"]
+
+        # Skip sending the delete notification to the sender
+        if self.channel_name == sender_channel_name:
+            return
+
+        # Notify the WebSocket to delete the message
+        await self.send(
+            text_data=json.dumps({"type": "deleteMessage", "messageId": message_id})
+        )

@@ -60,6 +60,11 @@ const ChatRoom = ({ conversation, user }) => {
             timestamp: new Date().toISOString(),
           },
         ]);
+      } else if (data.type === "deleteMessage") {
+        const messageIdToDelete = data.messageId;
+        setMessages((prevMessages) =>
+          prevMessages.filter((msg) => msg.id !== messageIdToDelete)
+        );
       } else if (data.type === "user_typing") {
         if (data.sender !== user.username) {
           setIsOtherUserTyping(true);
