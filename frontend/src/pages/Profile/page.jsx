@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchUserProfile } from "./api/fetchUserProfile";
-import Sidebar from "../../components/Sidebar";
+import Sidebar from "./features/Sidebar";
 import ChatRoom from "./features/ChatRoom";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
