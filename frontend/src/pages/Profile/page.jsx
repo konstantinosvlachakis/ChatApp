@@ -3,7 +3,7 @@ import { fetchUserProfile } from "./api/fetchUserProfile";
 import Sidebar from "./features/Sidebar";
 import ChatRoom from "./features/ChatRoom";
 import ModalComponent from "../../components/Modals/Modal";
-import { useEditNativeLanguage } from "../Profile/api/editProfile";
+import { useEditProfile } from "./api/editProfile";
 import { useNavigate } from "react-router-dom";
 import IconButton from "@mui/material/IconButton";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -16,7 +16,7 @@ const ProfilePage = () => {
   const [modalNameOpen, setModalNameOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [activeConversation, setActiveConversation] = useState(null);
-  const editNativeLanguageMutation = useEditNativeLanguage({});
+  const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
   const imageUrl = BASE_URL + user.profile_image_url;
 
@@ -28,7 +28,7 @@ const ProfilePage = () => {
 
   const handleSaveName = async () => {
     try {
-      await editNativeLanguageMutation.mutateAsync({ username: newName });
+      await editProfileMutation.mutateAsync({ username: newName });
       setUser((prev) => ({ ...prev, username: newName }));
       setModalNameOpen(false);
     } catch (err) {
