@@ -6,11 +6,12 @@ import { BASE_URL } from '../../../constants/constants';
 type UserProfileDTO = {
   username?: string;
   nativeLanguage?: string;
+  profileImage?: string;
   // Add other fields if needed
 };
 
 // Function to update the user's native language
-const editNativeLanguage = async (userData: UserProfileDTO): Promise<UserProfileDTO> => {
+const editProfile = async (userData: UserProfileDTO): Promise<UserProfileDTO> => {
   const token = sessionStorage.getItem("accessToken"); // Retrieve the token from local storage
   const response = await axios.patch(
     BASE_URL + "/api/profile/edit/",
@@ -25,7 +26,7 @@ const editNativeLanguage = async (userData: UserProfileDTO): Promise<UserProfile
   return response.data;
 };
 
-type UseEditNativeLanguageOptions = {
+type UseEditProfileOptions = {
   config?: UseMutationOptions<
     UserProfileDTO,
     AxiosError<unknown, any>,
@@ -34,10 +35,10 @@ type UseEditNativeLanguageOptions = {
   >;
 };
 
-export const useEditNativeLanguage = ({ config }: UseEditNativeLanguageOptions) => {
+export const useEditProfile = ({ config }: UseEditProfileOptions) => {
   return useMutation({
-    mutationKey: ['editNativeLanguage'], // Explicitly setting mutationKey
-    mutationFn: editNativeLanguage,
+    mutationKey: ['editProfile'], // Explicitly setting mutationKey
+    mutationFn: editProfile,
     onMutate: async (newData: UserProfileDTO) => {
       // Snapshot the previous user data
       const previousUserProfile = queryClient.getQueryData<UserProfileDTO>(['userProfile']);
