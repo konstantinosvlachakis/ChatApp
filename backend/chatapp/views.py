@@ -4,18 +4,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from .models import Token, Profile
 import json
-import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message
 from .serializers import MessageSerializer
-from rest_framework.permissions import AllowAny
 from .serializers import ConversationSerializer
-from rest_framework.parsers import QueryDict
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+
 
 @csrf_exempt
 def login_view(request):
@@ -62,7 +60,9 @@ def register_view(request):
             # Validate required fields
             if not username or not password or not native_language or not email:
                 return JsonResponse(
-                    {"error": "Username, password, native language, and email are required"},
+                    {
+                        "error": "Username, password, native language, and email are required"
+                    },
                     status=400,
                 )
 
@@ -92,6 +92,7 @@ def register_view(request):
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
@@ -100,13 +101,15 @@ def profile_view(request):
         "user_id": user.id,
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
-        "profile_image_url": settings.MEDIA_URL + user.profile_image_url.name if user.profile_image_url else None,
+        "profile_image_url": (
+            settings.MEDIA_URL + user.profile_image_url.name
+            if user.profile_image_url
+            else None
+        ),
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
-        
     }
     return JsonResponse(profile_data, status=200)
-
 
 
 @api_view(["PATCH"])
@@ -141,7 +144,9 @@ def profile_edit_view(request):
                 "updated_profile": {
                     "username": user.username,
                     "native_language": user.native_language,
-                    "profile_image_url": user.profile_image_url,
+                    "profile_image_url": (
+                        user.profile_image_url.url if user.profile_image_url else None
+                    ),
                 },
             },
             status=200,
@@ -159,16 +164,16 @@ class MessageListView(APIView):
         conversation = get_object_or_404(
             Conversation,
             id=conversation_id,
-            sender=request.user  # Update this condition if receiver is also valid
+            sender=request.user,  # Update this condition if receiver is also valid
         )
-        
+
         # Fetch all messages in the conversation
         messages = conversation.messages.all()
         serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data)
-    
+
     parser_classes = (MultiPartParser, FormParser)  # Allow handling of file uploads
-    
+
     def post(self, request, conversation_id):
         # Fetch conversation where the user is the sender
         conversation = get_object_or_404(
@@ -183,7 +188,7 @@ class MessageListView(APIView):
         if not text and not attachment:
             return Response(
                 {"error": "Message content or attachment is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Create a new message
@@ -191,19 +196,23 @@ class MessageListView(APIView):
             conversation=conversation,
             text=text,
             sender=request.user,
-            attachment=attachment  # Save the file if provided
+            attachment=attachment,  # Save the file if provided
         )
 
         # Serialize and return the new message
-        serializer = MessageSerializer(message, context={'request': request})
+        serializer = MessageSerializer(message, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+
+
 class MessageDeleteView(APIView):
     def delete(self, request, message_id):
         message = get_object_or_404(Message, id=message_id, sender=request.user)
         message.delete()
-        return Response({"message": "Message deleted successfully"}, status=status.HTTP_200_OK)
-    
+        return Response(
+            {"message": "Message deleted successfully"}, status=status.HTTP_200_OK
+        )
+
+
 class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -211,8 +220,6 @@ class ConversationListView(APIView):
         conversations = Conversation.objects.all()
         serializer = ConversationSerializer(conversations, many=True)
         return Response(serializer.data)
-    
-
 
 
 @api_view(["PATCH"])
@@ -221,17 +228,27 @@ def update_profile_image(request, user_id):
     try:
         # Only the logged-in user can update their own image
         if request.user.id != user_id:
-            return Response({"error": "You can only update your own profile image."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"error": "You can only update your own profile image."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         profile = Profile.objects.get(id=user_id)
 
         # Check if an image is being uploaded
-        if 'profile_image' in request.FILES:
-            profile.profile_image_url = request.FILES['profile_image']
+        if "profile_image" in request.FILES:
+            profile.profile_image_url = request.FILES["profile_image"]
             profile.save()
-            return Response({"message": "Profile image updated successfully."}, status=status.HTTP_200_OK)
-        
-        return Response({"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST)
-    
+            return Response(
+                {"message": "Profile image updated successfully."},
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST
+        )
+
     except Profile.DoesNotExist:
-        return Response({"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND
+        )
