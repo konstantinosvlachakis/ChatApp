@@ -5,8 +5,8 @@ import ChatRoom from "./features/ChatRoom";
 import ModalComponent from "../../components/Modals/Modal";
 import { useEditNativeLanguage } from "../Profile/api/editProfile";
 import { useNavigate } from "react-router-dom";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import IconButton from "@mui/material/IconButton";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DragDropImage from "../../components/Images/DragDropImage";
 import { BASE_URL } from "../../constants/constants";
 
@@ -14,195 +14,121 @@ const ProfilePage = () => {
   const [user, setUser] = useState({});
   const [error, setError] = useState(null);
   const [modalNameOpen, setModalNameOpen] = useState(false);
-  const [newDate, setNewDate] = useState("");
   const [newName, setNewName] = useState("");
-  const [activeConversation, setActiveConversation] = useState(null); // Track active chat
+  const [activeConversation, setActiveConversation] = useState(null);
   const editNativeLanguageMutation = useEditNativeLanguage({});
   const navigate = useNavigate();
+  const imageUrl = BASE_URL + user.profile_image_url;
 
-  const { profile_image_url } = user;
-  const imageUrl = BASE_URL + profile_image_url;
   useEffect(() => {
-    fetchUserProfile(setUser, setNewDate, setError, navigate);
-  }, []);
+    fetchUserProfile(setUser, () => {}, setError, navigate);
+  }, [navigate]);
 
-  const handleImageDrop = (file) => {
-    console.log("Image dropped:", file); // Handle file upload or processing here
-    // Example: Upload file to server
-  };
+  const handleImageDrop = (file) => console.log("Image dropped:", file);
 
   const handleSaveName = async () => {
     try {
-      const userData = { username: newName };
-      await editNativeLanguageMutation.mutateAsync(userData);
-
-      setUser((prevUser) => ({ ...prevUser, username: newName }));
+      await editNativeLanguageMutation.mutateAsync({ username: newName });
+      setUser((prev) => ({ ...prev, username: newName }));
       setModalNameOpen(false);
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-  const handleEditNameClick = () => {
-    setModalNameOpen(true);
-  };
+  const profileFields = [
+    { label: "Name", value: user.username || "John Doe" },
+    { label: "Date of Birth", value: user.date_of_birth || "Not provided" },
+    { label: "Location", value: user.location || "Not specified" },
+    { label: "Native Language", value: user.native_language || "English" },
+    {
+      label: "Languages Practicing",
+      value: user.languages || "Spanish, French",
+    },
+    {
+      label: "Learning Goal",
+      value: user.learningGoal || "Become fluent for travel",
+    },
+    { label: "Date Joined", value: user.dateJoined || "January 1, 2023" },
+  ];
 
-  const handleCloseModal = () => {
-    setModalNameOpen(false);
-  };
-
-  const handleSignOut = () => {
-    sessionStorage.removeItem("accessToken");
-    navigate("/login");
-  };
-
-  const handleConversationClick = (conversation) => {
-    setActiveConversation(conversation);
-  };
-
-  const handleBackToProfile = () => {
-    setActiveConversation(null); // Clear the active conversation to show the profile
-  };
-
-  function handleModal() {
-    return (
-      <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
-        <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
-        <input
-          type="text"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          className="w-full p-2 mb-4 border rounded"
-          placeholder="Enter new Name"
-        />
-        <div className="flex justify-end space-x-2">
-          <button
-            className="bg-gray-300 text-gray-800 py-1 px-4 rounded"
-            onClick={handleCloseModal}
-          >
-            Close
-          </button>
-          <button
-            className="bg-blue-500 text-white py-1 px-4 rounded"
-            onClick={handleSaveName}
-          >
-            Save
-          </button>
-        </div>
-      </ModalComponent>
-    );
-  }
+  const handleModal = () => (
+    <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
+      <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
+      <input
+        type="text"
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        className="w-full p-2 mb-4 border rounded"
+        placeholder="Enter new Name"
+      />
+      <div className="flex justify-end space-x-2">
+        <button
+          className="bg-gray-300 text-gray-800 py-1 px-4 rounded"
+          onClick={() => setModalNameOpen(false)}
+        >
+          Close
+        </button>
+        <button
+          className="bg-blue-500 text-white py-1 px-4 rounded"
+          onClick={handleSaveName}
+        >
+          Save
+        </button>
+      </div>
+    </ModalComponent>
+  );
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
       <Sidebar
-        onSelectConversation={handleConversationClick}
+        onSelectConversation={setActiveConversation}
         activeConversationId={activeConversation?.id}
       />
-
-      {/* Chat Room or Profile Content */}
       <div className="flex-1 p-4">
         {activeConversation ? (
-          <div className="flex flex-col h-full">
-            {/* Back Button */}
-            <div className="absolute top-4 right-4 mr-12 flex items-center">
-              <IconButton
-                color="primary"
-                onClick={handleBackToProfile}
-                aria-label="Back to Profile"
-              >
-                <ArrowBackIcon />
-              </IconButton>
-            </div>
+          <div className="relative flex flex-col h-full">
+            <IconButton
+              className="absolute top-4 right-4"
+              color="primary"
+              onClick={() => setActiveConversation(null)}
+              aria-label="Back to Profile"
+            >
+              <ArrowBackIcon />
+            </IconButton>
             <ChatRoom conversation={activeConversation} user={user} />
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-6">
-            <div className="absolute top-5 right-5 flex items-center space-x-3">
-              <button
-                className="text-sm font-medium bg-red-500 text-white py-1 px-4 rounded-full mt-4"
-                onClick={handleSignOut}
-              >
-                Sign Out
-              </button>
-            </div>
-
-            {/* DragDropImage Replacing the Current img */}
+            <button
+              className="absolute top-5 right-5 bg-red-500 text-white py-1 px-4 rounded-full"
+              onClick={() => navigate("/login")}
+            >
+              Sign Out
+            </button>
             <DragDropImage
               onImageDrop={handleImageDrop}
-              initialImage={imageUrl} // Pass initial profile image
+              initialImage={imageUrl}
             />
-
             <button
-              className="text-sm font-medium bg-blue-500 text-white py-1 px-4 rounded-full mt-2"
-              onClick={handleEditNameClick}
+              className="bg-blue-500 text-white py-1 px-4 rounded-full"
+              onClick={() => setModalNameOpen(true)}
             >
               Edit
             </button>
             {modalNameOpen && handleModal()}
-
-            <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50">
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">Name:</h2>
-                  <p className="text-gray-800">{user.username || "John Doe"}</p>
-                </div>
-                <hr className="border-gray-200" />
-                <div>
+            <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50 space-y-4">
+              {profileFields.map(({ label, value }, index) => (
+                <div key={index}>
                   <h2 className="text-lg font-semibold text-gray-600">
-                    Date of Birth:
+                    {label}:
                   </h2>
-                  <p className="text-gray-800">
-                    {user.date_of_birth || "Not provided"}
-                  </p>
+                  <p className="text-gray-800">{value}</p>
+                  {index < profileFields.length - 1 && (
+                    <hr className="border-gray-200" />
+                  )}
                 </div>
-                <hr className="border-gray-200" />
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">
-                    Location:
-                  </h2>
-                  <p className="text-gray-800">
-                    {user.location || "Not specified"}
-                  </p>
-                </div>
-                <hr className="border-gray-200" />
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">
-                    Native Language:
-                  </h2>
-                  <p className="text-gray-800">
-                    {user.native_language || "English"}
-                  </p>
-                </div>
-                <hr className="border-gray-200" />
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">
-                    Languages Practicing:
-                  </h2>
-                  <p className="text-gray-800">
-                    {user.languages || "Spanish, French"}
-                  </p>
-                </div>
-                <hr className="border-gray-200" />
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">
-                    Learning Goal:
-                  </h2>
-                  <p className="text-gray-800">
-                    {user.learningGoal || "Become fluent for travel"}
-                  </p>
-                </div>
-                <hr className="border-gray-200" />
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-600">
-                    Date Joined:
-                  </h2>
-                  <p className="text-gray-800">
-                    {user.dateJoined || "January 1, 2023"}
-                  </p>
-                </div>
-              </div>
+              ))}
               {error && <div className="mt-4 text-red-500">{error}</div>}
             </div>
           </div>
