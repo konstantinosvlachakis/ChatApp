@@ -81,31 +81,28 @@ const ProfilePage = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
+      {/* Sidebar for selecting conversations */}
       <Sidebar
         onSelectConversation={setActiveConversation}
         activeConversationId={activeConversation?.id}
       />
-      <div className="flex-1 p-4">
+
+      {/* Chat Room or Profile Content */}
+      <div className="flex-1 relative">
         {activeConversation ? (
-          <div className="relative flex flex-col h-full">
-            <IconButton
-              className="absolute top-4 right-4"
-              color="primary"
-              onClick={() => setActiveConversation(null)}
-              aria-label="Back to Profile"
-            >
-              <ArrowBackIcon />
-            </IconButton>
+          <div className="flex flex-col h-full">
+            {/* Back Button */}
+            <div className="absolute top-4 right-4 flex items-center">
+              <IconButton color="primary" aria-label="Back to Profile">
+                <ArrowBackIcon />
+              </IconButton>
+            </div>
             <ChatRoom conversation={activeConversation} user={user} />
           </div>
         ) : (
-          <div className="flex flex-col items-center space-y-6">
-            <button
-              className="absolute top-5 right-5 bg-red-500 text-white py-1 px-4 rounded-full"
-              onClick={() => navigate("/login")}
-            >
-              Sign Out
-            </button>
+          // Profile Section
+          <div className="flex flex-col items-center space-y-6 p-4 w-full h-full">
+            <div className="flex justify-between w-full max-w-lg items-center"></div>
             <DragDropImage
               onImageDrop={handleImageDrop}
               initialImage={imageUrl}
