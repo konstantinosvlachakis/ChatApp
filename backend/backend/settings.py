@@ -30,7 +30,7 @@ DEBUG = True
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
-    "langvoyage.herokuapp.com",
+    "langvoyage.com",
 ]
 
 ASGI_APPLICATION = "backend.asgi.application"
