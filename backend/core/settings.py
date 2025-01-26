@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "langvoyage.com",
+    "langvoyage-d3781c6fad54.herokuapp.com",
 ]
 
 ASGI_APPLICATION = "core.asgi.application"
