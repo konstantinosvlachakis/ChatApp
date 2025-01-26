@@ -5,22 +5,27 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ProfilePage from "./pages/Profile/page";
 import { UserProvider } from "./context/UserContext";
+import Layout from "./layout/Layout"; // Import the Layout component
 
 function App() {
   const queryClient = new QueryClient(); // Create a QueryClient instance
 
   return (
     <QueryClientProvider client={queryClient}>
-      {" "}
-      {/* Wrap with QueryClientProvider */}
       <Router>
         <UserProvider>
           <div className="App">
             <Routes>
+              {/* Public Routes (No Layout) */}
               <Route path="/" element={<LoginPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
+
+              {/* Routes Wrapped with Layout */}
+              <Route path="/" element={<Layout />}>
+                <Route path="/profile" element={<ProfilePage />} />
+                {/* Add more routes here */}
+              </Route>
             </Routes>
           </div>
         </UserProvider>
