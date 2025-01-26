@@ -44,6 +44,7 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 INSTALLED_APPS = [
     "daphne",
+    "backend",
     "channels",
     "chatapp",
     "corsheaders",
