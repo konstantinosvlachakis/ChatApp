@@ -100,7 +100,11 @@ const ProfilePage = () => {
           <div className="flex flex-col h-full">
             {/* Back Button */}
             <div className="absolute top-4 right-4 flex items-center">
-              <IconButton color="primary" aria-label="Back to Profile">
+              <IconButton
+                color="primary"
+                aria-label="Back to Profile"
+                onClick={() => setActiveConversation(null)}
+              >
                 <ArrowBackIcon />
               </IconButton>
             </div>
