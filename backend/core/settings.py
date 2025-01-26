@@ -81,7 +81,7 @@ MIDDLEWARE = [
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
-ROOT_URLCONF = "backend.urls"
+ROOT_URLCONF = "backend.core.urls"
 
 TEMPLATES = [
     {
