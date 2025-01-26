@@ -53,7 +53,7 @@ INSTALLED_APPS = [
     "daphne",
     "backend",
     "channels",
-    "chatapp",
+    "chatapp.apps.ChatappConfig",  # Use the AppConfig path for your app
     "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
