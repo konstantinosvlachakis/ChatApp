@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"; // Correct imports
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import ProfilePage from "./pages/Profile/page";
+import ProfilePage from "./pages/Profile/page"; // Fixed import for ProfilePage
 import { UserProvider } from "./context/UserContext";
 import Layout from "./layout/Layout"; // Import the Layout component
 
@@ -16,15 +16,14 @@ function App() {
         <UserProvider>
           <div className="App">
             <Routes>
-              {/* Public Routes (No Layout) */}
-              <Route path="/" element={<LoginPage />} />
+              {/* Public Routes */}
+              <Route path="/" element={<LoginPage />} /> {/* Default Login */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-
-              {/* Routes Wrapped with Layout */}
-              <Route path="/" element={<Layout />}>
+              {/* Protected Routes Wrapped in Layout */}
+              <Route element={<Layout />}>
                 <Route path="/profile" element={<ProfilePage />} />
-                {/* Add more routes here */}
+                {/* Add more authenticated routes here */}
               </Route>
             </Routes>
           </div>
