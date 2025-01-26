@@ -11,27 +11,8 @@ const ChatRoom = ({ conversation, user }) => {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
-  // Fetch messages from the server to ensure sync
-  const fetchMessages = async () => {
-    try {
-      const response = await axios.get(
-        BASE_URL + `/api/conversations/${conversation.id}/messages/`,
-        {
-          headers: {
-            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
-          },
-        }
-      );
-      setMessages(response.data);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
-  };
 
   useEffect(() => {
-    // Fetch messages when the component loads
-    fetchMessages();
-
     // Initialize WebSocket connection
     const roomName = conversation.id; // Use the appropriate value for room name
     const url = `ws://localhost:8000/ws/socket-server/${roomName}/`;
@@ -46,11 +27,9 @@ const ChatRoom = ({ conversation, user }) => {
       console.log("WebSocket message received:", data);
 
       if (data.type === "chat") {
-        // Check if the message is from the current user
-        if (data.senderId === user.user_id) {
-          console.log("Ignoring message sent by self.");
-          return; // Ignore messages sent by the current user
-        }
+        // Ignore messages sent by the current user
+        if (data.senderId === user.user_id) return;
+
         setMessages((prevMessages) => [
           ...prevMessages,
           {
@@ -70,9 +49,7 @@ const ChatRoom = ({ conversation, user }) => {
           setIsOtherUserTyping(true);
 
           // Hide typing indicator after 3 seconds of no updates
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-          }
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = setTimeout(() => {
             setIsOtherUserTyping(false);
           }, 3000);
@@ -95,9 +72,7 @@ const ChatRoom = ({ conversation, user }) => {
     // Cleanup WebSocket connection
     return () => {
       socket.current.close();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     };
   }, [conversation.id, user.username]);
 
@@ -142,18 +117,11 @@ const ChatRoom = ({ conversation, user }) => {
           id: savedMessage.id,
           message: savedMessage.text,
           sender: user.username,
-          senderId: user.user_id, // Optional: Include sender ID for clarity
+          senderId: user.user_id,
         })
       );
-      console.log("WebSocket message sent:", {
-        type: "chat",
-        id: savedMessage.id,
-        message: savedMessage.text,
-        sender: user.username,
-      });
     } catch (error) {
       console.error("Error sending message:", error);
-      // Remove the temporary message in case of error
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => msg.id !== tempMessage.id)
       );
