@@ -53,7 +53,7 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "chatapp.apps.ChatappConfig",  # Use the AppConfig path for your app
+    "backend.chatapp",
     "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
