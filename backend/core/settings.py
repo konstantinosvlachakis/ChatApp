@@ -51,7 +51,6 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 INSTALLED_APPS = [
     "daphne",
-    "backend",
     "channels",
     "chatapp.apps.ChatappConfig",  # Use the AppConfig path for your app
     "corsheaders",
