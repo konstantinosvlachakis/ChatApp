@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "../../../context/UserContext";
+import { fetchConversations } from "../api/fetchConversations"; // Import the fetchConversations function
 import { BASE_URL } from "../../../constants/constants";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
@@ -8,35 +9,14 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const { user } = useUser();
+  const navigate = useNavigate(); // Use navigate for redirection
+
   useEffect(() => {
-    const fetchConversations = async () => {
-      try {
-        const token = sessionStorage.getItem("accessToken");
-        if (!token) {
-          setError("Unauthorized access. Please log in again.");
-          return;
-        }
-
-        const response = await axios.get(BASE_URL + "/api/conversations/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        setConversations(response.data);
-      } catch (err) {
-        console.error("Error fetching conversations:", err);
-        if (err.response?.status === 401) {
-          setError("Session expired. Please log in again.");
-        } else {
-          setError("Failed to load conversations");
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchConversations();
-  }, []);
+    // Use the centralized fetchConversations function
+    fetchConversations(setConversations, setError, navigate).finally(() =>
+      setLoading(false)
+    );
+  }, [navigate]);
 
   if (loading) {
     return <div>Loading conversations...</div>;
@@ -49,8 +29,6 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   return (
     <div className="overflow-y-auto">
       {conversations.map((conversation) => {
-        // Safely access sender and receiver
-
         const otherUser =
           conversation.sender?.username === user?.username
             ? conversation.receiver
