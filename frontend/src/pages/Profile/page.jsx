@@ -36,6 +36,13 @@ const ProfilePage = () => {
     }
   };
 
+  const handleSignOut = () => {
+    // Clear session or authentication tokens
+    sessionStorage.removeItem("accessToken");
+    // Navigate back to the login page
+    navigate("/login");
+  };
+
   const profileFields = [
     { label: "Name", value: user.username || "John Doe" },
     { label: "Date of Birth", value: user.date_of_birth || "Not provided" },
@@ -102,7 +109,16 @@ const ProfilePage = () => {
         ) : (
           // Profile Section
           <div className="flex flex-col items-center space-y-6 p-4 w-full h-full">
-            <div className="flex justify-between w-full max-w-lg items-center"></div>
+            {/* Sign Out Button */}
+            <div className="absolute top-5 right-5">
+              <button
+                className="bg-red-500 text-white py-1 px-4 rounded-full"
+                onClick={handleSignOut}
+              >
+                Sign Out
+              </button>
+            </div>
+
             <DragDropImage
               onImageDrop={handleImageDrop}
               initialImage={imageUrl}
