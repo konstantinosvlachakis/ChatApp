@@ -4,8 +4,8 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include('chatapp.urls')),  # Include your app URLs here
+    path("admin/", admin.site.urls),
+    path("api/", include("backend.chatapp.urls")),  # Include your app URLs here
 ]
 
 if settings.DEBUG:
