@@ -27,12 +27,10 @@ SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "langvoyage.com",
-    "langvoyage-d3781c6fad54.herokuapp.com",
-]
+ALLOWED_HOSTS = ["*"]
+
+# Ensure app binds to Heroku's port
+PORT = int(os.environ.get("PORT", 8000))
 
 ASGI_APPLICATION = "core.asgi.application"
 
