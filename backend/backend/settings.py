@@ -36,7 +36,14 @@ ALLOWED_HOSTS = [
 ASGI_APPLICATION = "backend.asgi.application"
 
 # Redis setup for channels layers
-CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # Update to Heroku Redis if needed
+        },
+    },
+}
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
