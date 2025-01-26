@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 from django.http import HttpResponse
+from django.views.generic.base import RedirectView
 
 
 def home(request):
@@ -12,7 +13,9 @@ def home(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("backend.chatapp.urls")),  # Include your app URLs here
-    path("", home, name="home"),  # Add this line for the root path
+    path(
+        "", RedirectView.as_view(url="/api/login/", permanent=False)
+    ),  # Redirect root to the login page
 ]
 
 if settings.DEBUG:
