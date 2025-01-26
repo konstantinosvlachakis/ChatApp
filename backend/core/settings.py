@@ -33,7 +33,7 @@ ALLOWED_HOSTS = [
     "langvoyage.com",
 ]
 
-ASGI_APPLICATION = "backend.core.asgi.application"
+ASGI_APPLICATION = "core.asgi.application"
 
 # Redis setup for channels layers
 CHANNEL_LAYERS = {
@@ -51,7 +51,7 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 INSTALLED_APPS = [
     "daphne",
-    "core",
+    "backend",
     "channels",
     "chatapp",
     "corsheaders",
@@ -82,7 +82,7 @@ MIDDLEWARE = [
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
-ROOT_URLCONF = "backend.core.urls"
+ROOT_URLCONF = "backend.urls"
 
 TEMPLATES = [
     {
@@ -100,7 +100,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "backend.core.wsgi.application"
+WSGI_APPLICATION = "backend.wsgi.application"
 
 
 # Database
