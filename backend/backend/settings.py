@@ -33,7 +33,7 @@ ALLOWED_HOSTS = [
     "langvoyage.com",
 ]
 
-ASGI_APPLICATION = "backend.asgi.application"
+ASGI_APPLICATION = "backend.backend.asgi.application"
 
 # Redis setup for channels layers
 CHANNEL_LAYERS = {
