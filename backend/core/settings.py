@@ -84,10 +84,13 @@ if env == "local":
     DEBUG = True
     INSTALLED_APPS.append("chatapp")
     ROOT_URLCONF = "core.urls"
+    BASE_URL = "http://localhost:8000"  # Base URL for your backend
+
 else:
     DEBUG = False
     INSTALLED_APPS.append("backend.chatapp")
     ROOT_URLCONF = "backend.core.urls"
+    BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com/"  # Replace with your actual Heroku app URL
 
 
 TEMPLATES = [
@@ -208,7 +211,6 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
-BASE_URL = "http://localhost:8000"  # Base URL for your backend
 
 
 SECURE_SSL_REDIRECT = True
