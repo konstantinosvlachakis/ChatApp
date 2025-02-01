@@ -2,8 +2,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
-from django.http import HttpResponse
 from django.views.generic.base import RedirectView
+from django.http import HttpResponse
+import os
+
+env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
 
 def home(request):
@@ -12,11 +15,24 @@ def home(request):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include("backend.chatapp.urls")),  # Include your app URLs here
-    path(
-        "", RedirectView.as_view(url="/api/login/", permanent=False)
-    ),  # Redirect root to the login page
 ]
 
+if env == "local":
+    urlpatterns += [
+        path("api/", include("chatapp.urls")),
+        path("", home),
+    ]
+else:
+    urlpatterns += [
+        path("api/", include("backend.chatapp.urls")),
+        path("", home),
+    ]
+
+# Add media routes during development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Keep the redirect at the bottom
+urlpatterns += [
+    path("", RedirectView.as_view(url="/api/login/", permanent=False)),
+]

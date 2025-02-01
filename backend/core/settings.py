@@ -23,9 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
 ALLOWED_HOSTS = ["*"]
 
@@ -51,7 +49,6 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "backend.chatapp",
     "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -62,6 +59,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
 ]
+
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -80,7 +78,17 @@ MIDDLEWARE = [
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
-ROOT_URLCONF = "backend.core.urls"
+
+if env == "local":
+    # SECURITY WARNING: don't run with debug turned on in production!
+    DEBUG = True
+    INSTALLED_APPS.append("chatapp")
+    ROOT_URLCONF = "core.urls"
+else:
+    DEBUG = False
+    INSTALLED_APPS.append("backend.chatapp")
+    ROOT_URLCONF = "backend.core.urls"
+
 
 TEMPLATES = [
     {
@@ -98,7 +106,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "backend.wsgi.application"
+WSGI_APPLICATION = "wsgi.application"
 
 
 # Database
