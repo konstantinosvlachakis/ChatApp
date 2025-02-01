@@ -209,3 +209,9 @@ REST_FRAMEWORK = {
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
 BASE_URL = "http://localhost:8000"  # Base URL for your backend
+
+
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
