@@ -80,17 +80,17 @@ SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
 
 if env == "local":
-    # SECURITY WARNING: don't run with debug turned on in production!
     DEBUG = True
+    SECURE_SSL_REDIRECT = False  # Ensure SSL redirect is disabled locally
     INSTALLED_APPS.append("chatapp")
     ROOT_URLCONF = "core.urls"
-    BASE_URL = "http://localhost:8000"  # Base URL for your backend
-
+    BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
 else:
     DEBUG = False
+    SECURE_SSL_REDIRECT = True  # SSL redirect is needed for production
     INSTALLED_APPS.append("backend.chatapp")
     ROOT_URLCONF = "backend.core.urls"
-    BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com/"  # Replace with your actual Heroku app URL
+    BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
 
 
 TEMPLATES = [
@@ -211,9 +211,3 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
-
-
-SECURE_SSL_REDIRECT = True
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
