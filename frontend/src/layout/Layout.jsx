@@ -1,41 +1,66 @@
-// Layout.jsx
 import React from "react";
-import { Outlet } from "react-router-dom"; // Outlet is where page-specific content will render
-import { Link } from "react-router-dom";
+import { Outlet, Link, useLocation } from "react-router-dom";
 
 const Layout = () => {
+  const location = useLocation(); // To identify the active page
+
   return (
-    <>
-      <div className="flex flex-col h-screen">
-        {/* Header/Menu */}
-        <header className="bg-blue-500 text-white p-4">
-          <nav className="flex items-center gap-5">
-            <h1 className="text-lg font-bold">LangVoyage</h1>
-            <div className="flex space-x-4 ">
-              <Link to="/" className="hover:underline">
-                People
-              </Link>
-              <Link to="/community" className="hover:underline">
-                Conversations
-              </Link>
-              <Link to="/profile" className="hover:underline">
-                Profile
-              </Link>
-            </div>
-          </nav>
-        </header>
+    <div className="flex flex-col min-h-screen">
+      {/* Header/Menu */}
+      <header className="bg-blue-600 text-white p-4 shadow-md">
+        <nav className="flex items-center justify-between max-w-7xl mx-auto">
+          <h1 className="text-xl font-bold tracking-wide">LangVoyage</h1>
+          <div className="flex space-x-4">
+            <Link
+              to="/community"
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                location.pathname === "/community"
+                  ? "bg-white text-blue-600 shadow"
+                  : "hover:bg-blue-700 hover:text-white"
+              }`}
+            >
+              People
+            </Link>
+            <Link
+              to="/profile"
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                location.pathname === "/profile"
+                  ? "bg-white text-blue-600 shadow"
+                  : "hover:bg-blue-700 hover:text-white"
+              }`}
+            >
+              Conversations
+            </Link>
+            <Link
+              to="/profile"
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                location.pathname === "/profile"
+                  ? "bg-white text-blue-600 shadow"
+                  : "hover:bg-blue-700 hover:text-white"
+              }`}
+            >
+              Profile
+            </Link>
+          </div>
+        </nav>
+      </header>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-4">
-          <Outlet /> {/* This is where the specific page content renders */}
-        </main>
+      {/* Main Content */}
+      <main className="flex-1 flex justify-center items-center bg-gray-50">
+        <div className="w-3/4 h-[calc(100vh-112px)] bg-white rounded-lg shadow-md p-6 overflow-y-auto">
+          {/* The height dynamically adjusts: Header = 64px, Footer = 48px */}
+          <Outlet />
+        </div>
+      </main>
 
-        {/* Footer (optional) */}
-      </div>
-      <footer className="bg-gray-100 text-center py-2 text-sm">
-        &copy; 2025 My App. All rights reserved.
+      {/* Footer */}
+      <footer className="bg-gray-800 text-gray-400 text-center py-4 text-sm">
+        &copy; 2025 LangVoyage. All rights reserved.{" "}
+        <Link to="/" className="text-blue-400 hover:underline">
+          Home
+        </Link>
       </footer>
-    </>
+    </div>
   );
 };
 
