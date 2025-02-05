@@ -102,7 +102,7 @@ def profile_view(request):
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": (
-            settings.MEDIA_URL + user.profile_image_url.name
+            settings.MEDIA_URL + user.profile_image_url
             if user.profile_image_url
             else None
         ),
@@ -110,6 +110,24 @@ def profile_view(request):
         "email": user.email,  # Include the email
     }
     return JsonResponse(profile_data, status=200)
+
+
+@api_view(["GET"])
+def profile_data_view(request):
+    profiles = (
+        Profile.objects.all()
+    )  # Adjust if user profile data is stored differently
+    profile_data = [
+        {
+            "username": profile.username,
+            "native_language": profile.native_language,
+            "profile_image_url": (
+                profile.profile_image_url if profile.profile_image_url else None
+            ),
+        }
+        for profile in profiles
+    ]
+    return JsonResponse({"profiles": profile_data}, status=200)
 
 
 @api_view(["PATCH"])
