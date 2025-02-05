@@ -1,34 +1,54 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"; // Correct imports
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { UserProvider } from "./context/UserContext"; // ✅ Ensure it's correctly imported
+import Layout from "./layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import ProfilePage from "./pages/Profile/page"; // Fixed import for ProfilePage
-import { UserProvider } from "./context/UserContext";
-import Layout from "./layout/Layout"; // Import the Layout component
+
+// ✅ Lazy-load heavy pages for performance
+const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
+const CommunityPage = React.lazy(() => import("./pages/Community/page"));
+
+const queryClient = new QueryClient();
 
 function App() {
-  const queryClient = new QueryClient(); // Create a QueryClient instance
-
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
-        <UserProvider>
+      <UserProvider>
+        {" "}
+        {/* ✅ Ensure UserProvider wraps everything */}
+        <Router>
           <div className="App">
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<LoginPage />} /> {/* Default Login */}
+              <Route path="/" element={<LoginPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+
               {/* Protected Routes Wrapped in Layout */}
               <Route element={<Layout />}>
-                <Route path="/profile" element={<ProfilePage />} />
-                {/* Add more authenticated routes here */}
+                <Route
+                  path="/profile"
+                  element={
+                    <Suspense fallback={<div>Loading Profile...</div>}>
+                      <ProfilePage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/community"
+                  element={
+                    <Suspense fallback={<div>Loading Community...</div>}>
+                      <CommunityPage />
+                    </Suspense>
+                  }
+                />
               </Route>
             </Routes>
           </div>
-        </UserProvider>
-      </Router>
+        </Router>
+      </UserProvider>
     </QueryClientProvider>
   );
 }
