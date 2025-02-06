@@ -2,12 +2,15 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic.base import RedirectView, TemplateView
+from django.views.generic.base import TemplateView
 import os
+
+from .views import front
 
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
 urlpatterns = [
+    path("", front, name="Home"),
     path("admin/", admin.site.urls),
 ]
 

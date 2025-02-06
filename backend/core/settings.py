@@ -95,7 +95,7 @@ else:
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [os.path.join(Path(BASE_DIR).parent, "frontend", "build")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
