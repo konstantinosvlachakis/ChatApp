@@ -209,9 +209,7 @@ REST_FRAMEWORK = {
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Define the static files directory
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-STATICFILES_DIRS = [
-    "/app/frontend/public",  # Hardcoded absolute path
-]
+STATICFILES_DIRS = (os.path.join(BASE_DIR, "frontend/build/static"),)
 
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
