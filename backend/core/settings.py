@@ -44,6 +44,9 @@ CHANNEL_LAYERS = {
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "frontend", "build", "static"),
+]
 # Application definition
 
 INSTALLED_APPS = [
