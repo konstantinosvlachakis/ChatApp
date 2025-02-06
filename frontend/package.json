@@ -28,7 +28,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "postinstall": "npm run build",
+    "postinstall": "yarn build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "run-both-dev": "concurrently \"npm start\" \"cd ../backend && python manage.py runserver\" \"redis-server\""
