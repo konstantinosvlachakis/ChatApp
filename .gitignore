@@ -36,7 +36,7 @@ htmlcov/
 # Ignore package build files
 *.egg-info/
 dist/
-build/
+# build/
 
 # Ignore pytest cache
 .pytest_cache/
