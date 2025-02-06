@@ -210,7 +210,7 @@ STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Define the static files directory
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "frontend", "build", "static"),  # Move up one level
+    "/app/frontend/build/static",  # Hardcoded absolute path
 ]
 
 MEDIA_URL = "/media/"  # URL prefix for media files
