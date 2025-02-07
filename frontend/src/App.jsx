@@ -16,27 +16,25 @@ const queryClient = new QueryClient();
 
 function App() {
   useEffect(() => {
-    // Fetch and store the CSRF token
-    const fetchCSRFToken = async () => {
-      try {
-        const response = await axios.get("/api/csrf/", {
-          withCredentials: true,
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-          },
-        });
+    const fetchCRSFToken = async () => {
+      axios({
+        method: "GET",
+        url: "/api/csrf/",
+        withCredentials: true,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+      }).then((response) => {
         if (response.status === 200) {
-          storage.setCSRFToken(response.data.csrfToken); // Store token securely
-          console.log("CSRF token fetched and stored");
+          storage.setCSRFToken(response.data.csrfToken);
         }
-      } catch (error) {
-        console.error("Failed to fetch CSRF token:", error);
-      }
+      });
     };
-
-    fetchCSRFToken();
-  }, []); // Runs once on mount
+    fetchCRSFToken();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
