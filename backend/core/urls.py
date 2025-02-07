@@ -10,7 +10,7 @@ from .views import front
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
 urlpatterns = [
-    path("", front, name="Home"),
+    re_path(".*", TemplateView.as_view(template_name="index.html")),
     path("admin/", admin.site.urls),
 ]
 
