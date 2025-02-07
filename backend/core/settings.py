@@ -214,7 +214,7 @@ REST_FRAMEWORK = {
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Define the static files directory
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-STATIC_DIR = os.path.join(
+STATICFILES_DIR = os.path.join(
     Path(BASE_DIR).parent, "frontend", "build", "static"
 )  # Define the static files directory
 
