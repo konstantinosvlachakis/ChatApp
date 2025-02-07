@@ -1,4 +1,5 @@
 from django.urls import path
+from backend.core.views import csrf
 from .views import *
 from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken
 from django.conf import settings
@@ -9,6 +10,7 @@ urlpatterns = [
     # Authentication
     path("token/", CustomObtainJWTToken.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CustomRefreshJWTToken.as_view(), name="token_refresh"),
+    path("csrf/", csrf),
     path("login/", login_view, name="login"),
     path("register/", register_view, name="register"),
     # Profile
