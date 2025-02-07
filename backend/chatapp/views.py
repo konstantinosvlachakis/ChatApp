@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 
 
-@csrf_exempt
+@api_view(["POST"])
 def login_view(request):
     if request.method == "POST":
         try:
@@ -45,7 +45,7 @@ def login_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@csrf_exempt
+@api_view(["POST"])
 def register_view(request):
     if request.method == "POST":
         try:
