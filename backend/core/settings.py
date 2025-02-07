@@ -73,11 +73,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://langvoyage.com",
-    "https://www.langvoyage.com",
-    "https://langvoyage-d3781c6fad54.herokuapp.com",
-]
+CSRF_TRUSTED_ORIGINS = ["*"]
 
 
 # Session settings
