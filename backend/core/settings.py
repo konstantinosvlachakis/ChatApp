@@ -176,16 +176,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://localhost:8000",
     "http://127.0.0.1:8000",
-    "http://www.langvoyage.com",
-    "https://www.langvoyage.com",
-    "http://langvoyage.com",
     "https://langvoyage.com",
+    "https://www.langvoyage.com",
+    "https://langvoyage-d3781c6fad54.herokuapp.com",
+    "http://langvoyage.com",
+    "http://www.langvoyage.com",
+    "http://langvoyage-d3781c6fad54.herokuapp.com",
 ]
-CORS_ALLOW_CREDENTIALS = (
-    True  # This allows cookies to be included in cross-origin requests
-)
+CORS_ALLOW_CREDENTIALS = True
+
 
 AUTH_USER_MODEL = "chatapp.Profile"
 
