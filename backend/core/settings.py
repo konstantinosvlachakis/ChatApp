@@ -90,7 +90,7 @@ else:
     SECURE_SSL_REDIRECT = True  # SSL redirect is needed for production
     INSTALLED_APPS.append("backend.chatapp")
     ROOT_URLCONF = "backend.core.urls"
-    BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
+    BASE_URL = "http://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
 
 
 TEMPLATES = [
