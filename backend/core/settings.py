@@ -212,7 +212,10 @@ REST_FRAMEWORK = {
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")  # Define the static files directory
+STATIC_ROOT = os.path.join(
+    BASE_DIR, "backend", "staticfiles"
+)  # Define the static files directory
+
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATICFILES_DIR = os.path.join(
     Path(BASE_DIR).parent, "frontend/build/static"
