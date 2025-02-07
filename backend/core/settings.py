@@ -219,7 +219,7 @@ STATIC_ROOT = os.path.join(
 )  # Define the static files directory
 STATICFILES_CONTENT_TYPES = {"text/css": ["css"]}
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-STATICFILES_DIR = os.path.join(
+STATICFILES_DIRS = os.path.join(
     Path(BASE_DIR).parent, "frontend/build/static"
 )  # Define the static files directory
 
