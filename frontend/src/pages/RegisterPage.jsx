@@ -9,7 +9,7 @@ import InputLabel from "@mui/material/InputLabel";
 import Avatar from "@mui/material/Avatar";
 import { BASE_URL } from "../constants/constants";
 import { storage } from "../utils/storage";
-
+import axios from "../utils/axios";
 const languageOptions = [
   {
     value: "English",
@@ -63,33 +63,36 @@ const RegisterPage = () => {
       return;
     }
 
-    const csrfToken = storage.getCSRFToken();
-
     try {
-      const response = await fetch(BASE_URL + "/api/register/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrfToken, // Include CSRF token in headers
-        },
-        body: JSON.stringify({
+      const csrfToken = storage.getCSRFToken(); // Get CSRF token from storage
+
+      const response = await axios.post(
+        "/api/register/",
+        {
           username,
           email,
           dateOfBirth,
           password,
           nativeLanguage,
-        }),
-      });
+        },
+        {
+          headers: {
+            "X-CSRFToken": csrfToken, // Attach CSRF token
+            "Content-Type": "application/json",
+          },
+          withCredentials: true, // Ensure cookies are sent
+        }
+      );
 
-      if (response.ok) {
+      if (response.status === 201) {
         console.log("User registered successfully");
         navigate("/login");
-      } else {
-        const errorData = await response.json();
-        console.error("Error during registration:", errorData.error);
       }
     } catch (error) {
-      console.error("Error during registration:", error.message);
+      console.error(
+        "Error during registration:",
+        error.response?.data || error.message
+      );
     }
   };
 
