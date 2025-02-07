@@ -1,10 +1,12 @@
-import React, { Suspense } from "react";
+import React, { useEffect, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { UserProvider } from "./context/UserContext"; // ✅ Ensure it's correctly imported
 import Layout from "./layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import { storage } from "./utils/storage"; // Helper for storing tokens securely
+import axios from "./utils/axios"; // Make sure axios is configured with base URL and credentials
 
 // ✅ Lazy-load heavy pages for performance
 const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
@@ -13,6 +15,29 @@ const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const queryClient = new QueryClient();
 
 function App() {
+  useEffect(() => {
+    // Fetch and store the CSRF token
+    const fetchCSRFToken = async () => {
+      try {
+        const response = await axios.get("/api/csrf/", {
+          withCredentials: true,
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        });
+        if (response.status === 200) {
+          storage.setCSRFToken(response.data.csrfToken); // Store token securely
+          console.log("CSRF token fetched and stored");
+        }
+      } catch (error) {
+        console.error("Failed to fetch CSRF token:", error);
+      }
+    };
+
+    fetchCSRFToken();
+  }, []); // Runs once on mount
+
   return (
     <QueryClientProvider client={queryClient}>
       <UserProvider>
