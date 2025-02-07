@@ -213,7 +213,7 @@ REST_FRAMEWORK = {
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(
-    BASE_DIR, "backend", "staticfiles"
+    BASE_DIR, "backend", "staticfiles", "admin"
 )  # Define the static files directory
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
