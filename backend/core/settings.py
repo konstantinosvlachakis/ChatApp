@@ -33,7 +33,7 @@ ALLOWED_HOSTS = [
     "langvoyage.herokuapp.com",
 ]
 
-ASGI_APPLICATION = "backend.asgi.application"
+ASGI_APPLICATION = "core.asgi.application"
 
 # Redis setup for channels layers
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
@@ -74,7 +74,7 @@ MIDDLEWARE = [
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
-ROOT_URLCONF = "backend.urls"
+ROOT_URLCONF = "core.urls"
 
 TEMPLATES = [
     {
@@ -92,7 +92,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "backend.wsgi.application"
+WSGI_APPLICATION = "core.wsgi.application"
 
 
 # Database
