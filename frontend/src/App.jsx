@@ -15,27 +15,6 @@ const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const queryClient = new QueryClient();
 
 function App() {
-  useEffect(() => {
-    const fetchCRSFToken = async () => {
-      axios({
-        method: "GET",
-        url: "/api/csrf/",
-        withCredentials: true,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-      }).then((response) => {
-        if (response.status === 200) {
-          storage.setCSRFToken(response.data.csrfToken);
-        }
-      });
-    };
-    fetchCRSFToken();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <UserProvider>
