@@ -112,6 +112,24 @@ def profile_view(request):
     return JsonResponse(profile_data, status=200)
 
 
+@api_view(["GET"])
+def profile_data_view(request):
+    profiles = (
+        Profile.objects.all()
+    )  # Adjust if user profile data is stored differently
+    profile_data = [
+        {
+            "username": profile.username,
+            "native_language": profile.native_language,
+            "profile_image_url": (
+                profile.profile_image_url if profile.profile_image_url else None
+            ),
+        }
+        for profile in profiles
+    ]
+    return JsonResponse({"profiles": profile_data}, status=200)
+
+
 @api_view(["PATCH"])
 # @permission_classes([IsAuthenticated])
 def profile_edit_view(request):
