@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+import django_heroku
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,29 +24,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
+env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+ALLOWED_HOSTS = ["*"]
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "langvoyage.herokuapp.com",
-]
+# Ensure app binds to Heroku's port
+PORT = int(os.environ.get("PORT", 8000))
 
 ASGI_APPLICATION = "core.asgi.application"
 
 # Redis setup for channels layers
-CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # Update to Heroku Redis if needed
+        },
+    },
+}
 
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # Application definition
 
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "chatapp",
     "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -56,6 +59,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
 ]
+
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -69,17 +73,36 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://langvoyage.com",
+    "https://www.langvoyage.com",
+    "https://langvoyage-d3781c6fad54.herokuapp.com",
+]
+
 
 # Session settings
 SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the database
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
-ROOT_URLCONF = "core.urls"
+
+if env == "local":
+    DEBUG = True
+    SECURE_SSL_REDIRECT = False  # Ensure SSL redirect is disabled locally
+    INSTALLED_APPS.append("chatapp")
+    ROOT_URLCONF = "core.urls"
+    BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
+else:
+    DEBUG = False
+    SECURE_SSL_REDIRECT = True  # SSL redirect is needed for production
+    INSTALLED_APPS.append("backend.chatapp")
+    ROOT_URLCONF = "backend.core.urls"
+    BASE_URL = "http://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
+
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [os.path.join(Path(BASE_DIR).parent, "frontend", "build")],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -92,18 +115,22 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "core.wsgi.application"
+WSGI_APPLICATION = "wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+
+if env == "production":
+    django_heroku.settings(locals())
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
 
 
 # Password validation
@@ -140,7 +167,6 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = "static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -150,12 +176,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "https://langvoyage.com",
+    "https://www.langvoyage.com",
+    "https://langvoyage-d3781c6fad54.herokuapp.com",
+    "http://langvoyage.com",
+    "http://www.langvoyage.com",
+    "http://langvoyage-d3781c6fad54.herokuapp.com",
 ]
-CORS_ALLOW_CREDENTIALS = (
-    True  # This allows cookies to be included in cross-origin requests
-)
+CORS_ALLOW_CREDENTIALS = True
+
 
 AUTH_USER_MODEL = "chatapp.Profile"
 
@@ -186,7 +216,18 @@ REST_FRAMEWORK = {
     ],
 }
 
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(
+    BASE_DIR,
+    "backend",
+    "staticfiles",
+)  # Define the static files directory
+STATICFILES_CONTENT_TYPES = {"text/css": ["css"]}
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+STATICFILES_DIRS = [
+    os.path.join(Path(BASE_DIR).parent, "frontend/build/static")
+]  # Define the static files directory
 
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
-BASE_URL = "http://localhost:8000"  # Base URL for your backend
