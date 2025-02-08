@@ -29,7 +29,9 @@ class Profile(AbstractBaseUser):
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
-    profile_image_url = models.ImageField(upload_to='profile_images/', null=True, blank=True)
+    profile_image_url = models.CharField(
+        max_length=255, blank=False, default="media/profile_images/MainAfter.jpg"
+    )
     password = models.CharField(max_length=128, blank=True, null=True)
 
     # Manager for the Profile model
@@ -93,7 +95,9 @@ class Conversation(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Conversation between {self.sender.username} and {self.receiver.username}"
+        return (
+            f"Conversation between {self.sender.username} and {self.receiver.username}"
+        )
 
 
 class Message(models.Model):
@@ -110,7 +114,9 @@ class Message(models.Model):
         Profile, related_name="sent_messages", on_delete=models.CASCADE
     )
     text = models.TextField()
-    attachment = models.FileField(upload_to='attachments/', blank=True, null=True)  # File uploads
+    attachment = models.FileField(
+        upload_to="attachments/", blank=True, null=True
+    )  # File uploads
 
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
