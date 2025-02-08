@@ -102,7 +102,7 @@ def profile_view(request):
         "username": user.username,
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": (
-            settings.MEDIA_URL + user.profile_image_url.name
+            settings.MEDIA_URL + user.profile_image_url
             if user.profile_image_url
             else None
         ),
