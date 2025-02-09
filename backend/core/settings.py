@@ -123,16 +123,7 @@ WSGI_APPLICATION = "wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 
-if env == "production":
-    DATABASES = {"default": dj_database_url.config(default=os.getenv("DATABASE_URL"))}
-    django_heroku.settings(locals())  # Optional, but ensures proper Heroku config
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+DATABASES = {"default": dj_database_url.config()}
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
