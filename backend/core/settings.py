@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import django_heroku
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -123,7 +124,8 @@ WSGI_APPLICATION = "wsgi.application"
 
 
 if env == "production":
-    django_heroku.settings(locals())
+    DATABASES = {"default": dj_database_url.config(default=os.getenv("DATABASE_URL"))}
+    django_heroku.settings(locals())  # Optional, but ensures proper Heroku config
 else:
     DATABASES = {
         "default": {
@@ -131,7 +133,6 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
