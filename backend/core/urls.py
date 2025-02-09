@@ -12,21 +12,17 @@ urlpatterns = [
 ]
 
 # Include API routes
-if env == "local":
-    urlpatterns += [
-        path("api/", include("chatapp.urls")),
-    ]
-else:
-    urlpatterns += [
-        path("api/", include("backend.chatapp.urls")),
-    ]
+api_prefix = "backend.chatapp.urls" if env != "local" else "chatapp.urls"
+urlpatterns += [
+    path("api/", include(api_prefix)),
+]
 
-# Add media routes during development
+# Serve media files only in development (Production should use cloud storage)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# Serve React frontend
-urlpatterns += [
-    # Serve React index.html for any route not matched above
-    re_path(r"^.*$", TemplateView.as_view(template_name="index.html"), name="home"),
-]
+# Serve React frontend (Ensure React is built correctly)
+if settings.DEBUG:
+    urlpatterns += [
+        re_path(r"^.*$", TemplateView.as_view(template_name="index.html"), name="home"),
+    ]
