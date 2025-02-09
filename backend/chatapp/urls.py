@@ -10,7 +10,6 @@ urlpatterns = [
     # Authentication
     path("token/", CustomObtainJWTToken.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CustomRefreshJWTToken.as_view(), name="token_refresh"),
-    path("csrf/", csrf),
     path("login/", login_view, name="login"),
     path("register/", register_view, name="register"),
     # Profile
