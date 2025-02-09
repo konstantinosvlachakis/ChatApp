@@ -1,5 +1,4 @@
 from django.urls import path
-from backend.core.views import csrf
 from .views import *
 from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken
 from django.conf import settings
