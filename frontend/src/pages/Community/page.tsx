@@ -11,7 +11,6 @@ const CommunityPage = () => {
     const fetchData = async () => {
       try {
         const response = await getProfileData(navigate);
-        console.log("Response:", response);
         if (response?.profiles) {
           const transformedData: ProfileData[] = response.profiles.map(
             (profile: any) => ({

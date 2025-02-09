@@ -6,13 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('chatapp', '0007_message_attachment'),
+        ("chatapp", "0007_message_attachment"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='profile',
-            name='profile_image_url',
-            field=models.CharField(default='media/profile_images/MainAfter.jpg', max_length=255),
+            model_name="profile",
+            name="profile_image_url",
+            field=models.CharField(
+                default="media/profile_images/MainAfter.jpg", max_length=255
+            ),
         ),
     ]

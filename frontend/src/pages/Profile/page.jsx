@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { fetchUserProfile } from "./api/fetchUserProfile";
 import Sidebar from "./features/Sidebar";
 import ChatRoom from "./features/ChatRoom";
@@ -18,13 +18,17 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null);
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
-  const imageUrl = BASE_URL + user.profile_image_url;
+  const imageUrl = user.profile_image_url
+    ? `${BASE_URL}${user.profile_image_url}`
+    : "/default-avatar.png";
 
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
   }, [navigate]);
 
-  const handleImageDrop = (file) => console.log("Image dropped:", file);
+  const handleImageDrop = useCallback((file) => {
+    console.log("Image dropped:", file);
+  }, []);
 
   const handleSaveName = async () => {
     try {
@@ -37,9 +41,7 @@ const ProfilePage = () => {
   };
 
   const handleSignOut = () => {
-    // Clear session or authentication tokens
     sessionStorage.removeItem("accessToken");
-    // Navigate back to the login page
     navigate("/login");
   };
 
@@ -59,47 +61,19 @@ const ProfilePage = () => {
     { label: "Date Joined", value: user.dateJoined || "January 1, 2023" },
   ];
 
-  const handleModal = () => (
-    <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
-      <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
-      <input
-        type="text"
-        value={newName}
-        onChange={(e) => setNewName(e.target.value)}
-        className="w-full p-2 mb-4 border rounded"
-        placeholder="Enter new Name"
-      />
-      <div className="flex justify-end space-x-2">
-        <button
-          className="bg-gray-300 text-gray-800 py-1 px-4 rounded"
-          onClick={() => setModalNameOpen(false)}
-        >
-          Close
-        </button>
-        <button
-          className="bg-blue-500 text-white py-1 px-4 rounded"
-          onClick={handleSaveName}
-        >
-          Save
-        </button>
-      </div>
-    </ModalComponent>
-  );
-
   return (
     <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar for selecting conversations */}
+      {/* Sidebar */}
       <Sidebar
         onSelectConversation={setActiveConversation}
         activeConversationId={activeConversation?.id}
       />
 
-      {/* Chat Room or Profile Content */}
-      <div className="flex-1 relative">
+      {/* Main Content */}
+      <div className="flex-1 relative p-6">
         {activeConversation ? (
           <div className="flex flex-col h-full">
-            {/* Back Button */}
-            <div className="absolute top-4 right-4 flex items-center">
+            <div className="absolute top-4 right-4">
               <IconButton
                 color="primary"
                 aria-label="Back to Profile"
@@ -111,46 +85,75 @@ const ProfilePage = () => {
             <ChatRoom conversation={activeConversation} user={user} />
           </div>
         ) : (
-          // Profile Section
-          <div className="flex flex-col items-center space-y-6 p-4 w-full h-full">
+          <div className="flex flex-col items-center space-y-6 w-full">
             {/* Sign Out Button */}
-            <div className="absolute top-5 right-5">
-              <button
-                className="bg-red-500 text-white py-1 px-4 rounded-full"
-                onClick={handleSignOut}
-              >
-                Sign Out
-              </button>
-            </div>
+            <button
+              className="absolute top-5 right-5 bg-red-500 text-white py-2 px-4 rounded-full hover:bg-red-600 transition"
+              onClick={handleSignOut}
+            >
+              Sign Out
+            </button>
 
+            {/* Profile Image */}
             <DragDropImage
               onImageDrop={handleImageDrop}
               initialImage={imageUrl}
             />
+
+            {/* Edit Button */}
             <button
-              className="bg-blue-500 text-white py-1 px-4 rounded-full"
+              className="bg-blue-500 text-white py-2 px-4 rounded-full hover:bg-blue-600 transition"
               onClick={() => setModalNameOpen(true)}
             >
               Edit
             </button>
-            {modalNameOpen && handleModal()}
-            <div className="w-full max-w-lg p-4 rounded-lg bg-gray-50 space-y-4">
+
+            {/* Profile Details */}
+            <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-md">
               {profileFields.map(({ label, value }, index) => (
-                <div key={index}>
-                  <h2 className="text-lg font-semibold text-gray-600">
+                <div key={index} className="mb-4">
+                  <h2 className="text-lg font-semibold text-gray-700">
                     {label}:
                   </h2>
-                  <p className="text-gray-800">{value}</p>
+                  <p className="text-gray-900">{value}</p>
                   {index < profileFields.length - 1 && (
-                    <hr className="border-gray-200" />
+                    <hr className="border-gray-200 mt-2" />
                   )}
                 </div>
               ))}
-              {error && <div className="mt-4 text-red-500">{error}</div>}
+              {error && <div className="text-red-500 mt-4">{error}</div>}
             </div>
           </div>
         )}
       </div>
+
+      {/* Edit Name Modal */}
+      {modalNameOpen && (
+        <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
+          <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full p-2 mb-4 border rounded focus:outline-none focus:ring focus:border-blue-300"
+            placeholder="Enter new Name"
+          />
+          <div className="flex justify-end space-x-2">
+            <button
+              className="bg-gray-300 text-gray-800 py-1 px-4 rounded hover:bg-gray-400 transition"
+              onClick={() => setModalNameOpen(false)}
+            >
+              Close
+            </button>
+            <button
+              className="bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 transition"
+              onClick={handleSaveName}
+            >
+              Save
+            </button>
+          </div>
+        </ModalComponent>
+      )}
     </div>
   );
 };

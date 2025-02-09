@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from .models import Token, Profile
@@ -15,7 +15,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 
 
-@csrf_exempt
+@csrf_protect
 def login_view(request):
     if request.method == "POST":
         try:
@@ -45,7 +45,7 @@ def login_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@csrf_exempt
+@csrf_protect
 def register_view(request):
     if request.method == "POST":
         try:

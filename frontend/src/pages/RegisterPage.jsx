@@ -8,6 +8,7 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import Avatar from "@mui/material/Avatar";
 import { BASE_URL } from "../constants/constants";
+import { storage } from "../utils/storage";
 
 const languageOptions = [
   {
@@ -62,11 +63,14 @@ const RegisterPage = () => {
       return;
     }
 
+    const csrfToken = storage.getCSRFToken();
+
     try {
       const response = await fetch(BASE_URL + "/api/register/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken, // Include CSRF token in headers
         },
         body: JSON.stringify({
           username,
