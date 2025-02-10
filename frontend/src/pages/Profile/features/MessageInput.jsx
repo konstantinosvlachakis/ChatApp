@@ -1,68 +1,105 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 
-const MessageInput = ({ onSendMessage, currentUser, onMessageReceived }) => {
+const MessageInput = ({ onSendMessage }) => {
   const [message, setMessage] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [attachedFile, setAttachedFile] = useState(null);
   const emojiPickerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null); // Reference for the input field
 
-  const handleEmojiSelect = (emoji) => setMessage((prev) => prev + emoji);
+  // Handle emoji selection
+  const handleEmojiSelect = (emoji) => {
+    setMessage((prev) => prev + emoji);
+    setShowPicker(false); // Close after selection
+  };
 
+  // Handle file attachment
   const handleFileAttach = (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
     if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
-      const imageUrl = URL.createObjectURL(file); // Generate preview URL
-      setPreviewImage(imageUrl); // Set the preview image
-      setAttachedFile(file); // Store the file for sending
+      const imageUrl = URL.createObjectURL(file);
+      setPreviewImage(imageUrl);
+      setAttachedFile(file);
     } else {
       alert("Please select a valid image or video file.");
     }
-    fileInputRef.current.value = null; // Reset input for re-selection
+    fileInputRef.current.value = null; // Reset input
   };
 
+  // Handle message sending
   const handleSend = () => {
     if (!message.trim() && !attachedFile) {
       alert("Please enter a message or attach a file.");
       return;
     }
 
-    onSendMessage(message, attachedFile, previewImage); // Send message
+    onSendMessage(message, attachedFile, previewImage);
     setMessage(""); // Clear message input
     if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup Blob URL
     setPreviewImage(null);
     setAttachedFile(null);
   };
 
+  // Handle Enter key press
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault(); // Prevents new line
+      handleSend();
+    }
+  };
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowPicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   return (
     <div className="p-4 border-t bg-white flex items-center relative">
+      {/* Emoji Picker Button */}
       <button onClick={() => setShowPicker((prev) => !prev)} className="mr-2">
         😊
       </button>
+
+      {/* Emoji Picker */}
       {showPicker && (
         <div ref={emojiPickerRef} className="absolute bottom-16 left-0 z-50">
           <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
         </div>
       )}
+
+      {/* Message Input Area */}
       <div className="relative flex w-1/2 items-center">
         <div className="flex items-center w-full p-2 border border-gray-300 rounded-lg">
           {previewImage && (
             <div className="flex items-center space-x-2">
               <img
-                src={previewImage} // Display the preview image
+                src={previewImage}
                 alt="Preview"
                 className="h-10 w-10 object-cover rounded"
               />
               <button
                 onClick={() => {
-                  if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup
+                  if (previewImage) URL.revokeObjectURL(previewImage);
                   setPreviewImage(null);
                   setAttachedFile(null);
                 }}
@@ -74,8 +111,10 @@ const MessageInput = ({ onSendMessage, currentUser, onMessageReceived }) => {
           )}
           <input
             type="text"
+            ref={inputRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown} // Handles Enter key
             placeholder="Type your message..."
             className="w-full outline-none"
           />
@@ -92,6 +131,8 @@ const MessageInput = ({ onSendMessage, currentUser, onMessageReceived }) => {
         />
         <SettingsVoiceIcon className="absolute right-2 text-gray-500 cursor-pointer" />
       </div>
+
+      {/* Send Button */}
       <button type="button" className="ml-3 text-blue-500" onClick={handleSend}>
         <SendIcon />
       </button>
