@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import IconButton from "@mui/material/IconButton";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DragDropImage from "../../components/Images/DragDropImage";
-import { BASE_URL } from "../../constants/constants";
+import { BASE_URL_IMG } from "../../constants/constants";
 
 const ProfilePage = () => {
   const [user, setUser] = useState({});
@@ -18,10 +18,12 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null);
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
-  const imageUrl = user.profile_image_url
-    ? `${BASE_URL}${user.profile_image_url}`
-    : "/default-avatar.png";
+  console.log(user.profile_image_url);
 
+  const imageUrl = user.profile_image_url
+    ? BASE_URL_IMG + user.profile_image_url
+    : "/default-avatar.png";
+  console.log(imageUrl);
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
   }, [navigate]);
