@@ -32,8 +32,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
           conversation.sender?.username === user?.username
             ? conversation.receiver
             : conversation.sender;
-        console.log(BASE_URL_IMG);
-        console.log(otherUser.profile_image_url);
+
         const imageSrc =
           BASE_URL_IMG + (otherUser?.profile_image_url || "") ||
           "https://via.placeholder.com/50";
