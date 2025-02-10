@@ -28,10 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
-ALLOWED_HOSTS = [
-    "langvoyage-d3781c6fad54.herokuapp.com",
-    "localhost",
-]  # For local testing
+ALLOWED_HOSTS = ["*"]  # For local testing
 
 # Ensure app binds to Heroku's port
 PORT = int(os.environ.get("PORT", 8000))
