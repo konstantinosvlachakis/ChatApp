@@ -15,6 +15,7 @@ from datetime import timedelta
 import os
 import django_heroku
 import dj_database_url
+from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,12 +35,14 @@ PORT = int(os.environ.get("PORT", 8000))
 
 ASGI_APPLICATION = "core.asgi.application"
 
-# Redis setup for channels layers
+
+redis_url = urlparse(os.environ.get("REDIS_URL"))
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],  # Update to Heroku Redis if needed
+            "hosts": [(redis_url.hostname, redis_url.port)],
+            "password": redis_url.password,
         },
     },
 }
