@@ -49,19 +49,16 @@ redis_url = os.environ.get(
 parsed_redis_url = urlparse(redis_url)
 
 # Ensure a default port value
-redis_host = parsed_redis_url.hostname
+redis_host = os.environ.get("REDIS_HOST", "localhost")
 redis_port = parsed_redis_url.port or 6379  # Default Redis port if missing
-redis_password = parsed_redis_url.password
 
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": (
-                [f"redis://:{redis_password}@{redis_host}:{redis_port}"]
-                if redis_password
-                else [f"redis://{redis_host}:{redis_port}"]
-            ),
+            "hosts": [
+                "redis://default:XFfCyTSPI6MZwiRRABoJvWodZYhrGICf@redis-15066.c85.us-east-1-2.ec2.redns.redis-cloud.com:15066"
+            ],
         },
     },
 }
