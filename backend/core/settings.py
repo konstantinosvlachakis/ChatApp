@@ -28,7 +28,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 
-ALLOWED_HOSTS = ["*"]  # For local testing
+ALLOWED_HOSTS = [
+    "langvoyage-d3781c6fad54.herokuapp.com",
+    "langvoyage.com",
+    "www.langvoyage.com",
+    "localhost",
+    "127.0.0.1",
+]
+
 
 # Ensure app binds to Heroku's port
 PORT = int(os.environ.get("PORT", 8000))
@@ -36,15 +43,25 @@ PORT = int(os.environ.get("PORT", 8000))
 ASGI_APPLICATION = "core.asgi.application"
 
 
-redis_url = urlparse(os.environ.get("REDIS_URL"))
+redis_url = os.environ.get(
+    "REDIS_URL", "redis://localhost:6379"
+)  # Default for local dev
+parsed_redis_url = urlparse(redis_url)
+
+# Ensure a default port value
+redis_host = parsed_redis_url.hostname
+redis_port = parsed_redis_url.port or 6379  # Default Redis port if missing
+redis_password = parsed_redis_url.password
 
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(redis_url.hostname, redis_url.port)],
-            "password": redis_url.password,
-            "ssl": True,  # Required for Heroku Redis
+            "hosts": (
+                [f"redis://:{redis_password}@{redis_host}:{redis_port}"]
+                if redis_password
+                else [f"redis://{redis_host}:{redis_port}"]
+            ),
         },
     },
 }
@@ -128,15 +145,15 @@ WSGI_APPLICATION = "wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 
-# if env == "production":
-DATABASES = {"default": dj_database_url.config()}
-# else:
-#     DATABASES = {
-#         "default": {
-#             "ENGINE": "django.db.backends.sqlite3",
-#             "NAME": BASE_DIR / "db.sqlite3",
-#         }
-#     }
+if env == "production":
+    DATABASES = {"default": dj_database_url.config()}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
