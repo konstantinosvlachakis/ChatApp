@@ -13,9 +13,14 @@ const ChatRoom = ({ conversation, user }) => {
   const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
-    // Initialize WebSocket connection
+    // Determine WebSocket URL based on environment
     const roomName = conversation.id; // Use the appropriate value for room name
-    const url = `ws://localhost:8000/ws/socket-server/${roomName}/`;
+    const isProduction = process.env.NODE_ENV === "production";
+    const baseUrl = isProduction
+      ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
+      : "ws://localhost:8000";
+
+    const url = `${baseUrl}/ws/socket-server/${roomName}/`;
     socket.current = new WebSocket(url);
 
     socket.current.onopen = () => {
