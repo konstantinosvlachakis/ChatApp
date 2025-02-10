@@ -21,7 +21,7 @@ const ProfilePage = () => {
   console.log(user.profile_image_url);
 
   const imageUrl = user.profile_image_url
-    ? BASE_URL_IMG + user.profile_image_url
+    ? BASE_URL_IMG + user.profile_image_url.replace(/^\/?media\//, "media/")
     : "/default-avatar.png";
   console.log(imageUrl);
   useEffect(() => {
