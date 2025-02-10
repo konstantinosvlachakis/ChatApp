@@ -18,12 +18,9 @@ const ProfilePage = () => {
   const [activeConversation, setActiveConversation] = useState(null);
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
-  console.log(user.profile_image_url);
-
   const imageUrl = user.profile_image_url
-    ? BASE_URL_IMG + user.profile_image_url.replace(/^\/?media\//, "media/")
+    ? BASE_URL_IMG + user.profile_image_url.replace(/^media\//, "")
     : "/default-avatar.png";
-  console.log(imageUrl);
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
   }, [navigate]);
