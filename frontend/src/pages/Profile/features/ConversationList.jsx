@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../../context/UserContext";
 import { fetchConversations } from "../api/fetchConversations"; // Import the fetchConversations function
-import { BASE_URL } from "../../../constants/constants";
+import { BASE_URL_IMG } from "../../../constants/constants";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
   const [conversations, setConversations] = useState([]);
@@ -25,7 +25,6 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   if (error) {
     return <div className="text-red-500">{error}</div>;
   }
-
   return (
     <div className="overflow-y-auto">
       {conversations.map((conversation) => {
@@ -33,6 +32,11 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
           conversation.sender?.username === user?.username
             ? conversation.receiver
             : conversation.sender;
+
+        const imageSrc =
+          BASE_URL_IMG + (otherUser?.profile_image_url || "") ||
+          "https://via.placeholder.com/50";
+
         return (
           <div
             key={conversation.id}
@@ -44,10 +48,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
             onClick={() => onSelectConversation(conversation)}
           >
             <img
-              src={
-                BASE_URL + (otherUser?.profile_image_url || "") ||
-                "https://via.placeholder.com/50"
-              }
+              src={imageSrc}
               alt={otherUser?.username || "Participant"}
               className="w-12 h-12 rounded-full mr-3"
             />

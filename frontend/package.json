@@ -19,7 +19,7 @@
     "react-hook-form": "^7.53.1",
     "react-query": "^3.39.3",
     "react-router-dom": "^6.23.1",
-    "react-scripts": "5.0.1",
+    "react-scripts": "^5.0.1",
     "socket.io-client": "^4.7.5",
     "tailwind-merge": "^2.5.4",
     "web-vitals": "^2.1.0",
@@ -28,9 +28,10 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "postinstall": "npm run build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "run-both-dev": "concurrently \"npm start\" \"cd ../backend && python manage.py runserver\""
+    "run-both-dev": "concurrently \"npm start\" \"cd ../backend && python manage.py runserver\" \"redis-server\""
   },
   "eslintConfig": {
     "extends": [
