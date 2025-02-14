@@ -13,6 +13,7 @@ from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+from django.db.models import Q
 
 
 @csrf_exempt
@@ -114,9 +115,11 @@ def profile_view(request):
 
 @api_view(["GET"])
 def profile_data_view(request):
-    profiles = (
-        Profile.objects.all()
-    )  # Adjust if user profile data is stored differently
+    current_user_username = request.user.username  # Get the current user's username
+
+    # Exclude the current user's profile
+    profiles = Profile.objects.exclude(username=current_user_username)
+
     profile_data = [
         {
             "username": profile.username,
@@ -127,6 +130,7 @@ def profile_data_view(request):
         }
         for profile in profiles
     ]
+
     return JsonResponse({"profiles": profile_data}, status=200)
 
 
@@ -238,6 +242,36 @@ class ConversationListView(APIView):
         conversations = Conversation.objects.all()
         serializer = ConversationSerializer(conversations, many=True)
         return Response(serializer.data)
+
+    def post(self, request):
+        """
+        Handle creating a new conversation or retrieving an existing one.
+        """
+        user = request.user  # Get authenticated user
+        participant_username = request.data.get(
+            "participant"
+        )  # Get username from request
+
+        if not participant_username:
+            return Response({"error": "Missing participant username"}, status=400)
+
+        try:
+            participant = Profile.objects.get(username=participant_username)
+        except Profile.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+
+        # Check if a conversation already exists between the two users
+        conversation = Conversation.objects.filter(
+            Q(sender=user, receiver=participant) | Q(sender=participant, receiver=user)
+        ).first()
+
+        if not conversation:
+            # Create a new conversation
+            conversation = Conversation.objects.create(
+                sender=user, receiver=participant
+            )
+
+        return Response({"id": conversation.id})
 
 
 @api_view(["PATCH"])

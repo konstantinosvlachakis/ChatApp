@@ -9,7 +9,15 @@ const Layout = () => {
       {/* Header/Menu */}
       <header className="bg-blue-600 text-white p-4 shadow-md">
         <nav className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-xl font-bold tracking-wide">LangVoyage</h1>
+          {/* Clickable Logo on the top left */}
+          <Link
+            to="/profile"
+            className="text-xl font-bold tracking-wide  cursor-pointer"
+          >
+            LangVoyage
+          </Link>
+
+          {/* Navigation Links */}
           <div className="flex space-x-4">
             <Link
               to="/community"
@@ -22,9 +30,9 @@ const Layout = () => {
               People
             </Link>
             <Link
-              to="/profile"
+              to="/conversations"
               className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                location.pathname === "/profile"
+                location.pathname === "/conversations"
                   ? "bg-white text-blue-600 shadow"
                   : "hover:bg-blue-700 hover:text-white"
               }`}

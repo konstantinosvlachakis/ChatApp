@@ -1,5 +1,5 @@
 // api/userApi.ts
-import { User } from "../types";
+import { User } from "../../Profile/types";
 import { NavigateFunction } from "react-router-dom";
 import { BASE_URL } from "../../../constants/constants";
 

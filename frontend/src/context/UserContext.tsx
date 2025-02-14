@@ -5,7 +5,7 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { fetchUserProfile } from "../pages/Profile/api/fetchUserProfile";
+import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 
 interface UserContextType {

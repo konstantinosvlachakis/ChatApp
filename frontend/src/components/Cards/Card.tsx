@@ -8,6 +8,7 @@ interface ProfileCardDTO {
   profileImage?: string;
   index?: number;
   isDragging?: boolean;
+  onClick?: () => void; // Add onClick handler
 }
 
 export function ProfileCard({
@@ -15,6 +16,7 @@ export function ProfileCard({
   content,
   nativeLanguage,
   profileImage,
+  onClick, // Accept onClick prop
 }: ProfileCardDTO) {
   const defaultImage = `${BASE_URL_IMG}profile_images/MainAfter.jpg`;
   profileImage = BASE_URL_IMG + profileImage;
@@ -22,8 +24,9 @@ export function ProfileCard({
   return (
     <Card
       key={key}
+      onClick={onClick} // Make the card clickable
       className={cn(
-        "space-y-6 max-w-[350px] h-full p-4 border border-gray-200 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-200 transform hover:scale-105"
+        "cursor-pointer space-y-6 max-w-[350px] h-full p-4 border border-gray-200 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-200 transform hover:scale-105"
       )}
     >
       <div className="p-2 space-y-5 h-full">

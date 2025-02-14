@@ -5,6 +5,7 @@ import { UserProvider } from "./context/UserContext"; // ✅ Ensure it's correct
 import Layout from "./layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import ConversationsPage from "./pages/Conversations/page";
 
 // ✅ Lazy-load heavy pages for performance
 const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
@@ -41,6 +42,14 @@ function App() {
                   element={
                     <Suspense fallback={<div>Loading Community...</div>}>
                       <CommunityPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/conversations"
+                  element={
+                    <Suspense fallback={<div>Loading Conversations...</div>}>
+                      <ConversationsPage />
                     </Suspense>
                   }
                 />
