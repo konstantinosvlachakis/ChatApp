@@ -5,9 +5,9 @@ const Layout = () => {
   const location = useLocation(); // To identify the active page
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen ">
       {/* Header/Menu */}
-      <header className="bg-blue-600 text-white p-4 shadow-md">
+      <header className="bg-gray-700 text-white p-4 shadow-md">
         <nav className="flex items-center justify-between max-w-7xl mx-auto">
           {/* Clickable Logo on the top left */}
           <Link
