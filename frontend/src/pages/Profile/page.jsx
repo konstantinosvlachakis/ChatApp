@@ -17,7 +17,6 @@ const ProfilePage = () => {
     ? BASE_URL_IMG + "profile_images/MainAfter.jpg"
     : "/default-avatar.png";
 
-  console.log(process.env.NODE_ENV);
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
   }, [navigate]);
