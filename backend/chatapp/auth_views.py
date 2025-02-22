@@ -17,10 +17,8 @@ class CustomObtainJWTToken(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         data = request.data
-        data["username"] = data["username"].lower()  # Assuming you are using username
-        logger.info(
-            f"Login attempt with username: {data.get('username')}"
-        )  # Log the username
+        data["email"] = data["email"].lower()  # Assuming you are using email
+        logger.info(f"Login attempt with email: {data.get('email')}")  # Log the email
 
         serializer = TokenObtainPairSerializer(data=data)
 

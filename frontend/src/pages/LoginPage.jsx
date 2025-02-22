@@ -7,7 +7,7 @@ import axios from "axios";
 import { BASE_URL } from "../constants/constants";
 
 const LoginPage = () => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ const LoginPage = () => {
 
     try {
       const response = await axios.post(BASE_URL + "/api/token/", {
-        username,
+        email,
         password,
       });
 
@@ -50,11 +50,11 @@ const LoginPage = () => {
         <h2 className="text-2xl font-bold mb-4 text-center">Sign in</h2>
         <form onSubmit={handleLogin}>
           <TextField
-            id="username"
-            label="Username"
+            id="email"
+            label="email"
             fullWidth
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             variant="outlined"
             margin="normal"
             required // Ensures the field is required
