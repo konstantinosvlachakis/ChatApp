@@ -21,16 +21,16 @@ def login_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            username = data.get("username")
+            email = data.get("email")
             password = data.get("password")
 
-            if not username or not password:
+            if not email or not password:
                 return JsonResponse(
-                    {"error": "Username and password required"}, status=400
+                    {"error": "Email and password required"}, status=400
                 )
 
             # Retrieve the user from the Profile model
-            user = Profile.objects.filter(username=username).first()
+            user = Profile.objects.filter(email=email).first()
 
             # Check if the user exists and if the password is correct
             if user and user.check_password(password):
