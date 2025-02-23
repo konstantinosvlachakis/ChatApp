@@ -20,6 +20,7 @@ export function ProfileCard({
 }: ProfileCardDTO) {
   const defaultImage = `${BASE_URL_IMG}profile_images/MainAfter.jpg`;
   profileImage = BASE_URL_IMG + profileImage;
+  console.log("profileImage", profileImage);
 
   return (
     <Card

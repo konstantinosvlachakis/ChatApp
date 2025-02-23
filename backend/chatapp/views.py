@@ -246,6 +246,13 @@ class ConversationDetailView(APIView):
         serializer = ConversationSerializer(conversation)
         return Response(serializer.data)
 
+    def delete(self, request, conversation_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        conversation.delete()
+        return Response(
+            {"message": "Conversation deleted successfully"}, status=status.HTTP_200_OK
+        )
+
 
 class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -287,13 +294,6 @@ class ConversationListView(APIView):
             )
 
         return Response({"id": conversation.id})
-
-    def delete(self, request, conversation_id):
-        conversation = get_object_or_404(Conversation, id=conversation_id)
-        conversation.delete()
-        return Response(
-            {"message": "Conversation deleted successfully"}, status=status.HTTP_200_OK
-        )
 
 
 @api_view(["PATCH"])
