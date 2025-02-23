@@ -5,10 +5,10 @@ const Layout = () => {
   const location = useLocation(); // To identify the active page
 
   return (
-    <div className="flex flex-col min-h-screen ">
+    <div className="flex flex-col ">
       {/* Header/Menu */}
       <header className="bg-gray-700 text-white p-4 shadow-md">
-        <nav className="flex items-center justify-between max-w-7xl mx-auto">
+        <nav className="flex items-center  gap-4 max-w-7xl mx-auto">
           {/* Clickable Logo on the top left */}
           <Link
             to="/profile"
@@ -54,8 +54,8 @@ const Layout = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex justify-center items-center bg-gray-50">
-        <div className="w-3/4 h-[calc(100vh-112px)] bg-white rounded-lg shadow-md p-6 overflow-y-auto">
+      <main className="flex-1 flex  bg-gray-50">
+        <div className="w-full h-[calc(100vh-112px)] bg-white rounded-lg shadow-md p-6 overflow-y-auto">
           {/* The height dynamically adjusts: Header = 64px, Footer = 48px */}
           <Outlet />
         </div>

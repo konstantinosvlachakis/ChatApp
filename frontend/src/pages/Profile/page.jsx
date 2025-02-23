@@ -57,7 +57,7 @@ const ProfilePage = () => {
   ];
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen ">
       {/* Main Content */}
       <div className="flex-1 relative p-6">
         <div className="flex flex-col items-center space-y-6 w-full">
