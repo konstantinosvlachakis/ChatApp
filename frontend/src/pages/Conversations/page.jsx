@@ -3,10 +3,7 @@ import Sidebar from "./features/Sidebar";
 import ChatRoom from "./features/ChatRoom";
 import IconButton from "@mui/material/IconButton";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import { useUser } from "../../context/UserContext";
 const ConversationsPage = () => {
-  const user = useUser();
-
   const [activeConversation, setActiveConversation] = useState(null);
 
   return (
@@ -30,7 +27,7 @@ const ConversationsPage = () => {
                 <ArrowBackIcon />
               </IconButton>
             </div>
-            <ChatRoom conversation={activeConversation} user={user} />
+            <ChatRoom conversation={activeConversation} />
           </div>
         ) : (
           <div className="text-center text-gray-500">

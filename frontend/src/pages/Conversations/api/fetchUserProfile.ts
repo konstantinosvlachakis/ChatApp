@@ -24,7 +24,6 @@ export const fetchUserProfile = async (
       const userData: User = await response.json();
       setUser(userData);
       setNewDate(userData.newDate);
-      console.log("User profile fetched successfully");
     } else if (response.status === 401) {
       // If unauthorized, clear the token and navigate to login
       sessionStorage.removeItem("accessToken");

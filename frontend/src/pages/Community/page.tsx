@@ -38,7 +38,7 @@ const CommunityPage = () => {
     try {
       const conversation = await createOrGetConversation(username);
       if (conversation?.id) {
-        navigate(`/chat/${conversation.id}`); // Redirect to chat page
+        navigate(`/conversations/${conversation.id}`); // Redirect to chat page
       }
     } catch (error) {
       console.error("Error starting conversation:", error);

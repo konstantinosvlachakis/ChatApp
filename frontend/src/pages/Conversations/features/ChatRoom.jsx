@@ -5,38 +5,35 @@ import MessageInput from "./MessageInput";
 import axios from "axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { BASE_URL } from "../../../constants/constants";
+import { useUser } from "../../../context/UserContext";
 
-const ChatRoom = ({ conversation, user }) => {
+const ChatRoom = ({ conversation }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const user = useUser();
 
   useEffect(() => {
-    // Determine WebSocket URL based on environment
-    const roomName = conversation.id; // Use the appropriate value for room name
+    if (!conversation?.id) return;
+
     const isProduction = process.env.NODE_ENV === "production";
     const baseUrl = isProduction
       ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
       : "ws://localhost:8000";
 
-    const url = `${baseUrl}/ws/socket-server/${roomName}/`;
+    const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
     socket.current = new WebSocket(url);
 
-    socket.current.onopen = () => {
+    socket.current.onopen = () =>
       console.log("WebSocket connection established.");
-    };
 
     socket.current.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      console.log("WebSocket message received:", data);
 
-      if (data.type === "chat") {
-        // Ignore messages sent by the current user
-        if (data.senderId === user.user_id) return;
-
-        setMessages((prevMessages) => [
-          ...prevMessages,
+      if (data.type === "chat" && data.senderId !== user.user_id) {
+        setMessages((prev) => [
+          ...prev,
           {
             id: data.id,
             text: data.message,
@@ -45,65 +42,52 @@ const ChatRoom = ({ conversation, user }) => {
           },
         ]);
       } else if (data.type === "deleteMessage") {
-        const messageIdToDelete = data.messageId;
-        setMessages((prevMessages) =>
-          prevMessages.filter((msg) => msg.id !== messageIdToDelete)
+        setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
+      } else if (data.type === "user_typing" && data.sender !== user.username) {
+        setIsOtherUserTyping(true);
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(
+          () => setIsOtherUserTyping(false),
+          3000
         );
-      } else if (data.type === "user_typing") {
-        if (data.sender !== user.username) {
-          setIsOtherUserTyping(true);
-
-          // Hide typing indicator after 3 seconds of no updates
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = setTimeout(() => {
-            setIsOtherUserTyping(false);
-          }, 3000);
-        }
-      } else if (data.type === "user_stopped_typing") {
-        if (data.sender !== user.username) {
-          setIsOtherUserTyping(false);
-        }
+      } else if (
+        data.type === "user_stopped_typing" &&
+        data.sender !== user.username
+      ) {
+        setIsOtherUserTyping(false);
       }
     };
 
-    socket.current.onerror = (error) => {
+    socket.current.onerror = (error) =>
       console.error("WebSocket error:", error);
-    };
+    socket.current.onclose = () => console.log("WebSocket connection closed.");
 
-    socket.current.onclose = () => {
-      console.log("WebSocket connection closed.");
-    };
-
-    // Cleanup WebSocket connection
     return () => {
-      socket.current.close();
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      socket.current?.close();
+      clearTimeout(typingTimeoutRef.current);
     };
-  }, [conversation.id, user.username]);
+  }, [conversation.id]);
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
+    if (!newMessage.trim() && !attachedFile) return;
+
     const formData = new FormData();
-    if (newMessage.trim()) {
-      formData.append("text", newMessage);
-    }
-    if (attachedFile) {
-      formData.append("attachment", attachedFile);
-    }
+    if (newMessage.trim()) formData.append("text", newMessage);
+    if (attachedFile) formData.append("attachment", attachedFile);
 
     const tempMessage = {
       id: Date.now(),
       text: newMessage.trim() || null,
       sender: { id: user.user_id, username: user.username },
       timestamp: new Date().toISOString(),
-      attachment: null,
       attachmentUrl: previewImage || null,
     };
 
-    setMessages((prevMessages) => [...prevMessages, tempMessage]);
+    setMessages((prev) => [...prev, tempMessage]);
 
     try {
       const response = await axios.post(
-        BASE_URL + `/api/conversations/${conversation.id}/messages/`,
+        `${BASE_URL}/api/conversations/${conversation.id}/messages/`,
         formData,
         {
           headers: {
@@ -114,9 +98,7 @@ const ChatRoom = ({ conversation, user }) => {
       );
 
       const savedMessage = response.data;
-
-      // Emit the message to other users via WebSocket
-      socket.current.send(
+      socket.current?.send(
         JSON.stringify({
           type: "chat",
           id: savedMessage.id,
@@ -127,44 +109,29 @@ const ChatRoom = ({ conversation, user }) => {
       );
     } catch (error) {
       console.error("Error sending message:", error);
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg.id !== tempMessage.id)
-      );
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
     }
   };
 
   const handleTyping = () => {
-    socket.current.send(
-      JSON.stringify({
-        type: "user_typing",
-        sender: user.username,
-      })
+    socket.current?.send(
+      JSON.stringify({ type: "user_typing", sender: user.username })
     );
   };
 
   const handleStopTyping = () => {
-    socket.current.send(
-      JSON.stringify({
-        type: "user_stopped_typing",
-        sender: user.username,
-      })
+    socket.current?.send(
+      JSON.stringify({ type: "user_stopped_typing", sender: user.username })
     );
   };
 
   const handleDeleteMessage = async (messageId) => {
-    try {
-      // Optimistically remove the message from the UI
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg.id !== messageId)
-      );
-      await deleteMessage(messageId);
+    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
-      // Notify other users about the deleted message via WebSocket
-      socket.current.send(
-        JSON.stringify({
-          type: "deleteMessage",
-          messageId,
-        })
+    try {
+      await deleteMessage(messageId);
+      socket.current?.send(
+        JSON.stringify({ type: "deleteMessage", messageId })
       );
     } catch (error) {
       console.error("Failed to delete message:", error);
@@ -176,7 +143,7 @@ const ChatRoom = ({ conversation, user }) => {
       <ChatHeader conversation={conversation} />
       <Conversation
         messages={messages}
-        userId={user.user_id}
+        userId={user.username}
         onDeleteMessage={handleDeleteMessage}
       />
       {isOtherUserTyping && (

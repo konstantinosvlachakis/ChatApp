@@ -28,7 +28,6 @@ export const fetchConversations = async (
     );
 
     setConversations(response.data); // Update state with fetched data
-    console.log("Conversations fetched successfully");
   } catch (error: any) {
     if (axios.isAxiosError(error)) {
       if (error.response?.status === 401) {

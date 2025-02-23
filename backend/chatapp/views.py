@@ -235,11 +235,26 @@ class MessageDeleteView(APIView):
         )
 
 
+class ConversationDetailView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access
+
+    def get(self, request, conversation_id):
+        """
+        Retrieve a specific conversation by ID.
+        """
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        serializer = ConversationSerializer(conversation)
+        return Response(serializer.data)
+
+
 class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        conversations = Conversation.objects.all()
+        conversations = Conversation.objects.filter(
+            Q(sender=request.user) | Q(receiver=request.user)
+        )
+
         serializer = ConversationSerializer(conversations, many=True)
         return Response(serializer.data)
 
@@ -272,6 +287,13 @@ class ConversationListView(APIView):
             )
 
         return Response({"id": conversation.id})
+
+    def delete(self, request, conversation_id):
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+        conversation.delete()
+        return Response(
+            {"message": "Conversation deleted successfully"}, status=status.HTTP_200_OK
+        )
 
 
 @api_view(["PATCH"])

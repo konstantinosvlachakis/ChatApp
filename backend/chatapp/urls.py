@@ -23,6 +23,11 @@ urlpatterns = [
     # Conversations
     path("conversations/", ConversationListView.as_view(), name="conversation_list"),
     path(
+        "conversations/<int:conversation_id>/",
+        ConversationDetailView.as_view(),
+        name="conversation_list",
+    ),
+    path(
         "conversations/<int:conversation_id>/messages/",
         MessageListView.as_view(),
         name="conversation_messages",  # Send and receive messages

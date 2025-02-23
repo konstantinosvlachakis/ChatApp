@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../../context/UserContext";
-import { fetchConversations } from "../api/fetchConversations"; // Import the fetchConversations function
+import { fetchConversations } from "../api/fetchConversations";
 import { BASE_URL_IMG } from "../../../constants/constants";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
@@ -9,10 +9,9 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const { user } = useUser();
-  const navigate = useNavigate(); // Use navigate for redirection
+  const navigate = useNavigate(); // Use navigate for updating URL
 
   useEffect(() => {
-    // Use the centralized fetchConversations function
     fetchConversations(setConversations, setError, navigate).finally(() =>
       setLoading(false)
     );
@@ -25,6 +24,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   if (error) {
     return <div className="text-red-500">{error}</div>;
   }
+
   return (
     <div className="overflow-y-auto">
       {conversations.map((conversation) => {
@@ -45,7 +45,10 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
                 ? "bg-gray-300"
                 : "hover:bg-gray-200"
             }`}
-            onClick={() => onSelectConversation(conversation)}
+            onClick={() => {
+              onSelectConversation(conversation); // Open conversation
+              navigate(`/conversations/${conversation.id}`); // Update URL
+            }}
           >
             <img
               src={imageSrc}

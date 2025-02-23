@@ -8,7 +8,7 @@ const Layout = () => {
     <div className="flex flex-col ">
       {/* Header/Menu */}
       <header className="bg-gray-700 text-white p-4 shadow-md">
-        <nav className="flex items-center  gap-4 max-w-7xl mx-auto">
+        <nav className="flex items-center  gap-4 max-w-[1400px] mx-auto">
           {/* Clickable Logo on the top left */}
           <Link
             to="/profile"
