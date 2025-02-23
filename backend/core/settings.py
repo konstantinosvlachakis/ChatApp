@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
-print(f"Running in {env} environment")
+
 ALLOWED_HOSTS = [
     "langvoyage-d3781c6fad54.herokuapp.com",
     "langvoyage.com",
@@ -142,16 +142,16 @@ WSGI_APPLICATION = "wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 
-if env == "production":
-    DATABASES = {"default": dj_database_url.config()}
-else:
-    print("Using local database")
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+# if env == "production":
+DATABASES = {"default": dj_database_url.config()}
+# else:
+#     print("Using local database")
+#     DATABASES = {
+#         "default": {
+#             "ENGINE": "django.db.backends.sqlite3",
+#             "NAME": BASE_DIR / "db.sqlite3",
+#         }
+#     }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
