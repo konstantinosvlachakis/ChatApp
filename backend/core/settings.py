@@ -144,7 +144,6 @@ WSGI_APPLICATION = "wsgi.application"
 if env == "production":
     DATABASES = {"default": dj_database_url.config()}
 else:
-    print("Using local database")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
