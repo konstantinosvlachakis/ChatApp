@@ -8,11 +8,11 @@ const Layout = () => {
     <div className="flex flex-col ">
       {/* Header/Menu */}
       <header className="bg-gray-700 text-white p-4 shadow-md">
-        <nav className="flex items-center  gap-4 max-w-[1400px] mx-auto">
+        <nav className="flex items-center  gap-4 ml-4">
           {/* Clickable Logo on the top left */}
           <Link
             to="/profile"
-            className="text-xl font-bold tracking-wide  cursor-pointer"
+            className="text-xl font-bold tracking-wide  cursor-pointer mr-6"
           >
             LangVoyage
           </Link>
