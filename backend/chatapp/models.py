@@ -30,7 +30,7 @@ class Profile(AbstractBaseUser):
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
     profile_image_url = models.CharField(
-        max_length=255, blank=False, default="media/profile_images/MainAfter.jpg"
+        max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )
     password = models.CharField(max_length=128, blank=True, null=True)
 
