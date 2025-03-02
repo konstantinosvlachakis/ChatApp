@@ -1,10 +1,38 @@
-/** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
-  ],
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        primary: "#00aaff",
+        secondary: "#ff6b6b",
+        richTurquoise: "#30d5c8",
+        softSand: "#f4f4e8",
+        earthyGreen: "#4e9a51",
+      },
+    },
   },
+  safelist: [
+    "bg-primary",
+    "bg-secondary",
+    "bg-richTurquoise",
+    "bg-softSand",
+    "bg-earthyGreen",
+    "text-primary",
+    "text-secondary",
+    "text-richTurquoise",
+    "text-softSand",
+    "text-earthyGreen",
+    "border-primary",
+    "border-secondary",
+    "border-richTurquoise",
+    "border-softSand",
+    "border-earthyGreen",
+    "hover:bg-primary",
+    "hover:bg-secondary",
+    "hover:bg-richTurquoise",
+    "hover:bg-softSand",
+    "hover:bg-earthyGreen",
+    "hover:text-white",
+  ],
   plugins: [],
-}
+};

@@ -299,30 +299,29 @@ class ConversationListView(APIView):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def update_profile_image(request, user_id):
-    try:
-        # Only the logged-in user can update their own image
-        if request.user.id != user_id:
-            return Response(
-                {"error": "You can only update your own profile image."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        profile = Profile.objects.get(id=user_id)
-
-        # Check if an image is being uploaded
-        if "profile_image" in request.FILES:
-            profile.profile_image_url = request.FILES["profile_image"]
-            profile.save()
-            return Response(
-                {"message": "Profile image updated successfully."},
-                status=status.HTTP_200_OK,
-            )
-
+    if request.user.id != int(user_id):
         return Response(
-            {"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST
+            {"error": "You can only update your own profile image."},
+            status=status.HTTP_403_FORBIDDEN,
         )
 
+    try:
+        profile = Profile.objects.get(id=user_id)
     except Profile.DoesNotExist:
         return Response(
             {"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND
         )
+    print("asdas")
+    if "profile_image" in request.FILES:
+        image_file = request.FILES["profile_image"]
+        # Assuming profile_image_url is a FileField or ImageField
+        profile.profile_image_url.save(image_file.name, image_file)
+        profile.save()
+        return Response(
+            {"message": "Profile image updated successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+    return Response(
+        {"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST
+    )

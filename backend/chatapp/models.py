@@ -91,7 +91,7 @@ class Conversation(models.Model):
     def save(self, *args, **kwargs):
         # Set the receiver to Alma by default
         if not self.receiver:
-            self.receiver = Profile.objects.get(username="Alma")
+            self.receiver = Profile.objects.get(username="alma")
         super().save(*args, **kwargs)
 
     def __str__(self):

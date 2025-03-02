@@ -12,7 +12,8 @@ const ChatRoom = ({ conversation }) => {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const user = useUser();
+  const { user } = useUser();
+  console.log(user);
 
   useEffect(() => {
     if (!conversation?.id) return;
@@ -58,8 +59,14 @@ const ChatRoom = ({ conversation }) => {
       }
     };
 
-    socket.current.onerror = (error) =>
-      console.error("WebSocket error:", error);
+    socket.current.onerror = (event) => {
+      console.error("WebSocket error:", event);
+      if (socket.current) {
+        console.log("WebSocket readyState:", socket.current.readyState);
+        console.log("WebSocket URL:", socket.current.url);
+      }
+    };
+
     socket.current.onclose = () => console.log("WebSocket connection closed.");
 
     return () => {
@@ -69,6 +76,10 @@ const ChatRoom = ({ conversation }) => {
   }, [conversation.id]);
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
+    if (!user) {
+      console.error("Cannot send message: user is undefined.");
+      return;
+    }
     if (!newMessage.trim() && !attachedFile) return;
 
     const formData = new FormData();
@@ -98,15 +109,20 @@ const ChatRoom = ({ conversation }) => {
       );
 
       const savedMessage = response.data;
-      socket.current?.send(
-        JSON.stringify({
-          type: "chat",
-          id: savedMessage.id,
-          message: savedMessage.text,
-          sender: user.username,
-          senderId: user.user_id,
-        })
-      );
+      console.log(user);
+      if (socket.current && socket.current.readyState === WebSocket.OPEN) {
+        socket.current.send(
+          JSON.stringify({
+            type: "chat",
+            id: savedMessage.id,
+            message: savedMessage.text,
+            sender: user.username,
+            senderId: user.user_id,
+          })
+        );
+      } else {
+        console.error("WebSocket is not open. Unable to send message.");
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
@@ -143,7 +159,7 @@ const ChatRoom = ({ conversation }) => {
       <ChatHeader conversation={conversation} />
       <Conversation
         messages={messages}
-        userId={user.username}
+        userId={user.user_id}
         onDeleteMessage={handleDeleteMessage}
       />
       {isOtherUserTyping && (

@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import TextField from "@mui/material/TextField";
-import Button from "@mui/material/Button";
+import Button from "../components/Buttons/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
 import { BASE_URL } from "../constants/constants";
-
+import "../index.css";
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -77,13 +77,16 @@ const LoginPage = () => {
           <Button
             type="submit"
             variant="contained"
-            color="primary"
+            colorVariant="richTurquoise" // 👈 Dynamic color
             fullWidth
             style={{ marginTop: "1rem" }}
-            disabled={loading} // Disable button when loading
+            disabled={loading}
           >
-            {loading ? <CircularProgress size={24} color="inherit" /> : "Login"}{" "}
-            {/* Loading indicator */}
+            {loading ? (
+              <CircularProgress size={24} color="secondary" />
+            ) : (
+              "Login"
+            )}
           </Button>
         </form>
 

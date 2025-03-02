@@ -8,6 +8,8 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
     setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
   };
 
+  console.log(messages);
+
   // Scroll to the last message whenever the messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -17,9 +19,12 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
     <div className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
+          console.log("Message Data:", msg); // Debugging
+          console.log("User ID:", userId); // Debugging
           const attachmentUrl = msg.attachment_url || msg.attachment;
           const isImageMessage = !!attachmentUrl; // Check if there's an attachment
           const isSentByUser = msg.sender?.id === userId; // Check if the message was sent by the user
+          console.log("Is Sent By User:", isSentByUser); // Debugging
 
           return (
             <div

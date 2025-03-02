@@ -3,7 +3,12 @@ import { Button as ButtonMUI, ButtonProps } from "@mui/material";
 
 export interface IButtonProps extends ButtonProps {
   children: React.ReactNode;
-  colorVariant?: "primary" | "secondary" | "outline";
+  colorVariant?:
+    | "deepSkyBlue"
+    | "secondary"
+    | "richTurquoise"
+    | "softSand"
+    | "earthyGreen";
   variant?: "contained" | "outlined" | "text";
   fullWidth?: boolean;
   className?: string;
@@ -15,7 +20,8 @@ export interface IButtonProps extends ButtonProps {
 export default function Button(_props: IButtonProps) {
   const {
     children,
-    variant,
+    variant = "contained",
+    colorVariant = "primary", // Default to primary
     className,
     onClick,
     fullWidth,
@@ -33,13 +39,21 @@ export default function Button(_props: IButtonProps) {
       fullWidth={fullWidth}
       className={cn(
         "lg:min-w-[230px] p-3 font-alegreyaSans-black text-lg",
-        props.color === "secondary" &&
-          variant === "contained" &&
-          "text-white border-primary/50 border-solid border",
         variant === "outlined" &&
-          "hover:bg-secondary hover:text-white border-primary",
+          `border-${colorVariant} text-${colorVariant} hover:bg-${colorVariant} hover:text-white`,
         className
       )}
+      sx={{
+        backgroundColor:
+          variant === "contained" ? `${colorVariant}` : undefined,
+        color: variant === "contained" ? `${colorVariant}` : undefined,
+        "&:hover": {
+          backgroundColor:
+            variant === "contained"
+              ? `${colorVariant}-hover, var(--tw-color-${colorVariant}))`
+              : undefined,
+        },
+      }}
       variant={variant}
     >
       {children}
