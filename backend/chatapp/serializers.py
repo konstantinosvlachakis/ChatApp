@@ -2,10 +2,15 @@ from rest_framework import serializers
 from .models import Conversation, Message, Profile
 from django.conf import settings
 
+
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ["id", "username", "email", "native_language", "profile_image_url"]
+
+    def get_profile_image_url(self, obj):
+        return obj.get_profile_image_url()
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
@@ -13,12 +18,13 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ['id', 'text', 'sender', 'attachment', 'attachment_url', 'timestamp']
+        fields = ["id", "text", "sender", "attachment", "attachment_url", "timestamp"]
 
     def get_attachment_url(self, obj):
         if obj.attachment:  # Assuming `attachment` is the field storing the file
             return f"{settings.BASE_URL}{settings.MEDIA_URL}{obj.attachment}"
         return None
+
 
 class ConversationSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
@@ -28,7 +34,15 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ["id", "sender", "receiver", "created_at", "updated_at", "last_message", "messages"]
+        fields = [
+            "id",
+            "sender",
+            "receiver",
+            "created_at",
+            "updated_at",
+            "last_message",
+            "messages",
+        ]
 
     def get_last_message(self, obj):
         # Retrieve the last message in the conversation

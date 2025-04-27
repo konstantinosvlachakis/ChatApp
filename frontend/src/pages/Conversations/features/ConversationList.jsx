@@ -70,8 +70,10 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
             : conversation.sender;
 
         const imageSrc =
-          BASE_URL_IMG + (otherUser?.profile_image_url || "") ||
+          BASE_URL_IMG + ("/media/" + otherUser?.profile_image_url || "") ||
           "https://via.placeholder.com/50";
+
+        console.log("Image URL:", imageSrc); // Debugging line
 
         return (
           <div key={conversation.id} className="relative">

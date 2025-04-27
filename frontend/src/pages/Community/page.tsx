@@ -16,9 +16,7 @@ const CommunityPage = () => {
           const transformedData: ProfileData[] = response.profiles.map(
             (profile: any) => ({
               username: profile.username,
-              imageURL:
-                profile.profile_image_url ||
-                "/media/profile_images/MainAfter.jpg",
+              imageURL: "profile_images/MainAfter.jpg",
               nativeLanguage: profile.native_language,
             })
           );

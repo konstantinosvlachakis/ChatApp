@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.conf import settings
 
 
 class ProfileManager(BaseUserManager):
@@ -42,6 +43,12 @@ class Profile(AbstractBaseUser):
 
     def __str__(self):
         return self.email
+
+    def get_profile_image_url(self):
+        # Smartly handle it
+        if self.profile_image_url.startswith("profile_images/"):
+            return f"{settings.MEDIA_URL}{self.profile_image_url}"
+        return self.profile_image_url
 
 
 class Token(models.Model):

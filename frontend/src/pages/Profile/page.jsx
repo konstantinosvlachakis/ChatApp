@@ -13,10 +13,13 @@ const ProfilePage = () => {
   const [newName, setNewName] = useState("");
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
+
   const imageUrl = user.profile_image_url
     ? BASE_URL_IMG + user.profile_image_url
     : "/default-avatar.png";
-  console.log("Image URL:", imageUrl);
+
+  console.log("User profile image URL:", imageUrl);
+  console.log(user);
 
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
@@ -58,47 +61,36 @@ const ProfilePage = () => {
   ];
 
   return (
-    <div className="flex min-h-screen ">
-      {/* Main Content */}
-      <div className="flex-1 relative p-6">
-        <div className="flex flex-col items-center space-y-6 w-full">
-          {/* Sign Out Button */}
-          <button
-            className="absolute top-5 right-5 bg-red-500 text-white py-2 px-4 rounded-full hover:bg-red-600 transition"
-            onClick={handleSignOut}
-          >
-            Sign Out
-          </button>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-pink-50 p-4">
+      <div className="relative w-full max-w-3xl p-10 bg-white rounded-3xl shadow-2xl flex flex-col items-center gap-6">
+        {/* Sign Out Button */}
+        <button
+          className="absolute top-6 right-6 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-full transition-transform transform hover:scale-105"
+          onClick={handleSignOut}
+        >
+          Sign Out
+        </button>
 
-          {/* Profile Image */}
-          <DragDropImage
-            onImageDrop={handleImageDrop}
-            initialImage={imageUrl}
-          />
+        {/* Profile Image */}
+        <DragDropImage onImageDrop={handleImageDrop} initialImage={imageUrl} />
 
-          {/* Edit Button */}
-          <button
-            className="bg-blue-500 text-white py-2 px-4 rounded-full hover:bg-blue-600 transition"
-            onClick={() => setModalNameOpen(true)}
-          >
-            Edit
-          </button>
+        {/* Edit Button */}
+        <button
+          className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-full shadow hover:scale-105 transition-transform"
+          onClick={() => setModalNameOpen(true)}
+        >
+          Edit Profile
+        </button>
 
-          {/* Profile Details */}
-          <div className="w-full max-w-lg p-6 bg-white rounded-lg shadow-md">
-            {profileFields.map(({ label, value }, index) => (
-              <div key={index} className="mb-4">
-                <h2 className="text-lg font-semibold text-gray-700">
-                  {label}:
-                </h2>
-                <p className="text-gray-900">{value}</p>
-                {index < profileFields.length - 1 && (
-                  <hr className="border-gray-200 mt-2" />
-                )}
-              </div>
-            ))}
-            {error && <div className="text-red-500 mt-4">{error}</div>}
-          </div>
+        {/* Profile Details */}
+        <div className="w-full flex flex-col gap-6">
+          {profileFields.map(({ label, value }, index) => (
+            <div key={index} className="flex flex-col">
+              <h2 className="text-lg font-semibold text-gray-700">{label}:</h2>
+              <p className="text-gray-900">{value}</p>
+            </div>
+          ))}
+          {error && <div className="text-red-500 mt-4">{error}</div>}
         </div>
       </div>
 
@@ -113,12 +105,12 @@ const ProfilePage = () => {
             className="w-full p-2 mb-4 border rounded focus:outline-none focus:ring focus:border-blue-300"
             placeholder="Enter new Name"
           />
-          <div className="flex justify-end space-x-2">
+          <div className="flex justify-end gap-2">
             <button
               className="bg-gray-300 text-gray-800 py-1 px-4 rounded hover:bg-gray-400 transition"
               onClick={() => setModalNameOpen(false)}
             >
-              Close
+              Cancel
             </button>
             <button
               className="bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 transition"

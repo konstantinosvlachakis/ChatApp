@@ -18,9 +18,8 @@ export function ProfileCard({
   profileImage,
   onClick, // Accept onClick prop
 }: ProfileCardDTO) {
-  const defaultImage = `${BASE_URL_IMG}profile_images/MainAfter.jpg`;
+  const defaultImage = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
   profileImage = BASE_URL_IMG + profileImage;
-  console.log("profileImage", profileImage);
 
   return (
     <Card
