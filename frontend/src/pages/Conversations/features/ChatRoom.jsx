@@ -170,7 +170,7 @@ const ChatRoom = ({ conversation }) => {
       <MessageInput
         onSendMessage={handleSendMessage}
         onTyping={handleTyping}
-        onStopTyping={handleStopTyping}
+        isOtherUserTyping={isOtherUserTyping}
       />
     </div>
   );

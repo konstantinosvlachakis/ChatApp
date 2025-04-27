@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { BASE_URL } from "../../constants/constants";
 import { useUser } from "../../context/UserContext";
@@ -8,6 +8,10 @@ const DragDropImage = ({ initialImage }) => {
   const [droppedImage, setDroppedImage] = useState(initialImage); // Stores the current image
   const [isDraggingOver, setIsDraggingOver] = useState(false); // Tracks drag state
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false); // Tracks zoom modal state
+
+  useEffect(() => {
+    setDroppedImage(initialImage); // <<===== ADD THIS useEffect
+  }, [initialImage]);
 
   const handleDragOver = (event) => {
     event.preventDefault();
@@ -26,7 +30,6 @@ const DragDropImage = ({ initialImage }) => {
     const file = event.dataTransfer.files[0]; // Get the dropped file
     if (file && file.type.startsWith("image/")) {
       const imageUrl = URL.createObjectURL(file); // Create a preview URL
-      console.log("Image dropped:", file);
       setDroppedImage(imageUrl); // Update the state with the dropped image
       updateProfileImage(file); // Send the file to the server to update the user's profile image
     } else {
@@ -37,8 +40,7 @@ const DragDropImage = ({ initialImage }) => {
   const updateProfileImage = async (file) => {
     const formData = new FormData();
     formData.append("profile_image", file);
-    console.log(user.user_id);
-    console.log(sessionStorage.getItem("accessToken"));
+
     try {
       const response = await axios.patch(
         `${BASE_URL}/api/profile/${user.user_id}/update-image`,

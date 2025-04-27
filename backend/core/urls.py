@@ -8,9 +8,6 @@ import os
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 api_prefix = "backend.chatapp.urls" if env != "local" else "chatapp.urls"
 
-urlpatterns = [
-    path("admin/", admin.site.urls),
-]
 
 urlpatterns = [
     path("admin/", admin.site.urls),

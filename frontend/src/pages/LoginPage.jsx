@@ -6,6 +6,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
 import { BASE_URL } from "../constants/constants";
 import "../index.css";
+
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,8 +26,6 @@ const LoginPage = () => {
       });
 
       const { access, refresh } = response.data;
-
-      // Store tokens in sessionStorage to maintain separate sessions per tab
       sessionStorage.setItem("accessToken", access);
       sessionStorage.setItem("refreshToken", refresh);
 
@@ -45,41 +44,58 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-cover bg-center bg-slate-100 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-96">
-        <h2 className="text-2xl font-bold mb-4 text-center">Sign in</h2>
-        <form onSubmit={handleLogin}>
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 flex items-center justify-center">
+      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md mx-4 animate-fade-in">
+        <div className="flex flex-col items-center mb-6">
+          <img
+            src="http://127.0.0.1:8000/media/logo.png"
+            alt="Chat Icon"
+            className="w-16 h-16 mb-2 transition-transform duration-300 hover:rotate-12"
+          />
+          <h2 className="text-3xl font-bold font-poppins text-primary mb-2 text-center">
+            Welcome Back!
+          </h2>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-4">
           <TextField
             id="email"
-            label="email"
+            label="Email Address"
             fullWidth
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             variant="outlined"
             margin="normal"
-            required // Ensures the field is required
+            required
+            InputProps={{
+              classes: { root: "focus:ring-2 focus:ring-blue-300" },
+            }}
           />
           <TextField
             id="password"
             label="Password"
-            fullWidth
             type="password"
+            fullWidth
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             variant="outlined"
             margin="normal"
-            required // Ensures the field is required
+            required
+            InputProps={{
+              classes: { root: "focus:ring-2 focus:ring-blue-300" },
+            }}
           />
+
           {error && (
-            <div className="text-red-500 text-center mt-2">{error}</div>
-          )}{" "}
-          {/* Display error message */}
+            <div className="text-red-500 text-center text-sm">{error}</div>
+          )}
+
           <Button
             type="submit"
             variant="contained"
-            colorVariant="richTurquoise" // 👈 Dynamic color
+            colorVariant="richTurquoise"
             fullWidth
-            style={{ marginTop: "1rem" }}
+            className="py-2 rounded-lg hover:scale-105 hover:shadow-lg transition-transform duration-300"
             disabled={loading}
           >
             {loading ? (
@@ -90,10 +106,10 @@ const LoginPage = () => {
           </Button>
         </form>
 
-        <p className="text-center mt-4">
+        <p className="text-center text-sm text-gray-600 mt-6">
           Don't have an account?{" "}
           <span
-            className="text-blue-500 cursor-pointer hover:underline"
+            className="text-blue-500 cursor-pointer hover:underline font-medium"
             onClick={handleSignUpClick}
           >
             Sign Up
