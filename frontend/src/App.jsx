@@ -1,24 +1,26 @@
 import React, { Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { UserProvider } from "./context/UserContext"; // ✅ Ensure it's correctly imported
+import { UserProvider } from "./context/UserContext"; 
 import Layout from "./layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ConversationsPage from "./pages/Conversations/page";
 import ChatRoomWrapper from "./pages/Conversations/features/ChatRoomWrapper";
-// ✅ Lazy-load heavy pages for performance
+import { queryClient } from '../src/libs/react-query'
+import { QueryClientProvider } from 'react-query';
+
+
+
 const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
 const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 
-const queryClient = new QueryClient();
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <UserProvider>
         {" "}
-        {/* ✅ Ensure UserProvider wraps everything */}
+        {/* Ensure UserProvider wraps everything */}
         <Router>
           <div className="App">
             <Routes>

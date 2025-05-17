@@ -4,7 +4,6 @@ import { BASE_URL } from "../../../constants/constants";
 export const createOrGetConversation = async (username: string) => {
     try {
       const token = sessionStorage.getItem("accessToken");
-      console.log("asdasd")
 
       if (!token) {
         console.error("No authentication token found");

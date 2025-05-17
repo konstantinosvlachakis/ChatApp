@@ -51,16 +51,27 @@ parsed_redis_url = urlparse(redis_url)
 redis_host = os.environ.get("REDIS_HOST", "localhost")
 redis_port = parsed_redis_url.port or 6379  # Default Redis port if missing
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [
-                "redis://default:VDP3D2nqC6lDo4a4SxEODTIrnyQeKO73@redis-16649.c258.us-east-1-4.ec2.redns.redis-cloud.com:16649"
-            ],
+if env == "local":
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [("127.0.0.1", 6379)],  # Local Redis
+            },
         },
-    },
-}
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [
+                    "redis://default:VDP3D2nqC6lDo4a4SxEODTIrnyQeKO73@redis-16649.c258.us-east-1-4.ec2.redns.redis-cloud.com:16649"
+                ],
+            },
+        },
+    }
+
 
 
 # Application definition

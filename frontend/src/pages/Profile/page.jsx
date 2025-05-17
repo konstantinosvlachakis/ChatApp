@@ -18,15 +18,12 @@ const ProfilePage = () => {
     ? BASE_URL_IMG + user.profile_image_url
     : "/default-avatar.png";
 
-  console.log("User profile image URL:", imageUrl);
-  console.log(user);
 
   useEffect(() => {
     fetchUserProfile(setUser, () => {}, setError, navigate);
   }, [navigate]);
 
   const handleImageDrop = useCallback((file) => {
-    console.log("Image dropped:", file);
   }, []);
 
   const handleSaveName = async () => {

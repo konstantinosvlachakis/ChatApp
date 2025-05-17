@@ -1,25 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../../context/UserContext";
-import { fetchConversations } from "../api/fetchConversations";
 import { BASE_URL_IMG } from "../../../constants/constants";
 import axios from "../../../utils/axios";
 import { BASE_URL } from "../../../constants/constants";
+import { useGetConversations } from "../api/getConversations";
+import { useMutation, useQueryClient } from "react-query";
 
 function ConversationList({ onSelectConversation, activeConversationId }) {
-  const [conversations, setConversations] = useState([]);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { data: conversations = [], error, isLoading } = useGetConversations();
+  const queryClient = useQueryClient();
   const { user } = useUser();
   const navigate = useNavigate();
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
+  
 
-  useEffect(() => {
-    fetchConversations(setConversations, setError, navigate).finally(() =>
-      setLoading(false)
-    );
-  }, [navigate]);
 
   // Handles right-click event
   const handleRightClick = (e, conversationId) => {
@@ -29,17 +25,24 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
     );
   };
 
+  
+  const deleteConversationMutation = useMutation({
+    mutationFn: async (conversationId) => {
+      const token = sessionStorage.getItem("accessToken");
+      return axios.delete(`${BASE_URL}/api/conversations/${conversationId}/`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+    },
+  });
+
   // Handles deleting the conversation
   const handleDelete = (conversationId) => {
-    axios.delete(`${BASE_URL}/api/conversations/${conversationId}/`, {
-      headers: {
-        Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
-      },
-    });
-
-    setConversations((prev) =>
-      prev.filter((conversation) => conversation.id !== conversationId)
-    );
+    deleteConversationMutation.mutate(conversationId);
     setRightClickedConversation(null);
   };
 
@@ -58,22 +61,22 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
     };
   }, [rightClickedConversation]);
 
-  if (loading) return <div>Loading conversations...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (isLoading) return <div>Loading conversations...</div>;
+  if (error) {
+    return <div className="text-red-500">{error.message || "Something went wrong"}</div>;
+  }
 
   return (
     <div className="">
       {conversations.map((conversation) => {
         const otherUser =
-          conversation.sender?.username === user?.username
+          conversation.sender?.username !== user?.username
             ? conversation.receiver
             : conversation.sender;
 
         const imageSrc =
           BASE_URL_IMG + ("/media/" + otherUser?.profile_image_url || "") ||
           "https://via.placeholder.com/50";
-
-        console.log("Image URL:", imageSrc); // Debugging line
 
         return (
           <div key={conversation.id} className="relative">

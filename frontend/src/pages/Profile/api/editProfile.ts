@@ -1,4 +1,4 @@
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, UseMutationOptions } from 'react-query';
 import axios, { AxiosError } from 'axios';
 import { queryClient } from '../../../libs/react-query';
 import { BASE_URL } from '../../../constants/constants';
@@ -22,7 +22,6 @@ const editProfile = async (userData: UserProfileDTO): Promise<UserProfileDTO> =>
       },
     }
   );  
-  console.log(response.data)
   return response.data;
 };
 

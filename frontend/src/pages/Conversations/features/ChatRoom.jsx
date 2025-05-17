@@ -13,7 +13,6 @@ const ChatRoom = ({ conversation }) => {
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
   const { user } = useUser();
-  console.log(user);
 
   useEffect(() => {
     if (!conversation?.id) return;
@@ -21,7 +20,7 @@ const ChatRoom = ({ conversation }) => {
     const isProduction = process.env.NODE_ENV === "production";
     const baseUrl = isProduction
       ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
-      : "ws://localhost:8000";
+      : "ws://localhost:8001";
 
     const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
     socket.current = new WebSocket(url);
@@ -109,7 +108,6 @@ const ChatRoom = ({ conversation }) => {
       );
 
       const savedMessage = response.data;
-      console.log(user);
       if (socket.current && socket.current.readyState === WebSocket.OPEN) {
         socket.current.send(
           JSON.stringify({
