@@ -14,6 +14,7 @@ const ChatRoom = ({ conversation }) => {
   const typingTimeoutRef = useRef(null);
   const { user } = useUser();
 
+
   useEffect(() => {
     if (!conversation?.id) return;
 
@@ -73,6 +74,10 @@ const ChatRoom = ({ conversation }) => {
       clearTimeout(typingTimeoutRef.current);
     };
   }, [conversation.id]);
+
+  if (!user) {
+    return <div className="p-4 text-gray-500">Loading user info...</div>;
+  }
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {

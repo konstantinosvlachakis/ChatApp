@@ -1,59 +1,130 @@
-import { useEffect, useState } from "react";
-import { ProfileCard } from "../../components/Cards/Card";
-import { getProfileData } from "./api/getProfileData";
-import { ProfileData } from "./types";
+// src/pages/Community/page.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ProfileCard from "../../components/Cards/ProfileCard";
+import { getProfileData } from "./api/getProfileData";
 import { createOrGetConversation } from "./api/conversation";
-const CommunityPage = () => {
+
+interface ProfileData {
+  username: string;
+  nativeLanguage: string;
+  learningLanguage?: string;
+  bio?: string;
+  profileImage?: string;
+}
+
+const CommunityPage: React.FC = () => {
   const [profiles, setProfiles] = useState<ProfileData[]>([]);
+  const [search, setSearch] = useState("");
+  const [filterLang, setFilterLang] = useState(""); // native-language filter
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
+      setLoading(true);
       try {
-        const response = await getProfileData(navigate);
-        if (response?.profiles) {
-          const transformedData: ProfileData[] = response.profiles.map(
-            (profile: any) => ({
-              username: profile.username,
-              imageURL: "profile_images/MainAfter.jpg",
-              nativeLanguage: profile.native_language,
-            })
-          );
-          setProfiles(transformedData);
-        } else {
-          console.error("Unexpected response structure:", response);
+        const data = await getProfileData(navigate);
+        if (data?.profiles) {
+          // map your API response shape to ProfileData
+          const mapped: ProfileData[] = data.profiles.map((p: any) => ({
+            username: p.username,
+            nativeLanguage: p.native_language,
+            learningLanguage: p.learning_language,
+            bio: p.bio,
+            profileImage: p.profile_image_url, // or whatever key you expose
+          }));
+          setProfiles(mapped);
         }
-      } catch (error) {
-        console.error("Error fetching profile data:", error);
+      } catch (err) {
+        console.error("Failed to load profiles:", err);
+      } finally {
+        setLoading(false);
       }
-    };
-    fetchData();
-  }, []);
+    })();
+  }, [navigate]);
 
-  // Function to handle clicking on a profile
-  const handleProfileClick = async (username: string) => {
+  // derive unique native languages for the filter dropdown
+  const languageOptions = useMemo(() => {
+    const langs = Array.from(new Set(profiles.map((p) => p.nativeLanguage)));
+    return ["All", ...langs];
+  }, [profiles]);
+
+  // apply search + filter
+  const filteredProfiles = useMemo(
+    () =>
+      profiles.filter((p) => {
+        const matchesSearch =
+          p.username.toLowerCase().includes(search.toLowerCase()) ||
+          p.bio?.toLowerCase().includes(search.toLowerCase());
+        const matchesLang =
+          !filterLang || filterLang === "All" || p.nativeLanguage === filterLang;
+        return matchesSearch && matchesLang;
+      }),
+    [profiles, search, filterLang]
+  );
+
+  const handleCardClick = async (username: string) => {
     try {
-      const conversation = await createOrGetConversation(username);
-      if (conversation?.id) {
-        navigate(`/conversations/${conversation.id}`); // Redirect to chat page
-      }
-    } catch (error) {
-      console.error("Error starting conversation:", error);
+      const conv = await createOrGetConversation(username);
+      if (conv?.id) navigate(`/conversations/${conv.id}`);
+    } catch (err) {
+      console.error("Could not start conversation:", err);
     }
   };
 
   return (
-    <div className="grid grid-cols-3 gap-4 p-4">
-      {profiles.map((profile, index) => (
-        <ProfileCard
-          key={index}
-          content={profile.username}
-          nativeLanguage={profile.nativeLanguage}
-          profileImage={profile.imageURL}
-          onClick={() => handleProfileClick(profile.username)} // Pass click handler
-        />
-      ))}
+    <div className="bg-gray-50 min-h-screen py-10">
+      <div className="max-w-6xl mx-auto px-4">
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">
+          Discover Language Partners
+        </h1>
+
+        {/* Controls */}
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or bio..."
+            className="w-full sm:w-1/2 p-3 rounded-full border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          <select
+            value={filterLang}
+            onChange={(e) => setFilterLang(e.target.value)}
+            className="w-full sm:w-1/4 p-3 rounded-full border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            {languageOptions.map((lang) => (
+              <option key={lang} value={lang === "All" ? "" : lang}>
+                {lang}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <p className="text-center text-gray-500">Loading profiles…</p>
+        ) : filteredProfiles.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredProfiles.map((profile) => (
+              <ProfileCard
+                key={profile.username}
+                username={profile.username}
+                bio={profile.bio}
+                nativeLanguage={profile.nativeLanguage}
+                learningLanguage={profile.learningLanguage}
+                profileImage={profile.profileImage}
+                onClick={() => handleCardClick(profile.username)}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-gray-500 mt-12">
+            No matches found. Try adjusting your search or filters.
+          </p>
+        )}
+      </div>
     </div>
   );
 };
