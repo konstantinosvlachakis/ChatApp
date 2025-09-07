@@ -10,7 +10,7 @@ const ChatHeader = ({ conversation }) => {
   return (
     <div className="p-4 border-b bg-white flex items-center">
       <img
-        src={BASE_URL_IMG + otherUser.profile_image_url}
+        src={BASE_URL_IMG + '/media/' + otherUser.profile_image_url}
         alt={otherUser.username}
         className="w-10 h-10 rounded-full mr-3"
       />

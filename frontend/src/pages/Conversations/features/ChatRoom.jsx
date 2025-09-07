@@ -157,24 +157,37 @@ const ChatRoom = ({ conversation }) => {
     }
   };
 
-  return (
-    <div className="flex flex-col h-screen overflow-y-hidden">
-      <ChatHeader conversation={conversation} />
-      <Conversation
-        messages={messages}
-        userId={user.user_id}
-        onDeleteMessage={handleDeleteMessage}
-      />
+return (
+  <div className="flex flex-col h-[calc(100vh-128px)] bg-gray-50">
+      {/* Header */}
+      <div className="flex-shrink-0">
+        <ChatHeader conversation={conversation} />
+      </div>
+
+      {/* Conversation area */}
+      <div className="flex-1 overflow-y-auto px-4 py-2">
+        <Conversation
+          messages={messages}
+          userId={user.user_id}
+          onDeleteMessage={handleDeleteMessage}
+        />
+      </div>
+
+      {/* Typing indicator */}
       {isOtherUserTyping && (
-        <div className="text-gray-500 text-sm p-2">
+        <div className="text-gray-500 text-sm px-4 py-1">
           The other user is typing...
         </div>
       )}
-      <MessageInput
-        onSendMessage={handleSendMessage}
-        onTyping={handleTyping}
-        isOtherUserTyping={isOtherUserTyping}
-      />
+
+      {/* Message input */}
+      <div className="flex-shrink-0 border-t bg-white p-2">
+        <MessageInput
+          onSendMessage={handleSendMessage}
+          onTyping={handleTyping}
+          isOtherUserTyping={isOtherUserTyping}
+        />
+      </div>
     </div>
   );
 };

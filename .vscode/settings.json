@@ -1,6 +1,6 @@
 {
   "python.terminal.activateEnvInCurrentTerminal": true,
-  "python.defaultInterpreterPath": "/Users/Vlachakis/Desktop/VirtualEnvs/chatApp/Scripts/python.exe",
+  "python.defaultInterpreterPath": "/Users/NtinosVlachakis/Desktop/KV/Envs/chatApp/Scripts/python.exe",
   "terminal.integrated.profiles.windows": {
     "PowerShell": {
       "source": "PowerShell",
@@ -8,7 +8,7 @@
       "args": [
         "-NoExit",
         "-Command",
-        "& { . 'C:\\Users\\Vlachakis\\Desktop\\VirtualEnvs\\chatApp\\Scripts\\Activate.ps1' }"
+        "& { . 'C:\\Users\\NtinosVlachakis\\Desktop\\KV\\Envs\\chatApp\\Scripts\\Activate.ps1' }"
       ]
     }
   },

@@ -17,6 +17,7 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           const attachmentUrl = msg.attachment_url || msg.attachment;
+          console.log("attachmentUrl:", attachmentUrl);
           const isImageMessage = !!attachmentUrl; // Check if there's an attachment
           const isSentByUser = msg.sender?.id === userId; // Check if the message was sent by the user
 

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import ProfileCard from "../../components/Cards/ProfileCard";
 import { getProfileData } from "./api/getProfileData";
 import { createOrGetConversation } from "./api/conversation";
+import { useUser } from "../../context/UserContext";
 
 interface ProfileData {
   username: string;
@@ -19,12 +20,14 @@ const CommunityPage: React.FC = () => {
   const [filterLang, setFilterLang] = useState(""); // native-language filter
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useUser(); // import from your context
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const data = await getProfileData(navigate);
+        console.log("Fetched profiles:", data);
         if (data?.profiles) {
           // map your API response shape to ProfileData
           const mapped: ProfileData[] = data.profiles.map((p: any) => ({
@@ -64,14 +67,18 @@ const CommunityPage: React.FC = () => {
     [profiles, search, filterLang]
   );
 
-  const handleCardClick = async (username: string) => {
-    try {
-      const conv = await createOrGetConversation(username);
-      if (conv?.id) navigate(`/conversations/${conv.id}`);
-    } catch (err) {
-      console.error("Could not start conversation:", err);
-    }
-  };
+const handleCardClick = async (username: string) => {
+  if (!user) {
+    console.warn("User not loaded yet, cannot start conversation.");
+    return;
+  }
+  try {
+    const conv = await createOrGetConversation(username);
+    if (conv?.id) navigate(`/conversations/${conv.id}`);
+  } catch (err) {
+    console.error("Could not start conversation:", err);
+  }
+};
 
   return (
     <div className="bg-gray-50 min-h-screen py-10">

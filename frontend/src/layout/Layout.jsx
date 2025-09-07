@@ -55,7 +55,7 @@ const Layout = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex  bg-gray-50">
-        <div className="w-full h-[calc(100vh-112px)] bg-white rounded-lg shadow-md p-6 overflow-y-auto">
+        <div className="w-full h-[calc(100vh-112px)] bg-white rounded-lg shadow-md  overflow-y-auto">
           {/* The height dynamically adjusts: Header = 64px, Footer = 48px */}
           <Outlet />
         </div>
