@@ -172,6 +172,7 @@ return (
           onDeleteMessage={handleDeleteMessage}
         />
       </div>
+      
 
       {/* Typing indicator */}
       {isOtherUserTyping && (
