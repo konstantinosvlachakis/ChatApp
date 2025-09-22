@@ -26,6 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
+redis_url = os.environ.get("REDISCLOUD_URL", "redis://localhost:6379")
 
 ALLOWED_HOSTS = [
     "langvoyage-d3781c6fad54.herokuapp.com",
@@ -65,13 +66,10 @@ else:
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [
-                    "redis://default:VDP3D2nqC6lDo4a4SxEODTIrnyQeKO73@redis-16649.c258.us-east-1-4.ec2.redns.redis-cloud.com:16649"
-                ],
+                "hosts": [redis_url],
             },
         },
     }
-
 
 
 # Application definition
