@@ -94,13 +94,13 @@ const ProfilePage = () => {
       {/* Edit Name Modal */}
       {modalNameOpen && (
         <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
-          <h2 className="text-lg font-semibold mb-4">Edit Name</h2>
+          <h2 className="text-lg text-black font-bold mb-4">Edit name</h2>
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full p-2 mb-4 border rounded focus:outline-none focus:ring focus:border-blue-300"
-            placeholder="Enter new Name"
+            className="w-full p-2 mb-4 border rounded focus:outline-none focus:ring text-black focus:border-blue-300"
+            placeholder="Type your new name..."
           />
           <div className="flex justify-end gap-2">
             <button

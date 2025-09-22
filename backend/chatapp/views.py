@@ -167,7 +167,7 @@ def profile_edit_view(request):
                     "username": user.username,
                     "native_language": user.native_language,
                     "profile_image_url": (
-                        user.profile_image_url.url if user.profile_image_url else None
+                        user.profile_image_url or None
                     ),
                 },
             },
