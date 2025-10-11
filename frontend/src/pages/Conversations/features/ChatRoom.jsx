@@ -21,7 +21,7 @@ const ChatRoom = ({ conversation }) => {
     const isProduction = process.env.NODE_ENV === "production";
     const baseUrl = isProduction
       ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
-      : "ws://localhost:8001";
+      : "ws://localhost:8000";
 
     const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
     socket.current = new WebSocket(url);

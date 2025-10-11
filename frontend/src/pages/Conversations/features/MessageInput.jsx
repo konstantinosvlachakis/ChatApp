@@ -9,17 +9,31 @@ const MessageInput = ({ onSendMessage }) => {
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [attachedFile, setAttachedFile] = useState(null);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+
   const emojiPickerRef = useRef(null);
   const fileInputRef = useRef(null);
-  const inputRef = useRef(null); // Reference for the input field
+  const inputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
 
-  // Handle emoji selection
+  // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
     setMessage((prev) => prev + emoji);
-    setShowPicker(false); // Close after selection
+    setShowPicker(false);
   };
 
-  // Handle file attachment
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // ---------------- File Attach ----------------
   const handleFileAttach = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -28,50 +42,74 @@ const MessageInput = ({ onSendMessage }) => {
       const imageUrl = URL.createObjectURL(file);
       setPreviewImage(imageUrl);
       setAttachedFile(file);
+      setAudioBlob(null); // clear audio if new file attached
+    } else if (file.type.startsWith("audio/")) {
+      setAttachedFile(file);
+      setAudioBlob(file);
+      setPreviewImage(null);
     } else {
-      alert("Please select a valid image or video file.");
+      alert("Please select a valid image, video, or audio file.");
     }
-    fileInputRef.current.value = null; // Reset input
+    fileInputRef.current.value = null;
   };
 
-  // Handle message sending
+  // ---------------- Audio Recording ----------------
+  const handleStartRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Audio recording not supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks = [];
+
+      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAttachedFile(blob);
+        setPreviewImage(null); // clear image if recording
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Microphone access error:", err);
+      alert("Unable to access microphone.");
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // ---------------- Send Message ----------------
   const handleSend = () => {
-    if (!message.trim() && !attachedFile) {
+    if (!message.trim() && !attachedFile && !audioBlob) {
       alert("Please enter a message or attach a file.");
       return;
     }
 
     onSendMessage(message, attachedFile, previewImage);
-    setMessage(""); // Clear message input
-    if (previewImage) URL.revokeObjectURL(previewImage); // Cleanup Blob URL
+
+    setMessage("");
     setPreviewImage(null);
     setAttachedFile(null);
+    setAudioBlob(null);
   };
 
-  // Handle Enter key press
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault(); // Prevents new line
+      event.preventDefault();
       handleSend();
     }
   };
-
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(event.target)
-      ) {
-        setShowPicker(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   return (
     <div className="p-4 border-t bg-white flex items-center relative">
@@ -80,14 +118,13 @@ const MessageInput = ({ onSendMessage }) => {
         😊
       </button>
 
-      {/* Emoji Picker */}
       {showPicker && (
         <div ref={emojiPickerRef} className="absolute bottom-16 left-0 z-50">
           <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
         </div>
       )}
 
-      {/* Message Input Area */}
+      {/* Message Input */}
       <div className="relative flex w-1/2 items-center">
         <div className="flex items-center w-full p-2 border border-gray-300 rounded-lg">
           {previewImage && (
@@ -99,7 +136,7 @@ const MessageInput = ({ onSendMessage }) => {
               />
               <button
                 onClick={() => {
-                  if (previewImage) URL.revokeObjectURL(previewImage);
+                  URL.revokeObjectURL(previewImage);
                   setPreviewImage(null);
                   setAttachedFile(null);
                 }}
@@ -109,18 +146,36 @@ const MessageInput = ({ onSendMessage }) => {
               </button>
             </div>
           )}
+
+          {audioBlob && (
+            <div className="flex items-center space-x-2">
+              <audio controls src={URL.createObjectURL(audioBlob)} className="h-10" />
+              <button
+                onClick={() => {
+                  setAudioBlob(null);
+                  setAttachedFile(null);
+                }}
+                className="text-red-500 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <input
             type="text"
             ref={inputRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown} // Handles Enter key
+            onKeyDown={handleKeyDown}
             placeholder="Type your message..."
             className="w-full outline-none"
           />
         </div>
+
+        {/* File Attach */}
         <AttachFileIcon
-          className="absolute right-10 text-gray-500 cursor-pointer"
+          className="absolute right-14 text-gray-500 cursor-pointer"
           onClick={() => fileInputRef.current.click()}
         />
         <input
@@ -129,7 +184,12 @@ const MessageInput = ({ onSendMessage }) => {
           style={{ display: "none" }}
           onChange={handleFileAttach}
         />
-        <SettingsVoiceIcon className="absolute right-2 text-gray-500 cursor-pointer" />
+
+        {/* Voice Recording */}
+        <SettingsVoiceIcon
+          className={`absolute right-2 cursor-pointer ${isRecording ? "text-red-500" : "text-gray-500"}`}
+          onClick={isRecording ? handleStopRecording : handleStartRecording}
+        />
       </div>
 
       {/* Send Button */}
