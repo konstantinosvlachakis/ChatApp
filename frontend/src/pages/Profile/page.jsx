@@ -85,11 +85,7 @@ const ProfilePage = () => {
     }
   };
 
-  // ---- Logout ----
-  const handleSignOut = () => {
-    sessionStorage.removeItem("accessToken");
-    navigate("/login");
-  };
+
 
   if (loading) return <div className="p-8 text-gray-500">Loading profile...</div>;
   if (error) return <div className="p-8 text-red-500">{error}</div>;
@@ -120,12 +116,6 @@ const ProfilePage = () => {
             onClick={() => setModalNameOpen(true)}
           >
             Edit Profile
-          </button>
-          <button
-            className="absolute top-6 right-6 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-full transition-transform transform hover:scale-105"
-            onClick={handleSignOut}
-          >
-            Sign Out
           </button>
         </div>
 
