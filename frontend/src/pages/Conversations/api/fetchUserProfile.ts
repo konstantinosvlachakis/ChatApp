@@ -1,40 +1,27 @@
 // api/userApi.ts
 import { User } from "../../Profile/types";
-import { NavigateFunction } from "react-router-dom";
 import { BASE_URL } from "../../../constants/constants";
 
-export const fetchUserProfile = async (
-  setUser: React.Dispatch<React.SetStateAction<User | null>>,
-  setNewDate: React.Dispatch<React.SetStateAction<string>>,
-  setError: React.Dispatch<React.SetStateAction<string | null>>,
-  navigate: NavigateFunction // Pass navigate as an argument
-): Promise<void> => {
-  try {
-    const token = sessionStorage.getItem("accessToken");
-    const response = await fetch(BASE_URL + "/api/profile/", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      credentials: "include",
-    });
+export const fetchUserProfile = async (): Promise<User> => {
+  const token = sessionStorage.getItem("accessToken");
+  if (!token) throw new Error("No access token found");
 
-    if (response.ok) {
-      const userData: User = await response.json();
-      setUser(userData);
-      setNewDate(userData.newDate);
-    } else if (response.status === 401) {
-      // If unauthorized, clear the token and navigate to login
-      sessionStorage.removeItem("accessToken");
-      navigate("/login");
-    } else {
-      const errorData = await response.json();
-      setError(errorData.error);
-      console.error("Error fetching profile:", errorData.error);
-    }
-  } catch (error) {
-    setError((error as Error).message);
-    console.error("Error fetching profile:", error);
+  const response = await fetch(BASE_URL + "/api/profile/", {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+  });
+
+  if (response.ok) {
+    return response.json();
+  } else if (response.status === 401) {
+    sessionStorage.removeItem("accessToken");
+    throw new Error("Unauthorized");
+  } else {
+    const errorData = await response.json();
+    throw new Error(errorData.error || "Failed to fetch profile");
   }
 };

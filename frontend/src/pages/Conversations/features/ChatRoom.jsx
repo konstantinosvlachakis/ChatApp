@@ -12,72 +12,75 @@ const ChatRoom = ({ conversation }) => {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const { user } = useUser();
+  const { user, loading } = useUser();
 
 
-  useEffect(() => {
-    if (!conversation?.id) return;
+useEffect(() => {
+  if (!conversation?.id || !user) return;
 
-    const isProduction = process.env.NODE_ENV === "production";
-    const baseUrl = isProduction
-      ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
-      : "ws://localhost:8000";
+  const isProduction = process.env.NODE_ENV === "production";
+  const baseUrl = isProduction
+    ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
+    : "ws://localhost:8000";
 
-    const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
-    socket.current = new WebSocket(url);
+  const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
+  socket.current = new WebSocket(url);
 
-    socket.current.onopen = () =>
-      console.log("WebSocket connection established.");
+  socket.current.onopen = () => console.log("WebSocket connected.");
 
-    socket.current.onmessage = (e) => {
+  socket.current.onmessage = (e) => {
+    try {
       const data = JSON.parse(e.data);
 
-      if (data.type === "chat" && data.senderId !== user.user_id) {
+      if (data.type === "chat") {
+        // A new message arrived
         setMessages((prev) => [
           ...prev,
           {
             id: data.id,
             text: data.message,
-            sender: { username: data.sender },
+            sender: { id: data.senderId, username: data.sender },
             timestamp: new Date().toISOString(),
           },
         ]);
-      } else if (data.type === "deleteMessage") {
-        setMessages((prev) => prev.filter((msg) => msg.id !== data.messageId));
-      } else if (data.type === "user_typing" && data.sender !== user.username) {
+      }
+
+      if (data.type === "deleteMessage") {
+        // Another user deleted a message
+        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+      }
+
+      if (data.type === "user_typing") {
         setIsOtherUserTyping(true);
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(
           () => setIsOtherUserTyping(false),
           3000
         );
-      } else if (
-        data.type === "user_stopped_typing" &&
-        data.sender !== user.username
-      ) {
+      }
+
+      if (data.type === "user_stopped_typing") {
         setIsOtherUserTyping(false);
       }
-    };
+    } catch (err) {
+      console.error("Invalid WS message:", e.data);
+    }
+  };
 
-    socket.current.onerror = (event) => {
-      console.error("WebSocket error:", event);
-      if (socket.current) {
-        console.log("WebSocket readyState:", socket.current.readyState);
-        console.log("WebSocket URL:", socket.current.url);
-      }
-    };
+  return () => {
+    socket.current?.close();
+    clearTimeout(typingTimeoutRef.current);
+  };
+}, [conversation?.id, user]);
 
-    socket.current.onclose = () => console.log("WebSocket connection closed.");
 
-    return () => {
-      socket.current?.close();
-      clearTimeout(typingTimeoutRef.current);
-    };
-  }, [conversation.id]);
+if (loading) {
+  return <div className="p-4 text-gray-500">Loading user info...</div>;
+}
+if (!user) {
+  return <div className="p-4 text-red-500">Failed to load user.</div>;
+}
 
-  if (!user) {
-    return <div className="p-4 text-gray-500">Loading user info...</div>;
-  }
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {

@@ -1,62 +1,53 @@
-import React, {
-  createContext,
-  useState,
-  useContext,
-  useEffect,
-  ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 
 interface UserContextType {
   user: User | null;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  loading: boolean;
   error: string | null;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   refreshUserProfile: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-export interface UserProviderProps {
-  children: ReactNode;
-}
-
-export const UserProvider = ({ children }: UserProviderProps) => {
+export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refreshUserProfile = async () => {
+    setLoading(true);
     try {
-      const token = sessionStorage.getItem("accessToken");
-      if (!token) return;
-      await fetchUserProfile(
-        setUser,
-        () => {},
-        setError,
-        () => {}
-      );
+      const userData = await fetchUserProfile();
+      setUser(userData);
+      setError(null);
     } catch (err) {
+      setUser(null);
       setError((err as Error).message);
-      console.error("Error refreshing user profile:", err);
+      if ((err as Error).message === "Unauthorized") {
+        window.location.href = "/login";
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Automatically fetch user profile when the provider is mounted
   useEffect(() => {
     refreshUserProfile();
   }, []);
 
   return (
     <UserContext.Provider
-      value={{ user, setUser, error, setError, refreshUserProfile }}
+      value={{ user, setUser, loading, error, refreshUserProfile }}
     >
       {children}
     </UserContext.Provider>
   );
 };
 
-export const useUser = (): UserContextType => {
+export const useUser = () => {
   const context = useContext(UserContext);
   if (!context) {
     throw new Error("useUser must be used within a UserProvider");
