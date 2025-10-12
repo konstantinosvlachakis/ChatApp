@@ -14,79 +14,87 @@ const ChatRoom = ({ conversation }) => {
   const typingTimeoutRef = useRef(null);
   const { user, loading } = useUser();
 
+  // ------------------- WebSocket Setup -------------------
+  useEffect(() => {
+    if (!conversation?.id || !user) return;
 
-useEffect(() => {
-  if (!conversation?.id || !user) return;
+    const isProduction = process.env.NODE_ENV === "production";
+    const baseUrl = isProduction
+      ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
+      : "ws://localhost:8000";
 
-  const isProduction = process.env.NODE_ENV === "production";
-  const baseUrl = isProduction
-    ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
-    : "ws://localhost:8000";
+    const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
+    socket.current = new WebSocket(url);
 
-  const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
-  socket.current = new WebSocket(url);
+    socket.current.onopen = () => console.log("✅ WebSocket connected.");
 
-  socket.current.onopen = () => console.log("WebSocket connected.");
+    socket.current.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
 
-  socket.current.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
+        switch (data.type) {
+          case "chat":
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: data.id,
+                text: data.message,
+                sender: { id: data.senderId, username: data.sender },
+                attachmentUrl: data.attachmentUrl || null,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+            break;
 
-      if (data.type === "chat") {
-        // A new message arrived
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: data.id,
-            text: data.message,
-            sender: { id: data.senderId, username: data.sender },
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+          case "deleteMessage":
+            setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+            break;
+
+          case "user_typing":
+            setIsOtherUserTyping(true);
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(
+              () => setIsOtherUserTyping(false),
+              3000
+            );
+            break;
+
+          case "user_stopped_typing":
+            setIsOtherUserTyping(false);
+            break;
+
+          default:
+            console.warn("Unknown message type:", data.type);
+        }
+      } catch (err) {
+        console.error("Invalid WebSocket message:", e.data);
       }
+    };
 
-      if (data.type === "deleteMessage") {
-        // Another user deleted a message
-        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
-      }
+    socket.current.onclose = () =>
+      console.log("❌ WebSocket disconnected for conversation:", conversation.id);
 
-      if (data.type === "user_typing") {
-        setIsOtherUserTyping(true);
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(
-          () => setIsOtherUserTyping(false),
-          3000
-        );
-      }
+    return () => {
+      socket.current?.close();
+      clearTimeout(typingTimeoutRef.current);
+    };
+  }, [conversation?.id, user]);
 
-      if (data.type === "user_stopped_typing") {
-        setIsOtherUserTyping(false);
-      }
-    } catch (err) {
-      console.error("Invalid WS message:", e.data);
-    }
-  };
+  // ------------------- Loading State -------------------
+  if (loading) {
+    return <div className="p-4 text-gray-500">Loading user info...</div>;
+  }
+  if (!user) {
+    return <div className="p-4 text-red-500">Failed to load user.</div>;
+  }
 
-  return () => {
-    socket.current?.close();
-    clearTimeout(typingTimeoutRef.current);
-  };
-}, [conversation?.id, user]);
-
-
-if (loading) {
-  return <div className="p-4 text-gray-500">Loading user info...</div>;
-}
-if (!user) {
-  return <div className="p-4 text-red-500">Failed to load user.</div>;
-}
-
-
+  // ------------------- Send Message -------------------
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
       console.error("Cannot send message: user is undefined.");
       return;
     }
+
     if (!newMessage.trim() && !attachedFile) return;
 
     const formData = new FormData();
@@ -116,6 +124,9 @@ if (!user) {
       );
 
       const savedMessage = response.data;
+      console.log("Saved message:", response.data);
+
+      // Broadcast the new message to others
       if (socket.current && socket.current.readyState === WebSocket.OPEN) {
         socket.current.send(
           JSON.stringify({
@@ -124,6 +135,10 @@ if (!user) {
             message: savedMessage.text,
             sender: user.username,
             senderId: user.user_id,
+            attachmentUrl:
+              savedMessage.attachment_url ||
+              savedMessage.attachmentUrl ||
+              null, // ensure the URL for audio/image/video is sent
           })
         );
       } else {
@@ -135,6 +150,7 @@ if (!user) {
     }
   };
 
+  // ------------------- Typing Indicators -------------------
   const handleTyping = () => {
     socket.current?.send(
       JSON.stringify({ type: "user_typing", sender: user.username })
@@ -147,6 +163,7 @@ if (!user) {
     );
   };
 
+  // ------------------- Delete Message -------------------
   const handleDeleteMessage = async (messageId) => {
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
@@ -160,14 +177,15 @@ if (!user) {
     }
   };
 
-return (
-  <div className="flex flex-col h-[calc(100vh-128px)] bg-gray-50">
+  // ------------------- Render -------------------
+  return (
+    <div className="flex flex-col h-[calc(100vh-128px)] bg-gray-50">
       {/* Header */}
       <div className="flex-shrink-0">
         <ChatHeader conversation={conversation} />
       </div>
 
-      {/* Conversation area */}
+      {/* Conversation */}
       <div className="flex-1 overflow-y-auto px-4 py-2">
         <Conversation
           messages={messages}
@@ -175,7 +193,6 @@ return (
           onDeleteMessage={handleDeleteMessage}
         />
       </div>
-      
 
       {/* Typing indicator */}
       {isOtherUserTyping && (

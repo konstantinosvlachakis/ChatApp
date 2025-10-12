@@ -96,13 +96,28 @@ const MessageInput = ({ onSendMessage }) => {
       return;
     }
 
-    onSendMessage(message, attachedFile, previewImage);
+    const formData = new FormData();
+    if (message.trim()) formData.append("text", message);
 
+    if (attachedFile) {
+      // If it's an audio blob, give it a filename and type
+      if (attachedFile instanceof Blob && attachedFile.type.startsWith("audio/")) {
+        const file = new File([attachedFile], `recording_${Date.now()}.webm`, {
+          type: attachedFile.type || "audio/webm",
+        });
+        formData.append("attachment", file);
+      } else {
+        formData.append("attachment", attachedFile);
+      }
+    }
+
+    onSendMessage(message, attachedFile, previewImage);
     setMessage("");
     setPreviewImage(null);
     setAttachedFile(null);
     setAudioBlob(null);
   };
+
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
