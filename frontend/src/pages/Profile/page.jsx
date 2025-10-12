@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ModalComponent from "../../components/Modals/Modal";
-import DragDropImage from "../../components/Images/DragDropImage";
-import { useEditProfile } from "./api/editProfile";
 import { BASE_URL_IMG } from "../../constants/constants";
+import { useEditProfile } from "./api/editProfile";
+import ModalComponent from "../../components/Modals/Modal";
+import { getUserLocation } from "./utils/getUserLocation";
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
@@ -14,20 +14,15 @@ const ProfilePage = () => {
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
 
-  // Simplified fetch (no external helpers)
+  // ---- Fetch User ----
   useEffect(() => {
     const fetchUser = async () => {
       try {
         const token = sessionStorage.getItem("accessToken");
-        if (!token) {
-          navigate("/login");
-          return;
-        }
+        if (!token) return navigate("/login");
 
         const res = await fetch(`${BASE_URL_IMG}/api/profile/`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         if (res.status === 401) {
@@ -36,11 +31,11 @@ const ProfilePage = () => {
           return;
         }
 
-        if (!res.ok) throw new Error("Failed to fetch user profile");
         const data = await res.json();
         setUser(data);
       } catch (err) {
-        setError(err.message);
+        console.error(err);
+        setError("Failed to load profile.");
       } finally {
         setLoading(false);
       }
@@ -49,6 +44,37 @@ const ProfilePage = () => {
     fetchUser();
   }, [navigate]);
 
+  // ---- Detect and Save User Location ----
+  useEffect(() => {
+    const detectLocation = async () => {
+      if (!user || user.location) return; // skip if user not loaded or already has location
+
+      try {
+        const { city, country } = await getUserLocation();
+        const locationString = `${city}, ${country}`;
+        console.log(`Detected location: ${locationString}`);
+
+        // Send to backend
+        await fetch(`${BASE_URL_IMG}/api/profile/`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
+          },
+          body: JSON.stringify({ location: locationString }),
+        });
+
+        // Update UI immediately
+        setUser((prev) => (prev ? { ...prev, location: locationString } : prev));
+      } catch (err) {
+        console.warn("Could not get location:", err);
+      }
+    };
+
+    detectLocation();
+  }, [user]);
+
+  // ---- Edit Name ----
   const handleSaveName = async () => {
     try {
       await editProfileMutation.mutateAsync({ username: newName });
@@ -59,6 +85,7 @@ const ProfilePage = () => {
     }
   };
 
+  // ---- Logout ----
   const handleSignOut = () => {
     sessionStorage.removeItem("accessToken");
     navigate("/login");
@@ -75,50 +102,116 @@ const ProfilePage = () => {
         : `${BASE_URL_IMG}${user.profile_image_url}`
       : "/default-avatar.png";
 
-  const profileFields = [
-    { label: "Name", value: user.username || "John Doe" },
-    { label: "Date of Birth", value: user.date_of_birth || "Not provided" },
-    { label: "Location", value: user.location || "Not specified" },
-    { label: "Native Language", value: user.native_language || "English" },
-    { label: "Languages Practicing", value: user.languages || "Not provided" },
-    { label: "Learning Goal", value: user.learningGoal || "Not specified" },
-    { label: "Date Joined", value: user.dateJoined || "Unknown" },
-  ];
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-pink-50 p-4">
-      <div className="relative w-full max-w-3xl p-10 bg-white rounded-3xl shadow-2xl flex flex-col items-center gap-6">
-        {/* Sign Out */}
-        <button
-          onClick={handleSignOut}
-          className="absolute top-6 right-6 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-full transition-transform hover:scale-105"
-        >
-          Sign Out
-        </button>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow p-8 flex flex-col items-center gap-4">
+          <img
+            src={imageUrl}
+            alt="Profile"
+            className="w-32 h-32 rounded-full object-cover border-4 border-blue-300"
+          />
+          <h1 className="text-2xl font-bold text-gray-800">
+            {user.username}, {user.age}
+          </h1>
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition"
+            onClick={() => setModalNameOpen(true)}
+          >
+            Edit Profile
+          </button>
+          <button
+            className="absolute top-6 right-6 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-full transition-transform transform hover:scale-105"
+            onClick={handleSignOut}
+          >
+            Sign Out
+          </button>
+        </div>
 
-        {/* Profile Image */}
-        <DragDropImage onImageDrop={() => {}} initialImage={imageUrl} />
-
-        {/* Edit Button */}
-        <button
-          onClick={() => setModalNameOpen(true)}
-          className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-full shadow hover:scale-105 transition-transform"
-        >
-          Edit Profile
-        </button>
-
-        {/* Profile Info */}
-        <div className="w-full flex flex-col gap-6">
-          {profileFields.map(({ label, value }, i) => (
-            <div key={i} className="flex flex-col">
-              <h2 className="text-lg font-semibold text-gray-700">{label}:</h2>
-              <p className="text-gray-900">{value}</p>
+        {/* Info Sections */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+          {/* Personal Info */}
+          <div className="bg-white rounded-2xl shadow p-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <span role="img" aria-label="user">
+                👤
+              </span>
+              Personal Information
+            </h2>
+            <div className="space-y-3 text-gray-700">
+              <p>
+                <strong>Name:</strong> {user.username || "N/A"}
+              </p>
+              <p>
+                <strong>Age:</strong> {user.age || "Not provided"}
+              </p>
+              <p>
+                <strong>Location:</strong>{" "}
+                {user.location ? (
+                  <span className="text-gray-800">{user.location}</span>
+                ) : (
+                  <span className="text-gray-500">Detecting...</span>
+                )}
+              </p>
+              <p>
+                <strong>Bio:</strong>{" "}
+                {user.bio ||
+                  "Passionate about learning new languages and connecting with people from different cultures."}
+              </p>
             </div>
-          ))}
+          </div>
+
+          {/* Languages */}
+          <div className="bg-white rounded-2xl shadow p-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <span role="img" aria-label="globe">
+                🌐
+              </span>
+              Languages
+            </h2>
+            <div className="space-y-3 text-gray-700">
+              <p>
+                <strong>Native Language:</strong>{" "}
+                <span className="inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
+                  {user.native_language || "N/A"}
+                </span>
+              </p>
+              <p>
+                <strong>Languages Practicing:</strong>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(user.languages || ["English", "Spanish", "French"]).map(
+                  (lang, i) => (
+                    <span
+                      key={i}
+                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
+                    >
+                      {lang}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Learning Goals */}
+        <div className="bg-white rounded-2xl shadow p-6 mt-8">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span role="img" aria-label="target">
+              🎯
+            </span>
+            Learning Goals
+          </h2>
+          <p className="text-gray-700">
+            {user.learningGoal ||
+              "My goal is to become fluent and confident in new languages for both travel and communication."}
+          </p>
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Edit Name Modal */}
       {modalNameOpen && (
         <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
           <h2 className="text-lg text-black font-bold mb-4">Edit name</h2>
@@ -126,19 +219,19 @@ const ProfilePage = () => {
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="w-full p-2 mb-4 border rounded text-black focus:ring focus:border-blue-300"
+            className="w-full p-2 mb-4 border rounded focus:outline-none text-black focus:border-blue-300"
             placeholder="Type your new name..."
           />
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => setModalNameOpen(false)}
               className="bg-gray-300 text-gray-800 py-1 px-4 rounded hover:bg-gray-400 transition"
+              onClick={() => setModalNameOpen(false)}
             >
               Cancel
             </button>
             <button
-              onClick={handleSaveName}
               className="bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 transition"
+              onClick={handleSaveName}
             >
               Save
             </button>

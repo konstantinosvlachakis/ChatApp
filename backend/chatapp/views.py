@@ -94,13 +94,14 @@ def register_view(request):
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     user = request.user
     profile_data = {
         "user_id": user.id,
         "username": user.username,
+        "age": user.get_age(),
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": (
             settings.MEDIA_URL + user.profile_image_url
