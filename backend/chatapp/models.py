@@ -29,6 +29,7 @@ class Profile(AbstractBaseUser):
     username = models.CharField(max_length=30, unique=True, db_index=True)
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
+    age = models.PositiveIntegerField(null=False, blank=False)
     native_language = models.CharField(max_length=255, blank=False)
     profile_image_url = models.CharField(
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
@@ -49,6 +50,19 @@ class Profile(AbstractBaseUser):
         if self.profile_image_url.startswith("profile_images/"):
             return f"{settings.MEDIA_URL}{self.profile_image_url}"
         return self.profile_image_url
+    
+    def get_age(self):
+        today = timezone.now().date()
+        if self.date_of_birth:
+            return (
+                today.year
+                - self.date_of_birth.year
+                - (
+                    (today.month, today.day)
+                    < (self.date_of_birth.month, self.date_of_birth.day)
+                )
+            )
+        return None
 
 
 class Token(models.Model):
