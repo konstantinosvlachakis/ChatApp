@@ -29,29 +29,20 @@ class Profile(AbstractBaseUser):
     username = models.CharField(max_length=30, unique=True, db_index=True)
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    age = models.PositiveIntegerField(null=False, blank=False)
     native_language = models.CharField(max_length=255, blank=False)
     profile_image_url = models.CharField(
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )
     password = models.CharField(max_length=128, blank=True, null=True)
 
-    # Manager for the Profile model
     objects = ProfileManager()
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
 
-    def __str__(self):
-        return self.email
-
-    def get_profile_image_url(self):
-        # Smartly handle it
-        if self.profile_image_url.startswith("profile_images/"):
-            return f"{settings.MEDIA_URL}{self.profile_image_url}"
-        return self.profile_image_url
-    
-    def get_age(self):
+    @property
+    def age(self):
+        """Dynamically compute age from date_of_birth."""
         today = timezone.now().date()
         if self.date_of_birth:
             return (
@@ -63,6 +54,7 @@ class Profile(AbstractBaseUser):
                 )
             )
         return None
+
 
 
 class Token(models.Model):

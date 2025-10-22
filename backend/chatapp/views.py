@@ -101,7 +101,7 @@ def profile_view(request):
     profile_data = {
         "user_id": user.id,
         "username": user.username,
-        "age": user.get_age(),
+        "age": user.age,
         "native_language": user.native_language,  # Include the native language
         "profile_image_url": (
             settings.MEDIA_URL + user.profile_image_url
