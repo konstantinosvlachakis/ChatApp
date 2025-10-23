@@ -2,11 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProfileCard from "../../components/Cards/ProfileCard";
-import { getProfileData } from "./api/getProfileData";
 import { createOrGetConversation } from "./api/conversation";
 import { useUser } from "../../context/UserContext";
+import profilesData from "../../datasets/dummyProfiles.json" // optional assert if needed
 
-interface ProfileData {
+// right below your interfaces
+interface RawProfile {
   username: string;
   nativeLanguage: string;
   learningLanguage?: string;
@@ -14,46 +15,49 @@ interface ProfileData {
   profileImage?: string;
 }
 
+type ProfilesFile = RawProfile[] | { profiles: RawProfile[] };
+
+
+
 const CommunityPage: React.FC = () => {
-  const [profiles, setProfiles] = useState<ProfileData[]>([]);
+  const [profiles, setProfiles] = useState<RawProfile[]>([]);
   const [search, setSearch] = useState("");
-  const [filterLang, setFilterLang] = useState(""); // native-language filter
+  const [filterLang, setFilterLang] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const { user } = useUser(); // import from your context
+  const { user } = useUser();
 
+  // Load local dummy data instead of calling API
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await getProfileData(navigate);
-        console.log("Fetched profiles:", data);
-        if (data?.profiles) {
-          // map your API response shape to ProfileData
-          const mapped: ProfileData[] = data.profiles.map((p: any) => ({
-            username: p.username,
-            nativeLanguage: p.native_language,
-            learningLanguage: p.learning_language,
-            bio: p.bio,
-            profileImage: p.profile_image_url, // or whatever key you expose
-          }));
-          setProfiles(mapped);
-        }
-      } catch (err) {
-        console.error("Failed to load profiles:", err);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [navigate]);
+    setLoading(true);
+    try {
+      // The dummy JSON can either be an array or wrapped in { profiles: [...] }
+      const data = profilesData as RawProfile[];
 
-  // derive unique native languages for the filter dropdown
+
+      const mapped: RawProfile[] = data.map((p: any) => ({
+        username: p.username,
+        nativeLanguage: p.nativeLanguage,
+        learningLanguage: p.learningLanguage,
+        bio: p.bio,
+        profileImage: p.profileImage,
+      }));
+
+      setProfiles(mapped);
+    } catch (err) {
+      console.error("Error loading dummy profiles:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Derive unique languages
   const languageOptions = useMemo(() => {
     const langs = Array.from(new Set(profiles.map((p) => p.nativeLanguage)));
     return ["All", ...langs];
   }, [profiles]);
 
-  // apply search + filter
+  // Apply search + filter
   const filteredProfiles = useMemo(
     () =>
       profiles.filter((p) => {
@@ -67,18 +71,18 @@ const CommunityPage: React.FC = () => {
     [profiles, search, filterLang]
   );
 
-const handleCardClick = async (username: string) => {
-  if (!user) {
-    console.warn("User not loaded yet, cannot start conversation.");
-    return;
-  }
-  try {
-    const conv = await createOrGetConversation(username);
-    if (conv?.id) navigate(`/conversations/${conv.id}`);
-  } catch (err) {
-    console.error("Could not start conversation:", err);
-  }
-};
+  const handleCardClick = async (username: string) => {
+    if (!user) {
+      console.warn("User not loaded yet, cannot start conversation.");
+      return;
+    }
+    try {
+      const conv = await createOrGetConversation(username);
+      if (conv?.id) navigate(`/conversations/${conv.id}`);
+    } catch (err) {
+      console.error("Could not start conversation:", err);
+    }
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen py-10">
