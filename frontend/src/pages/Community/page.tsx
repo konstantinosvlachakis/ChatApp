@@ -15,10 +15,6 @@ interface RawProfile {
   profileImage?: string;
 }
 
-type ProfilesFile = RawProfile[] | { profiles: RawProfile[] };
-
-
-
 const CommunityPage: React.FC = () => {
   const [profiles, setProfiles] = useState<RawProfile[]>([]);
   const [search, setSearch] = useState("");

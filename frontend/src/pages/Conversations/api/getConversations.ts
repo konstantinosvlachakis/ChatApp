@@ -4,11 +4,6 @@ import { BASE_URL } from "../../../constants/constants";
 import { ExtractFnReturnType, QueryConfig } from "../../../libs/react-query";
 import { useQuery } from 'react-query';
 
-type GetConversationsResponse = {
-  conversations: Conversation[];
-};
-
-
 export const getConversations = async (): Promise<Conversation[]> => {
   const token = sessionStorage.getItem("accessToken");
 

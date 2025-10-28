@@ -157,12 +157,6 @@ const ChatRoom = ({ conversation }) => {
     );
   };
 
-  const handleStopTyping = () => {
-    socket.current?.send(
-      JSON.stringify({ type: "user_stopped_typing", sender: user.username })
-    );
-  };
-
   // ------------------- Delete Message -------------------
   const handleDeleteMessage = async (messageId) => {
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
