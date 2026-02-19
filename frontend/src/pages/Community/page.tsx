@@ -5,6 +5,7 @@ import ProfileCard from "../../components/Cards/ProfileCard";
 import { createOrGetConversation } from "./api/conversation";
 import { useUser } from "../../context/UserContext";
 import profilesData from "../../datasets/dummyProfiles.json" // optional assert if needed
+import { BASE_URL } from "../../constants/constants";
 
 // right below your interfaces
 interface RawProfile {
@@ -25,26 +26,65 @@ const CommunityPage: React.FC = () => {
 
   // Load local dummy data instead of calling API
   useEffect(() => {
-    setLoading(true);
-    try {
-      // The dummy JSON can either be an array or wrapped in { profiles: [...] }
-      const data = profilesData as RawProfile[];
+    const loadProfiles = async () => {
+      setLoading(true);
+      try {
+        const data = profilesData as RawProfile[];
+        const dummyProfiles: RawProfile[] = data.map((p: any) => ({
+          username: p.username,
+          nativeLanguage: p.nativeLanguage,
+          learningLanguage: p.learningLanguage,
+          bio: p.bio,
+          profileImage: p.profileImage,
+        }));
 
+        const token = sessionStorage.getItem("accessToken");
+        let registeredProfiles: RawProfile[] = [];
 
-      const mapped: RawProfile[] = data.map((p: any) => ({
-        username: p.username,
-        nativeLanguage: p.nativeLanguage,
-        learningLanguage: p.learningLanguage,
-        bio: p.bio,
-        profileImage: p.profileImage,
-      }));
+        if (token) {
+          const response = await fetch(`${BASE_URL}/api/profile/data`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: "include",
+          });
 
-      setProfiles(mapped);
-    } catch (err) {
-      console.error("Error loading dummy profiles:", err);
-    } finally {
-      setLoading(false);
-    }
+          if (response.ok) {
+            const payload = await response.json();
+            registeredProfiles = (payload?.profiles || []).map((p: any) => ({
+              username: p.username,
+              nativeLanguage: p.native_language || "Unknown",
+              learningLanguage: p.learning_language || "",
+              bio: p.bio || "Registered user",
+              profileImage: p.profile_image_url
+                ? p.profile_image_url.startsWith("http")
+                  ? p.profile_image_url
+                  : p.profile_image_url.startsWith("/media/")
+                    ? `${BASE_URL}${p.profile_image_url}`
+                    : `${BASE_URL}/media/${p.profile_image_url}`
+                : undefined,
+            }));
+          } else {
+            console.error("Failed to fetch registered profiles:", response.status);
+          }
+        }
+
+        const mergedByUsername = new Map<string, RawProfile>();
+        [...dummyProfiles, ...registeredProfiles].forEach((profile) => {
+          mergedByUsername.set(profile.username, profile);
+        });
+
+        setProfiles(Array.from(mergedByUsername.values()));
+      } catch (err) {
+        console.error("Error loading profiles:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfiles();
   }, []);
 
   // Derive unique languages

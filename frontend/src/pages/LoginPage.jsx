@@ -7,6 +7,7 @@ import { BASE_URL } from "../constants/constants";
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub, FaApple } from "react-icons/fa";
+import { useUser } from "../context/UserContext";
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
@@ -15,6 +16,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const { refreshUserProfile } = useUser();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -30,6 +32,8 @@ const LoginPage = () => {
       const { access, refresh } = response.data;
       sessionStorage.setItem("accessToken", access);
       sessionStorage.setItem("refreshToken", refresh);
+
+      await refreshUserProfile();
 
       navigate("/profile");
     } catch (error) {

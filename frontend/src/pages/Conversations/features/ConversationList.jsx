@@ -70,7 +70,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
     <div className="">
       {conversations.map((conversation) => {
         const otherUser =
-          conversation.sender?.username !== user?.username
+          conversation.sender?.username === user?.username
             ? conversation.receiver
             : conversation.sender;
 

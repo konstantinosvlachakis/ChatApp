@@ -26,7 +26,7 @@ const ChatRoom = ({ conversation }) => {
     const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
     socket.current = new WebSocket(url);
 
-    socket.current.onopen = () => console.log("✅ WebSocket connected.");
+    socket.current.onopen = () => console.log("WebSocket connected.");
 
     socket.current.onmessage = (e) => {
       try {
@@ -72,7 +72,7 @@ const ChatRoom = ({ conversation }) => {
     };
 
     socket.current.onclose = () =>
-      console.log("❌ WebSocket disconnected for conversation:", conversation.id);
+      console.log("WebSocket disconnected for conversation:", conversation.id);
 
     return () => {
       socket.current?.close();

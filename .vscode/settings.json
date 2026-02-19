@@ -1,17 +1,11 @@
 {
+  "python.defaultInterpreterPath": "/Users/dinos/Desktop/Envs/chatapp311/bin/python",
   "python.terminal.activateEnvInCurrentTerminal": true,
-  "python.defaultInterpreterPath": "/Users/NtinosVlachakis/Desktop/KV/Envs/chatApp/Scripts/python.exe",
-  "terminal.integrated.profiles.windows": {
-    "PowerShell": {
-      "source": "PowerShell",
-      "icon": "terminal-powershell",
-      "args": [
-        "-NoExit",
-        "-Command",
-        "& { . 'C:\\Users\\NtinosVlachakis\\Desktop\\KV\\Envs\\chatApp\\Scripts\\Activate.ps1' }"
-      ]
+  "terminal.integrated.profiles.osx": {
+    "zsh (venv)": {
+      "path": "/bin/zsh",
+      "args": ["-c", "source /Users/dinos/Desktop/Envs/chatapp311/bin/activate && exec zsh"]
     }
   },
-  "terminal.integrated.defaultProfile.windows": "PowerShell",
-  "editor.formatOnSave": false
+  "terminal.integrated.defaultProfile.osx": "zsh (venv)"
 }
