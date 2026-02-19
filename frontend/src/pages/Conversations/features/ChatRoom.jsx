@@ -12,7 +12,18 @@ const ChatRoom = ({ conversation }) => {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const { user, loading } = useUser();
+
+  useEffect(() => {
+    setMessages(conversation?.messages || []);
+  }, [conversation?.id, conversation?.messages]);
+
+  useEffect(() => {
+    if (!messagesContainerRef.current) return;
+    messagesContainerRef.current.scrollTop =
+      messagesContainerRef.current.scrollHeight;
+  }, [messages, conversation?.id]);
 
   // ------------------- WebSocket Setup -------------------
   useEffect(() => {
@@ -180,7 +191,10 @@ const ChatRoom = ({ conversation }) => {
       </div>
 
       {/* Conversation */}
-      <div className="flex-1 overflow-y-auto px-4 py-2">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-2"
+      >
         <Conversation
           messages={messages}
           userId={user.user_id}

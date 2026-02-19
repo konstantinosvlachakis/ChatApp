@@ -1,16 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 
 const Conversation = ({ messages, userId, onDeleteMessage }) => {
   const [dropdownIndex, setDropdownIndex] = useState(null);
-  const messagesEndRef = useRef(null);
 
   const toggleDropdown = (index) => {
     setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
   };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // Normalize any relative or local URLs
   const normalizeUrl = (url) => {
@@ -26,7 +21,7 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
     url.includes("/media/audio/");
 
   return (
-    <div className="flex-1 p-4 bg-gray-50 flex flex-col overflow-y-auto scroll-container">
+    <div className="p-4 bg-gray-50 flex flex-col">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           const rawUrl =
@@ -119,8 +114,6 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
       ) : (
         <div className="text-gray-500">No messages yet!</div>
       )}
-
-      <div ref={messagesEndRef}></div>
     </div>
   );
 };
