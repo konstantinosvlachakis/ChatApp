@@ -60,6 +60,16 @@ const Layout = () => {
               >
                 Profile
               </Link>
+              <Link
+                to="/settings"
+                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                  location.pathname === "/settings"
+                    ? "bg-white text-blue-600 shadow"
+                    : "hover:bg-blue-700 hover:text-white"
+                }`}
+              >
+                Settings
+              </Link>
             </div>
           </div>
 
@@ -83,10 +93,7 @@ const Layout = () => {
 
       {/* Footer */}
       <footer className="bg-gray-800 text-gray-400 text-center py-4 text-sm">
-        &copy; 2025 LangVoyage. All rights reserved.{" "}
-        <Link to="/" className="text-blue-400 hover:underline">
-          Home
-        </Link>
+        © {new Date().getFullYear()} LangVoyage. All rights reserved.
       </footer>
     </div>
   );

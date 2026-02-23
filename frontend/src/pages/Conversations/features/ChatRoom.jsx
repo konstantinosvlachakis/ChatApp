@@ -197,6 +197,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           messages={messages}
           userId={user.user_id}
           onDeleteMessage={handleDeleteMessage}
+          baseTranslateLanguage={
+            user.base_translate_language || user.native_language || "english"
+          }
         />
       </div>
 

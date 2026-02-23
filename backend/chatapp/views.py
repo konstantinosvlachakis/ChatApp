@@ -17,6 +17,12 @@ from django.db.models import Q
 from django.core.files.storage import default_storage
 import os
 import uuid
+from urllib.parse import urlencode
+from urllib.request import urlopen
+import urllib.error
+import hashlib
+import re
+from django.core.cache import cache
 
 
 @csrf_exempt
@@ -106,6 +112,7 @@ def profile_view(request):
         "username": user.username,
         "age": user.age,
         "native_language": user.native_language,  # Include the native language
+        "base_translate_language": user.base_translate_language,
         "profile_image_url": (
             settings.MEDIA_URL + user.profile_image_url
             if user.profile_image_url
@@ -158,6 +165,7 @@ def profile_edit_view(request):
         # Update fields if they are present in the request body
         username = data.get("username")
         native_language = data.get("native_language")
+        base_translate_language = data.get("base_translate_language")
         profile_image_url = data.get(
             "profile_image_url"
         )  # Include profile image URL if necessary
@@ -167,6 +175,8 @@ def profile_edit_view(request):
             user.username = username
         if native_language:
             user.native_language = native_language
+        if base_translate_language:
+            user.base_translate_language = base_translate_language
         if profile_image_url:
             user.profile_image_url = profile_image_url  # Update profile image URL
 
@@ -180,6 +190,7 @@ def profile_edit_view(request):
                 "updated_profile": {
                     "username": user.username,
                     "native_language": user.native_language,
+                    "base_translate_language": user.base_translate_language,
                     "profile_image_url": (
                         user.profile_image_url or None
                     ),
@@ -365,3 +376,117 @@ def update_profile_image(request, user_id):
     return Response(
         {"error": "No image file found."}, status=status.HTTP_400_BAD_REQUEST
     )
+
+
+LANGUAGE_CODE_MAP = {
+    "english": "en",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "portuguese": "pt",
+    "greek": "el",
+    "japanese": "ja",
+    "korean": "ko",
+    "chinese": "zh",
+    "arabic": "ar",
+    "russian": "ru",
+    "turkish": "tr",
+    "hindi": "hi",
+}
+
+
+def resolve_language_code(language):
+    if not language:
+        return "en"
+
+    normalized = str(language).strip().lower()
+    if len(normalized) in (2, 3):
+        return normalized
+    return LANGUAGE_CODE_MAP.get(normalized, "en")
+
+
+def normalize_translation_text(text):
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def build_translation_cache_key(text, target_language):
+    normalized_text = normalize_translation_text(text)
+    content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+    return f"translate:v1:google:auto->{target_language}:{content_hash}"
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def translate_message_view(request):
+    text = (request.data.get("text") or "").strip()
+    target_language = resolve_language_code(request.data.get("target_language"))
+
+    if not text:
+        return Response({"error": "Text is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_text = normalize_translation_text(text)
+    cache_key = build_translation_cache_key(normalized_text, target_language)
+
+    try:
+        cached_result = cache.get(cache_key)
+        if cached_result:
+            return Response(
+                {
+                    **cached_result,
+                    "cached": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+    except Exception:
+        # Cache should be best-effort and never block translation.
+        cached_result = None
+
+    try:
+        query = urlencode(
+            {
+                "client": "gtx",
+                "sl": "auto",
+                "tl": target_language,
+                "dt": "t",
+                "q": normalized_text,
+            }
+        )
+        url = f"https://translate.googleapis.com/translate_a/single?{query}"
+        with urlopen(url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        translated_chunks = payload[0] if isinstance(payload, list) and payload else []
+        translated_text = "".join(
+            chunk[0] for chunk in translated_chunks if isinstance(chunk, list) and chunk
+        ).strip()
+        source_language = payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
+
+        if not translated_text:
+            return Response(
+                {"error": "Translation service returned an empty response."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        result = {
+            "translated_text": translated_text,
+            "source_language": source_language,
+            "target_language": target_language,
+        }
+        try:
+            cache.set(cache_key, result, timeout=60 * 60 * 24 * 30)  # 30 days
+        except Exception:
+            pass
+
+        return Response(
+            {
+                **result,
+                "cached": False,
+            },
+            status=status.HTTP_200_OK,
+        )
+    except urllib.error.URLError:
+        return Response(
+            {"error": "Translation service is currently unavailable."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )

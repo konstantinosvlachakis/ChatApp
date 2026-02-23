@@ -37,6 +37,7 @@ urlpatterns = [
         MessageDeleteView.as_view(),
         name="delete_message",  # Delete a specific message
     ),
+    path("messages/translate/", translate_message_view, name="translate_message"),
 ]
 websocket_urlpatterns = [
     path(

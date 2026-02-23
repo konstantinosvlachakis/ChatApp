@@ -71,6 +71,17 @@ else:
         },
     }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("REDIS_CACHE_URL", redis_url),
+        "OPTIONS": {
+            "socket_connect_timeout": 2,
+            "socket_timeout": 2,
+        },
+    }
+}
+
 
 # Application definition
 

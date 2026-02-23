@@ -1,7 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { BASE_URL } from "../../../constants/constants";
 
-const Conversation = ({ messages, userId, onDeleteMessage }) => {
+const Conversation = ({
+  messages,
+  userId,
+  onDeleteMessage,
+  baseTranslateLanguage = "english",
+}) => {
   const [dropdownIndex, setDropdownIndex] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [translationsByMessageId, setTranslationsByMessageId] = useState({});
+  const [translatingMessageId, setTranslatingMessageId] = useState(null);
 
   const toggleDropdown = (index) => {
     setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
@@ -19,6 +28,50 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
     /\.(mp3|wav|ogg|webm)$/i.test(url) ||
     url.includes("/media/attachments/blob_") ||
     url.includes("/media/audio/");
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  useEffect(() => {
+    const closeMenus = () => closeContextMenu();
+    window.addEventListener("click", closeMenus);
+    return () => window.removeEventListener("click", closeMenus);
+  }, []);
+
+  const handleTranslate = async (msg) => {
+    if (!msg?.text?.trim()) return;
+
+    try {
+      setTranslatingMessageId(msg.id);
+      const token = sessionStorage.getItem("accessToken");
+
+      const res = await fetch(`${BASE_URL}/api/messages/translate/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          text: msg.text,
+          target_language: baseTranslateLanguage,
+        }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.error || "Failed to translate message.");
+      }
+
+      setTranslationsByMessageId((prev) => ({
+        ...prev,
+        [msg.id]: payload.translated_text,
+      }));
+    } catch (error) {
+      console.error("Translate error:", error);
+    } finally {
+      setTranslatingMessageId(null);
+      closeContextMenu();
+    }
+  };
 
   return (
     <div className="p-4 bg-gray-50 flex flex-col">
@@ -42,6 +95,15 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
                     ? "bg-blue-100 text-gray-900"
                     : "bg-gray-200 text-gray-900"
                 }`}
+                onContextMenu={(e) => {
+                  if (isSentByUser || !msg?.text?.trim()) return;
+                  e.preventDefault();
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    messageId: msg.id,
+                  });
+                }}
               >
                 {/* Dropdown for delete */}
                 {isSentByUser && (
@@ -103,7 +165,18 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
                     </a>
                   )
                 ) : msg.text ? (
-                  <p>{msg.text}</p>
+                  <div>
+                    <p>{msg.text}</p>
+                    {translationsByMessageId[msg.id] && (
+                      <>
+                        <hr className="my-2 border-black" />
+                        <p>{translationsByMessageId[msg.id]}</p>
+                      </>
+                    )}
+                    {translatingMessageId === msg.id && (
+                      <p className="text-xs text-gray-600 mt-2">Translating...</p>
+                    )}
+                  </div>
                 ) : (
                   <p className="italic text-gray-500">Audio message</p>
                 )}
@@ -113,6 +186,29 @@ const Conversation = ({ messages, userId, onDeleteMessage }) => {
         })
       ) : (
         <div className="text-gray-500">No messages yet!</div>
+      )}
+
+      {contextMenu && (
+        <div
+          className="fixed z-[9999] bg-white/95 backdrop-blur-sm rounded-md shadow-lg border border-gray-200 py-1 min-w-[160px] transition-all duration-150 ease-out"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors duration-150 flex items-center gap-2"
+            onClick={() => {
+              const msg = messages.find((m) => m.id === contextMenu.messageId);
+              if (msg) {
+                handleTranslate(msg);
+              } else {
+                closeContextMenu();
+              }
+            }}
+          >
+            <span aria-hidden="true">🌐</span>
+            <span>Translate</span>
+          </button>
+        </div>
       )}
     </div>
   );

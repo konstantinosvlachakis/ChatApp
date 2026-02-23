@@ -30,6 +30,7 @@ class Profile(AbstractBaseUser):
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
+    base_translate_language = models.CharField(max_length=50, default="english")
     profile_image_url = models.CharField(
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )
