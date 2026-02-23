@@ -103,15 +103,15 @@ const PublicProfilePage = () => {
   if (!profile) return <div className="p-8 text-gray-500">Profile not found.</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-3 sm:p-5 md:p-8">
       <div className="max-w-5xl mx-auto">
-        <div className="bg-white rounded-2xl shadow p-8 flex flex-col items-center gap-4">
+        <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
           <img
             src={imageUrl}
             alt="Profile"
-            className="w-32 h-32 rounded-full object-cover border-4 border-blue-300"
+            className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
           />
-          <h1 className="text-2xl font-bold text-gray-800">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 text-center">
             {profile.username}, {profile.age || "—"}
           </h1>
           <button
@@ -123,9 +123,9 @@ const PublicProfilePage = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-          <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-4 sm:mt-6 md:mt-8">
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
               <span role="img" aria-label="user">
                 👤
               </span>
@@ -146,8 +146,8 @@ const PublicProfilePage = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
               <span role="img" aria-label="globe">
                 🌐
               </span>
@@ -164,8 +164,8 @@ const PublicProfilePage = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 mt-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
             <span role="img" aria-label="target">
               🎯
             </span>
@@ -177,14 +177,14 @@ const PublicProfilePage = () => {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 mt-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
             <span role="img" aria-label="camera">
               📸
             </span>
             Photos
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {photoCards.map((card) => (
               <div
                 key={card.key}
@@ -209,8 +209,8 @@ const PublicProfilePage = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-6 mt-8 mb-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8 mb-6 sm:mb-8">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
             <span role="img" aria-label="reviews">
               ⭐
             </span>

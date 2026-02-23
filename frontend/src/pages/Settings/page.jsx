@@ -68,9 +68,9 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="min-h-full bg-gray-50 p-8">
-      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow p-6">
-        <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
+    <div className="min-h-full bg-gray-50 p-3 sm:p-5 md:p-8">
+      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Settings</h1>
         <p className="text-gray-600 mt-2">
           Choose your base language for message translation.
         </p>

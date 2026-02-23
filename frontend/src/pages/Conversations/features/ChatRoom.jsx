@@ -185,7 +185,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   // ------------------- Render -------------------
   return (
-    <div className="flex flex-col h-[calc(100vh-128px)] bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col bg-gray-50">
       {/* Header */}
       <div className="flex-shrink-0">
         <ChatHeader conversation={conversation} />
@@ -194,7 +194,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       {/* Conversation */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-2"
+        className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-4"
       >
         <Conversation
           messages={messages}
@@ -208,14 +208,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       {/* Typing indicator */}
       {isOtherUserTyping && (
-        <div className="text-gray-500 text-sm px-4 py-1 flex items-center gap-2">
+        <div className="flex items-center gap-2 px-3 py-1 text-sm text-gray-500 sm:px-4">
           <TypingDots />
           <span>Typing...</span>
         </div>
       )}
 
       {/* Message input */}
-      <div className="flex-shrink-0 border-t bg-white p-2">
+      <div className="flex-shrink-0 border-t bg-white">
         <MessageInput
           onSendMessage={handleSendMessage}
           onTyping={handleTyping}

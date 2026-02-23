@@ -8,6 +8,16 @@ import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
 
+const DEFAULT_AVATAR = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
+
+const resolveAvatarUrl = (path) => {
+  if (!path) return DEFAULT_AVATAR;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
+  if (path.startsWith("media/")) return `${BASE_URL_IMG}/${path}`;
+  return `${BASE_URL_IMG}/media/${path}`;
+};
+
 function ConversationList({
   onSelectConversation,
   activeConversationId,
@@ -167,15 +177,23 @@ function ConversationList({
             ? conversation.receiver
             : conversation.sender;
 
-        const imageSrc =
-          BASE_URL_IMG + ("/media/" + otherUser?.profile_image_url || "") ||
-          "https://via.placeholder.com/50";
+        const imageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
+
+        const lastUpdated = new Date(conversation.updated_at);
+        const formattedUpdated = Number.isNaN(lastUpdated.getTime())
+          ? ""
+          : lastUpdated.toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
 
         return (
           <div key={conversation.id} className="relative">
             {/* Conversation Container */}
             <div
-              className={`flex items-center p-2 cursor-pointer transition-all duration-300 ${
+              className={`flex items-center gap-3 p-2 sm:p-3 cursor-pointer transition-all duration-300 ${
                 rightClickedConversation === conversation.id
                   ? "w-[80%]"
                   : "w-full"
@@ -192,27 +210,31 @@ function ConversationList({
                 <img
                   src={imageSrc}
                   alt={otherUser?.username || "Participant"}
-                  className="w-12 h-12 rounded-full"
+                  className="h-10 w-10 rounded-full object-cover sm:h-12 sm:w-12"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = DEFAULT_AVATAR;
+                  }}
                 />
                 {onlineUserIds.has(otherUser?.id) && (
                   <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />
                 )}
               </div>
-              <div className="flex-1">
-                <p className="font-semibold">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold sm:text-base">
                   {otherUser?.username || "Unknown Participant"}
                 </p>
                 {(typingByConversation[conversation.id] ||
                   presenceTypingByConversation[conversation.id]) ? (
-                  <div className="text-sm text-gray-500 flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
                     <TypingDots />
                     <span>Typing...</span>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">
+                  <p className="truncate text-xs text-gray-500 sm:text-sm">
                     {conversation.last_message?.text || "No messages yet"}{" "}
                     <span className="text-gray-400">
-                      ({new Date(conversation.updated_at).toLocaleString()})
+                      {formattedUpdated ? `(${formattedUpdated})` : ""}
                     </span>
                   </p>
                 )}

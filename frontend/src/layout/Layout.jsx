@@ -15,24 +15,24 @@ const Layout = () => {
   };
 
   return (
-    <div className="flex flex-col ">
+    <div className="flex min-h-screen flex-col bg-gray-50">
       {/* Header/Menu */}
-      <header className="bg-gray-700 text-white p-4 shadow-md">
-        <nav className="flex items-center justify-between gap-4 ml-4 mr-4">
+      <header className="sticky top-0 z-30 bg-gray-700 text-white px-3 py-3 shadow-md sm:px-4">
+        <nav className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
           {/* Clickable Logo on the top left */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-4">
             <Link
               to="/profile"
-              className="text-xl font-bold tracking-wide  cursor-pointer mr-6"
+              className="mr-2 truncate text-base font-bold tracking-wide sm:mr-4 sm:text-xl"
             >
               LangVoyage
             </Link>
 
             {/* Navigation Links */}
-            <div className="flex space-x-4">
+            <div className="flex flex-wrap gap-2">
               <Link
                 to="/community"
-                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
                   location.pathname === "/community"
                     ? "bg-white text-blue-600 shadow"
                     : "hover:bg-blue-700 hover:text-white"
@@ -42,7 +42,7 @@ const Layout = () => {
               </Link>
               <Link
                 to="/conversations"
-                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
                   location.pathname === "/conversations"
                     ? "bg-white text-blue-600 shadow"
                     : "hover:bg-blue-700 hover:text-white"
@@ -52,7 +52,7 @@ const Layout = () => {
               </Link>
               <Link
                 to="/profile"
-                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
                   location.pathname === "/profile"
                     ? "bg-white text-blue-600 shadow"
                     : "hover:bg-blue-700 hover:text-white"
@@ -67,7 +67,7 @@ const Layout = () => {
               to="/settings"
               title="Settings"
               aria-label="Settings"
-              className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition ${
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition sm:h-10 sm:w-10 sm:text-lg ${
                 location.pathname === "/settings"
                   ? "bg-white text-blue-600 shadow"
                   : "hover:bg-blue-700 hover:text-white"
@@ -78,7 +78,7 @@ const Layout = () => {
             <button
               type="button"
               onClick={handleLogout}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white"
+              className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 sm:px-3 sm:py-2 sm:text-sm"
             >
               Logout
             </button>
@@ -87,15 +87,16 @@ const Layout = () => {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex  bg-gray-50">
-        <div className="w-full h-[calc(100vh-112px)] bg-white rounded-lg shadow-md  overflow-y-auto">
-          {/* The height dynamically adjusts: Header = 64px, Footer = 48px */}
+      <main className="min-h-0 flex-1">
+        <div className="mx-auto h-full w-full max-w-7xl px-0 sm:px-2 md:px-4">
+          <div className="h-full overflow-y-auto bg-white shadow-sm sm:rounded-lg sm:shadow-md">
           <Outlet />
+          </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-800 text-gray-400 text-center py-4 text-sm">
+      <footer className="hidden bg-gray-800 py-3 text-center text-xs text-gray-400 sm:block sm:text-sm">
         © {new Date().getFullYear()} LangVoyage. All rights reserved.
       </footer>
     </div>

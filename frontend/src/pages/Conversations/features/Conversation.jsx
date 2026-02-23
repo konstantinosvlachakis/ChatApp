@@ -89,7 +89,7 @@ const Conversation = ({
   };
 
   return (
-    <div className="p-4 bg-gray-50 flex flex-col">
+    <div className="flex flex-col bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           const rawUrl =
@@ -105,7 +105,7 @@ const Conversation = ({
               } mb-3`}
             >
               <div
-                className={`relative px-4 py-2 rounded-2xl max-w-xs break-words shadow-sm ${
+                className={`relative max-w-[85vw] break-words rounded-2xl px-3 py-2 shadow-sm sm:max-w-md sm:px-4 ${
                   isSentByUser
                     ? "bg-blue-100 text-gray-900"
                     : "bg-gray-200 text-gray-900"
@@ -171,10 +171,10 @@ const Conversation = ({
                     <video
                       src={attachmentUrl}
                       controls
-                      className="rounded-lg max-w-full h-60"
+                      className="h-48 max-w-full rounded-lg sm:h-60"
                     />
                   ) : isLikelyAudio(attachmentUrl) ? (
-                    <audio controls src={attachmentUrl} className="w-60" />
+                    <audio controls src={attachmentUrl} className="w-52 sm:w-60" />
                   ) : (
                     <a
                       href={attachmentUrl}

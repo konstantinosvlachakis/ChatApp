@@ -109,25 +109,25 @@ const CommunityPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen py-10">
-      <div className="max-w-6xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">
+    <div className="bg-gray-50 min-h-screen py-5 sm:py-8 md:py-10">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
           Discover Language Partners
         </h1>
 
         {/* Controls */}
-        <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
+        <div className="mb-5 sm:mb-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or bio..."
-            className="w-full sm:w-1/2 p-3 rounded-full border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full sm:w-1/2 rounded-full border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
           <select
             value={filterLang}
             onChange={(e) => setFilterLang(e.target.value)}
-            className="w-full sm:w-1/4 p-3 rounded-full border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full sm:w-1/4 rounded-full border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           >
             {languageOptions.map((lang) => (
               <option key={lang} value={lang === "All" ? "" : lang}>
@@ -141,7 +141,7 @@ const CommunityPage: React.FC = () => {
         {loading ? (
           <p className="text-center text-gray-500">Loading profiles…</p>
         ) : filteredProfiles.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
             {filteredProfiles.map((profile) => (
               <ProfileCard
                 key={profile.username}

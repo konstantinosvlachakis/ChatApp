@@ -15,25 +15,33 @@ const ConversationsPage = () => {
   }, []);
 
   return (
-    <div className="flex">
-      {/* Sidebar Component */}
-      <Sidebar
-        onSelectConversation={setActiveConversation}
-        activeConversationId={activeConversation?.id ?? null}
-        typingByConversation={typingByConversation}
-      />
+    <div className="flex h-full min-h-0">
+      <div
+        className={`min-h-0 w-full border-r bg-white md:w-[340px] lg:w-[380px] ${
+          activeConversation ? "hidden md:block" : "block"
+        }`}
+      >
+        <Sidebar
+          onSelectConversation={setActiveConversation}
+          activeConversationId={activeConversation?.id ?? null}
+          typingByConversation={typingByConversation}
+        />
+      </div>
 
       {/* Main Content */}
-      <div className="flex-1 relative p-6">
+      <div
+        className={`relative min-h-0 flex-1 ${activeConversation ? "block" : "hidden md:block"}`}
+      >
         {activeConversation ? (
-          <div className="flex flex-col h-full">
-            <div className="absolute top-4 right-4">
+          <div className="flex h-full min-h-0 flex-col">
+            <div className="absolute right-2 top-2 z-20 md:hidden">
               <IconButton
+                size="small"
                 color="primary"
-                aria-label="Back to Profile"
+                aria-label="Back to conversations"
                 onClick={() => setActiveConversation(null)}
               >
-                <ArrowBackIcon />
+                <ArrowBackIcon fontSize="small" />
               </IconButton>
             </div>
             <ChatRoom
@@ -42,7 +50,7 @@ const ConversationsPage = () => {
             />
           </div>
         ) : (
-          <div className="text-center text-gray-500">
+          <div className="p-6 text-center text-gray-500">
             Select a conversation to start chatting.
           </div>
         )}

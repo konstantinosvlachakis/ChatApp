@@ -169,90 +169,117 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   };
 
   return (
-    <div className="p-4 border-t bg-white flex items-center relative">
-      {/* Emoji Picker Button */}
-      <button onClick={() => setShowPicker((prev) => !prev)} className="mr-2">
-        😊
-      </button>
-
+    <div className="relative border-t bg-white p-2 sm:p-3">
       {showPicker && (
-        <div ref={emojiPickerRef} className="absolute bottom-16 left-0 z-50">
+        <div ref={emojiPickerRef} className="absolute bottom-14 left-2 z-50 sm:bottom-16 sm:left-3">
           <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
         </div>
       )}
 
-      {/* Message Input */}
-      <div className="relative flex w-1/2 items-center">
-        <div className="flex items-center w-full p-2 border border-gray-300 rounded-lg">
-          {previewImage && (
-            <div className="flex items-center space-x-2">
-              <img
-                src={previewImage}
-                alt="Preview"
-                className="h-10 w-10 object-cover rounded"
-              />
-              <button
-                onClick={() => {
-                  URL.revokeObjectURL(previewImage);
-                  setPreviewImage(null);
-                  setAttachedFile(null);
-                }}
-                className="text-red-500 text-sm"
-              >
-                ✕
-              </button>
+      <div className="flex items-end gap-2">
+        {/* Emoji Picker Button */}
+        <button
+          type="button"
+          onClick={() => setShowPicker((prev) => !prev)}
+          className="mb-1 rounded-full p-2 text-base transition hover:bg-gray-100"
+          aria-label="Open emoji picker"
+        >
+          😊
+        </button>
+
+        <div className="flex-1 rounded-2xl border border-gray-300 bg-white px-3 py-2">
+          {(previewImage || audioBlob) && (
+            <div className="mb-2">
+              {previewImage && (
+                <div className="flex items-center gap-2">
+                  <img
+                    src={previewImage}
+                    alt="Preview"
+                    className="h-10 w-10 rounded object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      URL.revokeObjectURL(previewImage);
+                      setPreviewImage(null);
+                      setAttachedFile(null);
+                    }}
+                    className="text-sm text-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
+              {audioBlob && (
+                <div className="flex items-center gap-2">
+                  <audio controls src={URL.createObjectURL(audioBlob)} className="h-9 max-w-[180px]" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAudioBlob(null);
+                      setAttachedFile(null);
+                    }}
+                    className="text-sm text-red-500"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {audioBlob && (
-            <div className="flex items-center space-x-2">
-              <audio controls src={URL.createObjectURL(audioBlob)} className="h-10" />
-              <button
-                onClick={() => {
-                  setAudioBlob(null);
-                  setAttachedFile(null);
-                }}
-                className="text-red-500 text-sm"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              ref={inputRef}
+              value={message}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message..."
+              className="w-full min-w-0 bg-transparent text-sm outline-none sm:text-base"
+            />
 
-          <input
-            type="text"
-            ref={inputRef}
-            value={message}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
-            className="w-full outline-none"
-          />
+            {/* File Attach */}
+            <button
+              type="button"
+              className="rounded-full p-1.5 text-gray-500 transition hover:bg-gray-100"
+              onClick={() => fileInputRef.current.click()}
+              aria-label="Attach file"
+            >
+              <AttachFileIcon fontSize="small" />
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              onChange={handleFileAttach}
+            />
+
+            {/* Voice Recording */}
+            <button
+              type="button"
+              className={`rounded-full p-1.5 transition hover:bg-gray-100 ${
+                isRecording ? "text-red-500" : "text-gray-500"
+              }`}
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              aria-label={isRecording ? "Stop recording" : "Start recording"}
+            >
+              <SettingsVoiceIcon fontSize="small" />
+            </button>
+          </div>
         </div>
 
-        {/* File Attach */}
-        <AttachFileIcon
-          className="absolute right-14 text-gray-500 cursor-pointer"
-          onClick={() => fileInputRef.current.click()}
-        />
-        <input
-          type="file"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          onChange={handleFileAttach}
-        />
-
-        {/* Voice Recording */}
-        <SettingsVoiceIcon
-          className={`absolute right-2 cursor-pointer ${isRecording ? "text-red-500" : "text-gray-500"}`}
-          onClick={isRecording ? handleStopRecording : handleStartRecording}
-        />
+        {/* Send Button */}
+        <button
+          type="button"
+          className="mb-1 rounded-full bg-blue-500 p-2 text-white transition hover:bg-blue-600"
+          onClick={handleSend}
+          aria-label="Send message"
+        >
+          <SendIcon fontSize="small" />
+        </button>
       </div>
-
-      {/* Send Button */}
-      <button type="button" className="ml-3 text-blue-500" onClick={handleSend}>
-        <SendIcon />
-      </button>
     </div>
   );
 };

@@ -31,8 +31,8 @@ const ChatRoomWrapper = () => {
     fetchConversation();
   }, [id]);
 
-  if (error) return <div className="text-red-500">{error}</div>;
-  if (!conversation) return <div>Loading chat...</div>;
+  if (error) return <div className="p-4 text-red-500">{error}</div>;
+  if (!conversation) return <div className="p-4 text-gray-500">Loading chat...</div>;
 
   return <ChatRoom conversation={conversation} />;
 };

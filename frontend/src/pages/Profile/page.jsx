@@ -165,20 +165,20 @@ const ProfilePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-3 sm:p-5 md:p-8">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow p-8 flex flex-col items-center gap-4">
+        <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
           <img
             src={imageUrl}
             alt="Profile"
-            className="w-32 h-32 rounded-full object-cover border-4 border-blue-300"
+            className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
           />
-          <h1 className="text-2xl font-bold text-gray-800">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 text-center">
             {user.username}, {user.age}
           </h1>
           <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition text-sm sm:text-base"
             onClick={() => setModalNameOpen(true)}
           >
             Edit Profile
@@ -186,10 +186,10 @@ const ProfilePage = () => {
         </div>
 
         {/* Info Sections */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-4 sm:mt-6 md:mt-8">
           {/* Personal Info */}
-          <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
               <span role="img" aria-label="user">
                 👤
               </span>
@@ -219,8 +219,8 @@ const ProfilePage = () => {
           </div>
 
           {/* Languages */}
-          <div className="bg-white rounded-2xl shadow p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
               <span role="img" aria-label="globe">
                 🌐
               </span>
@@ -253,8 +253,8 @@ const ProfilePage = () => {
         </div>
 
         {/* Learning Goals */}
-        <div className="bg-white rounded-2xl shadow p-6 mt-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
             <span role="img" aria-label="target">
               🎯
             </span>
@@ -267,8 +267,8 @@ const ProfilePage = () => {
         </div>
 
         {/* Photos */}
-        <div className="bg-white rounded-2xl shadow p-6 mt-8">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
             <span role="img" aria-label="camera">
               📸
             </span>
@@ -278,7 +278,7 @@ const ProfilePage = () => {
             Add one profile photo and two complementary photos.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {photoCards.map((card) => (
               <label
                 key={card.key}
