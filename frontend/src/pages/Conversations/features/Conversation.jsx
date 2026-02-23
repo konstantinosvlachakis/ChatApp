@@ -89,7 +89,7 @@ const Conversation = ({
   };
 
   return (
-    <div className="flex flex-col bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
+    <div className="flex flex-col overflow-x-hidden bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           const rawUrl =
@@ -131,7 +131,7 @@ const Conversation = ({
               >
                 {/* Dropdown for delete */}
                 {isSentByUser && (
-                  <div className="absolute -left-6 top-1/2 transform -translate-y-1/2 z-20 group">
+                  <div className="absolute right-1 top-1 z-20 group">
                     <button
                       className="text-gray-500 hover:text-gray-700 focus:outline-none"
                       onClick={() => toggleDropdown(index)}
@@ -142,7 +142,7 @@ const Conversation = ({
                     </button>
                     {dropdownIndex === index && (
                       <div
-                        className="absolute right-full top-0 mr-2 bg-white border shadow-lg rounded z-50"
+                        className="absolute right-0 top-full mt-1 bg-white border shadow-lg rounded z-50"
                         onMouseLeave={() => setDropdownIndex(null)}
                       >
                         <button

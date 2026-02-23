@@ -34,6 +34,11 @@ urlpatterns = [
         name="conversation_messages",  # Send and receive messages
     ),
     path(
+        "conversations/<int:conversation_id>/read/",
+        mark_conversation_read_view,
+        name="mark_conversation_read",
+    ),
+    path(
         "messages/<int:message_id>/delete/",
         MessageDeleteView.as_view(),
         name="delete_message",  # Delete a specific message

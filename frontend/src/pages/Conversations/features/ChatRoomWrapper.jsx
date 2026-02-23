@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 import ChatRoom from "./ChatRoom";
 import { BASE_URL } from "../../../constants/constants";
+import { markConversationRead } from "../api/markConversationRead";
 
 const ChatRoomWrapper = () => {
   const { id } = useParams(); // ✅ Extract conversation ID from URL
@@ -29,6 +30,11 @@ const ChatRoomWrapper = () => {
     };
 
     fetchConversation();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    markConversationRead(id).catch(() => {});
   }, [id]);
 
   if (error) return <div className="p-4 text-red-500">{error}</div>;

@@ -367,6 +367,30 @@ class ConversationListView(APIView):
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
+def mark_conversation_read_view(request, conversation_id):
+    conversation = get_object_or_404(
+        Conversation,
+        id=conversation_id,
+    )
+
+    if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+        return Response(
+            {"error": "You are not a participant in this conversation."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    updated = (
+        Message.objects.filter(conversation=conversation)
+        .exclude(sender=request.user)
+        .exclude(status="read")
+        .update(status="read")
+    )
+
+    return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
 def update_profile_image(request, user_id):
     if request.user.id != int(user_id):
         return Response(

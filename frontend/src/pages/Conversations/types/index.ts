@@ -29,6 +29,7 @@ export interface Conversation {
       last_seen?: string | null;
     };
     updated_at: string;
+    unread_count?: number;
     last_message?: {
       id: number;
       text: string;

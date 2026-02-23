@@ -87,7 +87,7 @@ const LoginPage = () => {
     "w-full rounded-xl border bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-100">
+    <div className="relative min-h-screen overflow-x-hidden bg-slate-100">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(6,182,212,0.18),transparent_38%),radial-gradient(circle_at_80%_15%,rgba(245,158,11,0.22),transparent_32%),radial-gradient(circle_at_70%_85%,rgba(14,165,233,0.2),transparent_35%)]" />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
         <motion.div

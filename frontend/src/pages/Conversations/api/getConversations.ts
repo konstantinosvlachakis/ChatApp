@@ -5,7 +5,8 @@ import { ExtractFnReturnType, QueryConfig } from "../../../libs/react-query";
 import { useQuery } from 'react-query';
 
 export const getConversations = async (): Promise<Conversation[]> => {
-  const token = sessionStorage.getItem("accessToken");
+  const token =
+    sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
 
   if (!token) {
     throw new Error("Authentication token is missing. Please log in.");

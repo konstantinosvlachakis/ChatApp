@@ -7,6 +7,8 @@ import axios from "axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
+import { markConversationRead } from "../api/markConversationRead";
+import { useQueryClient } from "react-query";
 
 const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
@@ -14,6 +16,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const socket = useRef(null);
   const messagesContainerRef = useRef(null);
   const { user, loading } = useUser();
+  const queryClient = useQueryClient();
   const sendSocketEvent = useCallback((payload) => {
     if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
       return false;
@@ -63,6 +66,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 can_translate: Boolean((data.message || "").trim()),
               },
             ]);
+            if (data.senderId !== user.user_id) {
+              markConversationRead(conversation.id).catch(() => {});
+            }
+            queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
             break;
 
           case "deleteMessage":
@@ -95,7 +102,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       socket.current?.close();
       onConversationTypingChange?.(conversation.id, false);
     };
-  }, [conversation?.id, user, onConversationTypingChange]);
+  }, [conversation?.id, user, onConversationTypingChange, queryClient]);
+
+  useEffect(() => {
+    if (!conversation?.id) return;
+    markConversationRead(conversation.id).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+  }, [conversation?.id, queryClient]);
 
   // ------------------- Loading State -------------------
   if (loading) {
@@ -142,6 +155,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       const savedMessage = response.data;
       console.log("Saved message:", response.data);
+      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
 
       // Broadcast the new message to others
       const sent = sendSocketEvent({
@@ -185,7 +199,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   // ------------------- Render -------------------
   return (
-    <div className="flex h-full min-h-0 flex-col bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-gray-50">
       {/* Header */}
       <div className="flex-shrink-0">
         <ChatHeader conversation={conversation} />
