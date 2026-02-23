@@ -42,6 +42,7 @@ websocket_urlpatterns = [
     path(
         "ws/socket-server/<int:conversation_id>/", consumers.ChatConsumer.as_asgi()
     ),  # Match the client-side URL
+    path("ws/presence/", consumers.PresenceConsumer.as_asgi()),
 ]
 
 if settings.DEBUG:

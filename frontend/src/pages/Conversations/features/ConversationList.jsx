@@ -14,7 +14,9 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const navigate = useNavigate();
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
-  
+  const [onlineUserIds, setOnlineUserIds] = useState(new Set());
+
+  const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
 
 
   // Handles right-click event
@@ -46,20 +48,78 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
     setRightClickedConversation(null);
   };
 
-  // Handles clicking anywhere else to close the delete button smoothly
-  const handleClickOutside = (e) => {
-    if (rightClickedConversation) {
-      setRightClickedConversation(null);
-    }
-  };
-
   // Attach event listener to close delete button when clicking anywhere
   useEffect(() => {
-    document.addEventListener("click", handleClickOutside);
+    const onDocumentClick = () => {
+      if (rightClickedConversation) {
+        setRightClickedConversation(null);
+      }
+    };
+
+    document.addEventListener("click", onDocumentClick);
     return () => {
-      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("click", onDocumentClick);
     };
   }, [rightClickedConversation]);
+
+  useEffect(() => {
+    if (!user?.username) return;
+    const nextOnline = new Set();
+
+    conversations.forEach((conversation) => {
+      const otherUser =
+        conversation.sender?.username === user.username
+          ? conversation.receiver
+          : conversation.sender;
+
+      if (otherUser?.is_online) {
+        nextOnline.add(otherUser.id);
+      }
+    });
+
+    setOnlineUserIds(nextOnline);
+  }, [conversations, user?.username]);
+
+  useEffect(() => {
+    const token = sessionStorage.getItem("accessToken");
+    if (!token) return;
+
+    const socket = new WebSocket(
+      `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`
+    );
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "initial_online_users") {
+          setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
+          return;
+        }
+
+        if (data.type === "presence_update") {
+          const userId = data.user_id;
+          if (typeof userId !== "number") return;
+
+          setOnlineUserIds((prev) => {
+            const next = new Set(prev);
+            if (data.is_online) {
+              next.add(userId);
+            } else {
+              next.delete(userId);
+            }
+            return next;
+          });
+        }
+      } catch (parseError) {
+        console.error("Failed to parse presence event:", parseError);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [wsBaseUrl]);
 
   if (isLoading) return <div>Loading conversations...</div>;
   if (error) {
@@ -95,11 +155,16 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
                 }
               }}
             >
-              <img
-                src={imageSrc}
-                alt={otherUser?.username || "Participant"}
-                className="w-12 h-12 rounded-full mr-3"
-              />
+              <div className="relative mr-3">
+                <img
+                  src={imageSrc}
+                  alt={otherUser?.username || "Participant"}
+                  className="w-12 h-12 rounded-full"
+                />
+                {onlineUserIds.has(otherUser?.id) && (
+                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />
+                )}
+              </div>
               <div className="flex-1">
                 <p className="font-semibold">
                   {otherUser?.username || "Unknown Participant"}

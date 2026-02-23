@@ -18,11 +18,15 @@ export interface Conversation {
       id: number;
       username: string;
       profile_image_url: string;
+      is_online?: boolean;
+      last_seen?: string | null;
     };
     receiver: {
       id: number;
       username: string;
       profile_image_url: string;
+      is_online?: boolean;
+      last_seen?: string | null;
     };
     updated_at: string;
     last_message?: {

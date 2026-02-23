@@ -9,9 +9,10 @@ https://docs.djangoproject.com/en/4.0/howto/deployment/asgi/
 
 import os
 import sys
-from django.core.asgi import get_asgi_application
-from channels.routing import ProtocolTypeRouter, URLRouter
+
 from channels.auth import AuthMiddlewareStack
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.core.asgi import get_asgi_application
 
 # Ensure the `backend` directory is in the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,12 +20,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Set the default settings module for the 'backend' project
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
-# Import routing after setting the environment to avoid circular imports
+# Initialize Django before importing modules that rely on the app registry.
+django_asgi_app = get_asgi_application()
+
 import chatapp.routing
 
 application = ProtocolTypeRouter(
     {
-        "http": get_asgi_application(),
+        "http": django_asgi_app,
         "websocket": AuthMiddlewareStack(
             URLRouter(chatapp.routing.websocket_urlpatterns)
         ),

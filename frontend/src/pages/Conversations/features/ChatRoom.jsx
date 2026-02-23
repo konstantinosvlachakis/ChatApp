@@ -29,12 +29,10 @@ const ChatRoom = ({ conversation }) => {
   useEffect(() => {
     if (!conversation?.id || !user) return;
 
-    const isProduction = process.env.NODE_ENV === "production";
-    const baseUrl = isProduction
-      ? "wss://langvoyage-d3781c6fad54.herokuapp.com"
-      : "ws://localhost:8000";
-
-    const url = `${baseUrl}/ws/socket-server/${conversation.id}/`;
+    const token = sessionStorage.getItem("accessToken");
+    const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    const url = `${wsBaseUrl}/ws/socket-server/${conversation.id}/${query}`;
     socket.current = new WebSocket(url);
 
     socket.current.onopen = () => console.log("WebSocket connected.");

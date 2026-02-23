@@ -6,7 +6,16 @@ from django.conf import settings
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ["id", "username", "email","date_of_birth", "native_language", "profile_image_url"]
+        fields = [
+            "id",
+            "username",
+            "email",
+            "date_of_birth",
+            "native_language",
+            "profile_image_url",
+            "is_online",
+            "last_seen",
+        ]
 
     def get_profile_image_url(self, obj):
         return obj.get_profile_image_url()

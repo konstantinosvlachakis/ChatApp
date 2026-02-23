@@ -34,6 +34,9 @@ class Profile(AbstractBaseUser):
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )
     password = models.CharField(max_length=128, blank=True, null=True)
+    is_online = models.BooleanField(default=False, db_index=True)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    ws_connection_count = models.PositiveIntegerField(default=0)
 
     objects = ProfileManager()
 
