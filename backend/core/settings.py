@@ -127,15 +127,14 @@ SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 if env == "local":
     DEBUG = True
     SECURE_SSL_REDIRECT = False  # Ensure SSL redirect is disabled locally
-    INSTALLED_APPS.append("chatapp")
-    ROOT_URLCONF = "core.urls"
     BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
 else:
     DEBUG = False
     SECURE_SSL_REDIRECT = False  # SSL redirect is needed for production
-    INSTALLED_APPS.append("backend.chatapp")
-    ROOT_URLCONF = "backend.core.urls"
     BASE_URL = "http://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
+
+INSTALLED_APPS.append("chatapp")
+ROOT_URLCONF = "core.urls"
 
 
 TEMPLATES = [

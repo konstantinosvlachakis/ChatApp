@@ -23,13 +23,13 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 # Initialize Django before importing modules that rely on the app registry.
 django_asgi_app = get_asgi_application()
 
-import chatapp.routing
+from chatapp.routing import websocket_urlpatterns
 
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
         "websocket": AuthMiddlewareStack(
-            URLRouter(chatapp.routing.websocket_urlpatterns)
+            URLRouter(websocket_urlpatterns)
         ),
     }
 )

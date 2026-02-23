@@ -3,15 +3,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.generic.base import TemplateView
-import os
-
-env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
-api_prefix = "backend.chatapp.urls" if env != "local" else "chatapp.urls"
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include(api_prefix)),
+    path("api/", include("chatapp.urls")),
 ]
 
 # Serve media files in development
