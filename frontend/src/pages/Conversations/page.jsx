@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Sidebar from "./features/Sidebar";
 import ChatRoom from "./features/ChatRoom";
 import IconButton from "@mui/material/IconButton";
@@ -7,12 +7,12 @@ const ConversationsPage = () => {
   const [activeConversation, setActiveConversation] = useState(null);
   const [typingByConversation, setTypingByConversation] = useState({});
 
-  const handleConversationTypingChange = (conversationId, isTyping) => {
+  const handleConversationTypingChange = useCallback((conversationId, isTyping) => {
     setTypingByConversation((prev) => ({
       ...prev,
       [conversationId]: isTyping,
     }));
-  };
+  }, []);
 
   return (
     <div className="flex">

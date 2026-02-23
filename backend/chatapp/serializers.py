@@ -1,6 +1,34 @@
 from rest_framework import serializers
-from .models import Conversation, Message, Profile
+from .models import Conversation, Message, Profile, MessageTranslation
 from django.conf import settings
+from django.db.utils import OperationalError, ProgrammingError
+
+LANGUAGE_CODE_MAP = {
+    "english": "en",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
+    "portuguese": "pt",
+    "greek": "el",
+    "japanese": "ja",
+    "korean": "ko",
+    "chinese": "zh",
+    "arabic": "ar",
+    "russian": "ru",
+    "turkish": "tr",
+    "hindi": "hi",
+}
+
+
+def resolve_language_code(language):
+    if not language:
+        return "en"
+
+    normalized = str(language).strip().lower()
+    if len(normalized) in (2, 3):
+        return normalized
+    return LANGUAGE_CODE_MAP.get(normalized, "en")
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -24,15 +52,87 @@ class ProfileSerializer(serializers.ModelSerializer):
 class MessageSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
     attachment_url = serializers.SerializerMethodField()
+    translated_text = serializers.SerializerMethodField()
+    translated_source_language = serializers.SerializerMethodField()
+    can_translate = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ["id", "text", "sender", "attachment", "attachment_url", "timestamp"]
+        fields = [
+            "id",
+            "text",
+            "sender",
+            "attachment",
+            "attachment_url",
+            "timestamp",
+            "translated_text",
+            "translated_source_language",
+            "can_translate",
+        ]
 
     def get_attachment_url(self, obj):
         if obj.attachment:  # Assuming `attachment` is the field storing the file
             return f"{settings.BASE_URL}{settings.MEDIA_URL}{obj.attachment}"
         return None
+
+    def _get_user_translation(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return None
+
+        target_language = resolve_language_code(
+            getattr(request.user, "base_translate_language", "english")
+        )
+        try:
+            return (
+                MessageTranslation.objects.filter(
+                    message=obj,
+                    user=request.user,
+                    target_language=target_language,
+                )
+                .order_by("-updated_at")
+                .first()
+            )
+        except (OperationalError, ProgrammingError):
+            # Graceful fallback while migrations are being applied.
+            return None
+
+    def get_translated_text(self, obj):
+        translation = self._get_user_translation(obj)
+        if translation and translation.source_language and translation.target_language:
+            src = translation.source_language.split("-")[0].lower()
+            tgt = translation.target_language.split("-")[0].lower()
+            if src == tgt:
+                return None
+        return translation.translated_text if translation else None
+
+    def get_translated_source_language(self, obj):
+        translation = self._get_user_translation(obj)
+        return translation.source_language if translation else None
+
+    def get_can_translate(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return False
+
+        if obj.sender_id == request.user.id:
+            return False
+
+        if not (obj.text or "").strip():
+            return False
+
+        target_language = resolve_language_code(
+            getattr(request.user, "base_translate_language", "english")
+        )
+        try:
+            existing = MessageTranslation.objects.filter(
+                message=obj,
+                user=request.user,
+                target_language=target_language,
+            ).exists()
+        except (OperationalError, ProgrammingError):
+            return True
+        return not existing
 
 
 class ConversationSerializer(serializers.ModelSerializer):

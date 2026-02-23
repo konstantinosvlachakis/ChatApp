@@ -60,26 +60,29 @@ const Layout = () => {
               >
                 Profile
               </Link>
-              <Link
-                to="/settings"
-                className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                  location.pathname === "/settings"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                Settings
-              </Link>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="px-3 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/settings"
+              title="Settings"
+              aria-label="Settings"
+              className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition ${
+                location.pathname === "/settings"
+                  ? "bg-white text-blue-600 shadow"
+                  : "hover:bg-blue-700 hover:text-white"
+              }`}
+            >
+              ⚙
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white"
+            >
+              Logout
+            </button>
+          </div>
         </nav>
       </header>
 

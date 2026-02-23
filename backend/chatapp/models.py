@@ -148,3 +148,28 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message by {self.sender.username} in {self.conversation.id}"
+
+
+class MessageTranslation(models.Model):
+    message = models.ForeignKey(
+        Message, related_name="translations", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        Profile, related_name="message_translations", on_delete=models.CASCADE
+    )
+    target_language = models.CharField(max_length=16)
+    source_language = models.CharField(max_length=16, blank=True, default="auto")
+    translated_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user", "target_language"],
+                name="uniq_message_user_target_translation",
+            )
+        ]
+
+    def __str__(self):
+        return f"Translation of message {self.message_id} for user {self.user_id}"

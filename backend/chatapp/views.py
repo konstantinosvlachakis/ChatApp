@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Conversation, Message
+from .models import Conversation, Message, MessageTranslation
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -216,7 +216,7 @@ class MessageListView(APIView):
 
         # Fetch all messages in the conversation
         messages = conversation.messages.all()
-        serializer = MessageSerializer(messages, many=True)
+        serializer = MessageSerializer(messages, many=True, context={"request": request})
         return Response(serializer.data)
 
     parser_classes = (MultiPartParser, FormParser)  # Allow handling of file uploads
@@ -268,7 +268,7 @@ class ConversationDetailView(APIView):
         Retrieve a specific conversation by ID.
         """
         conversation = get_object_or_404(Conversation, id=conversation_id)
-        serializer = ConversationSerializer(conversation)
+        serializer = ConversationSerializer(conversation, context={"request": request})
         return Response(serializer.data)
 
     def delete(self, request, conversation_id):
@@ -287,7 +287,9 @@ class ConversationListView(APIView):
             Q(sender=request.user) | Q(receiver=request.user)
         )
 
-        serializer = ConversationSerializer(conversations, many=True)
+        serializer = ConversationSerializer(
+            conversations, many=True, context={"request": request}
+        )
         return Response(serializer.data)
 
     def post(self, request):
@@ -416,11 +418,49 @@ def build_translation_cache_key(text, target_language):
     return f"translate:v1:google:auto->{target_language}:{content_hash}"
 
 
+def languages_match(source_language, target_language):
+    src = (source_language or "").strip().lower()
+    tgt = (target_language or "").strip().lower()
+    if not src or not tgt:
+        return False
+
+    return src == tgt or src.split("-")[0] == tgt.split("-")[0]
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def translate_message_view(request):
+    message_id = request.data.get("message_id")
     text = (request.data.get("text") or "").strip()
     target_language = resolve_language_code(request.data.get("target_language"))
+    message = None
+
+    if message_id:
+        message = get_object_or_404(Message, id=message_id)
+        participants = {message.conversation.sender_id, message.conversation.receiver_id}
+        if request.user.id not in participants:
+            return Response(
+                {"error": "You do not have access to this message."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        text = (message.text or "").strip()
+
+        existing_translation = MessageTranslation.objects.filter(
+            message=message,
+            user=request.user,
+            target_language=target_language,
+        ).first()
+        if existing_translation:
+            return Response(
+                {
+                    "error": "Message already translated for this language.",
+                    "already_translated": True,
+                    "translated_text": existing_translation.translated_text,
+                    "source_language": existing_translation.source_language,
+                    "target_language": target_language,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     if not text:
         return Response({"error": "Text is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -431,6 +471,38 @@ def translate_message_view(request):
     try:
         cached_result = cache.get(cache_key)
         if cached_result:
+            if languages_match(cached_result.get("source_language"), target_language):
+                if message:
+                    MessageTranslation.objects.update_or_create(
+                        message=message,
+                        user=request.user,
+                        target_language=target_language,
+                        defaults={
+                            "source_language": cached_result.get("source_language", "auto"),
+                            "translated_text": normalized_text,
+                        },
+                    )
+                return Response(
+                    {
+                        "error": "Message is already in the selected base language.",
+                        "same_language": True,
+                        "source_language": cached_result.get("source_language"),
+                        "target_language": target_language,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if message:
+                MessageTranslation.objects.update_or_create(
+                    message=message,
+                    user=request.user,
+                    target_language=target_language,
+                    defaults={
+                        "source_language": cached_result.get("source_language", "auto"),
+                        "translated_text": cached_result.get("translated_text", ""),
+                    },
+                )
+
             return Response(
                 {
                     **cached_result,
@@ -468,6 +540,27 @@ def translate_message_view(request):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
+        if languages_match(source_language, target_language):
+            if message:
+                MessageTranslation.objects.update_or_create(
+                    message=message,
+                    user=request.user,
+                    target_language=target_language,
+                    defaults={
+                        "source_language": source_language,
+                        "translated_text": normalized_text,
+                    },
+                )
+            return Response(
+                {
+                    "error": "Message is already in the selected base language.",
+                    "same_language": True,
+                    "source_language": source_language,
+                    "target_language": target_language,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         result = {
             "translated_text": translated_text,
             "source_language": source_language,
@@ -477,6 +570,17 @@ def translate_message_view(request):
             cache.set(cache_key, result, timeout=60 * 60 * 24 * 30)  # 30 days
         except Exception:
             pass
+
+        if message:
+            MessageTranslation.objects.update_or_create(
+                message=message,
+                user=request.user,
+                target_language=target_language,
+                defaults={
+                    "source_language": source_language,
+                    "translated_text": translated_text,
+                },
+            )
 
         return Response(
             {

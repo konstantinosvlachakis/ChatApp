@@ -17,6 +17,16 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const isTypingRef = useRef(false);
+  const onTypingRef = useRef(onTyping);
+  const onStopTypingRef = useRef(onStopTyping);
+
+  useEffect(() => {
+    onTypingRef.current = onTyping;
+  }, [onTyping]);
+
+  useEffect(() => {
+    onStopTypingRef.current = onStopTyping;
+  }, [onStopTyping]);
 
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
@@ -114,7 +124,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
 
     onSendMessage(message, attachedFile, previewImage);
     if (isTypingRef.current) {
-      onStopTyping?.();
+      onStopTypingRef.current?.();
       isTypingRef.current = false;
     }
     setMessage("");
@@ -129,14 +139,14 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
 
     if (!value.trim()) {
       if (isTypingRef.current) {
-        onStopTyping?.();
+        onStopTypingRef.current?.();
         isTypingRef.current = false;
       }
       return;
     }
 
     if (!isTypingRef.current) {
-      onTyping?.();
+      onTypingRef.current?.();
       isTypingRef.current = true;
     }
   };
@@ -144,11 +154,11 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   useEffect(() => {
     return () => {
       if (isTypingRef.current) {
-        onStopTyping?.();
+        onStopTypingRef.current?.();
         isTypingRef.current = false;
       }
     };
-  }, [onStopTyping]);
+  }, []);
 
 
   const handleKeyDown = (event) => {

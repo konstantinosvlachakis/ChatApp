@@ -10,6 +10,8 @@ const Conversation = ({
   const [dropdownIndex, setDropdownIndex] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [translationsByMessageId, setTranslationsByMessageId] = useState({});
+  const [blockedTranslateByMessageId, setBlockedTranslateByMessageId] =
+    useState({});
   const [translatingMessageId, setTranslatingMessageId] = useState(null);
 
   const toggleDropdown = (index) => {
@@ -37,6 +39,16 @@ const Conversation = ({
     return () => window.removeEventListener("click", closeMenus);
   }, []);
 
+  useEffect(() => {
+    const initialTranslations = {};
+    messages.forEach((msg) => {
+      if (msg.translated_text) {
+        initialTranslations[msg.id] = msg.translated_text;
+      }
+    });
+    setTranslationsByMessageId((prev) => ({ ...initialTranslations, ...prev }));
+  }, [messages]);
+
   const handleTranslate = async (msg) => {
     if (!msg?.text?.trim()) return;
 
@@ -51,13 +63,16 @@ const Conversation = ({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          text: msg.text,
+          message_id: msg.id,
           target_language: baseTranslateLanguage,
         }),
       });
 
       const payload = await res.json();
       if (!res.ok) {
+        if (payload.same_language || payload.already_translated) {
+          setBlockedTranslateByMessageId((prev) => ({ ...prev, [msg.id]: true }));
+        }
         throw new Error(payload.error || "Failed to translate message.");
       }
 
@@ -96,7 +111,16 @@ const Conversation = ({
                     : "bg-gray-200 text-gray-900"
                 }`}
                 onContextMenu={(e) => {
-                  if (isSentByUser || !msg?.text?.trim()) return;
+                  if (
+                    isSentByUser ||
+                    !msg?.text?.trim() ||
+                    !msg?.can_translate ||
+                    blockedTranslateByMessageId[msg.id] ||
+                    translationsByMessageId[msg.id] ||
+                    msg.translated_text
+                  ) {
+                    return;
+                  }
                   e.preventDefault();
                   setContextMenu({
                     x: e.clientX,
@@ -167,10 +191,10 @@ const Conversation = ({
                 ) : msg.text ? (
                   <div>
                     <p>{msg.text}</p>
-                    {translationsByMessageId[msg.id] && (
+                    {(translationsByMessageId[msg.id] || msg.translated_text) && (
                       <>
                         <hr className="my-2 border-black" />
-                        <p>{translationsByMessageId[msg.id]}</p>
+                        <p>{translationsByMessageId[msg.id] || msg.translated_text}</p>
                       </>
                     )}
                     {translatingMessageId === msg.id && (

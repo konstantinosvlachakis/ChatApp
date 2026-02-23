@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
@@ -14,13 +14,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const socket = useRef(null);
   const messagesContainerRef = useRef(null);
   const { user, loading } = useUser();
-  const sendSocketEvent = (payload) => {
+  const sendSocketEvent = useCallback((payload) => {
     if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
       return false;
     }
     socket.current.send(JSON.stringify(payload));
     return true;
-  };
+  }, []);
 
   useEffect(() => {
     setMessages(conversation?.messages || []);
@@ -58,6 +58,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 sender: { id: data.senderId, username: data.sender },
                 attachmentUrl: data.attachmentUrl || null,
                 timestamp: new Date().toISOString(),
+                translated_text: null,
+                translated_source_language: null,
+                can_translate: Boolean((data.message || "").trim()),
               },
             ]);
             break;
