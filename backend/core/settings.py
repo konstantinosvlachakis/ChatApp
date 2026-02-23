@@ -26,6 +26,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
+use_redis_realtime = os.environ.get("USE_REDIS_REALTIME", "false").lower() == "true"
 
 ALLOWED_HOSTS = [
     "langvoyage-d3781c6fad54.herokuapp.com",
@@ -42,7 +43,7 @@ PORT = int(os.environ.get("PORT", 8000))
 ASGI_APPLICATION = "core.asgi.application"
 
 
-if redis_url:
+if use_redis_realtime and redis_url:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
