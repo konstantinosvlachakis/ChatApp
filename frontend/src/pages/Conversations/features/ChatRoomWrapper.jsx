@@ -16,7 +16,10 @@ const ChatRoomWrapper = () => {
           `${BASE_URL}/api/conversations/${id}/`,
           {
             headers: {
-              Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`, // ✅ Ensure auth header is correct
+              Authorization: `Bearer ${
+                sessionStorage.getItem("accessToken") ||
+                localStorage.getItem("accessToken")
+              }`, // ✅ Ensure auth header is correct
               "Content-Type": "application/json", // ✅ No need for multipart/form-data in GET request
             },
           }
@@ -37,10 +40,14 @@ const ChatRoomWrapper = () => {
     markConversationRead(id).catch(() => {});
   }, [id]);
 
-  if (error) return <div className="p-4 text-red-500">{error}</div>;
-  if (!conversation) return <div className="p-4 text-gray-500">Loading chat...</div>;
+  if (error) return <div className="h-[calc(100dvh-64px)] p-4 text-red-500 sm:h-[calc(100dvh-112px)]">{error}</div>;
+  if (!conversation) return <div className="h-[calc(100dvh-64px)] p-4 text-gray-500 sm:h-[calc(100dvh-112px)]">Loading chat...</div>;
 
-  return <ChatRoom conversation={conversation} />;
+  return (
+    <div className="h-[calc(100dvh-64px)] min-h-0 sm:h-[calc(100dvh-112px)]">
+      <ChatRoom conversation={conversation} />
+    </div>
+  );
 };
 
 export default ChatRoomWrapper;

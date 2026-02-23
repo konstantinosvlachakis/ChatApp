@@ -54,7 +54,8 @@ const Conversation = ({
 
     try {
       setTranslatingMessageId(msg.id);
-      const token = sessionStorage.getItem("accessToken");
+      const token =
+        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
 
       const res = await fetch(`${BASE_URL}/api/messages/translate/`, {
         method: "POST",
@@ -131,7 +132,7 @@ const Conversation = ({
               >
                 {/* Dropdown for delete */}
                 {isSentByUser && (
-                  <div className="absolute right-1 top-1 z-20 group">
+                  <div className="absolute -left-6 top-1/2 z-20 -translate-y-1/2 group">
                     <button
                       className="text-gray-500 hover:text-gray-700 focus:outline-none"
                       onClick={() => toggleDropdown(index)}
@@ -142,7 +143,7 @@ const Conversation = ({
                     </button>
                     {dropdownIndex === index && (
                       <div
-                        className="absolute right-0 top-full mt-1 bg-white border shadow-lg rounded z-50"
+                        className="absolute right-full top-0 mr-2 bg-white border shadow-lg rounded z-50"
                         onMouseLeave={() => setDropdownIndex(null)}
                       >
                         <button

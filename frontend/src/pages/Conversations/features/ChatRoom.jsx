@@ -39,7 +39,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   useEffect(() => {
     if (!conversation?.id || !user) return;
 
-    const token = sessionStorage.getItem("accessToken");
+    const token =
+      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
     const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
     const query = token ? `?token=${encodeURIComponent(token)}` : "";
     const url = `${wsBaseUrl}/ws/socket-server/${conversation.id}/${query}`;
@@ -147,7 +148,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         formData,
         {
           headers: {
-            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
+            Authorization: `Bearer ${
+              sessionStorage.getItem("accessToken") ||
+              localStorage.getItem("accessToken")
+            }`,
             "Content-Type": "multipart/form-data",
           },
         }

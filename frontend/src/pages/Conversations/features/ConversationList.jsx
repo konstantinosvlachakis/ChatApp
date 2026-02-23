@@ -47,7 +47,9 @@ function ConversationList({
   
   const deleteConversationMutation = useMutation({
     mutationFn: async (conversationId) => {
-      const token = sessionStorage.getItem("accessToken");
+      const token =
+        sessionStorage.getItem("accessToken") ||
+        localStorage.getItem("accessToken");
       return axios.delete(`${BASE_URL}/api/conversations/${conversationId}/`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -98,7 +100,8 @@ function ConversationList({
   }, [conversations, user?.username]);
 
   useEffect(() => {
-    const token = sessionStorage.getItem("accessToken");
+    const token =
+      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
     if (!token) return;
 
     const socket = new WebSocket(

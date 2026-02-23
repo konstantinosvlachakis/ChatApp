@@ -15,7 +15,7 @@ const ConversationsPage = () => {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-x-hidden">
+    <div className="flex h-[calc(100dvh-64px)] min-h-0 w-full overflow-x-hidden sm:h-[calc(100dvh-112px)]">
       <div
         className={`min-h-0 w-full border-r bg-white md:w-[340px] lg:w-[380px] ${
           activeConversation ? "hidden md:block" : "block"
