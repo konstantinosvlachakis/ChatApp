@@ -3,6 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.generic.base import TemplateView
+from django.views.static import serve
 
 
 urlpatterns = [
@@ -10,8 +11,17 @@ urlpatterns = [
     path("api/", include("chatapp.urls")),
 ]
 
-# Serve media files (Heroku has no separate media server configured).
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve media files.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    urlpatterns += [
+        re_path(
+            r"^media/(?P<path>.*)$",
+            serve,
+            {"document_root": settings.MEDIA_ROOT},
+        ),
+    ]
 
 # Serve React frontend for all other routes (development and production)
 urlpatterns += [
