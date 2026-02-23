@@ -60,16 +60,6 @@ const Layout = () => {
               >
                 Profile
               </Link>
-              <Link
-                to="/chatbot"
-                className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                  location.pathname === "/chatbot"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                Chatbot
-              </Link>
             </div>
           </div>
 

@@ -6,7 +6,6 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ConversationsPage from "./pages/Conversations/page";
 import ChatRoomWrapper from "./pages/Conversations/features/ChatRoomWrapper";
-import ChatbotPage from "./pages/Chatbot/page";
 import { queryClient } from '../src/libs/react-query'
 import { QueryClientProvider } from 'react-query';
 
@@ -60,7 +59,7 @@ function App() {
                   path="/conversations/:id"
                   element={<ChatRoomWrapper />}
                 />
-                <Route path="/chatbot" element={<ChatbotPage />} />
+                
               </Route>
             </Routes>
           </div>
