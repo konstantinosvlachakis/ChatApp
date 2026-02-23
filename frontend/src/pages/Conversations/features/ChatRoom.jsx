@@ -65,6 +65,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 translated_text: null,
                 translated_source_language: null,
                 can_translate: Boolean((data.message || "").trim()),
+                reactions: [],
+                current_user_reaction: null,
               },
             ]);
             if (data.senderId !== user.user_id) {
@@ -138,6 +140,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       sender: { id: user.user_id, username: user.username },
       timestamp: new Date().toISOString(),
       attachmentUrl: previewImage || null,
+      reactions: [],
+      current_user_reaction: null,
     };
 
     setMessages((prev) => [...prev, tempMessage]);
@@ -201,6 +205,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     }
   };
 
+  const handleMessageReactionChange = (updatedMessage) => {
+    if (!updatedMessage?.id) return;
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
+    );
+  };
+
   // ------------------- Render -------------------
   return (
     <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-gray-50">
@@ -218,6 +229,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           messages={messages}
           userId={user.user_id}
           onDeleteMessage={handleDeleteMessage}
+          onMessageReactionChange={handleMessageReactionChange}
           baseTranslateLanguage={
             user.base_translate_language || user.native_language || "english"
           }

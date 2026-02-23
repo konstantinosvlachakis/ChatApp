@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Conversation, Message, Profile, MessageTranslation
+from .models import Conversation, Message, Profile, MessageTranslation, MessageReaction
 from django.conf import settings
 from django.db.utils import OperationalError, ProgrammingError
 
@@ -83,6 +83,8 @@ class MessageSerializer(serializers.ModelSerializer):
     translated_text = serializers.SerializerMethodField()
     translated_source_language = serializers.SerializerMethodField()
     can_translate = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
+    current_user_reaction = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -97,6 +99,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "translated_text",
             "translated_source_language",
             "can_translate",
+            "reactions",
+            "current_user_reaction",
         ]
 
     def get_attachment_url(self, obj):
@@ -170,6 +174,25 @@ class MessageSerializer(serializers.ModelSerializer):
         except (OperationalError, ProgrammingError):
             return True
         return not existing
+
+    def get_reactions(self, obj):
+        return [
+            {
+                "id": reaction.id,
+                "user_id": reaction.user_id,
+                "username": getattr(reaction.user, "username", ""),
+                "emoji": reaction.emoji,
+            }
+            for reaction in obj.reactions.select_related("user").all().order_by("created_at")
+        ]
+
+    def get_current_user_reaction(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return None
+
+        reaction = obj.reactions.filter(user=request.user).first()
+        return reaction.emoji if reaction else None
 
 
 class ConversationSerializer(serializers.ModelSerializer):

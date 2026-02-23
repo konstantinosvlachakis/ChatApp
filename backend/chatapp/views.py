@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Conversation, Message, MessageTranslation
+from .models import Conversation, Message, MessageTranslation, MessageReaction
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -23,6 +23,8 @@ import urllib.error
 import hashlib
 import re
 from django.core.cache import cache
+
+ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 
 
 def build_media_url(request, path):
@@ -674,3 +676,34 @@ def translate_message_view(request):
             {"error": "Translation service is currently unavailable."},
             status=status.HTTP_502_BAD_GATEWAY,
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def react_to_message_view(request, message_id):
+    message = get_object_or_404(Message, id=message_id)
+    participants = {message.conversation.sender_id, message.conversation.receiver_id}
+    if request.user.id not in participants:
+        return Response(
+            {"error": "You do not have access to this message."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    emoji = (request.data.get("emoji") or "").strip()
+
+    if not emoji:
+        MessageReaction.objects.filter(message=message, user=request.user).delete()
+    else:
+        if emoji not in ALLOWED_REACTION_EMOJIS:
+            return Response(
+                {"error": "Unsupported reaction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        MessageReaction.objects.update_or_create(
+            message=message,
+            user=request.user,
+            defaults={"emoji": emoji},
+        )
+
+    serializer = MessageSerializer(message, context={"request": request})
+    return Response(serializer.data, status=status.HTTP_200_OK)

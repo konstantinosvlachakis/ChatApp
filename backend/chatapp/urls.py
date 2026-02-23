@@ -44,6 +44,11 @@ urlpatterns = [
         name="delete_message",  # Delete a specific message
     ),
     path("messages/translate/", translate_message_view, name="translate_message"),
+    path(
+        "messages/<int:message_id>/react/",
+        react_to_message_view,
+        name="react_to_message",
+    ),
 ]
 websocket_urlpatterns = [
     path(

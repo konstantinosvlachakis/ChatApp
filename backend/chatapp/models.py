@@ -173,3 +173,25 @@ class MessageTranslation(models.Model):
 
     def __str__(self):
         return f"Translation of message {self.message_id} for user {self.user_id}"
+
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(
+        Message, related_name="reactions", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        Profile, related_name="message_reactions", on_delete=models.CASCADE
+    )
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"], name="uniq_message_user_reaction"
+            )
+        ]
+
+    def __str__(self):
+        return f"Reaction on message {self.message_id} by user {self.user_id}"

@@ -51,6 +51,12 @@ export interface Conversation {
     };
     timestamp: string;
     attachment_url?: string; // Optional field for attachment URL
-
+    reactions?: {
+      id: number;
+      user_id: number;
+      username: string;
+      emoji: string;
+    }[];
+    current_user_reaction?: string | null;
   }
   
