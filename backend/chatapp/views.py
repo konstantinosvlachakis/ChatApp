@@ -31,6 +31,8 @@ def build_media_url(request, path):
 
     normalized = str(path).strip()
     if normalized.startswith("http://") or normalized.startswith("https://"):
+        if "herokuapp.com" in normalized or "langvoyage.com" in normalized:
+            return normalized.replace("http://", "https://", 1)
         return normalized
 
     if normalized.startswith("/media/"):
@@ -40,7 +42,12 @@ def build_media_url(request, path):
     else:
         normalized = normalized.lstrip("/")
 
-    return request.build_absolute_uri(f"{settings.MEDIA_URL}{normalized}")
+    media_url = request.build_absolute_uri(f"{settings.MEDIA_URL}{normalized}")
+    if request.get_host().endswith(
+        ("herokuapp.com", "langvoyage.com", "www.langvoyage.com")
+    ):
+        media_url = media_url.replace("http://", "https://", 1)
+    return media_url
 
 
 @csrf_exempt

@@ -130,8 +130,10 @@ if env == "local":
     BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
 else:
     DEBUG = False
-    SECURE_SSL_REDIRECT = False  # SSL redirect is needed for production
-    BASE_URL = "http://langvoyage-d3781c6fad54.herokuapp.com/"  # Production URL
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+    BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com"  # Production URL
 
 INSTALLED_APPS.append("chatapp")
 ROOT_URLCONF = "core.urls"

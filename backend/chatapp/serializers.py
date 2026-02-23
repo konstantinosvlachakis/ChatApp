@@ -54,6 +54,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         normalized = str(path).strip()
         if normalized.startswith("http://") or normalized.startswith("https://"):
+            if "herokuapp.com" in normalized or "langvoyage.com" in normalized:
+                return normalized.replace("http://", "https://", 1)
             return normalized
 
         if normalized.startswith("/media/"):
@@ -66,7 +68,12 @@ class ProfileSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         media_path = f"{settings.MEDIA_URL}{normalized}"
         if request:
-            return request.build_absolute_uri(media_path)
+            absolute = request.build_absolute_uri(media_path)
+            if request.get_host().endswith(
+                ("herokuapp.com", "langvoyage.com", "www.langvoyage.com")
+            ):
+                return absolute.replace("http://", "https://", 1)
+            return absolute
         return media_path
 
 
@@ -95,7 +102,12 @@ class MessageSerializer(serializers.ModelSerializer):
         if obj.attachment:
             request = self.context.get("request")
             if request:
-                return request.build_absolute_uri(obj.attachment.url)
+                absolute = request.build_absolute_uri(obj.attachment.url)
+                if request.get_host().endswith(
+                    ("herokuapp.com", "langvoyage.com", "www.langvoyage.com")
+                ):
+                    return absolute.replace("http://", "https://", 1)
+                return absolute
             return obj.attachment.url
         return None
 
