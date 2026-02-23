@@ -90,7 +90,7 @@ const Conversation = ({
   };
 
   return (
-    <div className="flex flex-col overflow-x-hidden bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
+    <div className="flex w-full flex-col overflow-x-hidden bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           const rawUrl =
@@ -106,7 +106,7 @@ const Conversation = ({
               } mb-3`}
             >
               <div
-                className={`relative max-w-[85vw] break-words rounded-2xl px-3 py-2 shadow-sm sm:max-w-md sm:px-4 ${
+                className={`relative max-w-[calc(100%-2rem)] break-words rounded-2xl px-3 py-2 shadow-sm sm:max-w-md sm:px-4 ${
                   isSentByUser
                     ? "bg-blue-100 text-gray-900"
                     : "bg-gray-200 text-gray-900"

@@ -5,12 +5,14 @@ import { useGetConversations } from "../pages/Conversations/api/getConversations
 
 const Layout = () => {
   const location = useLocation(); // To identify the active page
+  const isChatRoute = location.pathname.startsWith("/conversations");
   const navigate = useNavigate();
   const { user, setUser } = useUser();
   const { data: conversations = [] } = useGetConversations({
     config: {
-      refetchInterval: 4000,
+      refetchInterval: false,
       refetchOnWindowFocus: true,
+      staleTime: 15000,
       enabled: Boolean(
         sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken")
       ),
@@ -161,16 +163,34 @@ const Layout = () => {
       </header>
 
       {/* Main Content */}
-      <main className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-0 sm:px-2 md:px-4">
-          <div className="min-h-full overflow-x-hidden bg-white shadow-sm sm:rounded-lg sm:shadow-md">
+      <main
+        className={
+          isChatRoute
+            ? "h-[calc(100dvh-64px)] overflow-hidden sm:h-[calc(100dvh-112px)]"
+            : "min-h-0 flex-1"
+        }
+      >
+        <div
+          className={`mx-auto w-full max-w-7xl overflow-x-hidden px-0 sm:px-2 md:px-4 ${
+            isChatRoute ? "h-full" : ""
+          }`}
+        >
+          <div
+            className={`overflow-x-hidden bg-white shadow-sm sm:rounded-lg sm:shadow-md ${
+              isChatRoute ? "h-full" : "min-h-full"
+            }`}
+          >
           <Outlet />
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="hidden bg-gray-800 py-3 text-center text-xs text-gray-400 sm:block sm:text-sm">
+      <footer
+        className={`bg-gray-800 py-3 text-center text-xs text-gray-400 sm:text-sm ${
+          isChatRoute ? "hidden" : "hidden sm:block"
+        }`}
+      >
         © {new Date().getFullYear()} LangVoyage. All rights reserved.
       </footer>
     </div>

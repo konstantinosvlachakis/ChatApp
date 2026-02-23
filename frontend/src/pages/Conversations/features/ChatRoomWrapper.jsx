@@ -40,11 +40,11 @@ const ChatRoomWrapper = () => {
     markConversationRead(id).catch(() => {});
   }, [id]);
 
-  if (error) return <div className="h-[calc(100dvh-64px)] p-4 text-red-500 sm:h-[calc(100dvh-112px)]">{error}</div>;
-  if (!conversation) return <div className="h-[calc(100dvh-64px)] p-4 text-gray-500 sm:h-[calc(100dvh-112px)]">Loading chat...</div>;
+  if (error) return <div className="h-full p-4 text-red-500">{error}</div>;
+  if (!conversation) return <div className="h-full p-4 text-gray-500">Loading chat...</div>;
 
   return (
-    <div className="h-[calc(100dvh-64px)] min-h-0 sm:h-[calc(100dvh-112px)]">
+    <div className="h-full min-h-0">
       <ChatRoom conversation={conversation} />
     </div>
   );
