@@ -155,6 +155,39 @@ def profile_data_view(request):
     return JsonResponse({"profiles": profile_data}, status=200)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def public_profile_view(request, username):
+    profile = get_object_or_404(Profile, username=username)
+
+    profile_data = {
+        "user_id": profile.id,
+        "username": profile.username,
+        "age": profile.age,
+        "native_language": profile.native_language,
+        "profile_image_url": (
+            settings.MEDIA_URL + profile.profile_image_url
+            if profile.profile_image_url
+            else None
+        ),
+        "complementary_image_1_url": (
+            settings.MEDIA_URL + profile.complementary_image_1_url
+            if profile.complementary_image_1_url
+            else None
+        ),
+        "complementary_image_2_url": (
+            settings.MEDIA_URL + profile.complementary_image_2_url
+            if profile.complementary_image_2_url
+            else None
+        ),
+        "bio": "Passionate about language exchange and cultural learning.",
+        "learning_goal": "Improve fluency through daily conversations.",
+        "reviews": [],
+    }
+
+    return JsonResponse(profile_data, status=200)
+
+
 @api_view(["PATCH"])
 # @permission_classes([IsAuthenticated])
 def profile_edit_view(request):

@@ -2,8 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProfileCard from "../../components/Cards/ProfileCard";
-import { createOrGetConversation } from "./api/conversation";
-import { useUser } from "../../context/UserContext";
 import profilesData from "../../datasets/dummyProfiles.json" // optional assert if needed
 import { BASE_URL } from "../../constants/constants";
 
@@ -22,7 +20,6 @@ const CommunityPage: React.FC = () => {
   const [filterLang, setFilterLang] = useState("");
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const { user } = useUser();
 
   // Load local dummy data instead of calling API
   useEffect(() => {
@@ -107,17 +104,8 @@ const CommunityPage: React.FC = () => {
     [profiles, search, filterLang]
   );
 
-  const handleCardClick = async (username: string) => {
-    if (!user) {
-      console.warn("User not loaded yet, cannot start conversation.");
-      return;
-    }
-    try {
-      const conv = await createOrGetConversation(username);
-      if (conv?.id) navigate(`/conversations/${conv.id}`);
-    } catch (err) {
-      console.error("Could not start conversation:", err);
-    }
+  const handleCardClick = (profile: RawProfile) => {
+    navigate(`/people/${profile.username}`, { state: { profile } });
   };
 
   return (
@@ -162,7 +150,7 @@ const CommunityPage: React.FC = () => {
                 nativeLanguage={profile.nativeLanguage}
                 learningLanguage={profile.learningLanguage}
                 profileImage={profile.profileImage}
-                onClick={() => handleCardClick(profile.username)}
+                onClick={() => handleCardClick(profile)}
               />
             ))}
           </div>
