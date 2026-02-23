@@ -33,6 +33,8 @@ class Profile(AbstractBaseUser):
     profile_image_url = models.CharField(
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )
+    complementary_image_1_url = models.CharField(max_length=255, blank=True, default="")
+    complementary_image_2_url = models.CharField(max_length=255, blank=True, default="")
     password = models.CharField(max_length=128, blank=True, null=True)
     is_online = models.BooleanField(default=False, db_index=True)
     last_seen = models.DateTimeField(null=True, blank=True)

@@ -11,6 +11,7 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [modalNameOpen, setModalNameOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [uploadingSlot, setUploadingSlot] = useState("");
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
 
@@ -91,12 +92,77 @@ const ProfilePage = () => {
   if (error) return <div className="p-8 text-red-500">{error}</div>;
   if (!user) return null;
 
-  const imageUrl =
-    user.profile_image_url
-      ? user.profile_image_url.startsWith("http")
-        ? user.profile_image_url
-        : `${BASE_URL_IMG}${user.profile_image_url}`
-      : "/default-avatar.png";
+  const resolveMediaUrl = (path) => {
+    if (!path) return "";
+    if (path.startsWith("http")) return path;
+    if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
+    return `${BASE_URL_IMG}/media/${path}`;
+  };
+
+  const uploadPhoto = async (slot, file) => {
+    if (!file || !file.type.startsWith("image/")) {
+      setError("Please select a valid image.");
+      return;
+    }
+
+    try {
+      setUploadingSlot(slot);
+      const token = sessionStorage.getItem("accessToken");
+      const formData = new FormData();
+      formData.append("profile_image", file);
+      formData.append("slot", slot);
+
+      const res = await fetch(
+        `${BASE_URL_IMG}/api/profile/${user.user_id}/update-image/`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!res.ok) {
+        const payload = await res.json();
+        throw new Error(payload.error || "Failed to upload image.");
+      }
+
+      const payload = await res.json();
+      setUser((prev) => ({
+        ...prev,
+        profile_image_url: payload.profile_image_url || prev.profile_image_url,
+        complementary_image_1_url:
+          payload.complementary_image_1_url || prev.complementary_image_1_url,
+        complementary_image_2_url:
+          payload.complementary_image_2_url || prev.complementary_image_2_url,
+      }));
+      setError(null);
+    } catch (err) {
+      setError(err.message || "Failed to upload image.");
+    } finally {
+      setUploadingSlot("");
+    }
+  };
+
+  const imageUrl = resolveMediaUrl(user.profile_image_url) || "/default-avatar.png";
+  const photoCards = [
+    {
+      key: "profile",
+      label: "Profile Picture",
+      image: resolveMediaUrl(user.profile_image_url),
+    },
+    {
+      key: "complementary_1",
+      label: "Complementary 1",
+      image: resolveMediaUrl(user.complementary_image_1_url),
+    },
+    {
+      key: "complementary_2",
+      label: "Complementary 2",
+      image: resolveMediaUrl(user.complementary_image_2_url),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -198,6 +264,60 @@ const ProfilePage = () => {
             {user.learningGoal ||
               "My goal is to become fluent and confident in new languages for both travel and communication."}
           </p>
+        </div>
+
+        {/* Photos */}
+        <div className="bg-white rounded-2xl shadow p-6 mt-8">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span role="img" aria-label="camera">
+              📸
+            </span>
+            Photos
+          </h2>
+          <p className="text-sm text-gray-600 mb-5">
+            Add one profile photo and two complementary photos.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {photoCards.map((card) => (
+              <label
+                key={card.key}
+                className="cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-400 transition p-2"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      uploadPhoto(card.key, file);
+                    }
+                    e.target.value = "";
+                  }}
+                />
+                <div className="w-full aspect-square rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center relative">
+                  {card.image ? (
+                    <img
+                      src={card.image}
+                      alt={card.label}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl text-gray-400">+</span>
+                  )}
+                  {uploadingSlot === card.key && (
+                    <div className="absolute inset-0 bg-black/40 text-white text-sm flex items-center justify-center">
+                      Uploading...
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-sm font-medium text-gray-700 text-center">
+                  {card.label}
+                </p>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -14,6 +14,9 @@ from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 from django.db.models import Q
+from django.core.files.storage import default_storage
+import os
+import uuid
 
 
 @csrf_exempt
@@ -106,6 +109,16 @@ def profile_view(request):
         "profile_image_url": (
             settings.MEDIA_URL + user.profile_image_url
             if user.profile_image_url
+            else None
+        ),
+        "complementary_image_1_url": (
+            settings.MEDIA_URL + user.complementary_image_1_url
+            if user.complementary_image_1_url
+            else None
+        ),
+        "complementary_image_2_url": (
+            settings.MEDIA_URL + user.complementary_image_2_url
+            if user.complementary_image_2_url
             else None
         ),
         "date_of_birth": user.date_of_birth,  # Include the date of birth
@@ -312,14 +325,40 @@ def update_profile_image(request, user_id):
         return Response(
             {"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND
         )
-    print("asdas")
     if "profile_image" in request.FILES:
         image_file = request.FILES["profile_image"]
-        # Assuming profile_image_url is a FileField or ImageField
-        profile.profile_image_url.save(image_file.name, image_file)
+        slot = request.data.get("slot", "profile")
+
+        ext = os.path.splitext(image_file.name)[1] or ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
+        path = default_storage.save(f"profile_images/{filename}", image_file)
+
+        if slot == "complementary_1":
+            profile.complementary_image_1_url = path
+        elif slot == "complementary_2":
+            profile.complementary_image_2_url = path
+        else:
+            profile.profile_image_url = path
+
         profile.save()
         return Response(
-            {"message": "Profile image updated successfully."},
+            {
+                "message": "Profile image updated successfully.",
+                "slot": slot,
+                "profile_image_url": f"{settings.MEDIA_URL}{profile.profile_image_url}"
+                if profile.profile_image_url
+                else None,
+                "complementary_image_1_url": (
+                    f"{settings.MEDIA_URL}{profile.complementary_image_1_url}"
+                    if profile.complementary_image_1_url
+                    else None
+                ),
+                "complementary_image_2_url": (
+                    f"{settings.MEDIA_URL}{profile.complementary_image_2_url}"
+                    if profile.complementary_image_2_url
+                    else None
+                ),
+            },
             status=status.HTTP_200_OK,
         )
 
