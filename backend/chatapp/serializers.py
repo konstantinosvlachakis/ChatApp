@@ -90,6 +90,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "id",
             "text",
             "sender",
+            "status",
             "attachment",
             "attachment_url",
             "timestamp",

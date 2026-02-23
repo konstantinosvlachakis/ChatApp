@@ -14,7 +14,6 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import dj_database_url
-from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
-redis_url = os.environ.get("REDISCLOUD_URL", "redis://localhost:6379")
+redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
 
 ALLOWED_HOSTS = [
     "langvoyage-d3781c6fad54.herokuapp.com",
@@ -43,25 +42,7 @@ PORT = int(os.environ.get("PORT", 8000))
 ASGI_APPLICATION = "core.asgi.application"
 
 
-redis_url = os.environ.get(
-    "REDIS_URL", "redis://localhost:6379"
-)  # Default for local dev
-parsed_redis_url = urlparse(redis_url)
-
-# Ensure a default port value
-redis_host = os.environ.get("REDIS_HOST", "localhost")
-redis_port = parsed_redis_url.port or 6379  # Default Redis port if missing
-
-if env == "local":
-    CHANNEL_LAYERS = {
-        "default": {
-            "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {
-                "hosts": [("127.0.0.1", 6379)],  # Local Redis
-            },
-        },
-    }
-else:
+if redis_url:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -70,17 +51,28 @@ else:
             },
         },
     }
-
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": os.environ.get("REDIS_CACHE_URL", redis_url),
-        "OPTIONS": {
-            "socket_connect_timeout": 2,
-            "socket_timeout": 2,
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": os.environ.get("REDIS_CACHE_URL", redis_url),
+            "OPTIONS": {
+                "socket_connect_timeout": 2,
+                "socket_timeout": 2,
+            },
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
         },
     }
-}
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "chatapp-default-cache",
+        }
+    }
 
 
 # Application definition

@@ -33,6 +33,7 @@ export interface Conversation {
     last_message?: {
       id: number;
       text: string;
+      status?: "sent" | "delivered" | "read";
       sender: {
         id: number;
         username: string;

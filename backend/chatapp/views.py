@@ -249,12 +249,19 @@ def profile_edit_view(request):
 
 class MessageListView(APIView):
     def get(self, request, conversation_id):
-        # Fetch conversation where the user is either the sender or receiver
         conversation = get_object_or_404(
             Conversation,
             id=conversation_id,
-            sender=request.user,  # Update this condition if receiver is also valid
         )
+        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "You are not a participant in this conversation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        Message.objects.filter(conversation=conversation).exclude(
+            sender=request.user
+        ).filter(status="sent").update(status="delivered")
 
         # Fetch all messages in the conversation
         messages = conversation.messages.all()
@@ -310,6 +317,16 @@ class ConversationDetailView(APIView):
         Retrieve a specific conversation by ID.
         """
         conversation = get_object_or_404(Conversation, id=conversation_id)
+        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "You are not a participant in this conversation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        Message.objects.filter(conversation=conversation).exclude(
+            sender=request.user
+        ).filter(status="sent").update(status="delivered")
+
         serializer = ConversationSerializer(conversation, context={"request": request})
         return Response(serializer.data)
 
@@ -328,6 +345,9 @@ class ConversationListView(APIView):
         conversations = Conversation.objects.filter(
             Q(sender=request.user) | Q(receiver=request.user)
         )
+        Message.objects.filter(conversation__in=conversations).exclude(
+            sender=request.user
+        ).filter(status="sent").update(status="delivered")
 
         serializer = ConversationSerializer(
             conversations, many=True, context={"request": request}

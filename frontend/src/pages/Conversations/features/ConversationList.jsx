@@ -18,6 +18,16 @@ const resolveAvatarUrl = (path) => {
   return `${BASE_URL_IMG}/media/${path}`;
 };
 
+const MessageStatusTicks = ({ status = "sent" }) => {
+  if (status === "read") {
+    return <span className="ml-2 text-xs font-semibold text-sky-400">✓✓</span>;
+  }
+  if (status === "delivered") {
+    return <span className="ml-2 text-xs font-semibold text-gray-400">✓✓</span>;
+  }
+  return <span className="ml-2 text-xs font-semibold text-gray-400">✓</span>;
+};
+
 function ConversationList({
   onSelectConversation,
   activeConversationId,
@@ -191,6 +201,8 @@ function ConversationList({
               hour: "2-digit",
               minute: "2-digit",
             });
+        const isLastMessageFromCurrentUser =
+          conversation.last_message?.sender?.id === user?.user_id;
 
         return (
           <div key={conversation.id} className="relative">
@@ -234,12 +246,19 @@ function ConversationList({
                     <span>Typing...</span>
                   </div>
                 ) : (
-                  <p className="truncate text-xs text-gray-500 sm:text-sm">
-                    {conversation.last_message?.text || "No messages yet"}{" "}
-                    <span className="text-gray-400">
-                      {formattedUpdated ? `(${formattedUpdated})` : ""}
-                    </span>
-                  </p>
+                  <div className="flex items-end justify-between gap-2">
+                    <p className="truncate text-xs text-gray-500 sm:text-sm">
+                      {conversation.last_message?.text || "No messages yet"}
+                    </p>
+                    <div className="flex items-center text-[11px] text-gray-400 sm:text-xs">
+                      {isLastMessageFromCurrentUser && (
+                        <MessageStatusTicks
+                          status={conversation.last_message?.status}
+                        />
+                      )}
+                      {formattedUpdated && <span className="ml-2">{formattedUpdated}</span>}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
