@@ -2,18 +2,25 @@ import React, { useState, useRef, useEffect } from "react";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
+import TypingDots from "./TypingDots";
 import axios from "axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
 
-const ChatRoom = ({ conversation }) => {
+const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const socket = useRef(null);
-  const typingTimeoutRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const { user, loading } = useUser();
+  const sendSocketEvent = (payload) => {
+    if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    socket.current.send(JSON.stringify(payload));
+    return true;
+  };
 
   useEffect(() => {
     setMessages(conversation?.messages || []);
@@ -61,15 +68,12 @@ const ChatRoom = ({ conversation }) => {
 
           case "user_typing":
             setIsOtherUserTyping(true);
-            clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(
-              () => setIsOtherUserTyping(false),
-              3000
-            );
+            onConversationTypingChange?.(conversation.id, true);
             break;
 
           case "user_stopped_typing":
             setIsOtherUserTyping(false);
+            onConversationTypingChange?.(conversation.id, false);
             break;
 
           default:
@@ -84,10 +88,11 @@ const ChatRoom = ({ conversation }) => {
       console.log("WebSocket disconnected for conversation:", conversation.id);
 
     return () => {
+      sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
       socket.current?.close();
-      clearTimeout(typingTimeoutRef.current);
+      onConversationTypingChange?.(conversation.id, false);
     };
-  }, [conversation?.id, user]);
+  }, [conversation?.id, user, onConversationTypingChange]);
 
   // ------------------- Loading State -------------------
   if (loading) {
@@ -136,21 +141,16 @@ const ChatRoom = ({ conversation }) => {
       console.log("Saved message:", response.data);
 
       // Broadcast the new message to others
-      if (socket.current && socket.current.readyState === WebSocket.OPEN) {
-        socket.current.send(
-          JSON.stringify({
-            type: "chat",
-            id: savedMessage.id,
-            message: savedMessage.text,
-            sender: user.username,
-            senderId: user.user_id,
-            attachmentUrl:
-              savedMessage.attachment_url ||
-              savedMessage.attachmentUrl ||
-              null, // ensure the URL for audio/image/video is sent
-          })
-        );
-      } else {
+      const sent = sendSocketEvent({
+        type: "chat",
+        id: savedMessage.id,
+        message: savedMessage.text,
+        sender: user.username,
+        senderId: user.user_id,
+        attachmentUrl:
+          savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+      });
+      if (!sent) {
         console.error("WebSocket is not open. Unable to send message.");
       }
     } catch (error) {
@@ -161,9 +161,11 @@ const ChatRoom = ({ conversation }) => {
 
   // ------------------- Typing Indicators -------------------
   const handleTyping = () => {
-    socket.current?.send(
-      JSON.stringify({ type: "user_typing", sender: user.username })
-    );
+    sendSocketEvent({ type: "user_typing", sender: user.username });
+  };
+
+  const handleStopTyping = () => {
+    sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
   };
 
   // ------------------- Delete Message -------------------
@@ -172,9 +174,7 @@ const ChatRoom = ({ conversation }) => {
 
     try {
       await deleteMessage(messageId);
-      socket.current?.send(
-        JSON.stringify({ type: "deleteMessage", messageId })
-      );
+      sendSocketEvent({ type: "deleteMessage", messageId });
     } catch (error) {
       console.error("Failed to delete message:", error);
     }
@@ -202,8 +202,9 @@ const ChatRoom = ({ conversation }) => {
 
       {/* Typing indicator */}
       {isOtherUserTyping && (
-        <div className="text-gray-500 text-sm px-4 py-1">
-          The other user is typing...
+        <div className="text-gray-500 text-sm px-4 py-1 flex items-center gap-2">
+          <TypingDots />
+          <span>Typing...</span>
         </div>
       )}
 
@@ -212,7 +213,7 @@ const ChatRoom = ({ conversation }) => {
         <MessageInput
           onSendMessage={handleSendMessage}
           onTyping={handleTyping}
-          isOtherUserTyping={isOtherUserTyping}
+          onStopTyping={handleStopTyping}
         />
       </div>
     </div>

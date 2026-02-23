@@ -6,8 +6,13 @@ import axios from "../../../utils/axios";
 import { BASE_URL } from "../../../constants/constants";
 import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
+import TypingDots from "./TypingDots";
 
-function ConversationList({ onSelectConversation, activeConversationId }) {
+function ConversationList({
+  onSelectConversation,
+  activeConversationId,
+  typingByConversation = {},
+}) {
   const { data: conversations = [], error, isLoading } = useGetConversations();
   const queryClient = useQueryClient();
   const { user } = useUser();
@@ -15,6 +20,8 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
+  const [presenceTypingByConversation, setPresenceTypingByConversation] =
+    useState({});
 
   const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
 
@@ -110,6 +117,32 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
             }
             return next;
           });
+          if (!data.is_online) {
+            setPresenceTypingByConversation((prev) => {
+              const next = { ...prev };
+              conversations.forEach((conversation) => {
+                const otherUser =
+                  conversation.sender?.username === user?.username
+                    ? conversation.receiver
+                    : conversation.sender;
+                if (otherUser?.id === userId) {
+                  next[conversation.id] = false;
+                }
+              });
+              return next;
+            });
+          }
+          return;
+        }
+
+        if (data.type === "typing_status") {
+          const conversationId = data.conversation_id;
+          if (typeof conversationId !== "number") return;
+
+          setPresenceTypingByConversation((prev) => ({
+            ...prev,
+            [conversationId]: !!data.is_typing,
+          }));
         }
       } catch (parseError) {
         console.error("Failed to parse presence event:", parseError);
@@ -119,7 +152,7 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
     return () => {
       socket.close();
     };
-  }, [wsBaseUrl]);
+  }, [conversations, user?.username, wsBaseUrl]);
 
   if (isLoading) return <div>Loading conversations...</div>;
   if (error) {
@@ -169,12 +202,20 @@ function ConversationList({ onSelectConversation, activeConversationId }) {
                 <p className="font-semibold">
                   {otherUser?.username || "Unknown Participant"}
                 </p>
-                <p className="text-sm text-gray-500">
-                  {conversation.last_message?.text || "No messages yet"}{" "}
-                  <span className="text-gray-400">
-                    ({new Date(conversation.updated_at).toLocaleString()})
-                  </span>
-                </p>
+                {(typingByConversation[conversation.id] ||
+                  presenceTypingByConversation[conversation.id]) ? (
+                  <div className="text-sm text-gray-500 flex items-center gap-2">
+                    <TypingDots />
+                    <span>Typing...</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    {conversation.last_message?.text || "No messages yet"}{" "}
+                    <span className="text-gray-400">
+                      ({new Date(conversation.updated_at).toLocaleString()})
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
 

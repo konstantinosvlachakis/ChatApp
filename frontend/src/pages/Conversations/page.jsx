@@ -5,6 +5,14 @@ import IconButton from "@mui/material/IconButton";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 const ConversationsPage = () => {
   const [activeConversation, setActiveConversation] = useState(null);
+  const [typingByConversation, setTypingByConversation] = useState({});
+
+  const handleConversationTypingChange = (conversationId, isTyping) => {
+    setTypingByConversation((prev) => ({
+      ...prev,
+      [conversationId]: isTyping,
+    }));
+  };
 
   return (
     <div className="flex">
@@ -12,6 +20,7 @@ const ConversationsPage = () => {
       <Sidebar
         onSelectConversation={setActiveConversation}
         activeConversationId={activeConversation?.id ?? null}
+        typingByConversation={typingByConversation}
       />
 
       {/* Main Content */}
@@ -27,7 +36,10 @@ const ConversationsPage = () => {
                 <ArrowBackIcon />
               </IconButton>
             </div>
-            <ChatRoom conversation={activeConversation} />
+            <ChatRoom
+              conversation={activeConversation}
+              onConversationTypingChange={handleConversationTypingChange}
+            />
           </div>
         ) : (
           <div className="text-center text-gray-500">

@@ -1,7 +1,11 @@
 import React from "react";
 import ConversationList from "../features/ConversationList";
 
-function Sidebar({ onSelectConversation, activeConversationId }) {
+function Sidebar({
+  onSelectConversation,
+  activeConversationId,
+  typingByConversation,
+}) {
   return (
     <div className="w-1/4 h-screen bg-white shadow-lg border-r flex flex-col">
       {/* Search Input */}
@@ -18,6 +22,7 @@ function Sidebar({ onSelectConversation, activeConversationId }) {
         <ConversationList
           onSelectConversation={onSelectConversation}
           activeConversationId={activeConversationId}
+          typingByConversation={typingByConversation}
         />
       </div>
     </div>

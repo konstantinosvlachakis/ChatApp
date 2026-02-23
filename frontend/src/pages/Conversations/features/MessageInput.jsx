@@ -4,7 +4,7 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 
-const MessageInput = ({ onSendMessage }) => {
+const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   const [message, setMessage] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
@@ -16,6 +16,7 @@ const MessageInput = ({ onSendMessage }) => {
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const isTypingRef = useRef(false);
 
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
@@ -112,11 +113,42 @@ const MessageInput = ({ onSendMessage }) => {
     }
 
     onSendMessage(message, attachedFile, previewImage);
+    if (isTypingRef.current) {
+      onStopTyping?.();
+      isTypingRef.current = false;
+    }
     setMessage("");
     setPreviewImage(null);
     setAttachedFile(null);
     setAudioBlob(null);
   };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setMessage(value);
+
+    if (!value.trim()) {
+      if (isTypingRef.current) {
+        onStopTyping?.();
+        isTypingRef.current = false;
+      }
+      return;
+    }
+
+    if (!isTypingRef.current) {
+      onTyping?.();
+      isTypingRef.current = true;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (isTypingRef.current) {
+        onStopTyping?.();
+        isTypingRef.current = false;
+      }
+    };
+  }, [onStopTyping]);
 
 
   const handleKeyDown = (event) => {
@@ -181,7 +213,7 @@ const MessageInput = ({ onSendMessage }) => {
             type="text"
             ref={inputRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Type your message..."
             className="w-full outline-none"
