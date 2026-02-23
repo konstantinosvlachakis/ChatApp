@@ -10,9 +10,8 @@ urlpatterns = [
     path("api/", include("chatapp.urls")),
 ]
 
-# Serve media files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Serve media files (Heroku has no separate media server configured).
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Serve React frontend for all other routes (development and production)
 urlpatterns += [

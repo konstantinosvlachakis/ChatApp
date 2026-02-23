@@ -25,6 +25,24 @@ import re
 from django.core.cache import cache
 
 
+def build_media_url(request, path):
+    if not path:
+        return None
+
+    normalized = str(path).strip()
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return normalized
+
+    if normalized.startswith("/media/"):
+        normalized = normalized[len("/media/") :]
+    elif normalized.startswith("media/"):
+        normalized = normalized[len("media/") :]
+    else:
+        normalized = normalized.lstrip("/")
+
+    return request.build_absolute_uri(f"{settings.MEDIA_URL}{normalized}")
+
+
 @csrf_exempt
 def login_view(request):
     if request.method == "POST":
@@ -113,20 +131,12 @@ def profile_view(request):
         "age": user.age,
         "native_language": user.native_language,  # Include the native language
         "base_translate_language": user.base_translate_language,
-        "profile_image_url": (
-            settings.MEDIA_URL + user.profile_image_url
-            if user.profile_image_url
-            else None
+        "profile_image_url": build_media_url(request, user.profile_image_url),
+        "complementary_image_1_url": build_media_url(
+            request, user.complementary_image_1_url
         ),
-        "complementary_image_1_url": (
-            settings.MEDIA_URL + user.complementary_image_1_url
-            if user.complementary_image_1_url
-            else None
-        ),
-        "complementary_image_2_url": (
-            settings.MEDIA_URL + user.complementary_image_2_url
-            if user.complementary_image_2_url
-            else None
+        "complementary_image_2_url": build_media_url(
+            request, user.complementary_image_2_url
         ),
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
@@ -165,20 +175,12 @@ def public_profile_view(request, username):
         "username": profile.username,
         "age": profile.age,
         "native_language": profile.native_language,
-        "profile_image_url": (
-            settings.MEDIA_URL + profile.profile_image_url
-            if profile.profile_image_url
-            else None
+        "profile_image_url": build_media_url(request, profile.profile_image_url),
+        "complementary_image_1_url": build_media_url(
+            request, profile.complementary_image_1_url
         ),
-        "complementary_image_1_url": (
-            settings.MEDIA_URL + profile.complementary_image_1_url
-            if profile.complementary_image_1_url
-            else None
-        ),
-        "complementary_image_2_url": (
-            settings.MEDIA_URL + profile.complementary_image_2_url
-            if profile.complementary_image_2_url
-            else None
+        "complementary_image_2_url": build_media_url(
+            request, profile.complementary_image_2_url
         ),
         "bio": "Passionate about language exchange and cultural learning.",
         "learning_goal": "Improve fluency through daily conversations.",
@@ -391,18 +393,12 @@ def update_profile_image(request, user_id):
             {
                 "message": "Profile image updated successfully.",
                 "slot": slot,
-                "profile_image_url": f"{settings.MEDIA_URL}{profile.profile_image_url}"
-                if profile.profile_image_url
-                else None,
-                "complementary_image_1_url": (
-                    f"{settings.MEDIA_URL}{profile.complementary_image_1_url}"
-                    if profile.complementary_image_1_url
-                    else None
+                "profile_image_url": build_media_url(request, profile.profile_image_url),
+                "complementary_image_1_url": build_media_url(
+                    request, profile.complementary_image_1_url
                 ),
-                "complementary_image_2_url": (
-                    f"{settings.MEDIA_URL}{profile.complementary_image_2_url}"
-                    if profile.complementary_image_2_url
-                    else None
+                "complementary_image_2_url": build_media_url(
+                    request, profile.complementary_image_2_url
                 ),
             },
             status=status.HTTP_200_OK,

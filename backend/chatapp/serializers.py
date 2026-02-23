@@ -32,6 +32,8 @@ def resolve_language_code(language):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    profile_image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Profile
         fields = [
@@ -46,7 +48,26 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
 
     def get_profile_image_url(self, obj):
-        return obj.get_profile_image_url()
+        path = getattr(obj, "profile_image_url", "")
+        if not path:
+            return None
+
+        normalized = str(path).strip()
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            return normalized
+
+        if normalized.startswith("/media/"):
+            normalized = normalized[len("/media/") :]
+        elif normalized.startswith("media/"):
+            normalized = normalized[len("media/") :]
+        else:
+            normalized = normalized.lstrip("/")
+
+        request = self.context.get("request")
+        media_path = f"{settings.MEDIA_URL}{normalized}"
+        if request:
+            return request.build_absolute_uri(media_path)
+        return media_path
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -71,8 +92,11 @@ class MessageSerializer(serializers.ModelSerializer):
         ]
 
     def get_attachment_url(self, obj):
-        if obj.attachment:  # Assuming `attachment` is the field storing the file
-            return f"{settings.BASE_URL}{settings.MEDIA_URL}{obj.attachment}"
+        if obj.attachment:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.attachment.url)
+            return obj.attachment.url
         return None
 
     def _get_user_translation(self, obj):
