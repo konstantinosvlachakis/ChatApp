@@ -2,6 +2,7 @@ import React from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
@@ -17,11 +18,26 @@ const Tabs = createBottomTabNavigator();
 function AppTabs() {
   return (
     <Tabs.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedText,
-      }}
+        tabBarIcon: ({ color, size, focused }) => {
+          let iconName: keyof typeof Ionicons.glyphMap = "ellipse";
+
+          if (route.name === "People") {
+            iconName = focused ? "people" : "people-outline";
+          } else if (route.name === "Chats") {
+            iconName = focused ? "chatbubbles" : "chatbubbles-outline";
+          } else if (route.name === "Profile") {
+            iconName = focused ? "person-circle" : "person-circle-outline";
+          } else if (route.name === "Settings") {
+            iconName = focused ? "settings" : "settings-outline";
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+      })}
     >
       <Tabs.Screen name="People" component={CommunityScreen} />
       <Tabs.Screen name="Chats" component={ConversationsScreen} />

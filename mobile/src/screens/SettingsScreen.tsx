@@ -5,10 +5,11 @@ import { updateSettings } from "../services/api/auth";
 import { colors } from "../theme/colors";
 
 export function SettingsScreen() {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, logout } = useAuth();
   const [baseLanguage, setBaseLanguage] = useState("");
   const [practicing, setPracticing] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     setBaseLanguage(user?.base_translate_language || "english");
@@ -32,6 +33,24 @@ export function SettingsScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onLogout = () => {
+    Alert.alert("Log out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setLoggingOut(true);
+            await logout();
+          } finally {
+            setLoggingOut(false);
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -60,6 +79,11 @@ export function SettingsScreen() {
         <Pressable style={styles.button} onPress={onSave} disabled={saving}>
           <Text style={styles.buttonText}>{saving ? "Saving..." : "Save settings"}</Text>
         </Pressable>
+        <Pressable style={styles.logoutButton} onPress={onLogout} disabled={loggingOut}>
+          <Text style={styles.logoutButtonText}>
+            {loggingOut ? "Logging out..." : "Log out"}
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -87,4 +111,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   buttonText: { color: "white", fontWeight: "700" },
+  logoutButton: {
+    alignItems: "center",
+    backgroundColor: colors.danger,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  logoutButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
 });

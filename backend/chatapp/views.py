@@ -254,9 +254,7 @@ def profile_data_view(request):
             "username": profile.username,
             "native_language": profile.native_language,
             "languages_practicing": profile.languages_practicing or [],
-            "profile_image_url": (
-                profile.profile_image_url if profile.profile_image_url else None
-            ),
+            "profile_image_url": build_media_url(request, profile.profile_image_url),
         }
         for profile in page_obj
     ]

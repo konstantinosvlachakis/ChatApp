@@ -1,6 +1,6 @@
 import React from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme/colors";
+import { API_BASE_URL } from "../config/api";
 
 type Props = {
   username: string;
@@ -19,12 +19,19 @@ export function PartnerCard({
   profileImage,
   onPress,
 }: Props) {
+  const resolveMediaUrl = (path?: string | null) => {
+    if (!path) return "https://placehold.co/200x200";
+    if (path.startsWith("http://") || path.startsWith("https://")) return path;
+    if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
+    if (path.startsWith("media/")) return `${API_BASE_URL}/${path}`;
+    return `${API_BASE_URL}/media/${path}`;
+  };
+
+  const imageUrl = resolveMediaUrl(profileImage);
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
-      <Image
-        source={{ uri: profileImage || "https://placehold.co/200x200" }}
-        style={styles.avatar}
-      />
+      <Image source={{ uri: imageUrl }} style={styles.avatar} />
       <View style={styles.content}>
         <Text numberOfLines={1} style={styles.name}>
           {username}
@@ -32,9 +39,13 @@ export function PartnerCard({
         <Text numberOfLines={2} style={styles.bio}>
           {bio || "Registered user"}
         </Text>
-        <View style={styles.tags}>
-          <Text style={styles.tag}>Fluent: {nativeLanguage || "Unknown"}</Text>
-          {learningLanguage ? <Text style={styles.tag}>Learns: {learningLanguage}</Text> : null}
+        <View style={styles.languageRow}>
+          <Text style={styles.languageLabel}>Fluent</Text>
+          <Text style={styles.languageChip}>{nativeLanguage || "Unknown"}</Text>
+        </View>
+        <View style={styles.languageRow}>
+          <Text style={styles.languageLabel}>Learning</Text>
+          <Text style={[styles.languageChip, styles.learnTag]}>{learningLanguage || "-"}</Text>
         </View>
       </View>
     </Pressable>
@@ -43,44 +54,61 @@ export function PartnerCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: "#ffffff",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#e2e8f0",
     padding: 12,
     flexDirection: "row",
-    gap: 12,
+    alignItems: "center",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 12,
+    width: 78,
+    height: 78,
+    borderRadius: 14,
     backgroundColor: "#ddd",
   },
   content: {
     flex: 1,
-    gap: 6,
+    marginLeft: 12,
   },
   name: {
-    color: colors.text,
-    fontWeight: "700",
-    fontSize: 20,
+    color: "#111827",
+    fontWeight: "800",
+    fontSize: 19,
+    marginBottom: 2,
   },
   bio: {
-    color: colors.mutedText,
-    fontSize: 14,
+    color: "#64748b",
+    fontSize: 13,
+    marginBottom: 10,
   },
-  tags: {
+  languageRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    alignItems: "center",
+    marginBottom: 6,
   },
-  tag: {
+  languageLabel: {
+    width: 64,
     fontSize: 12,
-    color: colors.text,
+    fontWeight: "700",
+    color: "#6b7280",
+  },
+  languageChip: {
+    fontSize: 12,
+    color: "#1f2937",
     backgroundColor: "#f1f5f9",
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
+  },
+  learnTag: {
+    backgroundColor: "#e2f2ff",
+    color: "#075985",
   },
 });
