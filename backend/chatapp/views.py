@@ -23,8 +23,31 @@ import urllib.error
 import hashlib
 import re
 from django.core.cache import cache
+from django.core.paginator import EmptyPage, Paginator
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
+PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
+PROFILE_LIST_CACHE_TIMEOUT_SECONDS = 30
+PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
+PROFILE_LIST_MAX_PAGE_SIZE = 100
+
+
+def get_profile_list_cache_version():
+    version = cache.get(PROFILE_LIST_CACHE_VERSION_KEY)
+    if version is None:
+        version = 1
+        cache.set(PROFILE_LIST_CACHE_VERSION_KEY, version, None)
+    return int(version)
+
+
+def bump_profile_list_cache_version():
+    try:
+        cache.incr(PROFILE_LIST_CACHE_VERSION_KEY)
+    except ValueError:
+        cache.set(PROFILE_LIST_CACHE_VERSION_KEY, 2, None)
+    except Exception:
+        # Best-effort invalidation.
+        pass
 
 
 def build_media_url(request, path):
@@ -119,6 +142,7 @@ def register_view(request):
                 email=email,
                 date_of_birth=date_of_birth,
             )
+            bump_profile_list_cache_version()
 
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
@@ -154,11 +178,59 @@ def profile_view(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def profile_data_view(request):
-    current_user_username = request.user.username  # Get the current user's username
+    page_param = request.query_params.get("page", "1")
+    page_size_param = request.query_params.get(
+        "page_size", str(PROFILE_LIST_DEFAULT_PAGE_SIZE)
+    )
 
-    # Exclude the current user's profile
-    profiles = Profile.objects.exclude(username=current_user_username)
+    try:
+        page = max(int(page_param), 1)
+    except (TypeError, ValueError):
+        page = 1
+
+    try:
+        page_size = int(page_size_param)
+    except (TypeError, ValueError):
+        page_size = PROFILE_LIST_DEFAULT_PAGE_SIZE
+    page_size = max(1, min(page_size, PROFILE_LIST_MAX_PAGE_SIZE))
+
+    cache_version = get_profile_list_cache_version()
+    cache_key = (
+        f"profile_data:v{cache_version}:user:{request.user.id}:"
+        f"page:{page}:size:{page_size}"
+    )
+    cached_payload = cache.get(cache_key)
+    if cached_payload:
+        return JsonResponse(cached_payload, status=200)
+
+    profiles_qs = (
+        Profile.objects.exclude(id=request.user.id)
+        .order_by("username")
+        .only("username", "native_language", "profile_image_url")
+    )
+    paginator = Paginator(profiles_qs, page_size)
+
+    if paginator.num_pages == 0 or page > paginator.num_pages:
+        payload = {
+            "profiles": [],
+            "pagination": {
+                "page": page if paginator.num_pages else 1,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_count": paginator.count,
+                "has_next": False,
+                "has_previous": page > 1 and paginator.num_pages > 0,
+            },
+        }
+        cache.set(cache_key, payload, PROFILE_LIST_CACHE_TIMEOUT_SECONDS)
+        return JsonResponse(payload, status=200)
+
+    try:
+        page_obj = paginator.page(page)
+    except EmptyPage:
+        page_obj = paginator.page(1)
 
     profile_data = [
         {
@@ -168,10 +240,23 @@ def profile_data_view(request):
                 profile.profile_image_url if profile.profile_image_url else None
             ),
         }
-        for profile in profiles
+        for profile in page_obj
     ]
 
-    return JsonResponse({"profiles": profile_data}, status=200)
+    current_page = page_obj.number
+    payload = {
+        "profiles": profile_data,
+        "pagination": {
+            "page": current_page,
+            "page_size": page_size,
+            "total_pages": paginator.num_pages,
+            "total_count": paginator.count,
+            "has_next": page_obj.has_next(),
+            "has_previous": page_obj.has_previous(),
+        },
+    }
+    cache.set(cache_key, payload, PROFILE_LIST_CACHE_TIMEOUT_SECONDS)
+    return JsonResponse(payload, status=200)
 
 
 @api_view(["GET"])
@@ -226,6 +311,7 @@ def profile_edit_view(request):
 
         # Save the updated user object
         user.save()
+        bump_profile_list_cache_version()
 
         # Return the updated user data
         return JsonResponse(
@@ -442,6 +528,7 @@ def update_profile_image(request, user_id):
             profile.profile_image_url = path
 
         profile.save()
+        bump_profile_list_cache_version()
         return Response(
             {
                 "message": "Profile image updated successfully.",

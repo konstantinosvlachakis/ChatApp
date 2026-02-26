@@ -57,3 +57,4 @@ Thumbs.db
 Pipfile.lock
 docs/_build/
 node_modules
+frontend/build/

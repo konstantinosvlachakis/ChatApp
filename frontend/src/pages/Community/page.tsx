@@ -14,75 +14,116 @@ interface RawProfile {
   profileImage?: string;
 }
 
+const PAGE_SIZE = 24;
+
 const CommunityPage: React.FC = () => {
-  const [profiles, setProfiles] = useState<RawProfile[]>([]);
+  const [registeredProfiles, setRegisteredProfiles] = useState<RawProfile[]>([]);
   const [search, setSearch] = useState("");
   const [filterLang, setFilterLang] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const navigate = useNavigate();
+  const dummyProfiles = useMemo(
+    () =>
+      (profilesData as RawProfile[]).map((p: any) => ({
+        username: p.username,
+        nativeLanguage: p.nativeLanguage,
+        learningLanguage: p.learningLanguage,
+        bio: p.bio,
+        profileImage: p.profileImage,
+      })),
+    []
+  );
 
-  // Load local dummy data instead of calling API
   useEffect(() => {
-    const loadProfiles = async () => {
-      setLoading(true);
+    let isMounted = true;
+    const loadRegisteredProfilesPage = async () => {
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       try {
-        const data = profilesData as RawProfile[];
-        const dummyProfiles: RawProfile[] = data.map((p: any) => ({
-          username: p.username,
-          nativeLanguage: p.nativeLanguage,
-          learningLanguage: p.learningLanguage,
-          bio: p.bio,
-          profileImage: p.profileImage,
-        }));
+        const token = sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
+        if (!token) {
+          if (isMounted) {
+            setHasNextPage(false);
+          }
+          return;
+        }
 
-        const token = sessionStorage.getItem("accessToken");
-        let registeredProfiles: RawProfile[] = [];
-
-        if (token) {
-          const response = await fetch(`${BASE_URL}/api/profile/data`, {
+        const response = await fetch(
+          `${BASE_URL}/api/profile/data?page=${page}&page_size=${PAGE_SIZE}`,
+          {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
             credentials: "include",
-          });
-
-          if (response.ok) {
-            const payload = await response.json();
-            registeredProfiles = (payload?.profiles || []).map((p: any) => ({
-              username: p.username,
-              nativeLanguage: p.native_language || "Unknown",
-              learningLanguage: p.learning_language || "",
-              bio: p.bio || "Registered user",
-              profileImage: p.profile_image_url
-                ? p.profile_image_url.startsWith("http")
-                  ? p.profile_image_url
-                  : p.profile_image_url.startsWith("/media/")
-                    ? `${BASE_URL}${p.profile_image_url}`
-                    : `${BASE_URL}/media/${p.profile_image_url}`
-                : undefined,
-            }));
-          } else {
-            console.error("Failed to fetch registered profiles:", response.status);
           }
+        );
+
+        if (!response.ok) {
+          console.error("Failed to fetch registered profiles:", response.status);
+          return;
         }
 
-        const mergedByUsername = new Map<string, RawProfile>();
-        [...dummyProfiles, ...registeredProfiles].forEach((profile) => {
-          mergedByUsername.set(profile.username, profile);
-        });
+        const payload = await response.json();
+        const nextProfiles: RawProfile[] = (payload?.profiles || []).map((p: any) => ({
+          username: p.username,
+          nativeLanguage: p.native_language || "Unknown",
+          learningLanguage: p.learning_language || "",
+          bio: p.bio || "Registered user",
+          profileImage: p.profile_image_url
+            ? p.profile_image_url.startsWith("http")
+              ? p.profile_image_url
+              : p.profile_image_url.startsWith("/media/")
+                ? `${BASE_URL}${p.profile_image_url}`
+                : `${BASE_URL}/media/${p.profile_image_url}`
+            : undefined,
+        }));
 
-        setProfiles(Array.from(mergedByUsername.values()));
+        if (isMounted) {
+          setRegisteredProfiles((prev) => {
+            const mergedByUsername = new Map<string, RawProfile>();
+            [...prev, ...nextProfiles].forEach((profile) => {
+              mergedByUsername.set(profile.username, profile);
+            });
+            return Array.from(mergedByUsername.values());
+          });
+          setHasNextPage(Boolean(payload?.pagination?.has_next));
+        }
       } catch (err) {
         console.error("Error loading profiles:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     };
 
-    loadProfiles();
-  }, []);
+    loadRegisteredProfilesPage();
+    return () => {
+      isMounted = false;
+    };
+  }, [page]);
+
+  const profiles = useMemo(() => {
+    const mergedByUsername = new Map<string, RawProfile>();
+    [...dummyProfiles, ...registeredProfiles].forEach((profile) => {
+      mergedByUsername.set(profile.username, profile);
+    });
+    return Array.from(mergedByUsername.values());
+  }, [dummyProfiles, registeredProfiles]);
+
+  const handleLoadMore = () => {
+    if (loadingMore || !hasNextPage) return;
+    setPage((prev) => prev + 1);
+  };
 
   // Derive unique languages
   const languageOptions = useMemo(() => {
@@ -141,19 +182,33 @@ const CommunityPage: React.FC = () => {
         {loading ? (
           <p className="text-center text-gray-500">Loading profiles…</p>
         ) : filteredProfiles.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-            {filteredProfiles.map((profile) => (
-              <ProfileCard
-                key={profile.username}
-                username={profile.username}
-                bio={profile.bio}
-                nativeLanguage={profile.nativeLanguage}
-                learningLanguage={profile.learningLanguage}
-                profileImage={profile.profileImage}
-                onClick={() => handleCardClick(profile)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
+              {filteredProfiles.map((profile) => (
+                <ProfileCard
+                  key={profile.username}
+                  username={profile.username}
+                  bio={profile.bio}
+                  nativeLanguage={profile.nativeLanguage}
+                  learningLanguage={profile.learningLanguage}
+                  profileImage={profile.profileImage}
+                  onClick={() => handleCardClick(profile)}
+                />
+              ))}
+            </div>
+            {hasNextPage && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="rounded-full bg-blue-500 px-5 py-2 text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingMore ? "Loading..." : "Load more"}
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <p className="text-center text-gray-500 mt-12">
             No matches found. Try adjusting your search or filters.
