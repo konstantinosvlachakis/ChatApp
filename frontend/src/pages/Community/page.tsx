@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ProfileCard from "../../components/Cards/ProfileCard";
-import profilesData from "../../datasets/dummyProfiles.json" // optional assert if needed
 import { BASE_URL } from "../../constants/constants";
 
 // right below your interfaces
@@ -10,6 +9,7 @@ interface RawProfile {
   username: string;
   nativeLanguage: string;
   learningLanguage?: string;
+  languagesPracticing?: string[];
   bio?: string;
   profileImage?: string;
 }
@@ -24,18 +24,8 @@ const CommunityPage: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
+  const [activeSegment, setActiveSegment] = useState("all");
   const navigate = useNavigate();
-  const dummyProfiles = useMemo(
-    () =>
-      (profilesData as RawProfile[]).map((p: any) => ({
-        username: p.username,
-        nativeLanguage: p.nativeLanguage,
-        learningLanguage: p.learningLanguage,
-        bio: p.bio,
-        profileImage: p.profileImage,
-      })),
-    []
-  );
 
   useEffect(() => {
     let isMounted = true;
@@ -75,7 +65,11 @@ const CommunityPage: React.FC = () => {
         const nextProfiles: RawProfile[] = (payload?.profiles || []).map((p: any) => ({
           username: p.username,
           nativeLanguage: p.native_language || "Unknown",
-          learningLanguage: p.learning_language || "",
+          learningLanguage:
+            (p.languages_practicing && p.languages_practicing[0]) ||
+            p.learning_language ||
+            "",
+          languagesPracticing: p.languages_practicing || [],
           bio: p.bio || "Registered user",
           profileImage: p.profile_image_url
             ? p.profile_image_url.startsWith("http")
@@ -114,11 +108,11 @@ const CommunityPage: React.FC = () => {
 
   const profiles = useMemo(() => {
     const mergedByUsername = new Map<string, RawProfile>();
-    [...dummyProfiles, ...registeredProfiles].forEach((profile) => {
+    registeredProfiles.forEach((profile) => {
       mergedByUsername.set(profile.username, profile);
     });
     return Array.from(mergedByUsername.values());
-  }, [dummyProfiles, registeredProfiles]);
+  }, [registeredProfiles]);
 
   const handleLoadMore = () => {
     if (loadingMore || !hasNextPage) return;
@@ -150,41 +144,105 @@ const CommunityPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen py-5 sm:py-8 md:py-10">
-      <div className="max-w-6xl mx-auto px-3 sm:px-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">
-          Discover Language Partners
-        </h1>
+    <div className="min-h-screen bg-[#f7f6f4] py-4 sm:py-6">
+      <div className="mx-auto max-w-7xl px-2 sm:px-4">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveSegment("all")}
+              className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+                activeSegment === "all"
+                  ? "bg-slate-600 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              All members
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSegment("nearby")}
+              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition ${
+                activeSegment === "nearby"
+                  ? "bg-slate-600 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+              </svg>
+              Nearby
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSegment("travel")}
+              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition ${
+                activeSegment === "travel"
+                  ? "bg-slate-600 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+              </svg>
+              Travel
+            </button>
+          </div>
 
-        {/* Controls */}
-        <div className="mb-5 sm:mb-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or bio..."
-            className="w-full sm:w-1/2 rounded-full border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
-          <select
-            value={filterLang}
-            onChange={(e) => setFilterLang(e.target.value)}
-            className="w-full sm:w-1/4 rounded-full border border-gray-300 p-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            {languageOptions.map((lang) => (
-              <option key={lang} value={lang === "All" ? "" : lang}>
-                {lang}
-              </option>
-            ))}
-          </select>
+          <div className="flex w-full items-center gap-2 lg:w-auto">
+            <div className="relative w-full lg:w-[360px]">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Find members or topics"
+                className="w-full rounded-full border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-500"
+              />
+            </div>
+            <select
+              value={filterLang}
+              onChange={(e) => setFilterLang(e.target.value)}
+              className="rounded-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition hover:bg-slate-50"
+              aria-label="Filter by language"
+            >
+              {languageOptions.map((lang) => (
+                <option key={lang} value={lang === "All" ? "" : lang}>
+                  {lang}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Content */}
         {loading ? (
-          <p className="text-center text-gray-500">Loading profiles…</p>
+          <p className="py-16 text-center text-slate-500">Loading profiles…</p>
         ) : filteredProfiles.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-              {filteredProfiles.map((profile) => (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredProfiles.map((profile, index) => (
                 <ProfileCard
                   key={profile.username}
                   username={profile.username}
@@ -192,17 +250,18 @@ const CommunityPage: React.FC = () => {
                   nativeLanguage={profile.nativeLanguage}
                   learningLanguage={profile.learningLanguage}
                   profileImage={profile.profileImage}
+                  score={Math.max(1, 14 - (index % 14))}
                   onClick={() => handleCardClick(profile)}
                 />
               ))}
             </div>
             {hasNextPage && (
-              <div className="mt-6 flex justify-center">
+              <div className="mt-6 flex justify-center pb-2">
                 <button
                   type="button"
                   onClick={handleLoadMore}
                   disabled={loadingMore}
-                  className="rounded-full bg-blue-500 px-5 py-2 text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-full bg-pink-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loadingMore ? "Loading..." : "Load more"}
                 </button>
@@ -210,7 +269,7 @@ const CommunityPage: React.FC = () => {
             )}
           </>
         ) : (
-          <p className="text-center text-gray-500 mt-12">
+          <p className="mt-12 text-center text-slate-500">
             No matches found. Try adjusting your search or filters.
           </p>
         )}

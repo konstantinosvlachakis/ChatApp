@@ -164,6 +164,7 @@ def profile_view(request):
         "age": user.age,
         "native_language": user.native_language,  # Include the native language
         "base_translate_language": user.base_translate_language,
+        "languages_practicing": user.languages_practicing or [],
         "profile_image_url": build_media_url(request, user.profile_image_url),
         "complementary_image_1_url": build_media_url(
             request, user.complementary_image_1_url
@@ -205,10 +206,26 @@ def profile_data_view(request):
     if cached_payload:
         return JsonResponse(cached_payload, status=200)
 
-    profiles_qs = (
-        Profile.objects.exclude(id=request.user.id)
-        .order_by("username")
-        .only("username", "native_language", "profile_image_url")
+    practicing_languages = getattr(request.user, "languages_practicing", []) or []
+    normalized_languages = [
+        str(language).strip()
+        for language in practicing_languages
+        if isinstance(language, str) and str(language).strip()
+    ]
+    if not normalized_languages:
+        fallback_language = (request.user.base_translate_language or "").strip()
+        if fallback_language:
+            normalized_languages = [fallback_language]
+
+    profiles_qs = Profile.objects.exclude(id=request.user.id)
+    if normalized_languages:
+        language_filter = Q()
+        for language in normalized_languages:
+            language_filter |= Q(native_language__iexact=language)
+        profiles_qs = profiles_qs.filter(language_filter)
+
+    profiles_qs = profiles_qs.order_by("username").only(
+        "username", "native_language", "languages_practicing", "profile_image_url"
     )
     paginator = Paginator(profiles_qs, page_size)
 
@@ -236,6 +253,7 @@ def profile_data_view(request):
         {
             "username": profile.username,
             "native_language": profile.native_language,
+            "languages_practicing": profile.languages_practicing or [],
             "profile_image_url": (
                 profile.profile_image_url if profile.profile_image_url else None
             ),
@@ -269,6 +287,7 @@ def public_profile_view(request, username):
         "username": profile.username,
         "age": profile.age,
         "native_language": profile.native_language,
+        "languages_practicing": profile.languages_practicing or [],
         "profile_image_url": build_media_url(request, profile.profile_image_url),
         "complementary_image_1_url": build_media_url(
             request, profile.complementary_image_1_url
@@ -295,6 +314,7 @@ def profile_edit_view(request):
         username = data.get("username")
         native_language = data.get("native_language")
         base_translate_language = data.get("base_translate_language")
+        languages_practicing = data.get("languages_practicing")
         profile_image_url = data.get(
             "profile_image_url"
         )  # Include profile image URL if necessary
@@ -306,6 +326,20 @@ def profile_edit_view(request):
             user.native_language = native_language
         if base_translate_language:
             user.base_translate_language = base_translate_language
+        if languages_practicing is not None:
+            if not isinstance(languages_practicing, list):
+                return JsonResponse(
+                    {"error": "languages_practicing must be a list of strings"},
+                    status=400,
+                )
+
+            cleaned_languages = []
+            for language in languages_practicing:
+                if isinstance(language, str):
+                    value = language.strip()
+                    if value:
+                        cleaned_languages.append(value)
+            user.languages_practicing = cleaned_languages
         if profile_image_url:
             user.profile_image_url = profile_image_url  # Update profile image URL
 
@@ -321,6 +355,7 @@ def profile_edit_view(request):
                     "username": user.username,
                     "native_language": user.native_language,
                     "base_translate_language": user.base_translate_language,
+                    "languages_practicing": user.languages_practicing or [],
                     "profile_image_url": (
                         user.profile_image_url or None
                     ),

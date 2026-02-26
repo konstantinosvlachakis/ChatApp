@@ -10,6 +10,7 @@ export interface User {
     location?: string;
     about_me?: string;
     languages?: string[];
+    languages_practicing?: string[];
     native_language?: string;
     base_translate_language?: string;
     email?: string;

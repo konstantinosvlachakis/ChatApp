@@ -31,6 +31,7 @@ class Profile(AbstractBaseUser):
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
     base_translate_language = models.CharField(max_length=50, default="english")
+    languages_practicing = models.JSONField(default=list, blank=True)
     profile_image_url = models.CharField(
         max_length=255, blank=False, default="profile_images/MainAfter.jpg"
     )

@@ -86,8 +86,6 @@ const ProfilePage = () => {
     }
   };
 
-
-
   if (loading) return <div className="p-8 text-gray-500">Loading profile...</div>;
   if (error) return <div className="p-8 text-red-500">{error}</div>;
   if (!user) return null;
@@ -163,6 +161,7 @@ const ProfilePage = () => {
       image: resolveMediaUrl(user.complementary_image_2_url),
     },
   ];
+  const practicingLanguages = user.languages_practicing || user.languages || [];
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 sm:p-5 md:p-8">
@@ -237,8 +236,10 @@ const ProfilePage = () => {
                 <strong>Languages Practicing:</strong>
               </p>
               <div className="flex flex-wrap gap-2">
-                {(user.languages || ["English", "Spanish", "French"]).map(
-                  (lang, i) => (
+                {(practicingLanguages.length
+                  ? practicingLanguages
+                  : ["English", "Spanish", "French"]
+                ).map((lang, i) => (
                     <span
                       key={i}
                       className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"

@@ -10,8 +10,12 @@ html, body, #root {
   min-height: 100%;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
 }
 

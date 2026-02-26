@@ -160,6 +160,23 @@ const PublicProfilePage = () => {
                   {profile.native_language || profile.nativeLanguage || "N/A"}
                 </span>
               </p>
+              <p>
+                <strong>Languages Practicing:</strong>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(profile.languages_practicing || []).length > 0 ? (
+                  profile.languages_practicing.map((lang, i) => (
+                    <span
+                      key={`${lang}-${i}`}
+                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
+                    >
+                      {lang}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-500 text-sm">Not provided</span>
+                )}
+              </div>
             </div>
           </div>
         </div>

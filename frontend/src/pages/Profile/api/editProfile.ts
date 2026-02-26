@@ -5,9 +5,10 @@ import { BASE_URL } from '../../../constants/constants';
 
 type UserProfileDTO = {
   username?: string;
-  nativeLanguage?: string;
-  profileImage?: string;
-  // Add other fields if needed
+  native_language?: string;
+  base_translate_language?: string;
+  profile_image_url?: string;
+  languages_practicing?: string[];
 };
 
 // Function to update the user's native language
