@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .title { font: 700 28px Arial, sans-serif; fill: #0f172a; }
+      .label { font: 600 16px Arial, sans-serif; fill: #0f172a; }
+      .small { font: 13px Arial, sans-serif; fill: #334155; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 2; rx: 14; }
+      .store { fill: #ecfeff; stroke: #0e7490; stroke-width: 2; }
+      .edge { stroke: #475569; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .edge2 { stroke: #0369a1; stroke-width: 2.2; fill: none; marker-end: url(#arrowBlue); }
+      .chip { fill: #e2e8f0; stroke: #94a3b8; stroke-width: 1; rx: 8; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0369a1"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="900" fill="#f1f5f9"/>
+  <text x="40" y="52" class="title">ChatApp Architecture</text>
+
+  <!-- Client -->
+  <rect x="60" y="120" width="300" height="170" class="box"/>
+  <text x="80" y="155" class="label">User Browser</text>
+  <text x="80" y="186" class="small">React SPA</text>
+  <text x="80" y="208" class="small">Routes + React Query + Context</text>
+  <text x="80" y="230" class="small">File: frontend/src/App.jsx</text>
+
+  <!-- Backend HTTP -->
+  <rect x="500" y="90" width="360" height="220" class="box"/>
+  <text x="520" y="125" class="label">Django + DRF API</text>
+  <text x="520" y="156" class="small">Auth, profile, conversations, messages</text>
+  <text x="520" y="178" class="small">File: backend/chatapp/views.py</text>
+  <rect x="520" y="200" width="150" height="26" class="chip"/>
+  <text x="530" y="218" class="small">/api/token/</text>
+  <rect x="680" y="200" width="160" height="26" class="chip"/>
+  <text x="690" y="218" class="small">/api/conversations/*</text>
+  <rect x="520" y="235" width="150" height="26" class="chip"/>
+  <text x="530" y="253" class="small">/api/profile/*</text>
+  <rect x="680" y="235" width="160" height="26" class="chip"/>
+  <text x="690" y="253" class="small">/api/messages/*</text>
+
+  <!-- Backend WS -->
+  <rect x="500" y="350" width="360" height="230" class="box"/>
+  <text x="520" y="385" class="label">Django Channels (ASGI)</text>
+  <text x="520" y="416" class="small">Realtime events: chat, delete, typing, presence</text>
+  <text x="520" y="438" class="small">File: backend/chatapp/consumers.py</text>
+  <rect x="520" y="460" width="320" height="40" class="chip"/>
+  <text x="530" y="485" class="small">ChatConsumer: /ws/socket-server/:conversationId</text>
+  <rect x="520" y="512" width="320" height="40" class="chip"/>
+  <text x="530" y="537" class="small">PresenceConsumer: /ws/presence</text>
+
+  <!-- Data -->
+  <rect x="1000" y="90" width="320" height="140" class="store" rx="20"/>
+  <text x="1020" y="130" class="label">Database</text>
+  <text x="1020" y="160" class="small">PostgreSQL (prod) / SQLite (local)</text>
+  <text x="1020" y="184" class="small">Profile, Conversation, Message, Reaction</text>
+
+  <rect x="1000" y="280" width="320" height="120" class="store" rx="20"/>
+  <text x="1020" y="320" class="label">Media Storage</text>
+  <text x="1020" y="350" class="small">profile_images/, attachments/</text>
+
+  <rect x="1000" y="440" width="320" height="120" class="store" rx="20"/>
+  <text x="1020" y="480" class="label">Cache + Channel Layer</text>
+  <text x="1020" y="510" class="small">Redis (optional) or InMemory</text>
+
+  <rect x="1000" y="620" width="320" height="120" class="store" rx="20"/>
+  <text x="1020" y="660" class="label">External Service</text>
+  <text x="1020" y="690" class="small">Google Translate API</text>
+
+  <!-- Edges -->
+  <path d="M 360 175 C 420 175, 430 170, 500 170" class="edge2"/>
+  <text x="385" y="160" class="small">HTTPS REST</text>
+
+  <path d="M 360 235 C 420 260, 430 425, 500 470" class="edge2"/>
+  <text x="370" y="300" class="small">WSS /ws/socket-server/:id</text>
+
+  <path d="M 360 260 C 430 320, 430 520, 500 530" class="edge2"/>
+  <text x="370" y="365" class="small">WSS /ws/presence</text>
+
+  <path d="M 860 170 C 920 170, 940 160, 1000 160" class="edge"/>
+  <path d="M 860 500 C 930 500, 940 170, 1000 170" class="edge"/>
+  <path d="M 860 200 C 930 260, 940 330, 1000 340" class="edge"/>
+  <path d="M 860 540 C 930 540, 940 500, 1000 500" class="edge"/>
+  <path d="M 860 240 C 930 320, 940 660, 1000 680" class="edge"/>
+
+  <text x="40" y="850" class="small">Generated file: docs/architecture.svg</text>
+</svg>
+
