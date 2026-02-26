@@ -1,71 +1,55 @@
-<mxfile host="app.diagrams.net" modified="2026-02-26T00:00:00.000Z" agent="Codex" version="24.7.17" compressed="false">
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" compressed="false" version="29.5.5">
   <diagram id="chatapp-architecture" name="ChatApp Architecture">
-    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+    <mxGraphModel dx="1351" dy="920" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
       <root>
-        <mxCell id="0"/>
-        <mxCell id="1" parent="0"/>
-
-        <mxCell id="title" value="ChatApp Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=26;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="30" y="20" width="420" height="40" as="geometry"/>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=26;fontStyle=1;" value="ChatApp Architecture" vertex="1">
+          <mxGeometry height="40" width="420" x="30" y="20" as="geometry" />
         </mxCell>
-
-        <mxCell id="client" value="User Browser&lt;br/&gt;&lt;b&gt;React SPA&lt;/b&gt;&lt;br/&gt;Routes + React Query + Context&lt;br/&gt;frontend/src/App.jsx" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="60" y="120" width="300" height="170" as="geometry"/>
+        <mxCell id="client" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" value="User Browser&lt;br/&gt;&lt;b&gt;React SPA&lt;/b&gt;&lt;br/&gt;Routes + React Query + Context&lt;br/&gt;frontend/src/App.jsx" vertex="1">
+          <mxGeometry height="170" width="300" x="60" y="120" as="geometry" />
         </mxCell>
-
-        <mxCell id="api" value="&lt;b&gt;Django + DRF API&lt;/b&gt;&lt;br/&gt;Auth, profile, conversations, messages&lt;br/&gt;backend/chatapp/views.py&lt;br/&gt;&lt;br/&gt;/api/token/&lt;br/&gt;/api/profile/*&lt;br/&gt;/api/conversations/*&lt;br/&gt;/api/messages/*" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="500" y="90" width="370" height="230" as="geometry"/>
+        <mxCell id="api" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;Django + DRF API&lt;/b&gt;&lt;br/&gt;Auth, profile, conversations, messages&lt;br/&gt;backend/chatapp/views.py&lt;br/&gt;&lt;br/&gt;/api/token/&lt;br/&gt;/api/profile/*&lt;br/&gt;/api/conversations/*&lt;br/&gt;/api/messages/*" vertex="1">
+          <mxGeometry height="230" width="370" x="500" y="90" as="geometry" />
         </mxCell>
-
-        <mxCell id="channels" value="&lt;b&gt;Django Channels (ASGI)&lt;/b&gt;&lt;br/&gt;Realtime: chat, delete, typing, presence&lt;br/&gt;backend/chatapp/consumers.py&lt;br/&gt;&lt;br/&gt;ChatConsumer: /ws/socket-server/:conversationId&lt;br/&gt;PresenceConsumer: /ws/presence" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="500" y="360" width="370" height="220" as="geometry"/>
+        <mxCell id="channels" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;strokeColor=#334155;strokeWidth=2;fillColor=#f8fafc;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;Django Channels (ASGI)&lt;/b&gt;&lt;br/&gt;Realtime: chat, delete, typing, presence&lt;br/&gt;backend/chatapp/consumers.py&lt;br/&gt;&lt;br/&gt;ChatConsumer: /ws/socket-server/:conversationId&lt;br/&gt;PresenceConsumer: /ws/presence" vertex="1">
+          <mxGeometry height="220" width="370" x="500" y="360" as="geometry" />
         </mxCell>
-
-        <mxCell id="db" value="&lt;b&gt;Database&lt;/b&gt;&lt;br/&gt;PostgreSQL (prod) / SQLite (local)&lt;br/&gt;Profile, Conversation, Message, Reaction" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="90" width="320" height="140" as="geometry"/>
+        <mxCell id="db" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;Database&lt;/b&gt;&lt;br/&gt;PostgreSQL (prod) / SQLite (local)&lt;br/&gt;Profile, Conversation, Message, Reaction" vertex="1">
+          <mxGeometry height="140" width="320" x="1020" y="90" as="geometry" />
         </mxCell>
-
-        <mxCell id="media" value="&lt;b&gt;Media Storage&lt;/b&gt;&lt;br/&gt;profile_images/, attachments/" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="280" width="320" height="120" as="geometry"/>
+        <mxCell id="media" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;Media Storage&lt;/b&gt;&lt;br/&gt;profile_images/, attachments/" vertex="1">
+          <mxGeometry height="120" width="320" x="1020" y="280" as="geometry" />
         </mxCell>
-
-        <mxCell id="cache" value="&lt;b&gt;Cache + Channel Layer&lt;/b&gt;&lt;br/&gt;Redis (optional) or InMemory" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="450" width="320" height="120" as="geometry"/>
+        <mxCell id="cache" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;Cache + Channel Layer&lt;/b&gt;&lt;br&gt;Redis" vertex="1">
+          <mxGeometry height="120" width="320" x="1020" y="450" as="geometry" />
         </mxCell>
-
-        <mxCell id="translate" value="&lt;b&gt;External Service&lt;/b&gt;&lt;br/&gt;Google Translate API" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="1020" y="620" width="320" height="120" as="geometry"/>
+        <mxCell id="translate" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=20;strokeColor=#0e7490;strokeWidth=2;fillColor=#ecfeff;align=left;spacingLeft=12;spacingTop=8;" value="&lt;b&gt;External Service&lt;/b&gt;&lt;br/&gt;Google Translate API" vertex="1">
+          <mxGeometry height="120" width="320" x="1020" y="620" as="geometry" />
         </mxCell>
-
-        <mxCell id="e1" value="HTTPS REST /api/*" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#0369a1;fontSize=12;" edge="1" parent="1" source="client" target="api">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e1" edge="1" parent="1" source="client" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#0369a1;fontSize=12;" target="api" value="HTTPS REST /api/*">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e2" value="WSS /ws/socket-server/:conversationId" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#0369a1;fontSize=12;" edge="1" parent="1" source="client" target="channels">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e2" edge="1" parent="1" source="client" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#0369a1;fontSize=12;" target="channels" value="WSS /ws/socket-server/:conversationId">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e3" value="DB reads/writes" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" edge="1" parent="1" source="api" target="db">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e3" edge="1" parent="1" source="api" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" target="db" value="DB reads/writes">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e4" value="DB reads/writes" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" edge="1" parent="1" source="channels" target="db">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e4" edge="1" parent="1" source="channels" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" target="db" value="DB reads/writes">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e5" value="Media files" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" edge="1" parent="1" source="api" target="media">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e5" edge="1" parent="1" source="api" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" target="media" value="Media files">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e6" value="Presence + cache" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" edge="1" parent="1" source="channels" target="cache">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e6" edge="1" parent="1" source="channels" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" target="cache" value="Presence + cache">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <mxCell id="e7" value="Message translation" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" edge="1" parent="1" source="api" target="translate">
-          <mxGeometry relative="1" as="geometry"/>
+        <mxCell id="e7" edge="1" parent="1" source="api" style="endArrow=block;endFill=1;strokeWidth=2;strokeColor=#475569;fontSize=12;" target="translate" value="Message translation">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
 </mxfile>
-
