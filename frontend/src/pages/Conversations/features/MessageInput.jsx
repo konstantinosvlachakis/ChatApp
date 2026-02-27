@@ -145,10 +145,8 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       return;
     }
 
-    if (!isTypingRef.current) {
-      onTypingRef.current?.();
-      isTypingRef.current = true;
-    }
+    onTypingRef.current?.();
+    isTypingRef.current = true;
   };
 
   useEffect(() => {

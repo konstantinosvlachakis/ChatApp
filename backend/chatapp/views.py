@@ -24,6 +24,8 @@ import hashlib
 import re
 from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -73,6 +75,23 @@ def build_media_url(request, path):
     ):
         media_url = media_url.replace("http://", "https://", 1)
     return media_url
+
+
+def broadcast_message_status_update(conversation_id, message_ids, status_value, actor_id):
+    if not message_ids:
+        return
+    channel_layer = get_channel_layer()
+    if not channel_layer:
+        return
+    async_to_sync(channel_layer.group_send)(
+        str(conversation_id),
+        {
+            "type": "message_status_event",
+            "message_ids": message_ids,
+            "status": status_value,
+            "actor_id": actor_id,
+        },
+    )
 
 
 @csrf_exempt
@@ -380,9 +399,17 @@ class MessageListView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        Message.objects.filter(conversation=conversation).exclude(
-            sender=request.user
-        ).filter(status="sent").update(status="delivered")
+        messages_to_deliver = (
+            Message.objects.filter(conversation=conversation)
+            .exclude(sender=request.user)
+            .filter(status="sent")
+        )
+        delivered_ids = list(messages_to_deliver.values_list("id", flat=True))
+        if delivered_ids:
+            messages_to_deliver.update(status="delivered")
+            broadcast_message_status_update(
+                conversation.id, delivered_ids, "delivered", request.user.id
+            )
 
         # Fetch all messages in the conversation
         messages = conversation.messages.all()
@@ -444,9 +471,17 @@ class ConversationDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        Message.objects.filter(conversation=conversation).exclude(
-            sender=request.user
-        ).filter(status="sent").update(status="delivered")
+        messages_to_deliver = (
+            Message.objects.filter(conversation=conversation)
+            .exclude(sender=request.user)
+            .filter(status="sent")
+        )
+        delivered_ids = list(messages_to_deliver.values_list("id", flat=True))
+        if delivered_ids:
+            messages_to_deliver.update(status="delivered")
+            broadcast_message_status_update(
+                conversation.id, delivered_ids, "delivered", request.user.id
+            )
 
         serializer = ConversationSerializer(conversation, context={"request": request})
         return Response(serializer.data)
@@ -466,9 +501,21 @@ class ConversationListView(APIView):
         conversations = Conversation.objects.filter(
             Q(sender=request.user) | Q(receiver=request.user)
         )
-        Message.objects.filter(conversation__in=conversations).exclude(
-            sender=request.user
-        ).filter(status="sent").update(status="delivered")
+        messages_to_deliver = (
+            Message.objects.filter(conversation__in=conversations)
+            .exclude(sender=request.user)
+            .filter(status="sent")
+        )
+        updates_by_conversation = {}
+        for message_id, conv_id in messages_to_deliver.values_list("id", "conversation_id"):
+            updates_by_conversation.setdefault(conv_id, []).append(message_id)
+
+        if updates_by_conversation:
+            messages_to_deliver.update(status="delivered")
+            for conv_id, message_ids in updates_by_conversation.items():
+                broadcast_message_status_update(
+                    conv_id, message_ids, "delivered", request.user.id
+                )
 
         serializer = ConversationSerializer(
             conversations, many=True, context={"request": request}
@@ -520,12 +567,18 @@ def mark_conversation_read_view(request, conversation_id):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    updated = (
+    messages_to_mark = (
         Message.objects.filter(conversation=conversation)
         .exclude(sender=request.user)
         .exclude(status="read")
-        .update(status="read")
     )
+    read_ids = list(messages_to_mark.values_list("id", flat=True))
+    updated = 0
+    if read_ids:
+        updated = messages_to_mark.update(status="read")
+        broadcast_message_status_update(
+            conversation.id, read_ids, "read", request.user.id
+        )
 
     return Response({"updated": updated}, status=status.HTTP_200_OK)
 
@@ -826,4 +879,16 @@ def react_to_message_view(request, message_id):
         )
 
     serializer = MessageSerializer(message, context={"request": request})
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    serialized_message = serializer.data
+
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            str(message.conversation_id),
+            {
+                "type": "message_reaction_event",
+                "message": serialized_message,
+            },
+        )
+
+    return Response(serialized_message, status=status.HTTP_200_OK)

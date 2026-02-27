@@ -273,6 +273,28 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         await self.send(text_data=json.dumps({"type": event["event_type"]}))
 
+    async def message_status_event(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_status",
+                    "messageIds": event.get("message_ids", []),
+                    "status": event.get("status"),
+                    "actorId": event.get("actor_id"),
+                }
+            )
+        )
+
+    async def message_reaction_event(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_reaction",
+                    "message": event.get("message"),
+                }
+            )
+        )
+
 
 class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def connect(self):
