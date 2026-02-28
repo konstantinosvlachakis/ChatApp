@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const ACCESS_TOKEN_KEY = "lv_access_token";
 const REFRESH_TOKEN_KEY = "lv_refresh_token";
+const THEME_MODE_KEY = "lv_theme_mode";
 
 export const tokenStorage = {
   async getAccessToken() {
@@ -18,5 +19,14 @@ export const tokenStorage = {
   },
   async clear() {
     await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+  },
+};
+
+export const themeStorage = {
+  async getThemeMode() {
+    return AsyncStorage.getItem(THEME_MODE_KEY);
+  },
+  async setThemeMode(mode: "light" | "dark") {
+    return AsyncStorage.setItem(THEME_MODE_KEY, mode);
   },
 };

@@ -1,6 +1,8 @@
 import React from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../config/api";
+import { useTheme } from "../context/ThemeContext";
+import type { ThemeColors } from "../theme/colors";
 
 type Props = {
   username: string;
@@ -19,6 +21,9 @@ export function PartnerCard({
   profileImage,
   onPress,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+
   const resolveMediaUrl = (path?: string | null) => {
     if (!path) return "https://placehold.co/200x200";
     if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -52,63 +57,64 @@ export function PartnerCard({
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  avatar: {
-    width: 78,
-    height: 78,
-    borderRadius: 14,
-    backgroundColor: "#ddd",
-  },
-  content: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  name: {
-    color: "#111827",
-    fontWeight: "800",
-    fontSize: 19,
-    marginBottom: 2,
-  },
-  bio: {
-    color: "#64748b",
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  languageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  languageLabel: {
-    width: 64,
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6b7280",
-  },
-  languageChip: {
-    fontSize: 12,
-    color: "#1f2937",
-    backgroundColor: "#f1f5f9",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  learnTag: {
-    backgroundColor: "#e2f2ff",
-    color: "#075985",
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+    },
+    avatar: {
+      width: 78,
+      height: 78,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceMuted,
+    },
+    content: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    name: {
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 19,
+      marginBottom: 2,
+    },
+    bio: {
+      color: colors.mutedText,
+      fontSize: 13,
+      marginBottom: 10,
+    },
+    languageRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+    languageLabel: {
+      width: 64,
+      fontSize: 12,
+      fontWeight: "700",
+      color: colors.mutedText,
+    },
+    languageChip: {
+      fontSize: 12,
+      color: colors.chipText,
+      backgroundColor: colors.chipBackground,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+    learnTag: {
+      backgroundColor: colors.surfaceMuted,
+      color: colors.primary,
+    },
+  });

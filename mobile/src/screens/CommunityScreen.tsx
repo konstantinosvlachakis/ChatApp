@@ -14,12 +14,16 @@ import { useMemo } from "react";
 import { fetchPeople } from "../services/api/auth";
 import { PartnerCard } from "../components/PartnerCard";
 import type { ProfileListResponse } from "../types";
-import { colors } from "../theme/colors";
+import { useTheme } from "../context/ThemeContext";
+import type { ThemeColors } from "../theme/colors";
 
 export function CommunityScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [data, setData] = useState<ProfileListResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [activeSegment, setActiveSegment] = useState<"all" | "nearby" | "travel">("all");
   const [selectedLanguage, setSelectedLanguage] = useState("All");
 
   const load = async () => {
@@ -80,6 +84,47 @@ export function CommunityScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
         ListHeaderComponent={
           <View style={styles.headerWrap}>
+            <View style={styles.segmentRow}>
+              <Pressable
+                style={[styles.segmentButton, activeSegment === "all" && styles.segmentButtonActive]}
+                onPress={() => setActiveSegment("all")}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    activeSegment === "all" && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  All members
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.segmentButton, activeSegment === "nearby" && styles.segmentButtonActive]}
+                onPress={() => setActiveSegment("nearby")}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    activeSegment === "nearby" && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Nearby
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.segmentButton, activeSegment === "travel" && styles.segmentButtonActive]}
+                onPress={() => setActiveSegment("travel")}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    activeSegment === "travel" && styles.segmentButtonTextActive,
+                  ]}
+                >
+                  Travel
+                </Text>
+              </Pressable>
+            </View>
             <Text style={styles.title}>Discover Language Partners</Text>
             <Text style={styles.subtitle}>Find members by language and start chatting.</Text>
             <TextInput
@@ -87,7 +132,7 @@ export function CommunityScreen() {
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search by username or language..."
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={colors.mutedText}
             />
             <ScrollView
               horizontal
@@ -125,69 +170,96 @@ export function CommunityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  headerWrap: {
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "800",
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: "#475569",
-    marginBottom: 12,
-    fontSize: 14,
-  },
-  listContent: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 18,
-    gap: 10,
-  },
-  searchInput: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "#cbd5e1",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#0f172a",
-    marginBottom: 10,
-  },
-  filterRow: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  filterChip: {
-    backgroundColor: "#eef2f7",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  filterChipActive: {
-    backgroundColor: "#334155",
-    borderColor: "#334155",
-  },
-  filterChipText: {
-    color: "#334155",
-    fontWeight: "600",
-    fontSize: 13,
-  },
-  filterChipTextActive: {
-    color: "#fff",
-  },
-  empty: {
-    color: colors.mutedText,
-    textAlign: "center",
-    marginTop: 32,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerWrap: {
+      marginBottom: 12,
+    },
+    segmentRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
+    segmentButton: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    segmentButtonActive: {
+      backgroundColor: colors.activeChipBackground,
+      borderColor: colors.activeChipBackground,
+    },
+    segmentButtonText: {
+      color: colors.text,
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    segmentButtonTextActive: {
+      color: colors.activeChipText,
+    },
+    title: {
+      fontSize: 30,
+      fontWeight: "800",
+      color: colors.text,
+      marginBottom: 4,
+    },
+    subtitle: {
+      color: colors.mutedText,
+      marginBottom: 12,
+      fontSize: 14,
+    },
+    listContent: {
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 18,
+      gap: 10,
+    },
+    searchInput: {
+      backgroundColor: colors.inputBackground,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 10,
+    },
+    filterRow: {
+      gap: 8,
+      paddingBottom: 4,
+    },
+    filterChip: {
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    filterChipActive: {
+      backgroundColor: colors.activeChipBackground,
+      borderColor: colors.activeChipBackground,
+    },
+    filterChipText: {
+      color: colors.text,
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    filterChipTextActive: {
+      color: colors.activeChipText,
+    },
+    empty: {
+      color: colors.mutedText,
+      textAlign: "center",
+      marginTop: 32,
+    },
+  });

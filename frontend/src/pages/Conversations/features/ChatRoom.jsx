@@ -186,7 +186,20 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           savedMessage.attachment_url || savedMessage.attachmentUrl || null,
       });
       if (!sent) {
-        console.error("WebSocket is not open. Unable to send message.");
+        setTimeout(() => {
+          const retrySent = sendSocketEvent({
+            type: "chat",
+            id: savedMessage.id,
+            message: savedMessage.text,
+            sender: user.username,
+            senderId: user.user_id,
+            attachmentUrl:
+              savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+          });
+          if (!retrySent) {
+            console.error("WebSocket is not open. Unable to send message.");
+          }
+        }, 250);
       }
     } catch (error) {
       console.error("Error sending message:", error);

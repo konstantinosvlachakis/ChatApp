@@ -11,13 +11,16 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { fetchProfile } from "../services/api/auth";
 import type { Profile } from "../types";
-import { colors } from "../theme/colors";
+import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
 
 export function ProfileScreen() {
   const { user: authUser, logout } = useAuth();
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [user, setUser] = useState<Profile | null>(authUser);
   const [loading, setLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -102,7 +105,7 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>👤 Personal Information</Text>
+            <Text style={styles.sectionTitle}>Personal Information</Text>
           <Text style={styles.rowText}>
             <Text style={styles.rowLabel}>Name:</Text> {user?.username || "N/A"}
           </Text>
@@ -117,7 +120,7 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>🌐 Languages</Text>
+          <Text style={styles.sectionTitle}>Languages</Text>
           <Text style={styles.rowText}>
             <Text style={styles.rowLabel}>Native Language:</Text>{" "}
             {user?.native_language || "N/A"}
@@ -135,7 +138,7 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>🎯 Learning Goals</Text>
+          <Text style={styles.sectionTitle}>Learning Goals</Text>
           <Text style={styles.rowText}>
             My goal is to become fluent and confident in new languages for both travel and
             communication.
@@ -143,7 +146,7 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>📸 Photos</Text>
+          <Text style={styles.sectionTitle}>Photos</Text>
           <View style={styles.photosRow}>
             <Image source={{ uri: profileImage }} style={styles.photo} />
             <Image source={{ uri: complementaryOne }} style={styles.photo} />
@@ -155,115 +158,116 @@ export function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  content: { padding: 16, gap: 12 },
-  topBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 2,
-  },
-  pageTitle: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 28,
-  },
-  logoutButton: {
-    backgroundColor: "#ef4444",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  logoutButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  heroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 18,
-    alignItems: "center",
-  },
-  avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 3,
-    borderColor: "#93c5fd",
-    marginBottom: 12,
-  },
-  heroTitle: {
-    fontSize: 34,
-    fontWeight: "800",
-    color: colors.text,
-    marginBottom: 12,
-    textTransform: "capitalize",
-  },
-  editButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  editButtonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  sectionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    gap: 6,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: "800",
-    marginBottom: 6,
-  },
-  rowText: {
-    color: "#374151",
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  rowLabel: {
-    color: colors.text,
-    fontWeight: "700",
-  },
-  chipsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
-  },
-  chip: {
-    backgroundColor: "#f3f4f6",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  chipText: {
-    color: "#374151",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  photosRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
-  },
-  photo: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 14,
-    backgroundColor: "#e5e7eb",
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+    content: { padding: 16, gap: 12 },
+    topBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 2,
+    },
+    pageTitle: {
+      color: colors.text,
+      fontWeight: "800",
+      fontSize: 28,
+    },
+    logoutButton: {
+      backgroundColor: colors.danger,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    logoutButtonText: {
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: 13,
+    },
+    heroCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 18,
+      alignItems: "center",
+    },
+    avatar: {
+      width: 110,
+      height: 110,
+      borderRadius: 55,
+      borderWidth: 3,
+      borderColor: colors.primary,
+      marginBottom: 12,
+    },
+    heroTitle: {
+      fontSize: 34,
+      fontWeight: "800",
+      color: colors.text,
+      marginBottom: 12,
+      textTransform: "capitalize",
+    },
+    editButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+    },
+    editButtonText: {
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: 16,
+    },
+    sectionCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      gap: 6,
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: 24,
+      fontWeight: "800",
+      marginBottom: 6,
+    },
+    rowText: {
+      color: colors.mutedText,
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    rowLabel: {
+      color: colors.text,
+      fontWeight: "700",
+    },
+    chipsWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 4,
+    },
+    chip: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    chipText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    photosRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 6,
+    },
+    photo: {
+      flex: 1,
+      aspectRatio: 1,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceMuted,
+    },
+  });
