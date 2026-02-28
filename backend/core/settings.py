@@ -34,6 +34,8 @@ ALLOWED_HOSTS = [
     "www.langvoyage.com",
     "localhost",
     "127.0.0.1",
+    "192.168.1.165",
+    "192.168.1.62",
 ]
 
 
@@ -121,6 +123,8 @@ if env == "local":
     DEBUG = True
     SECURE_SSL_REDIRECT = False  # Ensure SSL redirect is disabled locally
     BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
+    # Local development across browser + simulator/phone can use changing LAN IPs.
+    ALLOWED_HOSTS = ["*"]
 else:
     DEBUG = False
     SECURE_SSL_REDIRECT = True

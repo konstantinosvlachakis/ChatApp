@@ -58,3 +58,16 @@ Pipfile.lock
 docs/_build/
 node_modules
 frontend/build/
+
+# Ignore image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.svg
+*.heic
+*.heif

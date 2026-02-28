@@ -79,6 +79,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
             break;
 
+          case "message_reaction":
+            if (data.message?.id) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === data.message.id ? { ...m, ...data.message } : m
+                )
+              );
+            }
+            break;
+
           case "user_typing":
             setIsOtherUserTyping(true);
             onConversationTypingChange?.(conversation.id, true);
@@ -176,7 +186,20 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           savedMessage.attachment_url || savedMessage.attachmentUrl || null,
       });
       if (!sent) {
-        console.error("WebSocket is not open. Unable to send message.");
+        setTimeout(() => {
+          const retrySent = sendSocketEvent({
+            type: "chat",
+            id: savedMessage.id,
+            message: savedMessage.text,
+            sender: user.username,
+            senderId: user.user_id,
+            attachmentUrl:
+              savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+          });
+          if (!retrySent) {
+            console.error("WebSocket is not open. Unable to send message.");
+          }
+        }, 250);
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -186,11 +209,21 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   // ------------------- Typing Indicators -------------------
   const handleTyping = () => {
-    sendSocketEvent({ type: "user_typing", sender: user.username });
+    const sent = sendSocketEvent({ type: "user_typing", sender: user.username });
+    if (!sent) {
+      setTimeout(() => {
+        sendSocketEvent({ type: "user_typing", sender: user.username });
+      }, 250);
+    }
   };
 
   const handleStopTyping = () => {
-    sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
+    const sent = sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
+    if (!sent) {
+      setTimeout(() => {
+        sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
+      }, 250);
+    }
   };
 
   // ------------------- Delete Message -------------------
