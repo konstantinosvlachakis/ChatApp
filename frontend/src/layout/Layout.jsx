@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
+import { BASE_URL } from "../constants/constants";
 
 const Layout = () => {
   const location = useLocation(); // To identify the active page
@@ -97,12 +98,26 @@ const Layout = () => {
         <nav className="mx-auto max-w-7xl">
           {/* Top row */}
           <div className="flex items-center justify-between gap-2">
-            <Link
-              to="/profile"
-              className="truncate pl-2 text-base font-bold tracking-wide sm:text-xl"
-            >
-              LangVoyage
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/profile"
+                className="inline-flex items-center gap-2.5 rounded-xl  px-2 py-1.5"
+                aria-label="Go to profile"
+              >
+                <img
+                  src={`${BASE_URL}/media/logo.png`}
+                  alt="LangVoyage Logo"
+                  className="h-9 w-9 rounded-lg object-cover"
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = "/logo192.png";
+                  }}
+                />
+                <span className="truncate text-base font-bold tracking-wide sm:text-xl">
+                  LangVoyage
+                </span>
+              </Link>
+            </div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen((open) => !open)}
