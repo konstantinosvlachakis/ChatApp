@@ -46,3 +46,32 @@ export async function updateSettings(payload: {
   const response = await api.patch("/profile/edit/", payload);
   return response.data;
 }
+
+export type ProfilePhotoSlot = "profile" | "complementary_1" | "complementary_2";
+
+export async function uploadProfilePhoto(payload: {
+  userId: number;
+  slot: ProfilePhotoSlot;
+  imageUri: string;
+  fileName?: string;
+  mimeType?: string;
+}) {
+  const formData = new FormData();
+  formData.append("profile_image", {
+    uri: payload.imageUri,
+    name: payload.fileName || `profile-${Date.now()}.jpg`,
+    type: payload.mimeType || "image/jpeg",
+  } as any);
+  formData.append("slot", payload.slot);
+
+  const response = await api.patch(
+    `/profile/${payload.userId}/update-image/`,
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+  return response.data as Partial<Profile>;
+}

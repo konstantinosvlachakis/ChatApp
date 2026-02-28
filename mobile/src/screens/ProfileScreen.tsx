@@ -1,29 +1,38 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { fetchProfile } from "../services/api/auth";
+import { fetchProfile, uploadProfilePhoto } from "../services/api/auth";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
+import type { ProfilePhotoSlot } from "../services/api/auth";
 
 export function ProfileScreen() {
   const { user: authUser, logout } = useAuth();
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [user, setUser] = useState<Profile | null>(authUser);
   const [loading, setLoading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [uploadingSlot, setUploadingSlot] = useState<ProfilePhotoSlot | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const previewScrollRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -50,17 +59,81 @@ export function ProfileScreen() {
     );
   }
 
-  const resolveMediaUrl = (path?: string) => {
-    if (!path) return `${API_BASE_URL}/media/profile_images/MainAfter.jpg`;
+  const resolveMediaUrl = (path?: string | null, withDefault = true) => {
+    if (!path) {
+      return withDefault ? `${API_BASE_URL}/media/profile_images/MainAfter.jpg` : "";
+    }
     if (path.startsWith("http")) return path;
     if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
     return `${API_BASE_URL}/media/${path}`;
   };
 
   const profileImage = resolveMediaUrl(user?.profile_image_url);
-  const complementaryOne = resolveMediaUrl((user as any)?.complementary_image_1_url);
-  const complementaryTwo = resolveMediaUrl((user as any)?.complementary_image_2_url);
+  const complementaryOne = resolveMediaUrl(user?.complementary_image_1_url, false);
+  const complementaryTwo = resolveMediaUrl(user?.complementary_image_2_url, false);
   const practicingLanguages = user?.languages_practicing || [];
+  const complementaryCards: Array<{ key: ProfilePhotoSlot; image: string }> = [
+    { key: "complementary_1", image: complementaryOne },
+    { key: "complementary_2", image: complementaryTwo },
+  ];
+  const previewImages = [profileImage, complementaryOne, complementaryTwo].filter(Boolean);
+
+  const onUploadPhoto = async (slot: ProfilePhotoSlot) => {
+    if (!user?.user_id) {
+      Alert.alert("Upload failed", "Missing user id. Please re-login and try again.");
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission needed", "Please allow photo access to upload images.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    if (!asset.uri) {
+      Alert.alert("Upload failed", "Could not read selected image.");
+      return;
+    }
+
+    try {
+      setUploadingSlot(slot);
+      const payload = await uploadProfilePhoto({
+        userId: user.user_id,
+        slot,
+        imageUri: asset.uri,
+        fileName: asset.fileName || `profile-${slot}-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || "image/jpeg",
+      });
+      setUser((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          profile_image_url: payload.profile_image_url || prev.profile_image_url,
+          complementary_image_1_url:
+            payload.complementary_image_1_url || prev.complementary_image_1_url,
+          complementary_image_2_url:
+            payload.complementary_image_2_url || prev.complementary_image_2_url,
+        };
+      });
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        "Could not upload photo.";
+      Alert.alert("Upload failed", message);
+    } finally {
+      setUploadingSlot(null);
+    }
+  };
 
   const onLogout = () => {
     Alert.alert("Log out", "Are you sure you want to log out?", [
@@ -91,7 +164,17 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.heroCard}>
-          <Image source={{ uri: profileImage }} style={styles.avatar} />
+          <Pressable
+            onPress={() => {
+              setPreviewIndex(0);
+              setIsPreviewOpen(true);
+              requestAnimationFrame(() => {
+                previewScrollRef.current?.scrollTo({ x: 0, animated: false });
+              });
+            }}
+          >
+            <Image source={{ uri: profileImage }} style={styles.avatar} />
+          </Pressable>
           <Text style={styles.heroTitle}>
             {user?.username || "Profile"}
             {typeof user?.age === "number" ? `, ${user.age}` : ""}
@@ -147,13 +230,101 @@ export function ProfileScreen() {
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Photos</Text>
-          <View style={styles.photosRow}>
-            <Image source={{ uri: profileImage }} style={styles.photo} />
-            <Image source={{ uri: complementaryOne }} style={styles.photo} />
-            <Image source={{ uri: complementaryTwo }} style={styles.photo} />
+          <Text style={styles.rowText}>Tap to upload or replace your photos.</Text>
+
+          <Pressable
+            style={[styles.photoWrap, styles.profilePhotoWrap]}
+            onPress={() => onUploadPhoto("profile")}
+            disabled={Boolean(uploadingSlot)}
+          >
+            {profileImage ? (
+              <Image source={{ uri: profileImage }} style={styles.photo} />
+            ) : (
+              <View style={[styles.photoPlaceholder, styles.photoPlaceholderDashed]}>
+                <Text style={styles.photoPlaceholderIcon}>+</Text>
+              </View>
+            )}
+            {uploadingSlot === "profile" ? (
+              <View style={styles.photoOverlay}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.photoOverlayText}>Uploading...</Text>
+              </View>
+            ) : null}
+          </Pressable>
+
+          <View style={styles.complementaryRow}>
+            {complementaryCards.map((card) => (
+              <Pressable
+                key={card.key}
+                style={styles.photoWrap}
+                onPress={() => onUploadPhoto(card.key)}
+                disabled={Boolean(uploadingSlot)}
+              >
+                {card.image ? (
+                  <Image source={{ uri: card.image }} style={styles.photo} />
+                ) : (
+                  <View style={[styles.photoPlaceholder, styles.photoPlaceholderDashed]}>
+                    <Text style={styles.photoPlaceholderIcon}>+</Text>
+                  </View>
+                )}
+                {uploadingSlot === card.key ? (
+                  <View style={styles.photoOverlay}>
+                    <ActivityIndicator color="#fff" />
+                    <Text style={styles.photoOverlayText}>Uploading...</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            ))}
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={isPreviewOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsPreviewOpen(false)}
+      >
+        <View style={styles.previewBackdrop}>
+          <Pressable style={styles.previewTopCloseArea} onPress={() => setIsPreviewOpen(false)} />
+          <Pressable style={styles.previewCloseButton} onPress={() => setIsPreviewOpen(false)}>
+            <Text style={styles.previewCloseText}>Close</Text>
+          </Pressable>
+          <ScrollView
+            ref={previewScrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(event) => {
+              const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+              setPreviewIndex(nextIndex);
+            }}
+            style={styles.previewCarousel}
+          >
+            {previewImages.map((image, index) => (
+              <View key={`${image}-${index}`} style={[styles.previewSlideTapZone, { width }]}>
+                <View style={styles.previewImageTouchBlock}>
+                  <Image source={{ uri: image }} style={styles.previewImage} resizeMode="contain" />
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          <Pressable style={styles.previewBottomCloseArea} onPress={() => setIsPreviewOpen(false)} />
+          {previewImages.length > 1 ? (
+            <View style={styles.previewDots}>
+              {previewImages.map((_, index) => (
+                <View
+                  key={`dot-${index}`}
+                  style={[
+                    styles.previewDot,
+                    index === previewIndex && styles.previewDotActive,
+                  ]}
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -264,10 +435,129 @@ const createStyles = (colors: ThemeColors) =>
       gap: 10,
       marginTop: 6,
     },
-    photo: {
+    complementaryRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 10,
+    },
+    photoWrap: {
       flex: 1,
       aspectRatio: 1,
       borderRadius: 14,
+      overflow: "hidden",
+    },
+    profilePhotoWrap: {
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    photo: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 14,
       backgroundColor: colors.surfaceMuted,
+    },
+    photoPlaceholder: {
+      width: "100%",
+      height: "100%",
+      borderRadius: 14,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    photoPlaceholderDashed: {
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      backgroundColor: "transparent",
+    },
+    photoPlaceholderIcon: {
+      color: colors.mutedText,
+      fontSize: 34,
+      lineHeight: 34,
+      fontWeight: "300",
+    },
+    photoOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(15,23,42,0.55)",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+    },
+    photoOverlayText: {
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: 12,
+    },
+    previewBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(2,6,23,0.92)",
+      alignItems: "center",
+    },
+    previewTopCloseArea: {
+      width: "100%",
+      height: 72,
+    },
+    previewImage: {
+      width: "100%",
+      height: "100%",
+    },
+    previewCarousel: {
+      width: "100%",
+      flex: 1,
+    },
+    previewSlideTapZone: {
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewImageTouchBlock: {
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewBottomCloseArea: {
+      width: "100%",
+      height: 72,
+    },
+    previewDots: {
+      position: "absolute",
+      bottom: 42,
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    previewDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: "rgba(255,255,255,0.45)",
+    },
+    previewDotActive: {
+      width: 18,
+      borderRadius: 4,
+      backgroundColor: "#fff",
+    },
+    previewCloseButton: {
+      position: "absolute",
+      top: 56,
+      right: 20,
+      zIndex: 2,
+      backgroundColor: "rgba(255,255,255,0.14)",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.3)",
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+    },
+    previewCloseText: {
+      color: "#fff",
+      fontWeight: "700",
     },
   });

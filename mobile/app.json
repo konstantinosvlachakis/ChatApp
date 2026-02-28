@@ -24,7 +24,13 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow LangVoyage to access your photos so you can upload profile pictures."
+        }
+      ]
     ]
   }
 }

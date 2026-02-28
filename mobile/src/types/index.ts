@@ -7,6 +7,8 @@ export interface Profile {
   bio?: string;
   age?: number | null;
   profile_image_url?: string;
+  complementary_image_1_url?: string;
+  complementary_image_2_url?: string;
 }
 
 export interface ConversationParticipant {
