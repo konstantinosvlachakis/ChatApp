@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useMemo } from "react";
+import { useNavigation } from "@react-navigation/native";
 import { fetchPeople } from "../services/api/auth";
 import { PartnerCard } from "../components/PartnerCard";
 import type { ProfileListResponse } from "../types";
@@ -18,6 +19,7 @@ import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 
 export function CommunityScreen() {
+  const navigation = useNavigation<any>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [data, setData] = useState<ProfileListResponse | null>(null);
@@ -162,6 +164,12 @@ export function CommunityScreen() {
             nativeLanguage={item.native_language}
             learningLanguage={item.languages_practicing?.[0]}
             profileImage={item.profile_image_url || undefined}
+            onPress={() =>
+              navigation.navigate("PublicProfile", {
+                username: item.username,
+                profile: item,
+              })
+            }
           />
         )}
         ListEmptyComponent={<Text style={styles.empty}>No people found.</Text>}

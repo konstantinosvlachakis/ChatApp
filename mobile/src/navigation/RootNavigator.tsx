@@ -26,11 +26,13 @@ import { CommunityScreen } from "../screens/CommunityScreen";
 import { ConversationsScreen } from "../screens/ConversationsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { PublicProfileScreen } from "../screens/PublicProfileScreen";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
+const PeopleStack = createNativeStackNavigator();
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -299,7 +301,7 @@ function AppTabs() {
           },
         })}
       >
-        <Tabs.Screen name="People" component={CommunityScreen} />
+        <Tabs.Screen name="People" component={PeopleStackNavigator} />
         <Tabs.Screen
           name="Chats"
           component={ConversationsScreen}
@@ -353,6 +355,15 @@ export function RootNavigator() {
         </>
       )}
     </Stack.Navigator>
+  );
+}
+
+function PeopleStackNavigator() {
+  return (
+    <PeopleStack.Navigator screenOptions={{ headerShown: false }}>
+      <PeopleStack.Screen name="CommunityHome" component={CommunityScreen} />
+      <PeopleStack.Screen name="PublicProfile" component={PublicProfileScreen} />
+    </PeopleStack.Navigator>
   );
 }
 

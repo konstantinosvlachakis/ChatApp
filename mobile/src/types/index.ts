@@ -6,9 +6,15 @@ export interface Profile {
   languages_practicing?: string[];
   bio?: string;
   age?: number | null;
+  learning_goal?: string;
   profile_image_url?: string;
   complementary_image_1_url?: string;
   complementary_image_2_url?: string;
+  reviews?: Array<{
+    author?: string;
+    rating?: number;
+    comment?: string;
+  }>;
 }
 
 export interface ConversationParticipant {

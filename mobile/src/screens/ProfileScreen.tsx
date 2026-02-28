@@ -303,9 +303,17 @@ export function ProfileScreen() {
           >
             {previewImages.map((image, index) => (
               <View key={`${image}-${index}`} style={[styles.previewSlideTapZone, { width }]}>
+                <Pressable
+                  style={styles.previewSlideTopClose}
+                  onPress={() => setIsPreviewOpen(false)}
+                />
                 <View style={styles.previewImageTouchBlock}>
                   <Image source={{ uri: image }} style={styles.previewImage} resizeMode="contain" />
                 </View>
+                <Pressable
+                  style={styles.previewSlideBottomClose}
+                  onPress={() => setIsPreviewOpen(false)}
+                />
               </View>
             ))}
           </ScrollView>
@@ -513,13 +521,20 @@ const createStyles = (colors: ThemeColors) =>
     previewSlideTapZone: {
       height: "100%",
       alignItems: "center",
-      justifyContent: "center",
+    },
+    previewSlideTopClose: {
+      width: "100%",
+      flex: 1,
     },
     previewImageTouchBlock: {
       width: "100%",
-      height: "100%",
+      height: "76%",
       alignItems: "center",
       justifyContent: "center",
+    },
+    previewSlideBottomClose: {
+      width: "100%",
+      flex: 1,
     },
     previewBottomCloseArea: {
       width: "100%",

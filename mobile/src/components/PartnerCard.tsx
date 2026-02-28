@@ -76,7 +76,7 @@ const createStyles = (colors: ThemeColors) =>
     avatar: {
       width: 78,
       height: 78,
-      borderRadius: 14,
+      borderRadius: 100,
       backgroundColor: colors.surfaceMuted,
     },
     content: {

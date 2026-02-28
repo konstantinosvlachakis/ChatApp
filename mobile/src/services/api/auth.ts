@@ -32,6 +32,11 @@ export async function fetchProfile() {
   return response.data;
 }
 
+export async function fetchPublicProfile(username: string) {
+  const response = await api.get<Profile>(`/profile/public/${encodeURIComponent(username)}/`);
+  return response.data;
+}
+
 export async function fetchPeople(page = 1, pageSize = 24) {
   const response = await api.get<ProfileListResponse>(
     `/profile/data?page=${page}&page_size=${pageSize}`
