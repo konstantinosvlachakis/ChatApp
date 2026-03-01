@@ -115,7 +115,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       socket.current?.close();
       onConversationTypingChange?.(conversation.id, false);
     };
-  }, [conversation?.id, user, onConversationTypingChange, queryClient]);
+  }, [conversation?.id, user, onConversationTypingChange, queryClient, sendSocketEvent]);
 
   useEffect(() => {
     if (!conversation?.id) return;

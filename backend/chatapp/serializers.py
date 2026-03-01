@@ -2,6 +2,8 @@ from rest_framework import serializers
 from .models import Conversation, Message, Profile, MessageTranslation, MessageReaction
 from django.conf import settings
 from django.db.utils import OperationalError, ProgrammingError
+from django.utils import timezone
+import os
 
 LANGUAGE_CODE_MAP = {
     "english": "en",
@@ -33,6 +35,7 @@ def resolve_language_code(language):
 
 class ProfileSerializer(serializers.ModelSerializer):
     profile_image_url = serializers.SerializerMethodField()
+    is_online = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -75,6 +78,18 @@ class ProfileSerializer(serializers.ModelSerializer):
                 return absolute.replace("http://", "https://", 1)
             return absolute
         return media_path
+
+    def get_is_online(self, obj):
+        if not getattr(obj, "is_online", False):
+            return False
+
+        last_seen = getattr(obj, "last_seen", None)
+        if not last_seen:
+            return False
+
+        freshness_seconds = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
+        threshold = timezone.now() - timezone.timedelta(seconds=freshness_seconds)
+        return last_seen >= threshold
 
 
 class MessageSerializer(serializers.ModelSerializer):

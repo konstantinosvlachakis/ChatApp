@@ -172,7 +172,14 @@ function ConversationList({
       }
     };
 
+    const heartbeatInterval = window.setInterval(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "heartbeat" }));
+      }
+    }, 20000);
+
     return () => {
+      window.clearInterval(heartbeatInterval);
       socket.close();
     };
   }, [conversations, user?.username, wsBaseUrl]);

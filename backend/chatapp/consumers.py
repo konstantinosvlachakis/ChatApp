@@ -1,4 +1,5 @@
 import json
+import os
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
@@ -11,6 +12,7 @@ from .models import Conversation, Profile
 
 
 PRESENCE_GROUP_NAME = "presence_global"
+ONLINE_FRESHNESS_SECONDS = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
 
 
 def user_presence_group_name(user_id):
@@ -44,8 +46,14 @@ class PresenceTrackingMixin:
             became_online = not profile.is_online
             profile.ws_connection_count = (profile.ws_connection_count or 0) + 1
             profile.is_online = True
-            profile.save(update_fields=["ws_connection_count", "is_online"])
+            profile.last_seen = timezone.now()
+            profile.save(update_fields=["ws_connection_count", "is_online", "last_seen"])
             return became_online
+
+    @database_sync_to_async
+    def touch_presence(self, user_id):
+        now = timezone.now()
+        Profile.objects.filter(id=user_id).update(last_seen=now)
 
     @database_sync_to_async
     def decrement_presence(self, user_id):
@@ -75,6 +83,7 @@ class PresenceTrackingMixin:
 
     @database_sync_to_async
     def get_online_contact_ids(self, user_id):
+        threshold = timezone.now() - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
         rows = (
             Conversation.objects.filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
             .values_list("sender_id", "receiver_id")
@@ -90,9 +99,11 @@ class PresenceTrackingMixin:
             return []
 
         return list(
-            Profile.objects.filter(id__in=contact_ids, is_online=True).values_list(
-                "id", flat=True
-            )
+            Profile.objects.filter(
+                id__in=contact_ids,
+                is_online=True,
+                last_seen__gte=threshold,
+            ).values_list("id", flat=True)
         )
 
     @database_sync_to_async
@@ -347,8 +358,15 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        # Kept for heartbeat extension; no-op right now.
-        return
+        if not getattr(self, "user_id", None):
+            return
+        try:
+            payload = json.loads(text_data or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+
+        if payload.get("type") == "heartbeat":
+            await self.touch_presence(self.user_id)
 
     async def presence_update_event(self, event):
         await self.send(
