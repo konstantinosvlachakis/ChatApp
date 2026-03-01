@@ -166,12 +166,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (newMessage.trim()) formData.append("text", newMessage);
     if (attachedFile) formData.append("attachment", attachedFile);
 
+    const localAttachmentUrl =
+      previewImage || (attachedFile ? URL.createObjectURL(attachedFile) : null);
+    const tempMessageId = Date.now();
+
     const tempMessage = {
-      id: Date.now(),
+      id: tempMessageId,
       text: newMessage.trim() || null,
       sender: { id: user.user_id, username: user.username },
       timestamp: new Date().toISOString(),
-      attachmentUrl: previewImage || null,
+      attachmentUrl: localAttachmentUrl,
+      attachment_url: localAttachmentUrl,
       reactions: [],
       current_user_reaction: null,
     };
@@ -196,6 +201,31 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       const savedMessage = response.data;
       console.log("Saved message:", response.data);
       queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+
+      // Replace optimistic message with persisted server payload so
+      // sender sees the same attachment URL shape as recipients.
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === tempMessageId
+            ? {
+                ...message,
+                id: savedMessage.id,
+                text: savedMessage.text,
+                attachmentUrl:
+                  savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+                attachment_url:
+                  savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+                timestamp: savedMessage.timestamp || message.timestamp,
+                sender: savedMessage.sender || message.sender,
+                status: savedMessage.status || message.status,
+              }
+            : message
+        )
+      );
+
+      if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(localAttachmentUrl);
+      }
 
       // Broadcast the new message to others
       const sent = sendSocketEvent({
@@ -226,6 +256,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
+      if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(localAttachmentUrl);
+      }
     }
   };
 

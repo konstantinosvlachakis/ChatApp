@@ -167,7 +167,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   };
 
   return (
-    <div className="relative border-t bg-white p-2 sm:p-3">
+    <div className="relative m-2 rounded-2xl border border-slate-200/80 bg-white/90 p-2 shadow-[0_10px_26px_-20px_rgba(15,23,42,0.55)] backdrop-blur sm:m-3 sm:p-3">
       {showPicker && (
         <div ref={emojiPickerRef} className="absolute bottom-14 left-2 z-50 sm:bottom-16 sm:left-3">
           <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
@@ -179,13 +179,13 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
         <button
           type="button"
           onClick={() => setShowPicker((prev) => !prev)}
-          className="mb-1 rounded-full p-2 text-base transition hover:bg-gray-100"
+          className="mb-1 rounded-full border border-slate-200 bg-white p-2 text-base shadow-sm transition hover:bg-slate-50"
           aria-label="Open emoji picker"
         >
           😊
         </button>
 
-        <div className="flex-1 rounded-2xl border border-gray-300 bg-white px-3 py-2">
+        <div className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
           {(previewImage || audioBlob) && (
             <div className="mb-2">
               {previewImage && (
@@ -202,7 +202,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
                       setPreviewImage(null);
                       setAttachedFile(null);
                     }}
-                    className="text-sm text-red-500"
+                    className="text-sm font-medium text-rose-500"
                   >
                     Remove
                   </button>
@@ -218,7 +218,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
                       setAudioBlob(null);
                       setAttachedFile(null);
                     }}
-                    className="text-sm text-red-500"
+                    className="text-sm font-medium text-rose-500"
                   >
                     Remove
                   </button>
@@ -235,13 +235,13 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
-              className="w-full min-w-0 bg-transparent text-sm outline-none sm:text-base"
+              className="w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
             />
 
             {/* File Attach */}
             <button
               type="button"
-              className="rounded-full p-1.5 text-gray-500 transition hover:bg-gray-100"
+              className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100"
               onClick={() => fileInputRef.current.click()}
               aria-label="Attach file"
             >
@@ -257,8 +257,8 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
             {/* Voice Recording */}
             <button
               type="button"
-              className={`rounded-full p-1.5 transition hover:bg-gray-100 ${
-                isRecording ? "text-red-500" : "text-gray-500"
+              className={`rounded-full p-1.5 transition hover:bg-slate-100 ${
+                isRecording ? "text-rose-500" : "text-slate-500"
               }`}
               onClick={isRecording ? handleStopRecording : handleStartRecording}
               aria-label={isRecording ? "Stop recording" : "Start recording"}
@@ -271,7 +271,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
         {/* Send Button */}
         <button
           type="button"
-          className="mb-1 rounded-full bg-blue-500 p-2 text-white transition hover:bg-blue-600"
+          className="mb-1 rounded-full bg-slate-800 p-2 text-white shadow-sm transition hover:bg-slate-700"
           onClick={handleSend}
           aria-label="Send message"
         >
