@@ -201,6 +201,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "sender": data.get("sender"),
                     "sender_id": data.get("senderId"),
                     "attachment_url": data.get("attachmentUrl"),
+                    "reply_to": data.get("replyTo"),
                     "sender_channel_name": self.channel_name,
                 },
             )
@@ -264,6 +265,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "sender": event.get("sender"),
                     "senderId": event.get("sender_id"),
                     "attachmentUrl": event.get("attachment_url"),
+                    "replyTo": event.get("reply_to"),
                 }
             )
         )
@@ -387,6 +389,18 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "conversation_id": event["conversation_id"],
                     "sender_id": event["sender_id"],
                     "is_typing": event["is_typing"],
+                }
+            )
+        )
+
+    async def conversation_update_event(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "conversation_update",
+                    "conversation_id": event.get("conversation_id"),
+                    "trigger": event.get("trigger"),
+                    "actor_id": event.get("actor_id"),
                 }
             )
         )

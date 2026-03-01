@@ -31,6 +31,18 @@ export interface ChatMessage {
   sender: ConversationParticipant;
   attachment_url?: string | null;
   timestamp: string;
+  translated_text?: string | null;
+  translated_source_language?: string | null;
+  can_translate?: boolean;
+  reply_to?: {
+    id: number;
+    text?: string | null;
+    timestamp?: string;
+    sender?: {
+      id?: number;
+      username?: string;
+    };
+  } | null;
   reactions?: Array<{
     id: number;
     user_id: number;

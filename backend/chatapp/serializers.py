@@ -100,6 +100,7 @@ class MessageSerializer(serializers.ModelSerializer):
     can_translate = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     current_user_reaction = serializers.SerializerMethodField()
+    reply_to = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -111,6 +112,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "attachment",
             "attachment_url",
             "timestamp",
+            "reply_to",
             "translated_text",
             "translated_source_language",
             "can_translate",
@@ -208,6 +210,22 @@ class MessageSerializer(serializers.ModelSerializer):
 
         reaction = obj.reactions.filter(user=request.user).first()
         return reaction.emoji if reaction else None
+
+    def get_reply_to(self, obj):
+        reply = getattr(obj, "reply_to", None)
+        if not reply:
+            return None
+
+        sender = getattr(reply, "sender", None)
+        return {
+            "id": reply.id,
+            "text": reply.text,
+            "timestamp": reply.timestamp,
+            "sender": {
+                "id": sender.id if sender else None,
+                "username": sender.username if sender else "",
+            },
+        }
 
 
 class ConversationSerializer(serializers.ModelSerializer):

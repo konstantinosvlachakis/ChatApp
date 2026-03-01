@@ -5,7 +5,9 @@ import {
   DeviceEventEmitter,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -13,8 +15,10 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { API_BASE_URL } from "../config/api";
@@ -26,8 +30,10 @@ import {
   fetchConversation,
   fetchConversations,
   markConversationRead,
+  deleteConversationMessage,
   reactToMessage,
   sendConversationMessage,
+  translateConversationMessage,
 } from "../services/api/conversations";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
@@ -45,6 +51,7 @@ type ChatPayload =
       sender?: string;
       senderId?: number;
       attachmentUrl?: string | null;
+      replyTo?: ChatMessage["reply_to"];
     }
   | { type: "deleteMessage"; messageId: number }
   | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
@@ -67,6 +74,13 @@ function statusTicks(status?: string) {
   return "✓";
 }
 
+function toReplyPreviewText(message?: { text?: string | null } | null) {
+  if (!message?.text) return "Attachment";
+  const trimmed = message.text.trim();
+  if (!trimmed) return "Attachment";
+  return trimmed.length > 70 ? `${trimmed.slice(0, 70)}...` : trimmed;
+}
+
 export function ConversationsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -74,6 +88,7 @@ export function ConversationsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
+  const { height: windowHeight } = useWindowDimensions();
   const currentUserId = user?.user_id;
   const currentUsername = user?.username;
   const wsBaseUrl = useMemo(() => API_BASE_URL.replace(/^http/, "ws"), []);
@@ -90,21 +105,48 @@ export function ConversationsScreen() {
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
   const [typingByConversation, setTypingByConversation] = useState<Record<number, boolean>>({});
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [messageMenu, setMessageMenu] = useState<{
+    message: ChatMessage;
+    isMine: boolean;
+    top: number;
+    align: "left" | "right";
+  } | null>(null);
 
   const selectedConversationIdRef = useRef<number | null>(null);
   const presenceSocketRef = useRef<WebSocket | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
+  const messageInputRef = useRef<TextInput | null>(null);
+  const ignoreNextOutsideTapRef = useRef(false);
+  const replyActivatedAtRef = useRef(0);
+  const lastTapRef = useRef<{ messageId: number | null; at: number }>({
+    messageId: null,
+    at: 0,
+  });
+  const singleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteTypingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout> | null>>({});
   const messageListRef = useRef<FlatList<ChatMessage> | null>(null);
   const previousMessageCountRef = useRef(0);
+  const conversationsFetchMetaRef = useRef<{ inFlight: boolean; lastRunAt: number }>({
+    inFlight: false,
+    lastRunAt: 0,
+  });
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversation?.id ?? null;
   }, [selectedConversation?.id]);
 
   useEffect(() => {
+    setReplyTarget(null);
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
     return () => {
+      if (singleTapTimeoutRef.current) {
+        clearTimeout(singleTapTimeoutRef.current);
+      }
       if (stopTypingTimeoutRef.current) {
         clearTimeout(stopTypingTimeoutRef.current);
       }
@@ -131,12 +173,22 @@ export function ConversationsScreen() {
     }
   }, []);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (force = false) => {
+    const minIntervalMs = 4000;
+    const now = Date.now();
+    if (!force && now - conversationsFetchMetaRef.current.lastRunAt < minIntervalMs) {
+      return;
+    }
+    if (conversationsFetchMetaRef.current.inFlight) return;
+
+    conversationsFetchMetaRef.current.inFlight = true;
+    conversationsFetchMetaRef.current.lastRunAt = now;
     setLoadingList(true);
     try {
       const response = await fetchConversations();
       setConversations(response);
     } finally {
+      conversationsFetchMetaRef.current.inFlight = false;
       setLoadingList(false);
     }
   }, []);
@@ -152,7 +204,7 @@ export function ConversationsScreen() {
           previousMessageCountRef.current = response.messages?.length || 0;
           await markConversationRead(conversationId);
           DeviceEventEmitter.emit("conversations_refresh");
-          await loadConversations();
+          await loadConversations(true);
         }
       } finally {
         setLoadingConversation(false);
@@ -162,7 +214,7 @@ export function ConversationsScreen() {
   );
 
   useEffect(() => {
-    loadConversations();
+    loadConversations(true);
   }, [loadConversations]);
 
   useEffect(() => {
@@ -235,7 +287,7 @@ export function ConversationsScreen() {
 
     setSending(true);
     try {
-      const saved = await sendConversationMessage(selectedConversation.id, trimmed);
+      const saved = await sendConversationMessage(selectedConversation.id, trimmed, replyTarget?.id);
       const savedMessage: ChatMessage = {
         id: saved.id,
         text: saved.text,
@@ -243,6 +295,7 @@ export function ConversationsScreen() {
         sender: saved.sender,
         attachment_url: saved.attachment_url || null,
         timestamp: saved.timestamp,
+        reply_to: saved.reply_to || null,
       };
 
       setSelectedConversation((prev) => {
@@ -251,6 +304,7 @@ export function ConversationsScreen() {
         return hasMessage ? prev : { ...prev, messages: [...prev.messages, savedMessage] };
       });
       setMessageText("");
+      setReplyTarget(null);
       sendTypingEvent("user_stopped_typing");
 
       if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
@@ -262,6 +316,7 @@ export function ConversationsScreen() {
             sender: currentUsername,
             senderId: currentUserId,
             attachmentUrl: savedMessage.attachment_url || null,
+            replyTo: savedMessage.reply_to || null,
           })
         );
       } else {
@@ -275,12 +330,13 @@ export function ConversationsScreen() {
                 sender: currentUsername,
                 senderId: currentUserId,
                 attachmentUrl: savedMessage.attachment_url || null,
+                replyTo: savedMessage.reply_to || null,
               })
             );
           }
         }, 220);
       }
-      await loadConversations();
+      await loadConversations(true);
     } finally {
       setSending(false);
     }
@@ -289,6 +345,7 @@ export function ConversationsScreen() {
     currentUsername,
     loadConversations,
     messageText,
+    replyTarget?.id,
     selectedConversation,
     sendTypingEvent,
     sending,
@@ -304,6 +361,7 @@ export function ConversationsScreen() {
     setSelectedConversation(null);
     setMessageText("");
     setReactionPickerMessageId(null);
+    setReplyTarget(null);
   }, [sendTypingEvent]);
 
   const startConversation = useCallback(async () => {
@@ -422,6 +480,7 @@ export function ConversationsScreen() {
                 username: data.sender || "Unknown",
               },
               timestamp: new Date().toISOString(),
+              reply_to: data.replyTo || null,
             };
 
             setSelectedConversation((prev) => {
@@ -460,7 +519,6 @@ export function ConversationsScreen() {
                 ),
               };
             });
-            loadConversations().catch(() => {});
             return;
           }
 
@@ -469,7 +527,6 @@ export function ConversationsScreen() {
             (data as any).message?.id
           ) {
             applyMessageUpdate((data as any).message);
-            loadConversations().catch(() => {});
             return;
           }
 
@@ -512,17 +569,311 @@ export function ConversationsScreen() {
     );
   }, [conversations]);
 
+  const sortedMessages = useMemo(() => {
+    if (!selectedConversation) return [];
+    return [...(selectedConversation.messages || [])].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  }, [selectedConversation]);
+
+  const messageIndexById = useMemo(() => {
+    const indexMap: Record<number, number> = {};
+    sortedMessages.forEach((message, index) => {
+      indexMap[message.id] = index;
+    });
+    return indexMap;
+  }, [sortedMessages]);
+
+  const activateMessageInput = useCallback(() => {
+    const focusInput = () => {
+      const input = messageInputRef.current;
+      if (!input) return;
+      input.focus();
+      const cursorPosition = messageText.length;
+      input.setNativeProps({
+        selection: { start: cursorPosition, end: cursorPosition },
+      });
+    };
+    Keyboard.dismiss();
+    requestAnimationFrame(focusInput);
+    setTimeout(focusInput, 50);
+    setTimeout(focusInput, 150);
+  }, [messageText.length]);
+
+  const handleSwipe = useCallback((message: ChatMessage) => {
+    setReactionPickerMessageId(null);
+    setReplyTarget(message);
+    ignoreNextOutsideTapRef.current = true;
+    replyActivatedAtRef.current = Date.now();
+    activateMessageInput();
+  }, [activateMessageInput]);
+
+  const clearReplyTarget = useCallback(() => {
+    setReplyTarget(null);
+  }, []);
+
+  const handleGlobalTouchEnd = useCallback(() => {
+    if (!replyTarget) return;
+    if (ignoreNextOutsideTapRef.current) {
+      ignoreNextOutsideTapRef.current = false;
+      return;
+    }
+    if (Date.now() - replyActivatedAtRef.current < 900) return;
+    if (messageInputRef.current?.isFocused()) return;
+    clearReplyTarget();
+  }, [clearReplyTarget, replyTarget]);
+
+  const jumpToMessage = useCallback(
+    (messageId: number) => {
+      const index = messageIndexById[messageId];
+      if (index === undefined) return;
+      messageListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => {
+        setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
+      }, 1400);
+    },
+    [messageIndexById]
+  );
+
+  const handleSingleMessageTap = useCallback(
+    (message: ChatMessage) => {
+      if (message.reply_to?.id) {
+        jumpToMessage(message.reply_to.id);
+        return;
+      }
+      if (reactionPickerMessageId) {
+        setReactionPickerMessageId(null);
+      }
+    },
+    [jumpToMessage, reactionPickerMessageId]
+  );
+
+  const handleMessageTap = useCallback(
+    (message: ChatMessage) => {
+      const now = Date.now();
+      const isDoubleTap =
+        lastTapRef.current.messageId === message.id && now - lastTapRef.current.at <= 280;
+
+      if (isDoubleTap) {
+        if (singleTapTimeoutRef.current) {
+          clearTimeout(singleTapTimeoutRef.current);
+          singleTapTimeoutRef.current = null;
+        }
+        lastTapRef.current = { messageId: null, at: 0 };
+        handleSwipe(message);
+        return;
+      }
+
+      lastTapRef.current = { messageId: message.id, at: now };
+      if (singleTapTimeoutRef.current) {
+        clearTimeout(singleTapTimeoutRef.current);
+      }
+      singleTapTimeoutRef.current = setTimeout(() => {
+        handleSingleMessageTap(message);
+        singleTapTimeoutRef.current = null;
+      }, 240);
+    },
+    [handleSingleMessageTap, handleSwipe]
+  );
+
+  const handleInputFocus = useCallback(() => {
+    setReactionPickerMessageId(null);
+    const sent = sendTypingEvent("user_typing");
+    if (!sent) {
+      setTimeout(() => {
+        sendTypingEvent("user_typing");
+      }, 220);
+    }
+    scheduleStopTyping();
+    const input = messageInputRef.current;
+    if (!input) return;
+    const cursorPosition = messageText.length;
+    input.setNativeProps({
+      selection: { start: cursorPosition, end: cursorPosition },
+    });
+  }, [messageText.length, scheduleStopTyping, sendTypingEvent]);
+
+  const renderReplySwipeAction = useCallback(
+    (isMine: boolean) => (
+      <View style={[styles.replySwipeAction, isMine ? styles.replySwipeActionMine : styles.replySwipeActionOther]}>
+        <Ionicons name={isMine ? "arrow-undo" : "arrow-redo"} size={18} color={colors.primary} />
+      </View>
+    ),
+    [colors.primary, styles]
+  );
+
+  const deleteMessage = useCallback(
+    async (message: ChatMessage) => {
+      try {
+        await deleteConversationMessage(message.id);
+        setSelectedConversation((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            messages: prev.messages.filter((m) => m.id !== message.id),
+          };
+        });
+
+        if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
+          chatSocketRef.current.send(
+            JSON.stringify({
+              type: "deleteMessage",
+              messageId: message.id,
+            })
+          );
+        }
+        loadConversations(true).catch(() => {});
+      } catch {
+        Alert.alert("Delete failed", "Could not delete this message.");
+      }
+    },
+    [loadConversations]
+  );
+
+  const translateMessage = useCallback(
+    async (message: ChatMessage) => {
+      try {
+        const result = await translateConversationMessage(
+          message.id,
+          user?.base_translate_language || "english"
+        );
+        const translatedText = result?.translated_text || "";
+        if (translatedText) {
+          Alert.alert("Translation", translatedText);
+        } else {
+          Alert.alert("Translation", "No translation returned.");
+        }
+      } catch (error: any) {
+        const translatedText = error?.response?.data?.translated_text;
+        if (translatedText) {
+          Alert.alert("Translation", translatedText);
+          return;
+        }
+        Alert.alert("Translation failed", "Could not translate this message.");
+      }
+    },
+    [user?.base_translate_language]
+  );
+
+  const closeMessageMenu = useCallback(() => {
+    setMessageMenu(null);
+  }, []);
+
+  const buildMessageMenuActions = useCallback(
+    (message: ChatMessage, isMine: boolean) => {
+      const actions: Array<{
+        key: string;
+        label: string;
+        destructive?: boolean;
+        onPress: () => void;
+      }> = [
+        {
+          key: "reply",
+          label: "Reply",
+          onPress: () => {
+            closeMessageMenu();
+            handleSwipe(message);
+          },
+        },
+        {
+          key: "react",
+          label: "React",
+          onPress: () => {
+            closeMessageMenu();
+            setReactionPickerMessageId(message.id);
+          },
+        },
+      ];
+
+      if (!isMine && (message.text || "").trim()) {
+        actions.push({
+          key: "translate",
+          label: "Translate",
+          onPress: async () => {
+            closeMessageMenu();
+            await translateMessage(message);
+          },
+        });
+      }
+      if (isMine) {
+        actions.push({
+          key: "delete",
+          label: "Delete",
+          destructive: true,
+          onPress: async () => {
+            closeMessageMenu();
+            await deleteMessage(message);
+          },
+        });
+      }
+      return actions;
+    },
+    [closeMessageMenu, deleteMessage, handleSwipe, translateMessage]
+  );
+
+  const openMessageMenu = useCallback(
+    (message: ChatMessage, isMine: boolean, pageY: number) => {
+      const rowHeight = 44;
+      const basePadding = 10;
+      const actionCount = buildMessageMenuActions(message, isMine).length;
+      const menuHeight = actionCount * rowHeight + basePadding * 2;
+      const gap = 12;
+      const screenPadding = 16;
+      const availableBelow = windowHeight - pageY - screenPadding;
+      const openAbove = availableBelow < menuHeight + gap;
+      const top = openAbove
+        ? Math.max(screenPadding, pageY - menuHeight - gap)
+        : Math.min(windowHeight - menuHeight - screenPadding, pageY + gap);
+
+      setMessageMenu({
+        message,
+        isMine,
+        top,
+        align: isMine ? "right" : "left",
+      });
+    },
+    [buildMessageMenuActions, windowHeight]
+  );
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isMine = item.sender?.id === currentUserId;
+    const isReplyActive = replyTarget?.id === item.id;
     const showReactionPicker = !isMine && reactionPickerMessageId === item.id;
     const groupedReactions = (item.reactions || []).reduce<Record<string, number>>((acc, reaction) => {
       acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1;
       return acc;
     }, {});
     const reactionEntries = Object.entries(groupedReactions);
+    const replyAuthor =
+      item.reply_to?.sender?.id === currentUserId ? "You" : item.reply_to?.sender?.username || "User";
+
+    let swipeableRef: Swipeable | null = null;
+    const handleSwipeOpen = (direction: "left" | "right") => {
+      if ((isMine && direction !== "right") || (!isMine && direction !== "left")) return;
+      swipeableRef?.close();
+      handleSwipe(item);
+    };
 
     return (
       <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
+        <Swipeable
+          ref={(instance) => {
+            swipeableRef = instance;
+          }}
+          friction={1.05}
+          overshootLeft={false}
+          overshootRight={false}
+          leftThreshold={8}
+          rightThreshold={8}
+          dragOffsetFromLeftEdge={8}
+          dragOffsetFromRightEdge={8}
+          containerStyle={styles.swipeContainer}
+          childrenContainerStyle={styles.swipeChildren}
+          renderLeftActions={!isMine ? () => renderReplySwipeAction(false) : undefined}
+          renderRightActions={isMine ? () => renderReplySwipeAction(true) : undefined}
+          onSwipeableWillOpen={handleSwipeOpen}
+        >
         <View style={styles.messageContainer}>
           {showReactionPicker ? (
             <View style={styles.reactionPicker}>
@@ -541,15 +892,47 @@ export function ConversationsScreen() {
             </View>
           ) : null}
           <Pressable
-            style={[styles.messageBubble, isMine ? styles.messageMine : styles.messageOther]}
-            onLongPress={!isMine ? () => setReactionPickerMessageId(item.id) : undefined}
-            onPress={() => {
-              if (reactionPickerMessageId) {
-                setReactionPickerMessageId(null);
-              }
+            style={[
+              styles.messageBubble,
+              isMine ? styles.messageMine : styles.messageOther,
+              isReplyActive
+                ? isMine
+                  ? styles.messageBubbleReplyActiveMine
+                  : styles.messageBubbleReplyActiveOther
+                : null,
+              highlightedMessageId === item.id ? styles.messageBubbleHighlighted : null,
+            ]}
+            onLongPress={(event) => {
+              event.stopPropagation();
+              openMessageMenu(item, isMine, event.nativeEvent.pageY);
+            }}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleMessageTap(item);
             }}
             delayLongPress={450}
           >
+            {isReplyActive ? (
+              <View style={[styles.replyActiveIndicator, isMine ? styles.replyActiveIndicatorMine : styles.replyActiveIndicatorOther]}>
+                <Ionicons name={isMine ? "arrow-undo" : "arrow-redo"} size={14} color={colors.primary} />
+              </View>
+            ) : null}
+            {item.reply_to ? (
+              <View style={[styles.replySnippet, isMine ? styles.replySnippetMine : styles.replySnippetOther]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.replySnippetAuthor, isMine ? styles.replySnippetAuthorMine : styles.replySnippetAuthorOther]}
+                >
+                  {replyAuthor}
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.replySnippetText, isMine ? styles.replySnippetTextMine : styles.replySnippetTextOther]}
+                >
+                  {toReplyPreviewText(item.reply_to)}
+                </Text>
+              </View>
+            ) : null}
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
@@ -587,6 +970,7 @@ export function ConversationsScreen() {
             </View>
           ) : null}
         </View>
+        </Swipeable>
       </View>
     );
   };
@@ -635,9 +1019,16 @@ export function ConversationsScreen() {
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
+          onTouchEndCapture={handleGlobalTouchEnd}
         >
-          <View style={styles.chatHeader}>
-            <Pressable style={styles.backButton} onPress={closeConversation}>
+          <Pressable style={styles.chatHeader} onPress={() => replyTarget && clearReplyTarget()}>
+            <Pressable
+              style={styles.backButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                closeConversation();
+              }}
+            >
               <Ionicons name="chevron-back" size={20} color={colors.text} />
             </Pressable>
             <View style={styles.chatTitleWrap}>
@@ -655,7 +1046,7 @@ export function ConversationsScreen() {
               </View>
             </View>
             <View style={styles.chatHeaderSpacer} />
-          </View>
+          </Pressable>
 
           {loadingConversation ? (
             <View style={styles.chatLoading}>
@@ -664,34 +1055,121 @@ export function ConversationsScreen() {
           ) : (
             <FlatList
               ref={messageListRef}
-              data={[...(selectedConversation.messages || [])].sort(
-                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-              )}
+              data={sortedMessages}
               keyExtractor={(item) => String(item.id)}
               renderItem={renderMessage}
               onContentSizeChange={() => scrollToBottom(false)}
+              onScrollToIndexFailed={(info) => {
+                messageListRef.current?.scrollToOffset({
+                  offset: Math.max(0, info.averageItemLength * info.index - 48),
+                  animated: true,
+                });
+                setTimeout(() => {
+                  messageListRef.current?.scrollToIndex({
+                    index: info.index,
+                    animated: true,
+                    viewPosition: 0.5,
+                  });
+                }, 160);
+              }}
               ListFooterComponent={<View style={styles.messagesFooterSpacer} />}
               refreshControl={
                 <RefreshControl refreshing={loadingConversation} onRefresh={onMessageListRefresh} />
               }
               contentContainerStyle={styles.messagesContent}
+              onScrollBeginDrag={() => replyTarget && clearReplyTarget()}
             />
           )}
 
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={messageText}
-              onChangeText={handleMessageInputChange}
-              onFocus={() => setReactionPickerMessageId(null)}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.mutedText}
-            />
-            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={sending}>
-              <Ionicons name="send" size={18} color="#fff" />
-            </Pressable>
+          <View style={styles.inputWrap}>
+            {replyTarget ? (
+              <View style={styles.replyComposerBar}>
+                <View style={styles.replyComposerTextWrap}>
+                  <Text style={styles.replyComposerLabel}>
+                    Replying to {replyTarget.sender?.id === currentUserId ? "your message" : replyTarget.sender?.username || "user"}
+                  </Text>
+                  <Text style={styles.replyComposerText} numberOfLines={1}>
+                    {toReplyPreviewText(replyTarget)}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    setReplyTarget(null);
+                  }}
+                  style={styles.replyComposerClose}
+                >
+                  <Ionicons name="close" size={16} color={colors.mutedText} />
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.inputRow}>
+              <TextInput
+                ref={messageInputRef}
+                style={styles.input}
+                value={messageText}
+                onChangeText={handleMessageInputChange}
+                onPressIn={(event) => {
+                  event.stopPropagation();
+                  activateMessageInput();
+                }}
+                onFocus={handleInputFocus}
+                placeholder={
+                  replyTarget
+                    ? `Reply to: ${toReplyPreviewText(replyTarget)}`
+                    : "Type a message..."
+                }
+                placeholderTextColor={colors.mutedText}
+              />
+              <Pressable
+                style={styles.sendButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  sendMessage();
+                }}
+                disabled={sending}
+              >
+                <Ionicons name="send" size={18} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         </KeyboardAvoidingView>
+        <Modal
+          transparent
+          visible={Boolean(messageMenu)}
+          animationType="fade"
+          onRequestClose={closeMessageMenu}
+        >
+          <View style={styles.menuOverlay}>
+            <Pressable style={styles.menuOverlayTouchable} onPress={closeMessageMenu} />
+            {messageMenu ? (
+              <View
+                style={[
+                  styles.messageMenu,
+                  { top: messageMenu.top },
+                  messageMenu.align === "left" ? styles.messageMenuLeft : styles.messageMenuRight,
+                ]}
+              >
+                {buildMessageMenuActions(messageMenu.message, messageMenu.isMine).map((action) => (
+                  <Pressable
+                    key={`${messageMenu.message.id}-${action.key}`}
+                    style={styles.messageMenuItem}
+                    onPress={action.onPress}
+                  >
+                    <Text
+                      style={[
+                        styles.messageMenuItemText,
+                        action.destructive ? styles.messageMenuItemTextDanger : undefined,
+                      ]}
+                    >
+                      {action.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -752,7 +1230,7 @@ export function ConversationsScreen() {
             </Pressable>
           );
         }}
-        refreshControl={<RefreshControl refreshing={loadingList} onRefresh={loadConversations} />}
+        refreshControl={<RefreshControl refreshing={loadingList} onRefresh={() => loadConversations(true)} />}
         ListEmptyComponent={
           loadingList ? (
             <View style={styles.emptyWrap}>
@@ -967,8 +1445,27 @@ const createStyles = (colors: ThemeColors) =>
     messageRowOther: {
       justifyContent: "flex-start",
     },
+    swipeContainer: {
+      overflow: "visible",
+    },
+    swipeChildren: {
+      overflow: "visible",
+    },
     messageContainer: {
       position: "relative",
+      maxWidth: "100%",
+    },
+    replySwipeAction: {
+      width: 22,
+      marginVertical: 4,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    replySwipeActionMine: {
+      marginLeft: 6,
+    },
+    replySwipeActionOther: {
+      marginRight: 6,
     },
     reactionPicker: {
       position: "absolute",
@@ -1008,6 +1505,40 @@ const createStyles = (colors: ThemeColors) =>
       paddingHorizontal: 16,
       paddingVertical: 11,
     },
+    messageBubbleReplyActiveMine: {
+      transform: [{ translateX: -18 }],
+    },
+    messageBubbleReplyActiveOther: {
+      transform: [{ translateX: 18 }],
+    },
+    messageBubbleHighlighted: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
+    replyActiveIndicator: {
+      position: "absolute",
+      top: -8,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      zIndex: 2,
+      shadowColor: "#000",
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    replyActiveIndicatorMine: {
+      right: -8,
+    },
+    replyActiveIndicatorOther: {
+      left: -8,
+    },
     messageMine: {
       backgroundColor: colors.navy,
       borderBottomRightRadius: 6,
@@ -1019,6 +1550,41 @@ const createStyles = (colors: ThemeColors) =>
     messageText: {
       fontSize: 15,
       flexShrink: 1,
+    },
+    replySnippet: {
+      borderLeftWidth: 3,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      marginBottom: 6,
+    },
+    replySnippetMine: {
+      borderLeftColor: "#dbeafe",
+      backgroundColor: "rgba(255,255,255,0.14)",
+    },
+    replySnippetOther: {
+      borderLeftColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    replySnippetAuthor: {
+      fontSize: 11,
+      fontWeight: "700",
+      marginBottom: 1,
+    },
+    replySnippetAuthorMine: {
+      color: "#e2e8f0",
+    },
+    replySnippetAuthorOther: {
+      color: colors.primary,
+    },
+    replySnippetText: {
+      fontSize: 12,
+    },
+    replySnippetTextMine: {
+      color: "#e2e8f0",
+    },
+    replySnippetTextOther: {
+      color: colors.mutedText,
     },
     messageTextMine: {
       color: "#fff",
@@ -1083,14 +1649,96 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.text,
       fontWeight: "600",
     },
+    inputWrap: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    replyComposerBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginHorizontal: 12,
+      marginTop: 8,
+      marginBottom: 2,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.primary,
+      backgroundColor: colors.surfaceMuted,
+    },
+    replyComposerTextWrap: {
+      flex: 1,
+      marginRight: 8,
+    },
+    replyComposerLabel: {
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.primary,
+      marginBottom: 1,
+    },
+    replyComposerText: {
+      fontSize: 12,
+      color: colors.text,
+    },
+    replyComposerClose: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    menuOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(8, 15, 33, 0.26)",
+      justifyContent: "flex-start",
+      alignItems: "stretch",
+    },
+    menuOverlayTouchable: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    messageMenu: {
+      position: "absolute",
+      minWidth: 152,
+      borderRadius: 14,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 6,
+      shadowColor: "#000",
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 7,
+    },
+    messageMenuLeft: {
+      left: 14,
+    },
+    messageMenuRight: {
+      right: 14,
+    },
+    messageMenuItem: {
+      minHeight: 44,
+      paddingHorizontal: 14,
+      justifyContent: "center",
+    },
+    messageMenuItemText: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: "600",
+    },
+    messageMenuItemTextDanger: {
+      color: colors.danger,
+    },
     inputRow: {
       flexDirection: "row",
       gap: 8,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      backgroundColor: colors.surface,
     },
     input: {
       flex: 1,

@@ -133,6 +133,13 @@ class Message(models.Model):
     sender = models.ForeignKey(
         Profile, related_name="sent_messages", on_delete=models.CASCADE
     )
+    reply_to = models.ForeignKey(
+        "self",
+        related_name="replies",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     text = models.TextField()
     attachment = models.FileField(
         upload_to="attachments/", blank=True, null=True

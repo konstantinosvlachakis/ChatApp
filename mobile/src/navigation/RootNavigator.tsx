@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { fetchConversations } from "../services/api/conversations";
+import { tokenStorage } from "../services/storage";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
 import { CommunityScreen } from "../screens/CommunityScreen";
@@ -46,6 +47,11 @@ type BannerState = {
   avatarUrl?: string | null;
 };
 
+type PresenceSocketPayload =
+  | { type: "presence_update"; user_id: number; is_online: boolean }
+  | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
+  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
+
 function resolveMediaUrl(path?: string | null) {
   if (!path) return "https://placehold.co/80x80";
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -59,16 +65,23 @@ function AppTabs() {
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const { height } = useWindowDimensions();
+  const wsBaseUrl = React.useMemo(() => API_BASE_URL.replace(/^http/, "ws"), []);
   const [unreadChatsCount, setUnreadChatsCount] = React.useState(0);
   const [activeTabName, setActiveTabName] = React.useState("People");
   const [banners, setBanners] = React.useState<BannerState[]>([]);
   const didSeedUnreadRef = React.useRef(false);
   const previousUnreadByConversationRef = React.useRef<Record<number, number>>({});
+  const unreadFetchMetaRef = React.useRef<{ inFlight: boolean; lastRunAt: number }>({
+    inFlight: false,
+    lastRunAt: 0,
+  });
   const bannerTimersRef = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const bannerAnimRef = React.useRef<
     Record<string, { translateY: Animated.Value; opacity: Animated.Value }>
   >({});
   const dismissingBannerIdsRef = React.useRef<Set<string>>(new Set());
+  const presenceUpdatesSocketRef = React.useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const dynamicStyles = React.useMemo(() => createDynamicStyles(colors), [colors]);
 
   const dismissBanner = React.useCallback((bannerId: string, animated = true) => {
@@ -146,6 +159,12 @@ function AppTabs() {
   );
 
   const loadUnreadChatsCount = React.useCallback(async () => {
+    const now = Date.now();
+    if (unreadFetchMetaRef.current.inFlight) return;
+    if (now - unreadFetchMetaRef.current.lastRunAt < 4000) return;
+
+    unreadFetchMetaRef.current.inFlight = true;
+    unreadFetchMetaRef.current.lastRunAt = now;
     try {
       const conversations = await fetchConversations();
       const totalUnread = conversations.reduce(
@@ -189,17 +208,17 @@ function AppTabs() {
       }
     } catch {
       // Keep last badge value if request fails.
+    } finally {
+      unreadFetchMetaRef.current.inFlight = false;
     }
   }, [activeTabName, showBanner, user?.user_id]);
 
   React.useEffect(() => {
     loadUnreadChatsCount();
-    const intervalId = setInterval(loadUnreadChatsCount, 1200);
     const refreshListener = DeviceEventEmitter.addListener("conversations_refresh", () => {
       loadUnreadChatsCount();
     });
     return () => {
-      clearInterval(intervalId);
       refreshListener.remove();
       Object.values(bannerTimersRef.current).forEach((timer) => clearTimeout(timer));
       bannerTimersRef.current = {};
@@ -207,6 +226,59 @@ function AppTabs() {
       dismissingBannerIdsRef.current.clear();
     };
   }, [loadUnreadChatsCount]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const clearReconnectTimeout = () => {
+      if (!reconnectTimeoutRef.current) return;
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    };
+
+    const closeSocket = () => {
+      if (!presenceUpdatesSocketRef.current) return;
+      presenceUpdatesSocketRef.current.close();
+      presenceUpdatesSocketRef.current = null;
+    };
+
+    const connect = async () => {
+      if (!user?.user_id || cancelled) return;
+
+      const token = await tokenStorage.getAccessToken();
+      if (!token || cancelled) return;
+
+      const socket = new WebSocket(`${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`);
+      presenceUpdatesSocketRef.current = socket;
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as PresenceSocketPayload;
+          if (payload.type === "conversation_update") {
+            loadUnreadChatsCount();
+          }
+        } catch {
+          // Ignore malformed payloads.
+        }
+      };
+
+      socket.onclose = () => {
+        if (cancelled) return;
+        clearReconnectTimeout();
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect().catch(() => {});
+        }, 1500);
+      };
+    };
+
+    connect().catch(() => {});
+
+    return () => {
+      cancelled = true;
+      clearReconnectTimeout();
+      closeSocket();
+    };
+  }, [loadUnreadChatsCount, user?.user_id, wsBaseUrl]);
 
   const tabBarReserve = 124;
   const bannerApproxHeight = 56;

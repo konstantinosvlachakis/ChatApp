@@ -94,6 +94,25 @@ def broadcast_message_status_update(conversation_id, message_ids, status_value, 
     )
 
 
+def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=None):
+    channel_layer = get_channel_layer()
+    if not channel_layer:
+        return
+
+    normalized_user_ids = {int(user_id) for user_id in (user_ids or []) if user_id}
+    if not normalized_user_ids:
+        return
+
+    payload = {
+        "type": "conversation_update_event",
+        "conversation_id": conversation_id,
+        "trigger": trigger,
+        "actor_id": actor_id,
+    }
+    for user_id in normalized_user_ids:
+        async_to_sync(channel_layer.group_send)(f"presence_user_{user_id}", payload)
+
+
 @csrf_exempt
 def login_view(request):
     if request.method == "POST":
@@ -427,6 +446,8 @@ class MessageListView(APIView):
         # Extract text and file from the request
         text = request.data.get("text", "").strip()
         attachment = request.FILES.get("attachment")
+        reply_to_id = request.data.get("reply_to")
+        reply_to_message = None
 
         # Validate: at least text or attachment should be provided
         if not text and not attachment:
@@ -435,12 +456,36 @@ class MessageListView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if reply_to_id not in (None, ""):
+            try:
+                parsed_reply_to_id = int(reply_to_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "Invalid reply_to message id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            reply_to_message = Message.objects.filter(
+                id=parsed_reply_to_id, conversation=conversation
+            ).first()
+            if not reply_to_message:
+                return Response(
+                    {"error": "Reply target message not found in this conversation"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # Create a new message
         message = Message.objects.create(
             conversation=conversation,
             text=text,
             sender=request.user,
+            reply_to=reply_to_message,
             attachment=attachment,  # Save the file if provided
+        )
+        broadcast_conversation_update(
+            [conversation.sender_id, conversation.receiver_id],
+            conversation.id,
+            "message_created",
+            actor_id=request.user.id,
         )
 
         # Serialize and return the new message
@@ -578,6 +623,12 @@ def mark_conversation_read_view(request, conversation_id):
         updated = messages_to_mark.update(status="read")
         broadcast_message_status_update(
             conversation.id, read_ids, "read", request.user.id
+        )
+        broadcast_conversation_update(
+            [conversation.sender_id, conversation.receiver_id],
+            conversation.id,
+            "messages_read",
+            actor_id=request.user.id,
         )
 
     return Response({"updated": updated}, status=status.HTTP_200_OK)
