@@ -4,6 +4,8 @@ import { UserProvider } from "./context/UserContext";
 import Layout from "./layout/Layout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
+import TermsAndConditionsPage from "./pages/TermsAndConditionsPage";
 import ConversationsPage from "./pages/Conversations/page";
 import ChatRoomWrapper from "./pages/Conversations/features/ChatRoomWrapper";
 import { queryClient } from '../src/libs/react-query'
@@ -100,6 +102,8 @@ function App() {
               <Route path="/" element={<LoginPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+              <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
 
               {/* Protected Routes Wrapped in Layout */}
               <Route element={<Layout />}>

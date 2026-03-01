@@ -22,6 +22,8 @@ const Layout = () => {
   const previousUnreadMapRef = useRef(new Map());
   const hasHydratedUnreadRef = useRef(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef(null);
 
   const handleLogout = () => {
     sessionStorage.removeItem("accessToken");
@@ -41,6 +43,22 @@ const Layout = () => {
       ),
     [conversations]
   );
+  const avatarUrl = useMemo(() => {
+    const image = user?.profile_image_url;
+    if (!image) {
+      return `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+    }
+    if (image.startsWith("http://") || image.startsWith("https://")) {
+      return image;
+    }
+    if (image.startsWith("/media/")) {
+      return `${BASE_URL}${image}`;
+    }
+    if (image.startsWith("media/")) {
+      return `${BASE_URL}/${image}`;
+    }
+    return `${BASE_URL}/media/${image}`;
+  }, [user?.profile_image_url]);
 
   useEffect(() => {
     if (!("Notification" in window)) return;
@@ -91,8 +109,36 @@ const Layout = () => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    setProfileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (!profileMenuRef.current) return;
+      if (!profileMenuRef.current.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    const onEscape = (event) => {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, []);
+
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
+    <div
+      className={`flex flex-col bg-gray-50 ${
+        isChatRoute ? "h-screen overflow-hidden" : "min-h-screen"
+      }`}
+    >
       {/* Header/Menu */}
       <header className="sticky top-0 z-30 bg-gray-700 text-white px-3 py-3 shadow-md sm:px-4">
         <nav className="mx-auto max-w-7xl">
@@ -156,90 +202,120 @@ const Layout = () => {
                 </svg>
               )}
             </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="hidden items-center gap-1.5 rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600 sm:px-3 sm:py-2 sm:text-sm md:inline-flex"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-4 w-4"
-                aria-hidden="true"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              Log out
-            </button>
           </div>
 
           {/* Desktop nav */}
           <div className="mt-3 hidden md:block">
-            <div className="flex items-center gap-2">
-              <Link
-                to="/community"
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                  location.pathname === "/community"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                People
-              </Link>
-              <Link
-                to="/conversations"
-                className={`relative rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                  location.pathname === "/conversations"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                Conversations
-                {unreadConversationCount > 0 && (
-                  <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                    {unreadConversationCount}
-                  </span>
-                )}
-              </Link>
-              <Link
-                to="/profile"
-                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                  location.pathname === "/profile"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                Profile
-              </Link>
-              <Link
-                to="/settings"
-                className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                  location.pathname === "/settings"
-                    ? "bg-white text-blue-600 shadow"
-                    : "hover:bg-blue-700 hover:text-white"
-                }`}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-4 w-4"
-                  aria-hidden="true"
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/community"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                    location.pathname === "/community"
+                      ? "bg-white text-blue-600 shadow"
+                      : "hover:bg-blue-700 hover:text-white"
+                  }`}
                 >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.3.47.65.6 1 .08.33.11.67.1 1 .01.33-.02.67-.1 1-.13.35-.34.7-.6 1z" />
-                </svg>
-                Settings
-              </Link>
+                  People
+                </Link>
+                <Link
+                  to="/conversations"
+                  className={`relative rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                    location.pathname === "/conversations"
+                      ? "bg-white text-blue-600 shadow"
+                      : "hover:bg-blue-700 hover:text-white"
+                  }`}
+                >
+                  Conversations
+                  {unreadConversationCount > 0 && (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                      {unreadConversationCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  to="/profile"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                    location.pathname === "/profile"
+                      ? "bg-white text-blue-600 shadow"
+                      : "hover:bg-blue-700 hover:text-white"
+                  }`}
+                >
+                  Profile
+                </Link>
+              </div>
+              <div className="relative ml-auto" ref={profileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                  className={`inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                    profileMenuOpen
+                      ? "bg-white text-blue-600 shadow"
+                      : "hover:bg-blue-700 hover:text-white"
+                  }`}
+                  aria-expanded={profileMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <img
+                    src={avatarUrl}
+                    alt="Profile avatar"
+                    className="h-6 w-6 rounded-full border border-white/50 object-cover"
+                  />
+                  <span className="max-w-[120px] truncate">{user?.username || "Account"}</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`h-4 w-4 transition-transform duration-200 ${
+                      profileMenuOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                <div
+                  className={`absolute right-0 mt-2 w-56 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl transition-all duration-200 ${
+                    profileMenuOpen
+                      ? "pointer-events-auto translate-y-0 opacity-100"
+                      : "pointer-events-none -translate-y-2 opacity-0"
+                  }`}
+                  role="menu"
+                >
+                  <Link
+                    to="/settings"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    role="menuitem"
+                  >
+                    Settings
+                  </Link>
+                  <Link
+                    to="/privacy-policy"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    role="menuitem"
+                  >
+                    Privacy Policy
+                  </Link>
+                  <Link
+                    to="/terms-and-conditions"
+                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    role="menuitem"
+                  >
+                    Terms and Conditions
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                    role="menuitem"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -310,7 +386,7 @@ const Layout = () => {
                   <polyline points="16 17 21 12 16 7" />
                   <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
-                Log out
+                Sign out
               </button>
             </div>
           )}

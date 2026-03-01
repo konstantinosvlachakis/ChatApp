@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BASE_URL } from "../constants/constants";
 
@@ -569,6 +569,17 @@ const RegisterPage = () => {
             >
               Log in
             </button>
+          </p>
+          <p className="mt-3 text-center text-xs text-slate-500">
+            By creating an account, you agree to our{" "}
+            <Link to="/terms-and-conditions" className="font-medium text-cyan-700 hover:text-cyan-800">
+              Terms and Conditions
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy-policy" className="font-medium text-cyan-700 hover:text-cyan-800">
+              Privacy Policy
+            </Link>
+            .
           </p>
         </motion.div>
       </div>

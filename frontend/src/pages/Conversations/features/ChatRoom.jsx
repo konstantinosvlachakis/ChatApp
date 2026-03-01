@@ -17,6 +17,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const messagesContainerRef = useRef(null);
   const { user, loading } = useUser();
   const queryClient = useQueryClient();
+  const scrollToBottom = useCallback((behavior = "auto") => {
+    if (!messagesContainerRef.current) return;
+    messagesContainerRef.current.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior,
+    });
+  }, []);
+
   const sendSocketEvent = useCallback((payload) => {
     if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
       return false;
@@ -30,10 +38,24 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   }, [conversation?.id, conversation?.messages]);
 
   useEffect(() => {
+    if (loading) return;
     if (!messagesContainerRef.current) return;
-    messagesContainerRef.current.scrollTop =
-      messagesContainerRef.current.scrollHeight;
-  }, [messages, conversation?.id]);
+    scrollToBottom("auto");
+  }, [loading, messages, conversation?.id, scrollToBottom]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!conversation?.id) return;
+
+    // Force scroll when opening/switching chats, including a delayed pass
+    // so we still land at the bottom after late content/layout updates.
+    requestAnimationFrame(() => {
+      scrollToBottom("auto");
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    });
+    const timer = setTimeout(() => scrollToBottom("auto"), 120);
+    return () => clearTimeout(timer);
+  }, [loading, conversation?.id, scrollToBottom]);
 
   // ------------------- WebSocket Setup -------------------
   useEffect(() => {
@@ -247,7 +269,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   // ------------------- Render -------------------
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-x-hidden bg-gray-50">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50">
       {/* Header */}
       <div className="flex-shrink-0">
         <ChatHeader conversation={conversation} />
@@ -256,7 +278,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       {/* Conversation */}
       <div
         ref={messagesContainerRef}
-        className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-4"
+        className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-24 sm:px-4"
       >
         <Conversation
           messages={messages}
@@ -278,7 +300,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       )}
 
       {/* Message input */}
-      <div className="flex-shrink-0 border-t bg-white">
+      <div className="sticky bottom-0 z-20 flex-shrink-0 border-t bg-white">
         <MessageInput
           onSendMessage={handleSendMessage}
           onTyping={handleTyping}
