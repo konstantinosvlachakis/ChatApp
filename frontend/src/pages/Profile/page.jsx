@@ -1,18 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BASE_URL_IMG } from "../../constants/constants";
-import { useEditProfile } from "./api/editProfile";
-import ModalComponent from "../../components/Modals/Modal";
 import { getUserLocation } from "./utils/getUserLocation";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
+import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
+import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [modalNameOpen, setModalNameOpen] = useState(false);
-  const [newName, setNewName] = useState("");
   const [uploadingSlot, setUploadingSlot] = useState("");
-  const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
   const isDetectingLocationRef = useRef(false);
 
@@ -98,17 +98,6 @@ const ProfilePage = () => {
 
     detectLocation();
   }, [user]);
-
-  // ---- Edit Name ----
-  const handleSaveName = async () => {
-    try {
-      await editProfileMutation.mutateAsync({ username: newName });
-      setUser((prev) => ({ ...prev, username: newName }));
-      setModalNameOpen(false);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
 
   if (loading) return <div className="p-8 text-gray-500">Loading profile...</div>;
   if (error) return <div className="p-8 text-red-500">{error}</div>;
@@ -201,9 +190,10 @@ const ProfilePage = () => {
             {user.username}, {user.age}
           </h1>
           <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition text-sm sm:text-base"
-            onClick={() => setModalNameOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm text-white transition hover:bg-blue-600 sm:text-base"
+            onClick={() => navigate("/profile/edit")}
           >
+            <EditOutlinedIcon fontSize="small" />
             Edit Profile
           </button>
         </div>
@@ -213,9 +203,7 @@ const ProfilePage = () => {
           {/* Personal Info */}
           <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
             <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <span role="img" aria-label="user">
-                👤
-              </span>
+              <PersonOutlineIcon fontSize="small" />
               Personal Information
             </h2>
             <div className="space-y-3 text-gray-700">
@@ -244,9 +232,7 @@ const ProfilePage = () => {
           {/* Languages */}
           <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
             <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <span role="img" aria-label="globe">
-                🌐
-              </span>
+              <PublicOutlinedIcon fontSize="small" />
               Languages
             </h2>
             <div className="space-y-3 text-gray-700">
@@ -280,9 +266,7 @@ const ProfilePage = () => {
         {/* Learning Goals */}
         <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
           <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <span role="img" aria-label="target">
-              🎯
-            </span>
+            <FlagOutlinedIcon fontSize="small" />
             Learning Goals
           </h2>
           <p className="text-gray-700">
@@ -294,9 +278,7 @@ const ProfilePage = () => {
         {/* Photos */}
         <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
           <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <span role="img" aria-label="camera">
-              📸
-            </span>
+            <PhotoLibraryOutlinedIcon fontSize="small" />
             Photos
           </h2>
           <p className="text-sm text-gray-600 mb-5">
@@ -345,34 +327,6 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
-
-      {/* Edit Name Modal */}
-      {modalNameOpen && (
-        <ModalComponent open={modalNameOpen} setOpen={setModalNameOpen}>
-          <h2 className="text-lg text-black font-bold mb-4">Edit name</h2>
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full p-2 mb-4 border rounded focus:outline-none text-black focus:border-blue-300"
-            placeholder="Type your new name..."
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              className="bg-gray-300 text-gray-800 py-1 px-4 rounded hover:bg-gray-400 transition"
-              onClick={() => setModalNameOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 transition"
-              onClick={handleSaveName}
-            >
-              Save
-            </button>
-          </div>
-        </ModalComponent>
-      )}
     </div>
   );
 };

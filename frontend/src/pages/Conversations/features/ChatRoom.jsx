@@ -12,6 +12,7 @@ import { markConversationRead } from "../api/markConversationRead";
 import { useQueryClient } from "react-query";
 
 const CALL_TIMEOUT_MS = 30000;
+const MESSAGE_PAGE_SIZE = 30;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
 
@@ -60,6 +61,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
   const socket = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -75,6 +80,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const callTimerIntervalRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const scrollAdjustmentHeightRef = useRef(null);
+  const isFetchingOlderRef = useRef(false);
 
   const { user, loading } = useUser();
   const queryClient = useQueryClient();
@@ -92,6 +99,49 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       behavior,
     });
   }, []);
+
+  const fetchMessagesPage = useCallback(
+    async (conversationId, page, { force = false } = {}) => {
+      const cacheKey = ["conversationMessagesPage", conversationId, page];
+      if (!force) {
+        const cached = queryClient.getQueryData(cacheKey);
+        if (cached) return cached;
+      }
+
+      const token =
+        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
+      const response = await axios.get(
+        `${BASE_URL}/api/conversations/${conversationId}/messages/`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          params: {
+            page,
+            page_size: MESSAGE_PAGE_SIZE,
+          },
+        }
+      );
+
+      const payload = response.data || {};
+      const normalized = {
+        messages: Array.isArray(payload.messages) ? payload.messages : [],
+        pagination: payload.pagination || null,
+      };
+      queryClient.setQueryData(cacheKey, normalized);
+      return normalized;
+    },
+    [queryClient]
+  );
+
+  const invalidateConversationHistoryCache = useCallback(
+    (conversationId) => {
+      if (!conversationId) return;
+      queryClient.invalidateQueries(["conversationMessagesPage", conversationId]);
+    },
+    [queryClient]
+  );
 
   const clearCallTimeout = useCallback(() => {
     if (!callTimeoutRef.current) return;
@@ -419,9 +469,49 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setIsCameraOn(nextCameraOn);
   }, [isCameraOn]);
 
-  useEffect(() => {
-    setMessages(conversation?.messages || []);
-  }, [conversation?.id, conversation?.messages]);
+  const loadOlderMessages = useCallback(async () => {
+    if (!conversation?.id) return;
+    if (!hasOlderMessages || loadingOlderMessages || isFetchingOlderRef.current) return;
+
+    const nextPage = currentMessagesPage + 1;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isFetchingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    scrollAdjustmentHeightRef.current = container.scrollHeight;
+    try {
+      const payload = await fetchMessagesPage(conversation.id, nextPage, { force: false });
+      const olderMessages = payload.messages || [];
+      if (olderMessages.length > 0) {
+        setMessages((prev) => [...olderMessages, ...prev]);
+      }
+      setCurrentMessagesPage(payload.pagination?.page || nextPage);
+      setHasOlderMessages(Boolean(payload.pagination?.has_next));
+    } catch (error) {
+      // keep previous history state
+    } finally {
+      isFetchingOlderRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }, [
+    conversation?.id,
+    currentMessagesPage,
+    fetchMessagesPage,
+    hasOlderMessages,
+    loadingOlderMessages,
+  ]);
+
+  const handleMessagesScroll = useCallback(
+    (event) => {
+      const target = event.currentTarget;
+      if (!target) return;
+      if (target.scrollTop <= 80) {
+        loadOlderMessages();
+      }
+    },
+    [loadOlderMessages]
+  );
 
   useEffect(() => {
     resetCallState();
@@ -429,21 +519,51 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   useEffect(() => {
     if (loading) return;
-    if (!messagesContainerRef.current) return;
-    scrollToBottom("auto");
-  }, [loading, messages, conversation?.id, scrollToBottom]);
+    if (!conversation?.id) return;
+    let isMounted = true;
+
+    const loadLatestMessages = async () => {
+      setLoadingHistory(true);
+      setLoadingOlderMessages(false);
+      isFetchingOlderRef.current = false;
+      try {
+        const payload = await fetchMessagesPage(conversation.id, 1, { force: false });
+        if (!isMounted) return;
+        setMessages(payload.messages || []);
+        setCurrentMessagesPage(payload.pagination?.page || 1);
+        setHasOlderMessages(Boolean(payload.pagination?.has_next));
+        requestAnimationFrame(() => {
+          scrollToBottom("auto");
+          requestAnimationFrame(() => scrollToBottom("auto"));
+        });
+      } catch (error) {
+        if (!isMounted) return;
+        setMessages([]);
+      } finally {
+        if (isMounted) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    loadLatestMessages();
+    return () => {
+      isMounted = false;
+    };
+  }, [conversation?.id, fetchMessagesPage, loading, scrollToBottom]);
 
   useEffect(() => {
-    if (loading) return;
-    if (!conversation?.id) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (scrollAdjustmentHeightRef.current === null) return;
 
+    const previousHeight = scrollAdjustmentHeightRef.current;
+    scrollAdjustmentHeightRef.current = null;
     requestAnimationFrame(() => {
-      scrollToBottom("auto");
-      requestAnimationFrame(() => scrollToBottom("auto"));
+      const nextHeight = container.scrollHeight;
+      container.scrollTop += Math.max(0, nextHeight - previousHeight);
     });
-    const timer = setTimeout(() => scrollToBottom("auto"), 120);
-    return () => clearTimeout(timer);
-  }, [loading, conversation?.id, scrollToBottom]);
+  }, [messages]);
 
   useEffect(() => {
     if (!conversation?.id || !user) return;
@@ -478,14 +598,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 current_user_reaction: null,
               },
             ]);
+            requestAnimationFrame(() => scrollToBottom("smooth"));
             if (data.senderId !== user.user_id) {
               markConversationRead(conversation.id).catch(() => {});
             }
+            invalidateConversationHistoryCache(conversation.id);
             queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
             break;
 
           case "deleteMessage":
             setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+            invalidateConversationHistoryCache(conversation.id);
             break;
 
           case "message_reaction":
@@ -494,6 +617,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 prev.map((m) => (m.id === data.message.id ? { ...m, ...data.message } : m))
               );
             }
+            invalidateConversationHistoryCache(conversation.id);
             break;
 
           case "user_typing":
@@ -597,8 +721,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     onConversationTypingChange,
     queryClient,
     resetCallState,
+    scrollToBottom,
     sendSocketEvent,
     appendCallSummary,
+    invalidateConversationHistoryCache,
     user,
   ]);
 
@@ -643,6 +769,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     };
 
     setMessages((prev) => [...prev, tempMessage]);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
 
     try {
       const response = await axios.post(
@@ -661,6 +788,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       const savedMessage = response.data;
       queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      invalidateConversationHistoryCache(conversation.id);
 
       setMessages((prev) =>
         prev.map((message) =>
@@ -743,6 +871,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     try {
       await deleteMessage(messageId);
       sendSocketEvent({ type: "deleteMessage", messageId });
+      invalidateConversationHistoryCache(conversation.id);
     } catch (error) {
       console.error("Failed to delete message:", error);
     }
@@ -753,6 +882,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setMessages((prev) =>
       prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
     );
+    invalidateConversationHistoryCache(conversation.id);
   };
 
   return (
@@ -769,17 +899,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       <div
         ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
         className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-24 sm:px-4"
       >
-        <Conversation
-          messages={messages}
-          userId={user.user_id}
-          onDeleteMessage={handleDeleteMessage}
-          onMessageReactionChange={handleMessageReactionChange}
-          baseTranslateLanguage={
-            user.base_translate_language || user.native_language || "english"
-          }
-        />
+        {loadingHistory ? (
+          <div className="p-4 text-center text-sm text-gray-500">Loading chat history...</div>
+        ) : (
+          <>
+            {loadingOlderMessages && (
+              <div className="pb-2 text-center text-xs text-gray-400">Loading older messages...</div>
+            )}
+            <Conversation
+              messages={messages}
+              userId={user.user_id}
+              onDeleteMessage={handleDeleteMessage}
+              onMessageReactionChange={handleMessageReactionChange}
+              baseTranslateLanguage={
+                user.base_translate_language || user.native_language || "english"
+              }
+            />
+          </>
+        )}
       </div>
 
       {isOtherUserTyping && (

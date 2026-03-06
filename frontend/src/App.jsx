@@ -14,6 +14,7 @@ import { QueryClientProvider } from 'react-query';
 
 
 const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
+const EditProfilePage = React.lazy(() => import("./pages/Profile/EditProfilePage"));
 const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const SettingsPage = React.lazy(() => import("./pages/Settings/page"));
 const PublicProfilePage = React.lazy(() => import("./pages/PublicProfile/page"));
@@ -112,6 +113,14 @@ function App() {
                   element={
                     <Suspense fallback={<div>Loading Profile...</div>}>
                       <ProfilePage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/profile/edit"
+                  element={
+                    <Suspense fallback={<div>Loading Profile Editor...</div>}>
+                      <EditProfilePage />
                     </Suspense>
                   }
                 />

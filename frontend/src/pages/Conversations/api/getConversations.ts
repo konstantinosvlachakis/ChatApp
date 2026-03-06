@@ -35,6 +35,9 @@ export const useGetConversations = ({ config }: UseGetConversationsData = {}) =>
     queryKey: ["conversationsList"],
     initialData: [],
     queryFn: getConversations,
+    staleTime: 15 * 1000,
+    cacheTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
     ...config,
     useErrorBoundary: false,
 

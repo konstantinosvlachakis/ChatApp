@@ -83,6 +83,21 @@ class ProfileEndpointTests(TestCase):
             ["french", "italian"],
         )
 
+    def test_profile_edit_supports_location_and_date_of_birth(self):
+        payload = {
+            "location": "Athens, Greece",
+            "date_of_birth": "2000-01-02",
+        }
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["updated_profile"]["location"], "Athens, Greece")
+        self.assertEqual(response.json()["updated_profile"]["date_of_birth"], "2000-01-02")
+
     def test_profile_location_update_returns_200_and_updates_profile(self):
         payload = {
             "city": "Athens",

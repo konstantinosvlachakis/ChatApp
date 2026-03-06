@@ -3,6 +3,10 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BASE_URL } from "../../constants/constants";
 import { BASE_URL_IMG } from "../../constants/constants";
 import { createOrGetConversation } from "../Community/api/conversation";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
+import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
+import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 
 const PublicProfilePage = () => {
   const { username } = useParams();
@@ -126,9 +130,7 @@ const PublicProfilePage = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-4 sm:mt-6 md:mt-8">
           <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
             <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <span role="img" aria-label="user">
-                👤
-              </span>
+              <PersonOutlineIcon fontSize="small" />
               Personal Information
             </h2>
             <div className="space-y-3 text-gray-700">
@@ -148,9 +150,7 @@ const PublicProfilePage = () => {
 
           <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
             <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <span role="img" aria-label="globe">
-                🌐
-              </span>
+              <PublicOutlinedIcon fontSize="small" />
               Languages
             </h2>
             <div className="space-y-3 text-gray-700">
@@ -183,9 +183,7 @@ const PublicProfilePage = () => {
 
         <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
           <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <span role="img" aria-label="target">
-              🎯
-            </span>
+            <FlagOutlinedIcon fontSize="small" />
             Learning Goals
           </h2>
           <p className="text-gray-700">
@@ -196,9 +194,7 @@ const PublicProfilePage = () => {
 
         <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
           <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <span role="img" aria-label="camera">
-              📸
-            </span>
+            <PhotoLibraryOutlinedIcon fontSize="small" />
             Photos
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">

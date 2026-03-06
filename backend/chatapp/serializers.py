@@ -231,7 +231,7 @@ class MessageSerializer(serializers.ModelSerializer):
 class ConversationSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
     receiver = ProfileSerializer(read_only=True)
-    messages = MessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
 
@@ -247,6 +247,16 @@ class ConversationSerializer(serializers.ModelSerializer):
             "unread_count",
             "messages",
         ]
+
+    def get_messages(self, obj):
+        include_messages = bool(self.context.get("include_messages"))
+        if not include_messages:
+            return []
+        return MessageSerializer(
+            obj.messages.all(),
+            many=True,
+            context=self.context,
+        ).data
 
     def get_last_message(self, obj):
         # Retrieve the last message in the conversation

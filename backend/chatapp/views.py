@@ -22,6 +22,7 @@ from urllib.request import urlopen
 import urllib.error
 import hashlib
 import re
+from datetime import datetime
 from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
 from channels.layers import get_channel_layer
@@ -392,21 +393,29 @@ def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
         user = request.user
+        should_bump_profile_list = False
 
         # Update fields if they are present in the request body
         username = data.get("username")
         native_language = data.get("native_language")
         base_translate_language = data.get("base_translate_language")
         languages_practicing = data.get("languages_practicing")
+        email = data.get("email")
+        date_of_birth = data.get("date_of_birth")
+        location = data.get("location")
         profile_image_url = data.get(
             "profile_image_url"
         )  # Include profile image URL if necessary
 
         # Update only if data is provided
         if username:
+            if Profile.objects.exclude(id=user.id).filter(username=username).exists():
+                return JsonResponse({"error": "Username already exists"}, status=400)
             user.username = username
+            should_bump_profile_list = True
         if native_language:
             user.native_language = native_language
+            should_bump_profile_list = True
         if base_translate_language:
             user.base_translate_language = base_translate_language
         if languages_practicing is not None:
@@ -423,12 +432,37 @@ def profile_edit_view(request):
                     if value:
                         cleaned_languages.append(value)
             user.languages_practicing = cleaned_languages
+            should_bump_profile_list = True
+        if email is not None:
+            normalized_email = str(email).strip().lower()
+            if not normalized_email:
+                return JsonResponse({"error": "Email cannot be empty"}, status=400)
+            if Profile.objects.exclude(id=user.id).filter(email=normalized_email).exists():
+                return JsonResponse({"error": "Email already exists"}, status=400)
+            user.email = normalized_email
+        if date_of_birth is not None:
+            date_raw = str(date_of_birth).strip()
+            if date_raw:
+                try:
+                    user.date_of_birth = datetime.strptime(date_raw, "%Y-%m-%d").date()
+                except ValueError:
+                    return JsonResponse(
+                        {"error": "date_of_birth must be in YYYY-MM-DD format"},
+                        status=400,
+                    )
+            else:
+                user.date_of_birth = None
+        if location is not None:
+            user.location = str(location).strip()[:255]
+            if user.location:
+                user.location_updated_at = timezone.now()
         if profile_image_url:
             user.profile_image_url = profile_image_url  # Update profile image URL
 
         # Save the updated user object
         user.save()
-        bump_profile_list_cache_version()
+        if should_bump_profile_list:
+            bump_profile_list_cache_version()
         bump_profile_cache_version(user.id)
 
         # Return the updated user data
@@ -440,6 +474,10 @@ def profile_edit_view(request):
                     "native_language": user.native_language,
                     "base_translate_language": user.base_translate_language,
                     "languages_practicing": user.languages_practicing or [],
+                    "email": user.email,
+                    "date_of_birth": user.date_of_birth,
+                    "location": user.location or "",
+                    "location_updated_at": user.location_updated_at,
                     "profile_image_url": (
                         user.profile_image_url or None
                     ),
@@ -516,10 +554,55 @@ class MessageListView(APIView):
                 conversation.id, delivered_ids, "delivered", request.user.id
             )
 
-        # Fetch all messages in the conversation
-        messages = conversation.messages.all()
+        page_param = request.query_params.get("page", "1")
+        page_size_param = request.query_params.get("page_size", "30")
+        try:
+            page = max(int(page_param), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(page_size_param)
+        except (TypeError, ValueError):
+            page_size = 30
+        page_size = max(1, min(page_size, 100))
+
+        messages_qs = conversation.messages.all().order_by("-timestamp", "-id")
+        paginator = Paginator(messages_qs, page_size)
+        if paginator.num_pages == 0 or page > paginator.num_pages:
+            payload = {
+                "messages": [],
+                "pagination": {
+                    "page": page if paginator.num_pages else 1,
+                    "page_size": page_size,
+                    "total_pages": paginator.num_pages,
+                    "total_count": paginator.count,
+                    "has_next": False,
+                    "has_previous": page > 1 and paginator.num_pages > 0,
+                },
+            }
+            return Response(payload, status=status.HTTP_200_OK)
+
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(1)
+
+        # Page query is newest-first for paging semantics.
+        # Reverse in response so UI receives messages in chronological order.
+        messages = list(page_obj.object_list)[::-1]
         serializer = MessageSerializer(messages, many=True, context={"request": request})
-        return Response(serializer.data)
+        payload = {
+            "messages": serializer.data,
+            "pagination": {
+                "page": page_obj.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_count": paginator.count,
+                "has_next": page_obj.has_next(),
+                "has_previous": page_obj.has_previous(),
+            },
+        }
+        return Response(payload, status=status.HTTP_200_OK)
 
     parser_classes = (MultiPartParser, FormParser)  # Allow handling of file uploads
 
@@ -614,7 +697,10 @@ class ConversationDetailView(APIView):
                 conversation.id, delivered_ids, "delivered", request.user.id
             )
 
-        serializer = ConversationSerializer(conversation, context={"request": request})
+        serializer = ConversationSerializer(
+            conversation,
+            context={"request": request, "include_messages": True},
+        )
         return Response(serializer.data)
 
     def delete(self, request, conversation_id):
@@ -649,7 +735,9 @@ class ConversationListView(APIView):
                 )
 
         serializer = ConversationSerializer(
-            conversations, many=True, context={"request": request}
+            conversations,
+            many=True,
+            context={"request": request, "include_messages": False},
         )
         return Response(serializer.data)
 
