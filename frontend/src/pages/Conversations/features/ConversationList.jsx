@@ -166,6 +166,15 @@ function ConversationList({
             ...prev,
             [conversationId]: !!data.is_typing,
           }));
+          return;
+        }
+
+        if (data.type === "conversation_update") {
+          queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+          queryClient.refetchQueries({
+            queryKey: ["conversationsList"],
+            type: "active",
+          });
         }
       } catch (parseError) {
         console.error("Failed to parse presence event:", parseError);
@@ -182,7 +191,7 @@ function ConversationList({
       window.clearInterval(heartbeatInterval);
       socket.close();
     };
-  }, [conversations, user?.username, wsBaseUrl]);
+  }, [conversations, queryClient, user?.username, wsBaseUrl]);
 
   if (isLoading) return <div>Loading conversations...</div>;
   if (error) {

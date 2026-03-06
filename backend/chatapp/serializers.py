@@ -259,6 +259,11 @@ class ConversationSerializer(serializers.ModelSerializer):
         ).data
 
     def get_last_message(self, obj):
+        last_message_map = self.context.get("last_message_map") or {}
+        mapped_last_message = last_message_map.get(obj.id)
+        if mapped_last_message is not None:
+            return MessageSerializer(mapped_last_message, context=self.context).data
+
         # Retrieve the last message in the conversation
         last_message = obj.messages.order_by("-timestamp").first()
         if last_message:
@@ -267,6 +272,12 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
 
     def get_unread_count(self, obj):
+        if hasattr(obj, "unread_count_for_request"):
+            try:
+                return int(obj.unread_count_for_request or 0)
+            except (TypeError, ValueError):
+                return 0
+
         request = self.context.get("request")
         if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return 0

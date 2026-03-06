@@ -14,6 +14,7 @@ from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 from django.db.models import Q
+from django.db.models import Count, OuterRef, Subquery
 from django.core.files.storage import default_storage
 import os
 import uuid
@@ -36,6 +37,8 @@ PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
 PROFILE_LIST_MAX_PAGE_SIZE = 100
 PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
 PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
+CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = "conversation_list:version:user:{user_id}"
+CONVERSATION_LIST_CACHE_TIMEOUT_SECONDS = 20
 
 
 def get_profile_list_cache_version():
@@ -67,6 +70,26 @@ def get_profile_cache_version(user_id):
 
 def bump_profile_cache_version(user_id):
     key = PROFILE_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 2, None)
+    except Exception:
+        # Best-effort invalidation.
+        pass
+
+
+def get_conversation_list_cache_version(user_id):
+    key = CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+    version = cache.get(key)
+    if version is None:
+        version = 1
+        cache.set(key, version, None)
+    return int(version)
+
+
+def bump_conversation_list_cache_version(user_id):
+    key = CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
     try:
         cache.incr(key)
     except ValueError:
@@ -650,6 +673,8 @@ class MessageListView(APIView):
             reply_to=reply_to_message,
             attachment=attachment,  # Save the file if provided
         )
+        bump_conversation_list_cache_version(conversation.sender_id)
+        bump_conversation_list_cache_version(conversation.receiver_id)
         broadcast_conversation_update(
             [conversation.sender_id, conversation.receiver_id],
             conversation.id,
@@ -665,7 +690,10 @@ class MessageListView(APIView):
 class MessageDeleteView(APIView):
     def delete(self, request, message_id):
         message = get_object_or_404(Message, id=message_id, sender=request.user)
+        conversation = message.conversation
         message.delete()
+        bump_conversation_list_cache_version(conversation.sender_id)
+        bump_conversation_list_cache_version(conversation.receiver_id)
         return Response(
             {"message": "Message deleted successfully"}, status=status.HTTP_200_OK
         )
@@ -705,7 +733,10 @@ class ConversationDetailView(APIView):
 
     def delete(self, request, conversation_id):
         conversation = get_object_or_404(Conversation, id=conversation_id)
+        participant_ids = [conversation.sender_id, conversation.receiver_id]
         conversation.delete()
+        for user_id in participant_ids:
+            bump_conversation_list_cache_version(user_id)
         return Response(
             {"message": "Conversation deleted successfully"}, status=status.HTTP_200_OK
         )
@@ -715,8 +746,22 @@ class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        conversations = Conversation.objects.filter(
-            Q(sender=request.user) | Q(receiver=request.user)
+        last_message_id_subquery = Subquery(
+            Message.objects.filter(conversation_id=OuterRef("pk"))
+            .order_by("-timestamp", "-id")
+            .values("id")[:1]
+        )
+        conversations = (
+            Conversation.objects.filter(Q(sender=request.user) | Q(receiver=request.user))
+            .select_related("sender", "receiver")
+            .annotate(
+                unread_count_for_request=Count(
+                    "messages",
+                    filter=~Q(messages__sender=request.user) & ~Q(messages__status="read"),
+                ),
+                last_message_id=last_message_id_subquery,
+            )
+            .order_by("-updated_at", "-id")
         )
         messages_to_deliver = (
             Message.objects.filter(conversation__in=conversations)
@@ -734,12 +779,35 @@ class ConversationListView(APIView):
                     conv_id, message_ids, "delivered", request.user.id
                 )
 
+        cache_version = get_conversation_list_cache_version(request.user.id)
+        cache_key = (
+            f"conversation_list:v{cache_version}:user:{request.user.id}:"
+            f"host:{request.get_host()}"
+        )
+        cached_payload = cache.get(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
+        last_message_ids = [
+            conversation.last_message_id
+            for conversation in conversations
+            if getattr(conversation, "last_message_id", None)
+        ]
+        last_messages = Message.objects.filter(id__in=last_message_ids).select_related("sender")
+        last_message_map = {message.conversation_id: message for message in last_messages}
+
         serializer = ConversationSerializer(
             conversations,
             many=True,
-            context={"request": request, "include_messages": False},
+            context={
+                "request": request,
+                "include_messages": False,
+                "last_message_map": last_message_map,
+            },
         )
-        return Response(serializer.data)
+        payload = serializer.data
+        cache.set(cache_key, payload, CONVERSATION_LIST_CACHE_TIMEOUT_SECONDS)
+        return Response(payload)
 
     def post(self, request):
         """
@@ -768,6 +836,8 @@ class ConversationListView(APIView):
             conversation = Conversation.objects.create(
                 sender=user, receiver=participant
             )
+            bump_conversation_list_cache_version(user.id)
+            bump_conversation_list_cache_version(participant.id)
 
         return Response({"id": conversation.id})
 
@@ -795,6 +865,8 @@ def mark_conversation_read_view(request, conversation_id):
     updated = 0
     if read_ids:
         updated = messages_to_mark.update(status="read")
+        bump_conversation_list_cache_version(conversation.sender_id)
+        bump_conversation_list_cache_version(conversation.receiver_id)
         broadcast_message_status_update(
             conversation.id, read_ids, "read", request.user.id
         )

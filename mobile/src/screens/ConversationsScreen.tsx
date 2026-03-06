@@ -41,7 +41,8 @@ import type { ChatMessage, Conversation } from "../types";
 type PresencePayload =
   | { type: "initial_online_users"; user_ids?: number[]; userIds?: number[] }
   | { type: "presence_update"; user_id: number; is_online: boolean }
-  | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean };
+  | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
+  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
 
 type ChatPayload =
   | {
@@ -193,6 +194,42 @@ export function ConversationsScreen() {
     }
   }, []);
 
+  const bumpConversationToTop = useCallback(
+    ({
+      conversationId,
+      lastMessage,
+      unreadDelta = 0,
+      resetUnread = false,
+      updatedAt,
+    }: {
+      conversationId: number;
+      lastMessage?: ChatMessage | null;
+      unreadDelta?: number;
+      resetUnread?: boolean;
+      updatedAt?: string;
+    }) => {
+      setConversations((prev) => {
+        const index = prev.findIndex((conversation) => conversation.id === conversationId);
+        if (index === -1) return prev;
+
+        const existing = prev[index];
+        const nextUnread = resetUnread
+          ? 0
+          : Math.max(0, (existing.unread_count || 0) + unreadDelta);
+        const nextConversation: Conversation = {
+          ...existing,
+          updated_at: updatedAt || new Date().toISOString(),
+          unread_count: nextUnread,
+          last_message: lastMessage === undefined ? existing.last_message : lastMessage,
+        };
+
+        const remaining = [...prev.slice(0, index), ...prev.slice(index + 1)];
+        return [nextConversation, ...remaining];
+      });
+    },
+    []
+  );
+
   const openConversation = useCallback(
     async (conversationId: number) => {
       setLoadingConversation(true);
@@ -215,6 +252,15 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     loadConversations(true);
+  }, [loadConversations]);
+
+  useEffect(() => {
+    const refreshListener = DeviceEventEmitter.addListener("conversations_refresh", () => {
+      loadConversations(true).catch(() => {});
+    });
+    return () => {
+      refreshListener.remove();
+    };
   }, [loadConversations]);
 
   useEffect(() => {
@@ -306,6 +352,12 @@ export function ConversationsScreen() {
       setMessageText("");
       setReplyTarget(null);
       sendTypingEvent("user_stopped_typing");
+      bumpConversationToTop({
+        conversationId: selectedConversation.id,
+        lastMessage: savedMessage,
+        resetUnread: true,
+        updatedAt: savedMessage.timestamp || new Date().toISOString(),
+      });
 
       if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
         chatSocketRef.current.send(
@@ -341,6 +393,7 @@ export function ConversationsScreen() {
       setSending(false);
     }
   }, [
+    bumpConversationToTop,
     currentUserId,
     currentUsername,
     loadConversations,
@@ -439,6 +492,16 @@ export function ConversationsScreen() {
           }
           if (data.type === "typing_status") {
             setRemoteTyping(data.conversation_id, Boolean(data.is_typing));
+            return;
+          }
+          if (data.type === "conversation_update") {
+            if (data.conversation_id) {
+              bumpConversationToTop({
+                conversationId: data.conversation_id,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+            loadConversations(true).catch(() => {});
           }
         } catch {}
       };
@@ -452,7 +515,7 @@ export function ConversationsScreen() {
         presenceSocketRef.current = null;
       }
     };
-  }, [currentUserId, setRemoteTyping, wsBaseUrl]);
+  }, [bumpConversationToTop, currentUserId, loadConversations, setRemoteTyping, wsBaseUrl]);
 
   useEffect(() => {
     let mounted = true;
@@ -489,13 +552,23 @@ export function ConversationsScreen() {
               return exists ? prev : { ...prev, messages: [...prev.messages, newMessage] };
             });
 
+            const isIncoming = Boolean(data.senderId && data.senderId !== currentUserId);
+            const shouldResetUnread = isIncoming && isFocused;
+            bumpConversationToTop({
+              conversationId,
+              lastMessage: newMessage,
+              unreadDelta: isIncoming && !isFocused ? 1 : 0,
+              resetUnread: shouldResetUnread,
+              updatedAt: new Date().toISOString(),
+            });
+
             if (data.senderId && data.senderId !== currentUserId && isFocused) {
               setRemoteTyping(conversationId, false);
               markConversationRead(conversationId)
                 .then(() => DeviceEventEmitter.emit("conversations_refresh"))
                 .catch(() => {});
             }
-            loadConversations().catch(() => {});
+            loadConversations(true).catch(() => {});
             return;
           }
 
@@ -554,6 +627,7 @@ export function ConversationsScreen() {
     };
   }, [
     applyMessageUpdate,
+    bumpConversationToTop,
     currentUserId,
     isFocused,
     loadConversations,
