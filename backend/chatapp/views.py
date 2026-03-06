@@ -32,6 +32,8 @@ PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
 PROFILE_LIST_CACHE_TIMEOUT_SECONDS = 30
 PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
 PROFILE_LIST_MAX_PAGE_SIZE = 100
+PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
+PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
 
 
 def get_profile_list_cache_version():
@@ -47,6 +49,26 @@ def bump_profile_list_cache_version():
         cache.incr(PROFILE_LIST_CACHE_VERSION_KEY)
     except ValueError:
         cache.set(PROFILE_LIST_CACHE_VERSION_KEY, 2, None)
+    except Exception:
+        # Best-effort invalidation.
+        pass
+
+
+def get_profile_cache_version(user_id):
+    key = PROFILE_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+    version = cache.get(key)
+    if version is None:
+        version = 1
+        cache.set(key, version, None)
+    return int(version)
+
+
+def bump_profile_cache_version(user_id):
+    key = PROFILE_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 2, None)
     except Exception:
         # Best-effort invalidation.
         pass
@@ -196,6 +218,16 @@ def register_view(request):
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     user = request.user
+    if request.method == "GET":
+        cache_version = get_profile_cache_version(user.id)
+        cache_key = (
+            f"profile:v{cache_version}:user:{user.id}:"
+            f"host:{request.get_host()}"
+        )
+        cached_payload = cache.get(cache_key)
+        if cached_payload:
+            return JsonResponse(cached_payload, status=200)
+
     profile_data = {
         "user_id": user.id,
         "username": user.username,
@@ -213,6 +245,8 @@ def profile_view(request):
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
     }
+    if request.method == "GET":
+        cache.set(cache_key, profile_data, PROFILE_CACHE_TIMEOUT_SECONDS)
     return JsonResponse(profile_data, status=200)
 
 
@@ -319,6 +353,14 @@ def profile_data_view(request):
 @permission_classes([IsAuthenticated])
 def public_profile_view(request, username):
     profile = get_object_or_404(Profile, username=username)
+    cache_version = get_profile_cache_version(profile.id)
+    cache_key = (
+        f"public_profile:v{cache_version}:user:{profile.id}:"
+        f"host:{request.get_host()}"
+    )
+    cached_payload = cache.get(cache_key)
+    if cached_payload:
+        return JsonResponse(cached_payload, status=200)
 
     profile_data = {
         "user_id": profile.id,
@@ -337,7 +379,7 @@ def public_profile_view(request, username):
         "learning_goal": "Improve fluency through daily conversations.",
         "reviews": [],
     }
-
+    cache.set(cache_key, profile_data, PROFILE_CACHE_TIMEOUT_SECONDS)
     return JsonResponse(profile_data, status=200)
 
 
@@ -384,6 +426,7 @@ def profile_edit_view(request):
         # Save the updated user object
         user.save()
         bump_profile_list_cache_version()
+        bump_profile_cache_version(user.id)
 
         # Return the updated user data
         return JsonResponse(
@@ -668,6 +711,7 @@ def update_profile_image(request, user_id):
 
         profile.save()
         bump_profile_list_cache_version()
+        bump_profile_cache_version(profile.id)
         return Response(
             {
                 "message": "Profile image updated successfully.",
