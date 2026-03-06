@@ -187,6 +187,15 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def receive(self, text_data):
         data = json.loads(text_data)
         message_type = data.get("type", "chat")
+        call_event_types = {
+            "call_invite",
+            "call_accept",
+            "call_reject",
+            "call_end",
+            "webrtc_offer",
+            "webrtc_answer",
+            "webrtc_ice_candidate",
+        }
 
         if message_type == "chat":
             message = data.get("message")
@@ -252,6 +261,21 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     )
             return
 
+        if message_type in call_event_types:
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "call_event",
+                    "event_type": message_type,
+                    "sender_channel_name": self.channel_name,
+                    "sdp": data.get("sdp"),
+                    "candidate": data.get("candidate"),
+                    "call_mode": data.get("callMode"),
+                    "reason": data.get("reason"),
+                },
+            )
+            return
+
     async def chat_message(self, event):
         if self.channel_name == event["sender_channel_name"]:
             return
@@ -307,6 +331,22 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 }
             )
         )
+
+    async def call_event(self, event):
+        if self.channel_name == event["sender_channel_name"]:
+            return
+
+        payload = {"type": event.get("event_type")}
+        if event.get("sdp") is not None:
+            payload["sdp"] = event.get("sdp")
+        if event.get("candidate") is not None:
+            payload["candidate"] = event.get("candidate")
+        if event.get("call_mode") is not None:
+            payload["callMode"] = event.get("call_mode")
+        if event.get("reason") is not None:
+            payload["reason"] = event.get("reason")
+
+        await self.send(text_data=json.dumps(payload))
 
 
 class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):

@@ -12,7 +12,13 @@ const resolveAvatarUrl = (path) => {
   return `${BASE_URL_IMG}/media/${path}`;
 };
 
-const ChatHeader = ({ conversation }) => {
+const ChatHeader = ({
+  conversation,
+  onStartAudioCall,
+  onStartVideoCall,
+  callState = "idle",
+  callDisabled = false,
+}) => {
   const navigate = useNavigate();
   const { user } = useUser();
   const otherUser =
@@ -20,6 +26,8 @@ const ChatHeader = ({ conversation }) => {
       ? conversation.receiver
       : conversation.sender;
   const normalizedImageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
+  const isInCallFlow = callState !== "idle";
+
   return (
     <div className="mx-2 mt-2 flex items-center rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-3 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:mx-4 sm:px-4">
       <button
@@ -48,6 +56,28 @@ const ChatHeader = ({ conversation }) => {
           {otherUser.username}
         </h2>
         <p className="text-xs font-medium text-slate-400">Conversation</p>
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={onStartAudioCall}
+          disabled={callDisabled || isInCallFlow}
+          aria-label="Start audio call"
+          title="Audio call"
+        >
+          Call
+        </button>
+        <button
+          type="button"
+          className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={onStartVideoCall}
+          disabled={callDisabled || isInCallFlow}
+          aria-label="Start video call"
+          title="Video call"
+        >
+          Video
+        </button>
       </div>
     </div>
   );

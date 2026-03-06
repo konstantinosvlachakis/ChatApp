@@ -223,6 +223,8 @@ def profile_data_view(request):
     page_size_param = request.query_params.get(
         "page_size", str(PROFILE_LIST_DEFAULT_PAGE_SIZE)
     )
+    match_only_param = request.query_params.get("match_only", "0")
+    match_only = str(match_only_param).lower() in {"1", "true", "yes"}
 
     try:
         page = max(int(page_param), 1)
@@ -238,25 +240,25 @@ def profile_data_view(request):
     cache_version = get_profile_list_cache_version()
     cache_key = (
         f"profile_data:v{cache_version}:user:{request.user.id}:"
-        f"page:{page}:size:{page_size}"
+        f"page:{page}:size:{page_size}:match_only:{int(match_only)}"
     )
     cached_payload = cache.get(cache_key)
     if cached_payload:
         return JsonResponse(cached_payload, status=200)
 
-    practicing_languages = getattr(request.user, "languages_practicing", []) or []
-    normalized_languages = [
-        str(language).strip()
-        for language in practicing_languages
-        if isinstance(language, str) and str(language).strip()
-    ]
-    if not normalized_languages:
-        fallback_language = (request.user.base_translate_language or "").strip()
-        if fallback_language:
-            normalized_languages = [fallback_language]
-
     profiles_qs = Profile.objects.exclude(id=request.user.id)
-    if normalized_languages:
+    if match_only:
+        practicing_languages = getattr(request.user, "languages_practicing", []) or []
+        normalized_languages = [
+            str(language).strip()
+            for language in practicing_languages
+            if isinstance(language, str) and str(language).strip()
+        ]
+        if not normalized_languages:
+            fallback_language = (request.user.base_translate_language or "").strip()
+            if fallback_language:
+                normalized_languages = [fallback_language]
+
         language_filter = Q()
         for language in normalized_languages:
             language_filter |= Q(native_language__iexact=language)
