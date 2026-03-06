@@ -272,6 +272,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "candidate": data.get("candidate"),
                     "call_mode": data.get("callMode"),
                     "reason": data.get("reason"),
+                    "duration_seconds": data.get("durationSeconds"),
                 },
             )
             return
@@ -345,6 +346,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             payload["callMode"] = event.get("call_mode")
         if event.get("reason") is not None:
             payload["reason"] = event.get("reason")
+        if event.get("duration_seconds") is not None:
+            payload["durationSeconds"] = event.get("duration_seconds")
 
         await self.send(text_data=json.dumps(payload))
 

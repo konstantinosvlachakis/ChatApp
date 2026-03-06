@@ -13,6 +13,7 @@ import { useQueryClient } from "react-query";
 
 const CALL_TIMEOUT_MS = 30000;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
 
 const getIceServers = () => {
   const rawValue = process.env.REACT_APP_WEBRTC_ICE_SERVERS;
@@ -30,6 +31,26 @@ const getIceServers = () => {
   }
 };
 
+const formatDuration = (seconds) => {
+  const safeSeconds = Math.max(0, Number.isFinite(seconds) ? Math.floor(seconds) : 0);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const secs = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+};
+
+const resolveAvatarUrl = (path) => {
+  if (!path) return `${BASE_URL}${DEFAULT_AVATAR}`;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("/media/")) return `${BASE_URL}${path}`;
+  if (path.startsWith("media/")) return `${BASE_URL}/${path}`;
+  return `${BASE_URL}/media/${path}`;
+};
+
 const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
@@ -38,6 +59,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [callError, setCallError] = useState("");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
   const socket = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -48,6 +70,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const incomingOfferRef = useRef(null);
   const callTimeoutRef = useRef(null);
   const callStateRef = useRef("idle");
+  const callModeRef = useRef("audio");
+  const callStartedAtRef = useRef(null);
+  const callTimerIntervalRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
@@ -58,6 +83,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     conversation?.sender?.username === user?.username
       ? conversation?.receiver
       : conversation?.sender;
+  const otherUserAvatarUrl = resolveAvatarUrl(otherUser?.profile_image_url);
 
   const scrollToBottom = useCallback((behavior = "auto") => {
     if (!messagesContainerRef.current) return;
@@ -77,12 +103,56 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     callStateRef.current = callState;
   }, [callState]);
 
+  useEffect(() => {
+    callModeRef.current = callMode;
+  }, [callMode]);
+
   const sendSocketEvent = useCallback((payload) => {
     if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
       return false;
     }
     socket.current.send(JSON.stringify(payload));
     return true;
+  }, []);
+
+  const getElapsedCallSeconds = useCallback(() => {
+    if (!callStartedAtRef.current) return 0;
+    return Math.max(0, Math.floor((Date.now() - callStartedAtRef.current) / 1000));
+  }, []);
+
+  const stopCallTimer = useCallback(() => {
+    if (callTimerIntervalRef.current) {
+      window.clearInterval(callTimerIntervalRef.current);
+      callTimerIntervalRef.current = null;
+    }
+  }, []);
+
+  const startCallTimer = useCallback(() => {
+    stopCallTimer();
+    callStartedAtRef.current = Date.now();
+    setCallDurationSeconds(0);
+    callTimerIntervalRef.current = window.setInterval(() => {
+      setCallDurationSeconds(getElapsedCallSeconds());
+    }, 1000);
+  }, [getElapsedCallSeconds, stopCallTimer]);
+
+  const appendCallSummary = useCallback((durationSeconds, mode = "audio") => {
+    const label = mode === "video" ? "Video call ended" : "Audio call ended";
+    const normalizedDuration = Math.max(
+      0,
+      Number.isFinite(durationSeconds) ? Math.floor(durationSeconds) : 0
+    );
+    const summaryMessage = {
+      id: `call-summary-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: `${label} (${formatDuration(normalizedDuration)})`,
+      sender: { id: 0, username: "system" },
+      timestamp: new Date().toISOString(),
+      isSystem: true,
+      reactions: [],
+      current_user_reaction: null,
+      can_translate: false,
+    };
+    setMessages((prev) => [...prev, summaryMessage]);
   }, []);
 
   const cleanupCallResources = useCallback(() => {
@@ -116,8 +186,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
     setIsMuted(false);
     setIsCameraOn(true);
+    setCallDurationSeconds(0);
+    callStartedAtRef.current = null;
+    stopCallTimer();
     clearCallTimeout();
-  }, [clearCallTimeout]);
+  }, [clearCallTimeout, stopCallTimer]);
 
   const resetCallState = useCallback(() => {
     setCallState("idle");
@@ -128,15 +201,24 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const endCall = useCallback(
     ({ notifyRemote = true, reason = "" } = {}) => {
+      const endedMode = callModeRef.current;
+      const durationSeconds = getElapsedCallSeconds();
       if (notifyRemote) {
-        sendSocketEvent({ type: "call_end" });
+        sendSocketEvent({
+          type: "call_end",
+          callMode: endedMode,
+          durationSeconds,
+        });
       }
       if (reason) {
         setCallError(reason);
       }
+      if (callStateRef.current !== "idle") {
+        appendCallSummary(durationSeconds, endedMode);
+      }
       resetCallState();
     },
-    [resetCallState, sendSocketEvent]
+    [appendCallSummary, getElapsedCallSeconds, resetCallState, sendSocketEvent]
   );
 
   const createPeerConnection = useCallback(() => {
@@ -165,6 +247,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         setCallState("in_call");
         clearCallTimeout();
         setCallError("");
+        startCallTimer();
       }
 
       if (["failed", "disconnected", "closed"].includes(state)) {
@@ -174,7 +257,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
     peerConnectionRef.current = peerConnection;
     return peerConnection;
-  }, [clearCallTimeout, resetCallState, sendSocketEvent]);
+  }, [clearCallTimeout, resetCallState, sendSocketEvent, startCallTimer]);
 
   const addLocalTracks = useCallback((stream, peerConnection) => {
     stream.getTracks().forEach((track) => {
@@ -473,6 +556,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
           case "call_end":
             setCallError("Call ended.");
+            appendCallSummary(
+              Number.isFinite(data.durationSeconds)
+                ? data.durationSeconds
+                : getElapsedCallSeconds(),
+              data.callMode || callModeRef.current
+            );
             resetCallState();
             break;
 
@@ -490,7 +579,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     return () => {
       sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
       if (callStateRef.current !== "idle") {
-        sendSocketEvent({ type: "call_end" });
+        sendSocketEvent({
+          type: "call_end",
+          callMode: callModeRef.current,
+          durationSeconds: getElapsedCallSeconds(),
+        });
       }
       cleanupCallResources();
       socket.current?.close();
@@ -500,10 +593,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     cleanupCallResources,
     conversation?.id,
     flushPendingIceCandidates,
+    getElapsedCallSeconds,
     onConversationTypingChange,
     queryClient,
     resetCallState,
     sendSocketEvent,
+    appendCallSummary,
     user,
   ]);
 
@@ -706,7 +801,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         visible={callState !== "idle"}
         callState={callState}
         callMode={callMode}
+        callDurationSeconds={callDurationSeconds}
         otherUsername={otherUser?.username || "Unknown user"}
+        otherAvatarUrl={otherUserAvatarUrl}
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
         isMuted={isMuted}

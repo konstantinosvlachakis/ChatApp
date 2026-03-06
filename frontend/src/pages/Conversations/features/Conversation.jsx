@@ -199,6 +199,17 @@ const Conversation = ({
           const attachmentUrl = normalizeUrl(rawUrl);
           const isSentByUser = msg.sender?.id === userId;
           const messageReactions = groupedReactions(msg.reactions || []);
+          const isSystemMessage = Boolean(msg.isSystem);
+
+          if (isSystemMessage) {
+            return (
+              <div key={msg.id || index} className="mb-3 flex justify-center">
+                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
+                  {msg.text}
+                </span>
+              </div>
+            );
+          }
 
           return (
             <div
