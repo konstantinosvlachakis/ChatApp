@@ -55,6 +55,7 @@ const CallPanel = ({
           </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3">
+            <audio ref={remoteVideoRef} autoPlay playsInline />
             <div className="h-24 w-24 rounded-full bg-white/10" />
             <p className="text-lg font-semibold">{otherUsername}</p>
           </div>
