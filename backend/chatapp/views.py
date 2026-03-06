@@ -26,6 +26,7 @@ from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -232,6 +233,8 @@ def profile_view(request):
         "user_id": user.id,
         "username": user.username,
         "age": user.age,
+        "location": user.location or "",
+        "location_updated_at": user.location_updated_at,
         "native_language": user.native_language,  # Include the native language
         "base_translate_language": user.base_translate_language,
         "languages_practicing": user.languages_practicing or [],
@@ -449,6 +452,44 @@ def profile_edit_view(request):
         return JsonResponse({"error": "Invalid JSON format"}, status=400)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def profile_location_update_view(request):
+    user = request.user
+    city = str(request.data.get("city", "")).strip()
+    country = str(request.data.get("country", "")).strip()
+    explicit_location = str(request.data.get("location", "")).strip()
+
+    if explicit_location:
+        location_value = explicit_location
+    elif city and country:
+        location_value = f"{city}, {country}"
+    elif city:
+        location_value = city
+    elif country:
+        location_value = country
+    else:
+        return JsonResponse(
+            {"error": "At least one of location, city, or country is required."},
+            status=400,
+        )
+
+    update_fields = ["location", "location_updated_at"]
+    user.location = location_value[:255]
+    user.location_updated_at = timezone.now()
+
+    user.save(update_fields=update_fields)
+    bump_profile_cache_version(user.id)
+
+    return JsonResponse(
+        {
+            "location": user.location,
+            "location_updated_at": user.location_updated_at,
+        },
+        status=200,
+    )
 
 
 class MessageListView(APIView):

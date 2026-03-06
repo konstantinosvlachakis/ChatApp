@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BASE_URL_IMG } from "../../constants/constants";
 import { useEditProfile } from "./api/editProfile";
@@ -14,6 +14,7 @@ const ProfilePage = () => {
   const [uploadingSlot, setUploadingSlot] = useState("");
   const editProfileMutation = useEditProfile({});
   const navigate = useNavigate();
+  const isDetectingLocationRef = useRef(false);
 
   // ---- Fetch User ----
   useEffect(() => {
@@ -48,27 +49,50 @@ const ProfilePage = () => {
   // ---- Detect and Save User Location ----
   useEffect(() => {
     const detectLocation = async () => {
-      if (!user || user.location) return; // skip if user not loaded or already has location
+      if (!user) return;
+      if ((user.location || "").trim()) {
+        return;
+      }
+      if (isDetectingLocationRef.current) return;
+      isDetectingLocationRef.current = true;
 
       try {
         const { city, country } = await getUserLocation();
         const locationString = `${city}, ${country}`;
         console.log(`Detected location: ${locationString}`);
 
-        // Send to backend
-        await fetch(`${BASE_URL_IMG}/api/profile/`, {
+        const token = sessionStorage.getItem("accessToken");
+        const response = await fetch(`${BASE_URL_IMG}/api/profile/location/`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
+            Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ location: locationString }),
+          body: JSON.stringify({
+            city,
+            country,
+          }),
         });
 
-        // Update UI immediately
-        setUser((prev) => (prev ? { ...prev, location: locationString } : prev));
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || "Failed to update location.");
+        }
+
+        const payload = await response.json();
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                location: payload.location || locationString,
+                location_updated_at: payload.location_updated_at,
+              }
+            : prev
+        );
       } catch (err) {
         console.warn("Could not get location:", err);
+      } finally {
+        isDetectingLocationRef.current = false;
       }
     };
 

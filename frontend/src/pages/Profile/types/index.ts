@@ -8,6 +8,7 @@ export interface User {
     date_of_birth?: string;
     newDate?: string;
     location?: string;
+    location_updated_at?: string | null;
     about_me?: string;
     languages?: string[];
     languages_practicing?: string[];

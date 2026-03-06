@@ -24,6 +24,7 @@ class ProfileEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["username"], "alice")
+        self.assertIn("location", response.json())
         self.assertIn("native_language", response.json())
         self.assertIn("languages_practicing", response.json())
         self.assertIn("email", response.json())
@@ -81,3 +82,20 @@ class ProfileEndpointTests(TestCase):
             response.json()["updated_profile"]["languages_practicing"],
             ["french", "italian"],
         )
+
+    def test_profile_location_update_returns_200_and_updates_profile(self):
+        payload = {
+            "city": "Athens",
+            "country": "Greece",
+        }
+        response = self.client.patch(
+            "/api/profile/location/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["location"], "Athens, Greece")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.location, "Athens, Greece")

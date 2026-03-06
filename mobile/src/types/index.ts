@@ -1,6 +1,8 @@
 export interface Profile {
   user_id?: number;
   username: string;
+  location?: string;
+  location_updated_at?: string | null;
   native_language?: string;
   base_translate_language?: string;
   languages_practicing?: string[];

@@ -16,6 +16,7 @@ urlpatterns = [
     path("profile/data", profile_data_view, name="profile_data"),
     path("profile/public/<str:username>/", public_profile_view, name="public_profile"),
     path("profile/edit/", profile_edit_view, name="profile_edit"),
+    path("profile/location/", profile_location_update_view, name="profile_location_update"),
     path(
         "profile/<int:user_id>/update-image/",
         update_profile_image,
