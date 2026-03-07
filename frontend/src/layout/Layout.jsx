@@ -151,7 +151,7 @@ const Layout = () => {
                 aria-label="Go to profile"
               >
                 <img
-                  src={`${BASE_URL}/media/logo.png`}
+                  src="/logo192.png"
                   alt="LangVoyage Logo"
                   className="h-9 w-9 rounded-lg object-cover"
                   onError={(event) => {

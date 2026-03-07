@@ -98,7 +98,7 @@ const LoginPage = () => {
         >
           <div className="mb-6 flex flex-col items-start">
             <motion.img
-              src={`${BASE_URL}/media/logo.png`}
+              src="/logo192.png"
               alt="LangVoyage Logo"
               className="mb-3 h-12 w-12"
               initial={{ rotate: 0 }}
