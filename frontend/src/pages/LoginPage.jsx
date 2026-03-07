@@ -54,6 +54,7 @@ const LoginPage = () => {
       const response = await axios.post(BASE_URL + "/api/token/", {
         email: email.trim().toLowerCase(),
         password,
+        remember_me: rememberMe,
       });
 
       const { access, refresh } = response.data;
@@ -98,12 +99,16 @@ const LoginPage = () => {
         >
           <div className="mb-6 flex flex-col items-start">
             <motion.img
-              src="/logo192.png"
+              src={`${BASE_URL}/media/logo.png`}
               alt="LangVoyage Logo"
               className="mb-3 h-12 w-12"
               initial={{ rotate: 0 }}
               animate={{ rotate: [0, 4, -4, 0] }}
               transition={{ repeat: Infinity, repeatDelay: 6, duration: 1.8 }}
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = "/logo192.png";
+              }}
             />
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-700">LangVoyage</p>
             <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">Welcome back</h1>
