@@ -277,6 +277,17 @@ function ConversationList({
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleDelete(conversation.id);
+                }}
+                className="ml-2 rounded-md border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 md:hidden"
+                aria-label={`Delete conversation with ${otherUser?.username || "participant"}`}
+              >
+                Delete
+              </button>
             </div>
 
             {/* Delete Button (Slides in from the right) */}

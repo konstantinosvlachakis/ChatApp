@@ -61,8 +61,8 @@ const CallPanel = ({
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-slate-950/95 text-white">
-      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <p className="text-sm font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-1 border-b border-white/10 px-3 py-2.5 sm:px-4 sm:py-3">
+        <p className="max-w-full truncate text-sm font-semibold">
           {callLabel} call with {otherUsername}
         </p>
         <p className="text-xs text-slate-300">
@@ -115,7 +115,7 @@ const CallPanel = ({
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-3 border-t border-white/10 p-4">
+      <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 p-3 sm:gap-3 sm:p-4">
         {isIncoming ? (
           <>
             <button

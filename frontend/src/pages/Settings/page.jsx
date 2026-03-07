@@ -248,7 +248,7 @@ const SettingsPage = () => {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="mt-6 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300"
+          className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300 sm:w-auto"
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>

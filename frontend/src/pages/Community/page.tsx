@@ -199,8 +199,8 @@ const CommunityPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex w-full items-center gap-2 lg:w-auto">
-            <div className="relative w-full lg:w-[360px]">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+            <div className="relative w-full sm:flex-1 lg:w-[360px] lg:flex-none">
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -225,7 +225,7 @@ const CommunityPage: React.FC = () => {
             <select
               value={filterLang}
               onChange={(e) => setFilterLang(e.target.value)}
-              className="rounded-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition hover:bg-slate-50"
+              className="w-full rounded-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition hover:bg-slate-50 sm:w-auto"
               aria-label="Filter by language"
             >
               {languageOptions.map((lang) => (

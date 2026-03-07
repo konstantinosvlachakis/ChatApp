@@ -169,7 +169,10 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   return (
     <div className="relative m-2 rounded-2xl border border-slate-200/80 bg-white/90 p-2 shadow-[0_10px_26px_-20px_rgba(15,23,42,0.55)] backdrop-blur sm:m-3 sm:p-3">
       {showPicker && (
-        <div ref={emojiPickerRef} className="absolute bottom-14 left-2 z-50 sm:bottom-16 sm:left-3">
+        <div
+          ref={emojiPickerRef}
+          className="absolute bottom-14 left-2 z-50 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl sm:bottom-16 sm:left-3"
+        >
           <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
         </div>
       )}

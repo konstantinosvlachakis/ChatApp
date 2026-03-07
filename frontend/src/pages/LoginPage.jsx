@@ -87,14 +87,14 @@ const LoginPage = () => {
     "w-full rounded-xl border bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200";
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-slate-100">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-100">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(6,182,212,0.18),transparent_38%),radial-gradient(circle_at_80%_15%,rgba(245,158,11,0.22),transparent_32%),radial-gradient(circle_at_70%_85%,rgba(14,165,233,0.2),transparent_35%)]" />
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="relative z-10 flex min-h-[100dvh] items-center justify-center px-3 py-8 sm:px-4 sm:py-12">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="w-full max-w-lg rounded-3xl border border-white/60 bg-white/75 p-8 shadow-2xl backdrop-blur-md"
+          className="w-full max-w-lg rounded-3xl border border-white/60 bg-white/75 p-5 shadow-2xl backdrop-blur-md sm:p-8"
         >
           <div className="mb-6 flex flex-col items-start">
             <motion.img
@@ -106,7 +106,7 @@ const LoginPage = () => {
               transition={{ repeat: Infinity, repeatDelay: 6, duration: 1.8 }}
             />
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-700">LangVoyage</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-900">Welcome back</h1>
+            <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">Welcome back</h1>
             <p className="mt-1 text-sm text-slate-600">
               Log in to continue your conversations and language practice.
             </p>

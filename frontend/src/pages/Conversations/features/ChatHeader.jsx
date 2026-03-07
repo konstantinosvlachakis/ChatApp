@@ -29,7 +29,7 @@ const ChatHeader = ({
   const isInCallFlow = callState !== "idle";
 
   return (
-    <div className="mx-2 mt-2 flex items-center rounded-2xl border border-slate-200/80 bg-white/90 px-3 py-3 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:mx-4 sm:px-4">
+    <div className="mx-2 mt-2 flex items-center rounded-2xl border border-slate-200/80 bg-white/90 px-2.5 py-2.5 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:mx-4 sm:px-4 sm:py-3">
       <button
         type="button"
         className="mr-2 rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 md:hidden"
@@ -57,10 +57,10 @@ const ChatHeader = ({
         </h2>
         <p className="text-xs font-medium text-slate-400">Conversation</p>
       </div>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <button
           type="button"
-          className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm"
           onClick={onStartAudioCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start audio call"
@@ -70,7 +70,7 @@ const ChatHeader = ({
         </button>
         <button
           type="button"
-          className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-sm"
           onClick={onStartVideoCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start video call"

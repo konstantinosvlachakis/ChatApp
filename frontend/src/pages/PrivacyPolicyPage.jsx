@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 
 const PrivacyPolicyPage = () => {
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-bold text-slate-900">Privacy Policy</h1>
+    <div className="min-h-[100dvh] bg-slate-100 px-3 py-6 sm:px-4 sm:py-10">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Privacy Policy</h1>
         <p className="mt-2 text-sm text-slate-500">Last updated: March 1, 2026</p>
 
         <div className="mt-6 space-y-5 text-sm leading-6 text-slate-700">

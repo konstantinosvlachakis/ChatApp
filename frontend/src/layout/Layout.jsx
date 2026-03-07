@@ -136,7 +136,7 @@ const Layout = () => {
   return (
     <div
       className={`flex flex-col bg-gray-50 ${
-        isChatRoute ? "h-screen overflow-hidden" : "min-h-screen"
+        isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
       }`}
     >
       {/* Header/Menu */}

@@ -17,7 +17,7 @@ const ConversationsPage = () => {
   return (
     <div className="flex h-full min-h-0 w-full overflow-x-hidden">
       <div
-        className={`min-h-0 w-full border-r bg-white md:w-[340px] lg:w-[380px] ${
+        className={`min-h-0 w-full border-r bg-white md:w-[320px] lg:w-[360px] ${
           activeConversation ? "hidden md:block" : "block"
         }`}
       >
@@ -50,7 +50,7 @@ const ConversationsPage = () => {
             />
           </div>
         ) : (
-          <div className="p-6 text-center text-gray-500">
+          <div className="p-4 text-center text-gray-500 sm:p-6">
             Select a conversation to start chatting.
           </div>
         )}

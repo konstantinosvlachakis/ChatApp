@@ -251,18 +251,18 @@ const RegisterPage = () => {
     "w-full rounded-xl border bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200";
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-slate-100">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-100">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(6,182,212,0.18),transparent_38%),radial-gradient(circle_at_80%_15%,rgba(245,158,11,0.22),transparent_32%),radial-gradient(circle_at_70%_85%,rgba(14,165,233,0.2),transparent_35%)]" />
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="relative z-10 flex min-h-[100dvh] items-center justify-center px-3 py-8 sm:px-4 sm:py-12">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="w-full max-w-lg rounded-3xl border border-white/60 bg-white/75 p-8 shadow-2xl backdrop-blur-md"
+          className="w-full max-w-lg rounded-3xl border border-white/60 bg-white/75 p-5 shadow-2xl backdrop-blur-md sm:p-8"
         >
           <div className="mb-6">
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-700">LangVoyage</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-900">Create your account</h1>
+            <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">Create your account</h1>
             <p className="mt-1 text-sm text-slate-600">
               Start connecting with native speakers and keep your language journey moving.
             </p>
@@ -328,7 +328,7 @@ const RegisterPage = () => {
                   </button>
 
                   {isCalendarOpen && (
-                    <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-[320px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl">
+                    <div className="absolute left-0 right-auto top-[calc(100%+8px)] z-20 w-[min(320px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl sm:w-[320px] sm:max-w-none">
                       <div className="mb-3 flex items-center gap-2">
                         <select
                           aria-label="Select month"
