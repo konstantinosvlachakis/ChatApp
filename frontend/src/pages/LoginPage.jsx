@@ -38,6 +38,7 @@ const LoginPage = () => {
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
+  
 
   const handleLogin = async (e) => {
     e.preventDefault();
