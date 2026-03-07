@@ -39,7 +39,6 @@ const LoginPage = () => {
     return Object.keys(nextErrors).length === 0;
   };
   
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
