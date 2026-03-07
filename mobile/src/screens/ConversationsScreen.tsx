@@ -29,6 +29,7 @@ import {
   createOrGetConversation,
   fetchConversation,
   fetchConversations,
+  getCachedConversations,
   markConversationRead,
   deleteConversationMessage,
   reactToMessage,
@@ -94,7 +95,7 @@ export function ConversationsScreen() {
   const currentUsername = user?.username;
   const wsBaseUrl = useMemo(() => API_BASE_URL.replace(/^http/, "ws"), []);
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() => getCachedConversations() || []);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
@@ -186,7 +187,7 @@ export function ConversationsScreen() {
     conversationsFetchMetaRef.current.lastRunAt = now;
     setLoadingList(true);
     try {
-      const response = await fetchConversations();
+      const response = await fetchConversations({ force });
       setConversations(response);
     } finally {
       conversationsFetchMetaRef.current.inFlight = false;
@@ -251,7 +252,7 @@ export function ConversationsScreen() {
   );
 
   useEffect(() => {
-    loadConversations(true);
+    loadConversations(false);
   }, [loadConversations]);
 
   useEffect(() => {

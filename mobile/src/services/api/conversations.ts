@@ -1,9 +1,42 @@
 import { api } from "./client";
 import type { Conversation } from "../../types";
 
-export async function fetchConversations() {
-  const response = await api.get<Conversation[]>("/conversations/");
-  return response.data;
+const CONVERSATIONS_CACHE_TTL_MS = 15_000;
+
+let cachedConversations: Conversation[] | null = null;
+let cachedConversationsAt = 0;
+let conversationsRequest: Promise<Conversation[]> | null = null;
+
+export function getCachedConversations() {
+  if (!cachedConversations) return null;
+  if (Date.now() - cachedConversationsAt > CONVERSATIONS_CACHE_TTL_MS) return null;
+  return cachedConversations;
+}
+
+export async function fetchConversations(options?: { force?: boolean }): Promise<Conversation[]> {
+  const force = Boolean(options?.force);
+  const cached = getCachedConversations();
+
+  if (!force && cached) {
+    return cached;
+  }
+  if (conversationsRequest) {
+    return conversationsRequest;
+  }
+
+  const request = api
+    .get<Conversation[]>("/conversations/")
+    .then((response: { data: Conversation[] }) => {
+      cachedConversations = response.data;
+      cachedConversationsAt = Date.now();
+      return response.data;
+    })
+    .finally(() => {
+      conversationsRequest = null;
+    });
+
+  conversationsRequest = request;
+  return request;
 }
 
 export async function fetchConversation(conversationId: number) {
