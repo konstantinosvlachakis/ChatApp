@@ -899,13 +899,36 @@ def update_profile_image(request, user_id):
         image_file = request.FILES["profile_image"]
         slot = request.data.get("slot", "profile")
 
-        ext = os.path.splitext(image_file.name)[1] or ".jpg"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        path = default_storage.save(f"profile_images/{filename}", image_file)
-        try:
-            stored_url = default_storage.url(path)
-        except Exception:
-            stored_url = path
+        stored_url = ""
+        using_cloudinary_storage = (
+            getattr(settings, "DEFAULT_FILE_STORAGE", "")
+            == "cloudinary_storage.storage.MediaCloudinaryStorage"
+        )
+
+        if using_cloudinary_storage:
+            try:
+                from cloudinary.uploader import upload as cloudinary_upload
+
+                upload_result = cloudinary_upload(
+                    image_file,
+                    folder="profile_images",
+                    resource_type="image",
+                    use_filename=True,
+                    unique_filename=True,
+                    overwrite=False,
+                )
+                stored_url = upload_result.get("secure_url") or upload_result.get("url") or ""
+            except Exception:
+                stored_url = ""
+
+        if not stored_url:
+            ext = os.path.splitext(image_file.name)[1] or ".jpg"
+            filename = f"{uuid.uuid4().hex}{ext}"
+            path = default_storage.save(f"profile_images/{filename}", image_file)
+            try:
+                stored_url = default_storage.url(path)
+            except Exception:
+                stored_url = path
 
         if slot == "complementary_1":
             profile.complementary_image_1_url = stored_url
