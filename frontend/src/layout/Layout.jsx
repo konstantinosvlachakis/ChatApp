@@ -4,6 +4,16 @@ import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL } from "../constants/constants";
 
+const DEFAULT_PROFILE_AVATAR = `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+
+const resolveAvatarUrl = (image) => {
+  if (!image) return DEFAULT_PROFILE_AVATAR;
+  if (image.startsWith("http://") || image.startsWith("https://")) return image;
+  if (image.startsWith("/media/")) return `${BASE_URL}${image}`;
+  if (image.startsWith("media/")) return `${BASE_URL}/${image}`;
+  return `${BASE_URL}/media/${image}`;
+};
+
 const Layout = () => {
   const location = useLocation(); // To identify the active page
   const isChatRoute = location.pathname.startsWith("/conversations");
@@ -44,20 +54,10 @@ const Layout = () => {
     [conversations]
   );
   const avatarUrl = useMemo(() => {
-    const image = user?.profile_image_url;
-    if (!image) {
-      return `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+    if (user?.profile_image_url) {
+      return resolveAvatarUrl(user.profile_image_url);
     }
-    if (image.startsWith("http://") || image.startsWith("https://")) {
-      return image;
-    }
-    if (image.startsWith("/media/")) {
-      return `${BASE_URL}${image}`;
-    }
-    if (image.startsWith("media/")) {
-      return `${BASE_URL}/${image}`;
-    }
-    return `${BASE_URL}/media/${image}`;
+    return DEFAULT_PROFILE_AVATAR;
   }, [user?.profile_image_url]);
 
   useEffect(() => {

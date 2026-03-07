@@ -10,7 +10,7 @@ let conversationsRequest: Promise<Conversation[]> | null = null;
 export function getCachedConversations() {
   if (!cachedConversations) return null;
   if (Date.now() - cachedConversationsAt > CONVERSATIONS_CACHE_TTL_MS) return null;
-  return cachedConversations;
+  return [...cachedConversations];
 }
 
 export async function fetchConversations(options?: { force?: boolean }): Promise<Conversation[]> {
@@ -27,9 +27,9 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
   const request = api
     .get<Conversation[]>("/conversations/")
     .then((response: { data: Conversation[] }) => {
-      cachedConversations = response.data;
+      cachedConversations = [...response.data];
       cachedConversationsAt = Date.now();
-      return response.data;
+      return [...response.data];
     })
     .finally(() => {
       conversationsRequest = null;

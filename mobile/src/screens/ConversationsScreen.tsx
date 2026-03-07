@@ -183,15 +183,26 @@ export function ConversationsScreen() {
     }
     if (conversationsFetchMetaRef.current.inFlight) return;
 
+    const cached = !force ? getCachedConversations() : null;
+    if (!force && cached) {
+      setConversations(cached);
+    }
+
     conversationsFetchMetaRef.current.inFlight = true;
     conversationsFetchMetaRef.current.lastRunAt = now;
-    setLoadingList(true);
+    const shouldShowLoader = force || !cached;
+    if (shouldShowLoader) {
+      setLoadingList(true);
+    }
     try {
-      const response = await fetchConversations({ force });
+      // Revalidate from network on non-forced loads when cache exists.
+      const response = await fetchConversations({ force: force || Boolean(cached) });
       setConversations(response);
     } finally {
       conversationsFetchMetaRef.current.inFlight = false;
-      setLoadingList(false);
+      if (shouldShowLoader) {
+        setLoadingList(false);
+      }
     }
   }, []);
 
