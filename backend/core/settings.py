@@ -24,7 +24,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
-env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
+env = os.getenv("DJANGO_ENV")
+if not env:
+    # Auto-detect production for Heroku/runtime DB environments.
+    env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") else "local"
 redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
 use_redis_realtime = os.environ.get("USE_REDIS_REALTIME", "false").lower() == "true"
 use_cloudinary_media = bool(os.environ.get("CLOUDINARY_URL"))

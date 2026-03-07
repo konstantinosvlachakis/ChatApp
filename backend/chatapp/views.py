@@ -907,6 +907,19 @@ def update_profile_image(request, user_id):
         except Exception:
             stored_url = path
 
+        # If Cloudinary is enabled, ensure we persist a stable absolute URL.
+        if (
+            getattr(settings, "DEFAULT_FILE_STORAGE", "")
+            == "cloudinary_storage.storage.MediaCloudinaryStorage"
+            and not str(stored_url).startswith(("http://", "https://"))
+        ):
+            try:
+                from cloudinary.utils import cloudinary_url
+
+                stored_url, _ = cloudinary_url(path, secure=True)
+            except Exception:
+                pass
+
         if slot == "complementary_1":
             profile.complementary_image_1_url = stored_url
         elif slot == "complementary_2":
