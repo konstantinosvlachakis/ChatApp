@@ -78,6 +78,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const callModeRef = useRef("audio");
   const callStartedAtRef = useRef(null);
   const callTimerIntervalRef = useRef(null);
+  const ringAudioContextRef = useRef(null);
+  const ringIntervalRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const scrollAdjustmentHeightRef = useRef(null);
@@ -176,6 +178,60 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       callTimerIntervalRef.current = null;
     }
   }, []);
+
+  const stopRinging = useCallback(() => {
+    if (ringIntervalRef.current) {
+      window.clearInterval(ringIntervalRef.current);
+      ringIntervalRef.current = null;
+    }
+    if (ringAudioContextRef.current) {
+      ringAudioContextRef.current.close().catch(() => {});
+      ringAudioContextRef.current = null;
+    }
+  }, []);
+
+  const startRinging = useCallback(() => {
+    if (ringIntervalRef.current) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const audioContext = new AudioCtx();
+      ringAudioContextRef.current = audioContext;
+
+      const playTone = () => {
+        if (audioContext.state === "closed") return;
+        if (audioContext.state === "suspended") {
+          audioContext.resume().catch(() => {});
+        }
+
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(780, audioContext.currentTime);
+        gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.28);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+      };
+
+      playTone();
+      ringIntervalRef.current = window.setInterval(playTone, 1600);
+    } catch {
+      stopRinging();
+    }
+  }, [stopRinging]);
+
+  useEffect(() => {
+    if (callState === "incoming" || callState === "calling") {
+      startRinging();
+      return;
+    }
+    stopRinging();
+  }, [callState, startRinging, stopRinging]);
 
   const startCallTimer = useCallback(() => {
     stopCallTimer();
@@ -288,6 +344,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       remoteStreamRef.current = remoteStream;
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play?.().catch(() => {});
       }
     };
 
@@ -339,10 +396,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play?.().catch(() => {});
     }
 
     return stream;
   }, []);
+
+  useEffect(() => {
+    const localElement = localVideoRef.current;
+    const localStream = localStreamRef.current;
+    if (localElement && localStream && localElement.srcObject !== localStream) {
+      localElement.srcObject = localStream;
+      localElement.play?.().catch(() => {});
+    }
+
+    const remoteElement = remoteVideoRef.current;
+    const remoteStream = remoteStreamRef.current;
+    if (remoteElement && remoteStream && remoteElement.srcObject !== remoteStream) {
+      remoteElement.srcObject = remoteStream;
+      remoteElement.play?.().catch(() => {});
+    }
+  }, [callMode, callState]);
 
   const startCall = useCallback(
     async (mode) => {
@@ -701,6 +775,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       console.log("WebSocket disconnected for conversation:", conversation.id);
 
     return () => {
+      stopRinging();
       sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
       if (callStateRef.current !== "idle") {
         sendSocketEvent({
@@ -725,6 +800,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     sendSocketEvent,
     appendCallSummary,
     invalidateConversationHistoryCache,
+    stopRinging,
     user,
   ]);
 
