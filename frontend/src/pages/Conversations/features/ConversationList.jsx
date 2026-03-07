@@ -232,7 +232,7 @@ function ConversationList({
               onContextMenu={(e) => handleRightClick(e, conversation.id)}
               onClick={() => {
                 if (rightClickedConversation !== conversation.id) {
-                  onSelectConversation(conversation);
+                  onSelectConversation?.(conversation);
                   navigate(`/conversations/${conversation.id}`);
                 }
               }}

@@ -145,13 +145,13 @@ const CommunityPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f7f6f4] py-4 sm:py-6">
-      <div className="mx-auto max-w-7xl px-2 sm:px-4">
+      <div className="w-full px-2 sm:px-4 md:px-6">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setActiveSegment("all")}
-              className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+              className={`inline-flex h-11 items-center rounded-full px-5 text-sm font-medium transition ${
                 activeSegment === "all"
                   ? "bg-slate-600 text-white"
                   : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -162,7 +162,7 @@ const CommunityPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveSegment("nearby")}
-              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition ${
+              className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-medium transition ${
                 activeSegment === "nearby"
                   ? "bg-slate-600 text-white"
                   : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -181,7 +181,7 @@ const CommunityPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveSegment("travel")}
-              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition ${
+              className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-medium transition ${
                 activeSegment === "travel"
                   ? "bg-slate-600 text-white"
                   : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -219,13 +219,13 @@ const CommunityPage: React.FC = () => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Find members or topics"
-                className="w-full rounded-full border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-500"
+                className="h-11 w-full rounded-full border border-slate-300 bg-white pl-10 pr-3 text-sm text-slate-800 outline-none transition focus:border-slate-500"
               />
             </div>
             <select
               value={filterLang}
               onChange={(e) => setFilterLang(e.target.value)}
-              className="w-full rounded-full border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition hover:bg-slate-50 sm:w-auto"
+              className="h-11 w-full rounded-full border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none transition hover:bg-slate-50 sm:w-auto"
               aria-label="Filter by language"
             >
               {languageOptions.map((lang) => (

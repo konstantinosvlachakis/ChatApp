@@ -7,7 +7,6 @@ import RegisterPage from "./pages/RegisterPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsAndConditionsPage from "./pages/TermsAndConditionsPage";
 import ConversationsPage from "./pages/Conversations/page";
-import ChatRoomWrapper from "./pages/Conversations/features/ChatRoomWrapper";
 import { queryClient } from '../src/libs/react-query'
 import { QueryClientProvider } from 'react-query';
 
@@ -158,7 +157,11 @@ function App() {
                 />
                 <Route
                   path="/conversations/:id"
-                  element={<ChatRoomWrapper />}
+                  element={
+                    <Suspense fallback={<div>Loading Conversations...</div>}>
+                      <ConversationsPage />
+                    </Suspense>
+                  }
                 />
                 
               </Route>

@@ -902,13 +902,17 @@ def update_profile_image(request, user_id):
         ext = os.path.splitext(image_file.name)[1] or ".jpg"
         filename = f"{uuid.uuid4().hex}{ext}"
         path = default_storage.save(f"profile_images/{filename}", image_file)
+        try:
+            stored_url = default_storage.url(path)
+        except Exception:
+            stored_url = path
 
         if slot == "complementary_1":
-            profile.complementary_image_1_url = path
+            profile.complementary_image_1_url = stored_url
         elif slot == "complementary_2":
-            profile.complementary_image_2_url = path
+            profile.complementary_image_2_url = stored_url
         else:
-            profile.profile_image_url = path
+            profile.profile_image_url = stored_url
 
         profile.save()
         bump_profile_list_cache_version()

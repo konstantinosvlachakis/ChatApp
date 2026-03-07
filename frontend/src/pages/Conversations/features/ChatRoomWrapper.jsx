@@ -5,7 +5,7 @@ import ChatRoom from "./ChatRoom";
 import { BASE_URL } from "../../../constants/constants";
 import { markConversationRead } from "../api/markConversationRead";
 
-const ChatRoomWrapper = () => {
+const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   const { id } = useParams(); // ✅ Extract conversation ID from URL
   const [conversation, setConversation] = useState(null);
   const [error, setError] = useState(null);
@@ -45,7 +45,10 @@ const ChatRoomWrapper = () => {
 
   return (
     <div className="h-full min-h-0">
-      <ChatRoom conversation={conversation} />
+      <ChatRoom
+        conversation={conversation}
+        onConversationTypingChange={onConversationTypingChange}
+      />
     </div>
   );
 };

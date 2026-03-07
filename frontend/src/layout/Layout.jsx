@@ -17,6 +17,7 @@ const resolveAvatarUrl = (image) => {
 const Layout = () => {
   const location = useLocation(); // To identify the active page
   const isChatRoute = location.pathname.startsWith("/conversations");
+  const routeContainerClass = "w-full md:w-[90vw] max-w-[1500px]";
   const navigate = useNavigate();
   const { user, setUser } = useUser();
   const { data: conversations = [] } = useGetConversations({
@@ -140,8 +141,10 @@ const Layout = () => {
       }`}
     >
       {/* Header/Menu */}
-      <header className="sticky top-0 z-30 bg-gray-700 text-white px-3 py-3 shadow-md sm:px-4">
-        <nav className="mx-auto max-w-7xl">
+      <header className="sticky top-0 z-30 bg-gray-700 py-3 text-white shadow-md">
+        <nav
+          className={`mx-auto ${routeContainerClass} px-3 sm:px-4 md:px-6`}
+        >
           {/* Top row */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-3">
@@ -221,7 +224,7 @@ const Layout = () => {
                 <Link
                   to="/conversations"
                   className={`relative rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                    location.pathname === "/conversations"
+                    location.pathname.startsWith("/conversations")
                       ? "bg-white text-blue-600 shadow"
                       : "hover:bg-blue-700 hover:text-white"
                   }`}
@@ -335,7 +338,7 @@ const Layout = () => {
               <Link
                 to="/conversations"
                 className={`mt-1 block rounded-lg px-3 py-2 text-sm font-medium ${
-                  location.pathname === "/conversations"
+                  location.pathname.startsWith("/conversations")
                     ? "bg-white text-blue-600 shadow"
                     : "text-white hover:bg-white/10"
                 }`}
@@ -402,7 +405,7 @@ const Layout = () => {
         }
       >
         <div
-          className={`mx-auto w-full max-w-7xl overflow-x-hidden px-3 sm:px-4 md:px-6 ${
+          className={`mx-auto ${routeContainerClass} overflow-x-hidden px-3 sm:px-4 md:px-6 ${
             isChatRoute ? "h-full" : ""
           }`}
         >

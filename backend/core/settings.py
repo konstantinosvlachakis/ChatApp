@@ -27,6 +27,7 @@ SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-
 env = os.getenv("DJANGO_ENV", "local")  # Default to "local" if not set
 redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
 use_redis_realtime = os.environ.get("USE_REDIS_REALTIME", "false").lower() == "true"
+use_cloudinary_media = bool(os.environ.get("CLOUDINARY_URL"))
 
 ALLOWED_HOSTS = [
     "langvoyage-d3781c6fad54.herokuapp.com",
@@ -133,6 +134,13 @@ else:
     BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com"  # Production URL
 
 INSTALLED_APPS.append("chatapp")
+if use_cloudinary_media:
+    INSTALLED_APPS.extend(
+        [
+            "cloudinary",
+            "cloudinary_storage",
+        ]
+    )
 ROOT_URLCONF = "core.urls"
 
 
@@ -265,3 +273,6 @@ STATICFILES_DIRS = [
 
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
+
+if use_cloudinary_media:
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
