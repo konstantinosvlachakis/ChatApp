@@ -12,6 +12,7 @@ html, body, #root {
 
 html {
   scrollbar-gutter: stable;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -58,4 +59,13 @@ body {
 }
 .backface-hidden {
   backface-visibility: hidden;
+}
+
+/* Prevent iOS Safari auto-zoom when focusing small form inputs. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

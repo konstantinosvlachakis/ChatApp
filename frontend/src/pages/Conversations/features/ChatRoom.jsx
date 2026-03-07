@@ -543,50 +543,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setIsCameraOn(nextCameraOn);
   }, [isCameraOn]);
 
-  const loadOlderMessages = useCallback(async () => {
-    if (!conversation?.id) return;
-    if (!hasOlderMessages || loadingOlderMessages || isFetchingOlderRef.current) return;
-
-    const nextPage = currentMessagesPage + 1;
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    isFetchingOlderRef.current = true;
-    setLoadingOlderMessages(true);
-    scrollAdjustmentHeightRef.current = container.scrollHeight;
-    try {
-      const payload = await fetchMessagesPage(conversation.id, nextPage, { force: false });
-      const olderMessages = payload.messages || [];
-      if (olderMessages.length > 0) {
-        setMessages((prev) => [...olderMessages, ...prev]);
-      }
-      setCurrentMessagesPage(payload.pagination?.page || nextPage);
-      setHasOlderMessages(Boolean(payload.pagination?.has_next));
-    } catch (error) {
-      // keep previous history state
-    } finally {
-      isFetchingOlderRef.current = false;
-      setLoadingOlderMessages(false);
-    }
-  }, [
-    conversation?.id,
-    currentMessagesPage,
-    fetchMessagesPage,
-    hasOlderMessages,
-    loadingOlderMessages,
-  ]);
-
-  const handleMessagesScroll = useCallback(
-    (event) => {
-      const target = event.currentTarget;
-      if (!target) return;
-      if (target.scrollTop <= 80) {
-        loadOlderMessages();
-      }
-    },
-    [loadOlderMessages]
-  );
-
   useEffect(() => {
     resetCallState();
   }, [conversation?.id, resetCallState]);
@@ -975,7 +931,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       <div
         ref={messagesContainerRef}
-        onScroll={handleMessagesScroll}
         className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-24 sm:px-4"
       >
         {loadingHistory ? (
