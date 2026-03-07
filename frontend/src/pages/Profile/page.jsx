@@ -177,20 +177,20 @@ const ProfilePage = () => {
   const practicingLanguages = user.languages_practicing || user.languages || [];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-5 md:p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-blue-50/40 p-3 sm:p-5 md:p-8">
+      <div className="mx-auto max-w-5xl 2xl:max-w-6xl">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-4 rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] backdrop-blur sm:p-6 md:p-8">
           <img
             src={imageUrl}
             alt="Profile"
-            className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
+            className="h-24 w-24 rounded-full border-4 border-sky-200 object-cover shadow-sm sm:h-28 sm:w-28 md:h-32 md:w-32"
           />
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 text-center">
+          <h1 className="text-center text-xl font-bold text-slate-800 sm:text-2xl">
             {user.username}, {user.age}
           </h1>
           <button
-            className="inline-flex items-center gap-2 rounded-full bg-blue-500 px-4 py-2 text-sm text-white transition hover:bg-blue-600 sm:text-base"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-700 px-4 py-2 text-sm text-white transition hover:bg-slate-800 sm:text-base"
             onClick={() => navigate("/profile/edit")}
           >
             <EditOutlinedIcon fontSize="small" />
@@ -199,14 +199,14 @@ const ProfilePage = () => {
         </div>
 
         {/* Info Sections */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-4 sm:mt-6 md:mt-8">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:grid-cols-2 md:gap-8">
           {/* Personal Info */}
-          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <PersonOutlineIcon fontSize="small" />
+          <div className="rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:p-5 md:p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
+              <PersonOutlineIcon fontSize="small" className="text-slate-600" />
               Personal Information
             </h2>
-            <div className="space-y-3 text-gray-700">
+            <div className="space-y-3 text-slate-700">
               <p>
                 <strong>Name:</strong> {user.username || "N/A"}
               </p>
@@ -216,9 +216,9 @@ const ProfilePage = () => {
               <p>
                 <strong>Location:</strong>{" "}
                 {user.location ? (
-                  <span className="text-gray-800">{user.location}</span>
+                  <span className="text-slate-800">{user.location}</span>
                 ) : (
-                  <span className="text-gray-500">Detecting...</span>
+                  <span className="text-slate-500">Detecting...</span>
                 )}
               </p>
               <p>
@@ -230,15 +230,15 @@ const ProfilePage = () => {
           </div>
 
           {/* Languages */}
-          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <PublicOutlinedIcon fontSize="small" />
+          <div className="rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:p-5 md:p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
+              <PublicOutlinedIcon fontSize="small" className="text-slate-600" />
               Languages
             </h2>
-            <div className="space-y-3 text-gray-700">
+            <div className="space-y-3 text-slate-700">
               <p>
                 <strong>Native Language:</strong>{" "}
-                <span className="inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
+                <span className="inline-block rounded-full bg-sky-100 px-3 py-1 text-sm text-sky-700">
                   {user.native_language || "N/A"}
                 </span>
               </p>
@@ -252,7 +252,7 @@ const ProfilePage = () => {
                 ).map((lang, i) => (
                     <span
                       key={i}
-                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
+                      className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
                     >
                       {lang}
                     </span>
@@ -264,24 +264,24 @@ const ProfilePage = () => {
         </div>
 
         {/* Learning Goals */}
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <FlagOutlinedIcon fontSize="small" />
+        <div className="mt-4 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:mt-6 sm:p-5 md:mt-8 md:p-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
+            <FlagOutlinedIcon fontSize="small" className="text-slate-600" />
             Learning Goals
           </h2>
-          <p className="text-gray-700">
+          <p className="text-slate-700">
             {user.learningGoal ||
               "My goal is to become fluent and confident in new languages for both travel and communication."}
           </p>
         </div>
 
         {/* Photos */}
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <PhotoLibraryOutlinedIcon fontSize="small" />
+        <div className="mt-4 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:mt-6 sm:p-5 md:mt-8 md:p-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
+            <PhotoLibraryOutlinedIcon fontSize="small" className="text-slate-600" />
             Photos
           </h2>
-          <p className="text-sm text-gray-600 mb-5">
+          <p className="mb-5 text-sm text-slate-500">
             Add one profile photo and two complementary photos.
           </p>
 
@@ -289,7 +289,7 @@ const ProfilePage = () => {
             {photoCards.map((card) => (
               <label
                 key={card.key}
-                className="cursor-pointer rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-400 transition p-2"
+                className="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 p-2 transition hover:border-sky-400"
               >
                 <input
                   type="file"
@@ -303,7 +303,7 @@ const ProfilePage = () => {
                     e.target.value = "";
                   }}
                 />
-                <div className="w-full aspect-square rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center relative">
+                <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
                   {card.image ? (
                     <img
                       src={card.image}
@@ -311,7 +311,7 @@ const ProfilePage = () => {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-4xl text-gray-400">+</span>
+                    <span className="text-4xl text-slate-400">+</span>
                   )}
                   {uploadingSlot === card.key && (
                     <div className="absolute inset-0 bg-black/40 text-white text-sm flex items-center justify-center">
@@ -319,7 +319,7 @@ const ProfilePage = () => {
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-sm font-medium text-gray-700 text-center">
+                <p className="mt-2 text-center text-sm font-medium text-slate-700">
                   {card.label}
                 </p>
               </label>
