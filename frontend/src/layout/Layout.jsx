@@ -255,6 +255,16 @@ const Layout = () => {
                 >
                   Profile
                 </Link>
+                <Link
+                  to="/practice"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                    location.pathname === "/practice"
+                      ? "bg-white text-blue-600 shadow"
+                      : "hover:bg-blue-700 hover:text-white"
+                  }`}
+                >
+                  Practice
+                </Link>
               </div>
               <div className="relative ml-auto" ref={profileMenuRef}>
                 <button
@@ -426,6 +436,17 @@ const Layout = () => {
                     }`}
                   >
                     Settings
+                  </Link>
+                  <Link
+                    to="/practice"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/practice"
+                        ? "text-sky-300"
+                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    Practice
                   </Link>
                 </div>
 

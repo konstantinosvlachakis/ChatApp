@@ -17,6 +17,7 @@ const EditProfilePage = React.lazy(() => import("./pages/Profile/EditProfilePage
 const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const SettingsPage = React.lazy(() => import("./pages/Settings/page"));
 const PublicProfilePage = React.lazy(() => import("./pages/PublicProfile/page"));
+const PracticePage = React.lazy(() => import("./pages/PracticePage"));
 
 
 function App() {
@@ -158,6 +159,14 @@ function App() {
                   element={
                     <Suspense fallback={<div>Loading Conversations...</div>}>
                       <ConversationsPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/practice"
+                  element={
+                    <Suspense fallback={<div>Loading Practice...</div>}>
+                      <PracticePage />
                     </Suspense>
                   }
                 />

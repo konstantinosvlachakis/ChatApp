@@ -65,6 +65,21 @@ class Profile(AbstractBaseUser):
         return None
 
 
+class PracticeStats(models.Model):
+    user = models.OneToOneField(
+        Profile, related_name="practice_stats", on_delete=models.CASCADE
+    )
+    points = models.PositiveIntegerField(default=0)
+    xp = models.PositiveIntegerField(default=0)
+    level = models.PositiveIntegerField(default=1)
+    correct_answers = models.PositiveIntegerField(default=0)
+    total_answers = models.PositiveIntegerField(default=0)
+    preferred_language = models.CharField(max_length=50, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"PracticeStats(user={self.user_id}, points={self.points}, level={self.level})"
+
 
 class Token(models.Model):
     user = models.OneToOneField(

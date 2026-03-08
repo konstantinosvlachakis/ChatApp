@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Conversation, Message, MessageTranslation, MessageReaction
+from .models import Conversation, Message, MessageTranslation, MessageReaction, PracticeStats
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -19,10 +19,11 @@ from django.core.files.storage import default_storage
 import os
 import uuid
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import urllib.error
 import hashlib
 import re
+import random
 from datetime import datetime
 from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
@@ -39,6 +40,96 @@ PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
 PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
 CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = "conversation_list:version:user:{user_id}"
 CONVERSATION_LIST_CACHE_TIMEOUT_SECONDS = 20
+PRACTICE_XP_CORRECT = 15
+PRACTICE_XP_WRONG = 3
+PRACTICE_POINTS_CORRECT = 10
+PRACTICE_POINTS_WRONG = 1
+PRACTICE_GENERATOR_ENABLED = os.environ.get("PRACTICE_GENERATOR_ENABLED", "false").lower() == "true"
+PRACTICE_GENERATOR_PROVIDER = os.environ.get("PRACTICE_GENERATOR_PROVIDER", "huggingface").strip().lower()
+PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(os.environ.get("PRACTICE_GENERATOR_TIMEOUT_SECONDS", "12"))
+
+PRACTICE_LIBRARY = {
+    "english": {
+        1: [
+            {"sentence": "I ___ to school every day.", "answer": "go", "options": ["go", "goes", "went", "going"], "hint": "Present simple, first person."},
+            {"sentence": "She ___ coffee in the morning.", "answer": "drinks", "options": ["drink", "drinks", "drank", "drinking"], "hint": "Present simple, third person."},
+            {"sentence": "We ___ in Athens.", "answer": "live", "options": ["live", "lives", "lived", "living"], "hint": "Current fact."},
+            {"sentence": "They ___ football on Sunday.", "answer": "play", "options": ["play", "plays", "played", "playing"], "hint": "Habit action."},
+        ],
+        2: [
+            {"sentence": "Yesterday, he ___ to the market.", "answer": "went", "options": ["go", "goes", "went", "gone"], "hint": "Past tense of go."},
+            {"sentence": "I am ___ dinner right now.", "answer": "cooking", "options": ["cook", "cooked", "cooking", "cooks"], "hint": "Present continuous form."},
+            {"sentence": "They have ___ their homework.", "answer": "finished", "options": ["finish", "finished", "finishing", "finishes"], "hint": "Present perfect with 'have'."},
+            {"sentence": "She was ___ when I called.", "answer": "sleeping", "options": ["sleep", "sleeping", "slept", "sleeps"], "hint": "Past continuous action."},
+        ],
+        3: [
+            {"sentence": "If I had more time, I would ___ Spanish.", "answer": "practice", "options": ["practice", "practiced", "practicing", "practices"], "hint": "Conditional base verb."},
+            {"sentence": "By next year, we will have ___ the course.", "answer": "completed", "options": ["complete", "completed", "completing", "completes"], "hint": "Future perfect."},
+            {"sentence": "He suggested that she ___ earlier.", "answer": "arrive", "options": ["arrive", "arrived", "arrives", "arriving"], "hint": "Subjunctive after 'suggested that'."},
+            {"sentence": "The project ___ before the deadline.", "answer": "was finished", "options": ["was finished", "is finishing", "finished", "has finish"], "hint": "Past passive voice."},
+        ],
+    },
+    "spanish": {
+        1: [
+            {"sentence": "Yo ___ al trabajo cada día.", "answer": "voy", "options": ["voy", "vas", "fui", "ir"], "hint": "Presente, primera persona."},
+            {"sentence": "Ella ___ café por la mañana.", "answer": "bebe", "options": ["bebo", "bebe", "bebió", "beber"], "hint": "Presente, tercera persona."},
+            {"sentence": "Nosotros ___ en Grecia.", "answer": "vivimos", "options": ["vivo", "viven", "vivimos", "viví"], "hint": "Presente, nosotros."},
+            {"sentence": "Ellos ___ fútbol el domingo.", "answer": "juegan", "options": ["juegan", "juega", "jugaron", "jugar"], "hint": "Presente plural."},
+        ],
+        2: [
+            {"sentence": "Ayer, él ___ al mercado.", "answer": "fue", "options": ["va", "fue", "ir", "iba"], "hint": "Pretérito de ir."},
+            {"sentence": "Estoy ___ la cena ahora.", "answer": "cocinando", "options": ["cocino", "cocinando", "cociné", "cocinar"], "hint": "Gerundio."},
+            {"sentence": "Hemos ___ la tarea.", "answer": "terminado", "options": ["terminar", "terminado", "terminamos", "termina"], "hint": "Participio en pretérito perfecto."},
+            {"sentence": "Cuando llamé, ella estaba ___.", "answer": "durmiendo", "options": ["duerme", "durmió", "durmiendo", "dormir"], "hint": "Imperfecto progresivo."},
+        ],
+        3: [
+            {"sentence": "Si tuviera más tiempo, ___ más francés.", "answer": "practicaría", "options": ["practico", "practicaría", "practiqué", "practicar"], "hint": "Condicional."},
+            {"sentence": "Para el próximo año, habremos ___ el curso.", "answer": "completado", "options": ["completar", "completado", "completamos", "completará"], "hint": "Futuro perfecto."},
+            {"sentence": "Él sugirió que ella ___ temprano.", "answer": "llegara", "options": ["llega", "llegó", "llegara", "llegar"], "hint": "Subjuntivo pasado."},
+            {"sentence": "El informe ___ antes del plazo.", "answer": "fue enviado", "options": ["fue enviado", "envía", "enviando", "ha enviar"], "hint": "Voz pasiva."},
+        ],
+    },
+    "french": {
+        1: [
+            {"sentence": "Je ___ au travail chaque jour.", "answer": "vais", "options": ["vais", "va", "allé", "aller"], "hint": "Présent, première personne."},
+            {"sentence": "Elle ___ du café le matin.", "answer": "boit", "options": ["bois", "boit", "bu", "boire"], "hint": "Présent, troisième personne."},
+            {"sentence": "Nous ___ à Paris.", "answer": "habitons", "options": ["habite", "habitent", "habitons", "habité"], "hint": "Présent, nous."},
+            {"sentence": "Ils ___ au football le dimanche.", "answer": "jouent", "options": ["joue", "jouent", "joué", "jouer"], "hint": "Présent pluriel."},
+        ],
+        2: [
+            {"sentence": "Hier, il ___ au marché.", "answer": "est allé", "options": ["va", "allait", "est allé", "aller"], "hint": "Passé composé."},
+            {"sentence": "Je suis en train de ___ le dîner.", "answer": "préparer", "options": ["prépare", "préparer", "préparé", "préparant"], "hint": "Infinitif après expression."},
+            {"sentence": "Nous avons ___ nos devoirs.", "answer": "fini", "options": ["fini", "finissons", "finir", "finissait"], "hint": "Participe passé."},
+            {"sentence": "Quand tu as appelé, elle était en train de ___.", "answer": "dormir", "options": ["dort", "dormi", "dormir", "dormait"], "hint": "Action en cours."},
+        ],
+        3: [
+            {"sentence": "Si j'avais plus de temps, je ___ plus l'espagnol.", "answer": "pratiquerais", "options": ["pratique", "pratiquerais", "pratiqué", "pratiquer"], "hint": "Conditionnel présent."},
+            {"sentence": "D'ici l'an prochain, nous aurons ___ le cours.", "answer": "terminé", "options": ["terminer", "terminé", "terminons", "terminera"], "hint": "Futur antérieur."},
+            {"sentence": "Il faut que tu ___ tôt.", "answer": "arrives", "options": ["arrives", "arrivé", "arriver", "arrivait"], "hint": "Subjonctif présent."},
+            {"sentence": "Le dossier ___ avant la date limite.", "answer": "a été envoyé", "options": ["a été envoyé", "est envoyant", "envoie", "a envoyer"], "hint": "Voix passive composée."},
+        ],
+    },
+    "greek": {
+        1: [
+            {"sentence": "Εγώ ___ στο σχολείο κάθε μέρα.", "answer": "πηγαίνω", "options": ["πηγαίνω", "πηγαίνει", "πήγα", "πηγαίνεις"], "hint": "Ενεστώτας, πρώτο πρόσωπο."},
+            {"sentence": "Αυτή ___ καφέ το πρωί.", "answer": "πίνει", "options": ["πίνω", "πίνει", "ήπιε", "πίνουν"], "hint": "Ενεστώτας, τρίτο πρόσωπο."},
+            {"sentence": "Εμείς ___ στην Αθήνα.", "answer": "μένουμε", "options": ["μένω", "μένει", "μένουμε", "έμεινα"], "hint": "Ενεστώτας, πρώτο πληθυντικό."},
+            {"sentence": "Αυτοί ___ ποδόσφαιρο την Κυριακή.", "answer": "παίζουν", "options": ["παίζω", "παίζει", "παίζουν", "έπαιξαν"], "hint": "Ενεστώτας, τρίτο πληθυντικό."},
+        ],
+        2: [
+            {"sentence": "Χθες, αυτός ___ στην αγορά.", "answer": "πήγε", "options": ["πηγαίνει", "πήγε", "πάει", "πηγαίνω"], "hint": "Αόριστος του 'πηγαίνω'."},
+            {"sentence": "Τώρα ___ το βραδινό.", "answer": "μαγειρεύω", "options": ["μαγειρεύω", "μαγείρεψα", "μαγειρεύει", "μαγειρεύοντας"], "hint": "Ενεστώτας, τρέχουσα δράση."},
+            {"sentence": "Έχουμε ___ τις ασκήσεις.", "answer": "τελειώσει", "options": ["τελειώνουμε", "τελείωσα", "τελειώσει", "τελειώνει"], "hint": "Παρακείμενος."},
+            {"sentence": "Όταν τηλεφώνησες, αυτή ___ .", "answer": "κοιμόταν", "options": ["κοιμάται", "κοιμήθηκε", "κοιμόταν", "κοιμηθεί"], "hint": "Παρατατικός."},
+        ],
+        3: [
+            {"sentence": "Αν είχα περισσότερο χρόνο, θα ___ περισσότερα ισπανικά.", "answer": "εξασκούσα", "options": ["εξασκώ", "εξασκούσα", "εξάσκησα", "εξασκείται"], "hint": "Υποθετικός λόγος."},
+            {"sentence": "Μέχρι του χρόνου, θα έχουμε ___ το μάθημα.", "answer": "ολοκληρώσει", "options": ["ολοκληρώνω", "ολοκλήρωσα", "ολοκληρώσει", "ολοκληρώνει"], "hint": "Συντελεσμένος μέλλοντας."},
+            {"sentence": "Πρότεινε να ___ νωρίτερα.", "answer": "έρθει", "options": ["έρχεται", "ήρθε", "έρθει", "ερχόταν"], "hint": "Υποτακτική."},
+            {"sentence": "Η αναφορά ___ πριν την προθεσμία.", "answer": "στάλθηκε", "options": ["στέλνεται", "έστειλε", "στάλθηκε", "στείλει"], "hint": "Παθητική φωνή, αόριστος."},
+        ],
+    },
+}
 
 
 def get_profile_list_cache_version():
@@ -1217,3 +1308,427 @@ def react_to_message_view(request, message_id):
         )
 
     return Response(serialized_message, status=status.HTTP_200_OK)
+
+
+def resolve_practice_language(user, requested_language=None):
+    requested = (requested_language or "").strip().lower()
+    practicing = [
+        str(language).strip().lower()
+        for language in (getattr(user, "languages_practicing", None) or [])
+        if str(language).strip()
+    ]
+    base_language = (getattr(user, "base_translate_language", "") or "").strip().lower()
+    native_language = (getattr(user, "native_language", "") or "").strip().lower()
+
+    candidates = []
+    if requested:
+        candidates.append(requested)
+    candidates.extend(practicing)
+    if base_language:
+        candidates.append(base_language)
+    if native_language:
+        candidates.append(native_language)
+    candidates.append("english")
+
+    for candidate in candidates:
+        if candidate in PRACTICE_LIBRARY:
+            return candidate
+    return "english"
+
+
+def practice_level_from_xp(xp_value):
+    xp = max(int(xp_value or 0), 0)
+    return (xp // 100) + 1
+
+
+def practice_bucket_for_level(level):
+    if level <= 2:
+        return 1
+    if level <= 4:
+        return 2
+    return 3
+
+
+def split_sentence_parts(sentence):
+    if "___" not in sentence:
+        return [sentence, None, ""]
+    left, right = sentence.split("___", 1)
+    return [left, None, right]
+
+
+def cefr_level_for_level(level):
+    if level <= 2:
+        return "A1"
+    if level <= 4:
+        return "A2"
+    if level <= 6:
+        return "B1"
+    return "B2"
+
+
+def normalize_option_value(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def parse_generator_json_payload(raw_text):
+    if not raw_text:
+        return None
+
+    candidate_text = str(raw_text).strip()
+    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", candidate_text, re.DOTALL)
+    if fenced_match:
+        candidate_text = fenced_match.group(1).strip()
+    else:
+        first = candidate_text.find("{")
+        last = candidate_text.rfind("}")
+        if first == -1 or last == -1 or last <= first:
+            return None
+        candidate_text = candidate_text[first : last + 1]
+
+    try:
+        payload = json.loads(candidate_text)
+    except json.JSONDecodeError:
+        return None
+
+    sentence = normalize_option_value(payload.get("sentence"))
+    answer = normalize_option_value(payload.get("answer"))
+    hint = normalize_option_value(payload.get("hint"))
+    options = payload.get("options") or []
+
+    if not sentence or "___" not in sentence or not answer or not isinstance(options, list):
+        return None
+
+    normalized_options = []
+    for option in options:
+        normalized = normalize_option_value(option)
+        if normalized and normalized not in normalized_options:
+            normalized_options.append(normalized)
+
+    if answer not in normalized_options:
+        normalized_options.append(answer)
+
+    if len(normalized_options) < 4:
+        return None
+
+    return {
+        "sentence": sentence,
+        "answer": answer,
+        "hint": hint or "Generated challenge",
+        "options": normalized_options[:4] if len(normalized_options) > 4 else normalized_options,
+    }
+
+
+def fetch_generated_challenge_from_huggingface(language, level, bucket):
+    token = (os.environ.get("HUGGINGFACE_API_TOKEN") or "").strip()
+    if not token:
+        return None
+
+    model = (os.environ.get("HUGGINGFACE_MODEL") or "google/flan-t5-large").strip()
+    endpoint = f"https://api-inference.huggingface.co/models/{model}"
+    cefr = cefr_level_for_level(level)
+    prompt = (
+        "Generate one language-learning fill-in-the-blank challenge as strict JSON. "
+        "Return only JSON with keys sentence, answer, options, hint. "
+        f"Language: {language}. Difficulty: CEFR {cefr}. "
+        "The sentence must contain exactly one blank token '___'. "
+        "Options must be 4 short options and include the answer exactly once."
+    )
+
+    request_payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 220,
+            "temperature": 0.9,
+            "return_full_text": False,
+        },
+    }
+    request_data = json.dumps(request_payload).encode("utf-8")
+    request = Request(
+        endpoint,
+        data=request_data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=PRACTICE_GENERATOR_TIMEOUT_SECONDS) as response:
+            parsed = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
+
+    generated_text = ""
+    if isinstance(parsed, list) and parsed:
+        first_item = parsed[0]
+        if isinstance(first_item, dict):
+            generated_text = first_item.get("generated_text", "") or ""
+        elif isinstance(first_item, str):
+            generated_text = first_item
+    elif isinstance(parsed, dict):
+        generated_text = parsed.get("generated_text", "") or ""
+
+    challenge_payload = parse_generator_json_payload(generated_text)
+    if not challenge_payload:
+        return None
+
+    options = list(challenge_payload["options"])
+    if len(options) > 4:
+        answer = challenge_payload["answer"]
+        distractors = [option for option in options if option != answer]
+        random.shuffle(distractors)
+        options = distractors[:3] + [answer]
+    random.shuffle(options)
+
+    return {
+        "sentence": challenge_payload["sentence"],
+        "answer": challenge_payload["answer"],
+        "hint": challenge_payload["hint"],
+        "options": options,
+        "difficulty_bucket": bucket,
+        "language": language,
+    }
+
+
+def fetch_generated_challenge(language, level, bucket):
+    if not PRACTICE_GENERATOR_ENABLED:
+        return None
+    if PRACTICE_GENERATOR_PROVIDER == "huggingface":
+        return fetch_generated_challenge_from_huggingface(language, level, bucket)
+    return None
+
+
+def store_generated_answer(user_id, challenge_id, answer, language):
+    if not challenge_id:
+        return
+    cache_key = f"practice:generated_answer:user:{user_id}:id:{challenge_id}"
+    payload = {
+        "answer": normalize_option_value(answer),
+        "language": (language or "").strip().lower(),
+    }
+    cache.set(cache_key, payload, timeout=60 * 10)
+
+
+def get_generated_answer(user_id, challenge_id):
+    cache_key = f"practice:generated_answer:user:{user_id}:id:{challenge_id}"
+    cached = cache.get(cache_key)
+    if not cached:
+        return None, None
+    return normalize_option_value(cached.get("answer")), (cached.get("language") or "").strip().lower()
+
+
+def build_challenge(language, level, user_id):
+    bucket = practice_bucket_for_level(level)
+    generated = fetch_generated_challenge(language, level, bucket)
+    if generated:
+        challenge_id = f"gen:{uuid.uuid4().hex[:16]}"
+        store_generated_answer(user_id, challenge_id, generated["answer"], language)
+        return {
+            "id": challenge_id,
+            "sentence_parts": split_sentence_parts(generated["sentence"]),
+            "options": generated["options"],
+            "hint": generated.get("hint", ""),
+            "difficulty_bucket": generated.get("difficulty_bucket", bucket),
+            "language": language,
+            "source": "generator",
+        }
+
+    challenges = PRACTICE_LIBRARY.get(language, PRACTICE_LIBRARY["english"]).get(bucket, [])
+    if not challenges:
+        return None
+
+    index = random.randrange(len(challenges))
+    template = challenges[index]
+    options = list(template["options"])
+    random.shuffle(options)
+
+    return {
+        "id": f"{language}:{bucket}:{index}",
+        "sentence_parts": split_sentence_parts(template["sentence"]),
+        "options": options,
+        "hint": template.get("hint", ""),
+        "difficulty_bucket": bucket,
+        "language": language,
+        "source": "library",
+    }
+
+
+def get_challenge_answer(challenge_id, user_id):
+    challenge_key = str(challenge_id or "")
+    if challenge_key.startswith("gen:"):
+        return get_generated_answer(user_id, challenge_key)
+
+    try:
+        language, bucket_raw, index_raw = challenge_key.split(":")
+        bucket = int(bucket_raw)
+        index = int(index_raw)
+    except (ValueError, AttributeError):
+        return None, None
+
+    language_key = (language or "").strip().lower()
+    buckets = PRACTICE_LIBRARY.get(language_key) or PRACTICE_LIBRARY["english"]
+    challenge_list = buckets.get(bucket) or []
+    if index < 0 or index >= len(challenge_list):
+        return None, None
+    return challenge_list[index]["answer"], language_key
+
+
+def serialize_practice_stats(stats):
+    accuracy = 0
+    if stats.total_answers:
+        accuracy = round((stats.correct_answers / stats.total_answers) * 100, 1)
+    return {
+        "points": stats.points,
+        "xp": stats.xp,
+        "level": stats.level,
+        "correct_answers": stats.correct_answers,
+        "total_answers": stats.total_answers,
+        "accuracy": accuracy,
+        "preferred_language": stats.preferred_language,
+    }
+
+
+def get_leaderboard(language, current_user_id, limit=10):
+    qs = PracticeStats.objects.select_related("user")
+    filtered_qs = qs.filter(preferred_language__iexact=language)
+    if not filtered_qs.exists():
+        filtered_qs = qs
+
+    top_entries = list(filtered_qs.order_by("-points", "-xp", "updated_at")[:limit])
+    leaderboard = []
+    for idx, entry in enumerate(top_entries, start=1):
+        leaderboard.append(
+            {
+                "rank": idx,
+                "username": entry.user.username,
+                "points": entry.points,
+                "level": entry.level,
+                "xp": entry.xp,
+                "is_current_user": entry.user_id == current_user_id,
+            }
+        )
+
+    current_stats = PracticeStats.objects.filter(user_id=current_user_id).first()
+    current_rank = None
+    if current_stats:
+        current_rank = (
+            filtered_qs.filter(points__gt=current_stats.points).count() + 1
+        )
+
+    return leaderboard, current_rank
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def practice_state_view(request):
+    language = resolve_practice_language(
+        request.user,
+        request.query_params.get("language"),
+    )
+    stats, _ = PracticeStats.objects.get_or_create(
+        user=request.user,
+        defaults={"preferred_language": language},
+    )
+    if not stats.preferred_language:
+        stats.preferred_language = language
+        stats.save(update_fields=["preferred_language", "updated_at"])
+
+    leaderboard, current_rank = get_leaderboard(language, request.user.id)
+    return Response(
+        {
+            "language": language,
+            "stats": serialize_practice_stats(stats),
+            "leaderboard": leaderboard,
+            "current_rank": current_rank,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def practice_challenge_view(request):
+    language = resolve_practice_language(
+        request.user,
+        request.query_params.get("language"),
+    )
+    stats, _ = PracticeStats.objects.get_or_create(
+        user=request.user,
+        defaults={"preferred_language": language},
+    )
+    if stats.level != practice_level_from_xp(stats.xp):
+        stats.level = practice_level_from_xp(stats.xp)
+        stats.save(update_fields=["level", "updated_at"])
+
+    challenge = build_challenge(language, stats.level, request.user.id)
+    if not challenge:
+        return Response(
+            {"error": "No challenge templates available."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    return Response(
+        {
+            "language": language,
+            "challenge": challenge,
+            "stats": serialize_practice_stats(stats),
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def practice_submit_view(request):
+    challenge_id = request.data.get("challenge_id")
+    selected_word = (request.data.get("selected_word") or "").strip()
+    requested_language = request.data.get("language")
+
+    if not challenge_id:
+        return Response(
+            {"error": "challenge_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    answer, language_from_challenge = get_challenge_answer(challenge_id, request.user.id)
+    if not answer:
+        return Response(
+            {"error": "Invalid challenge_id."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    language = resolve_practice_language(request.user, requested_language) or language_from_challenge
+    is_correct = normalize_option_value(selected_word) == normalize_option_value(answer)
+
+    stats, _ = PracticeStats.objects.get_or_create(
+        user=request.user,
+        defaults={"preferred_language": language},
+    )
+    stats.preferred_language = language
+    stats.total_answers += 1
+
+    if is_correct:
+        stats.correct_answers += 1
+        stats.points += PRACTICE_POINTS_CORRECT
+        stats.xp += PRACTICE_XP_CORRECT
+    else:
+        stats.points += PRACTICE_POINTS_WRONG
+        stats.xp += PRACTICE_XP_WRONG
+
+    stats.level = practice_level_from_xp(stats.xp)
+    stats.save()
+
+    leaderboard, current_rank = get_leaderboard(language, request.user.id)
+    return Response(
+        {
+            "correct": is_correct,
+            "correct_answer": answer,
+            "awarded_xp": PRACTICE_XP_CORRECT if is_correct else PRACTICE_XP_WRONG,
+            "awarded_points": PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG,
+            "language": language,
+            "stats": serialize_practice_stats(stats),
+            "leaderboard": leaderboard,
+            "current_rank": current_rank,
+        },
+        status=status.HTTP_200_OK,
+    )
