@@ -1,11 +1,24 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BASE_URL } from "../constants/constants";
 import { useUser } from "../context/UserContext";
+import MonetizationOnRoundedIcon from "@mui/icons-material/MonetizationOnRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
+import TrackChangesRoundedIcon from "@mui/icons-material/TrackChangesRounded";
+import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
+import MapRoundedIcon from "@mui/icons-material/MapRounded";
+import ParkRoundedIcon from "@mui/icons-material/ParkRounded";
+import TerrainRoundedIcon from "@mui/icons-material/TerrainRounded";
+import PetsRoundedIcon from "@mui/icons-material/PetsRounded";
+import DirectionsBoatFilledRoundedIcon from "@mui/icons-material/DirectionsBoatFilledRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import ExploreRoundedIcon from "@mui/icons-material/ExploreRounded";
+import DiamondRoundedIcon from "@mui/icons-material/DiamondRounded";
 
 const getAuthToken = () =>
   sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken") || "";
 
 const levelProgressPercent = (xp) => Math.min(100, Math.max(0, xp % 100));
+const SPEECH_MATCH_THRESHOLD = 0.72;
 const TREASURE_MILESTONES = 10;
 const TREASURE_MAP_IMAGE_URL =
   "https://www.foundmyself.com/gallery/albums/userpics/26339/treasure_map.jpg";
@@ -22,9 +35,83 @@ const TREASURE_POINTS = [
   { x: 72, y: 10 },
 ];
 
+const LANGUAGE_SPEECH_CODE = {
+  english: "en-US",
+  spanish: "es-ES",
+  french: "fr-FR",
+  greek: "el-GR",
+  russian: "ru-RU",
+};
+
+const VOICE_SENTENCE_LIBRARY = {
+  english: [
+    "I practice English every day.",
+    "The weather is beautiful today.",
+    "Please repeat this sentence clearly.",
+  ],
+  spanish: [
+    "Practico espanol todos los dias.",
+    "Hoy hace muy buen tiempo.",
+    "Por favor repite esta frase claramente.",
+  ],
+  french: [
+    "Je pratique le francais chaque jour.",
+    "Il fait tres beau aujourd hui.",
+    "Repete cette phrase avec une bonne prononciation.",
+  ],
+  greek: [
+    "Εξασκούμαι στα ελληνικά κάθε μέρα.",
+    "Σήμερα ο καιρός είναι υπέροχος.",
+    "Παρακαλώ επανάλαβε αυτή την πρόταση καθαρά.",
+  ],
+  russian: [
+    "Я практикую русский язык каждый день.",
+    "Сегодня очень хорошая погода.",
+    "Пожалуйста повтори это предложение четко.",
+  ],
+};
+
+const pickBestVoiceForLanguage = (language) => {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+
+  const targetLang = (LANGUAGE_SPEECH_CODE[language] || "en-US").toLowerCase();
+  const baseLang = targetLang.split("-")[0];
+
+  const languageMatches = voices.filter((voice) => {
+    const voiceLang = (voice.lang || "").toLowerCase();
+    return voiceLang === targetLang || voiceLang.startsWith(`${baseLang}-`) || voiceLang === baseLang;
+  });
+  const candidates = languageMatches.length ? languageMatches : voices;
+
+  // Prefer native/local and higher-quality engine labels when available.
+  const scoreVoice = (voice) => {
+    const name = `${voice.name || ""} ${(voice.voiceURI || "")}`.toLowerCase();
+    const lang = (voice.lang || "").toLowerCase();
+    let score = 0;
+    if (lang === targetLang) score += 60;
+    else if (lang.startsWith(`${baseLang}-`) || lang === baseLang) score += 40;
+    if (voice.localService) score += 20;
+    if (voice.default) score += 10;
+    if (name.includes("neural")) score += 16;
+    if (name.includes("premium")) score += 14;
+    if (name.includes("natural")) score += 12;
+    if (name.includes("enhanced")) score += 10;
+    if (name.includes("google")) score += 8;
+    if (name.includes("microsoft")) score += 7;
+    if (name.includes("apple")) score += 6;
+    return score;
+  };
+
+  const sorted = [...candidates].sort((a, b) => scoreVoice(b) - scoreVoice(a));
+  return sorted[0] || null;
+};
+
 const PracticePage = () => {
   const { user } = useUser();
   const [language, setLanguage] = useState("");
+  const [gameMode, setGameMode] = useState("treasure");
   const [stats, setStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [currentRank, setCurrentRank] = useState(null);
@@ -39,8 +126,23 @@ const PracticePage = () => {
   const [animationFromMilestone, setAnimationFromMilestone] = useState(0);
   const [animationToMilestone, setAnimationToMilestone] = useState(0);
   const [animatedMilestone, setAnimatedMilestone] = useState(0);
+  const [voiceSentence, setVoiceSentence] = useState("");
+  const [voiceTranslation, setVoiceTranslation] = useState("");
+  const [voiceTranslationTarget, setVoiceTranslationTarget] = useState("");
+  const [voiceTranslationLoading, setVoiceTranslationLoading] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceScore, setVoiceScore] = useState(null);
+  const [voiceAttemptReady, setVoiceAttemptReady] = useState(false);
+  const [voiceAttemptSubmitted, setVoiceAttemptSubmitted] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceResult, setVoiceResult] = useState("");
+  const [voiceSupported, setVoiceSupported] = useState(true);
+  const [speechVoicesReady, setSpeechVoicesReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const recognitionRef = useRef(null);
+  const listenSilenceTimerRef = useRef(null);
+  const listenMaxTimerRef = useRef(null);
 
   const languageOptions = useMemo(() => {
     const set = new Set();
@@ -122,6 +224,26 @@ const PracticePage = () => {
   }, [user, languageOptions.length]);
 
   useEffect(() => {
+    const hasRecognition =
+      typeof window !== "undefined" &&
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+    const hasSynthesis = typeof window !== "undefined" && "speechSynthesis" in window;
+    setVoiceSupported(Boolean(hasRecognition && hasSynthesis));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return undefined;
+    const synth = window.speechSynthesis;
+    const primeVoices = () => {
+      const voices = synth.getVoices();
+      if (voices && voices.length) setSpeechVoicesReady(true);
+    };
+    primeVoices();
+    synth.addEventListener("voiceschanged", primeVoices);
+    return () => synth.removeEventListener("voiceschanged", primeVoices);
+  }, []);
+
+  useEffect(() => {
     if (!showTreasureAnimation) return undefined;
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -132,11 +254,200 @@ const PracticePage = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [showTreasureAnimation]);
 
+  useEffect(
+    () => () => {
+      if (listenSilenceTimerRef.current) window.clearTimeout(listenSilenceTimerRef.current);
+      if (listenMaxTimerRef.current) window.clearTimeout(listenMaxTimerRef.current);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_e) {
+          // no-op
+        }
+      }
+    },
+    []
+  );
+
   const handleDropWord = (event) => {
     event.preventDefault();
     if (submitted) return;
     const word = event.dataTransfer.getData("text/plain");
     if (word) setDroppedWord(word);
+  };
+
+  const normalizeSpeechText = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[.,!?;:()'"`]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const calculateSpeechMatch = (target, actual) => {
+    const t = normalizeSpeechText(target).split(" ").filter(Boolean);
+    const a = normalizeSpeechText(actual).split(" ").filter(Boolean);
+    if (!t.length || !a.length) return 0;
+    const targetCounts = {};
+    const actualCounts = {};
+    t.forEach((w) => {
+      targetCounts[w] = (targetCounts[w] || 0) + 1;
+    });
+    a.forEach((w) => {
+      actualCounts[w] = (actualCounts[w] || 0) + 1;
+    });
+    let overlap = 0;
+    Object.keys(targetCounts).forEach((w) => {
+      overlap += Math.min(targetCounts[w], actualCounts[w] || 0);
+    });
+    return overlap / Math.max(t.length, 1);
+  };
+
+  const requiredSpeechMatchThreshold = (sentence) => {
+    const wordCount = normalizeSpeechText(sentence).split(" ").filter(Boolean).length;
+    if (wordCount <= 4) return 0.62;
+    if (wordCount <= 7) return 0.68;
+    return SPEECH_MATCH_THRESHOLD;
+  };
+
+  const loadNextVoiceSentence = () => {
+    const pool = VOICE_SENTENCE_LIBRARY[language] || VOICE_SENTENCE_LIBRARY.english;
+    const next = pool[Math.floor(Math.random() * pool.length)];
+    setVoiceSentence(next);
+    setVoiceTranslation("");
+    setVoiceTranslationTarget("");
+    setVoiceTranslationLoading(false);
+    setVoiceTranscript("");
+    setVoiceScore(null);
+    setVoiceAttemptReady(false);
+    setVoiceAttemptSubmitted(false);
+    setVoiceResult("");
+  };
+
+  const playPronunciation = () => {
+    if (!voiceSentence || typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(voiceSentence);
+    const languageCode = LANGUAGE_SPEECH_CODE[language] || "en-US";
+    utterance.lang = languageCode;
+    // Slightly slower + stable pitch for clearer pronunciation practice.
+    utterance.rate = 0.82;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    const preferredVoice = pickBestVoiceForLanguage(language);
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+      utterance.lang = preferredVoice.lang || languageCode;
+    }
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startVoiceRecognition = () => {
+    if (!voiceSupported || typeof window === "undefined") {
+      setVoiceResult("Speech recognition is not supported on this device/browser.");
+      return;
+    }
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setVoiceResult("Speech recognition is not available.");
+      return;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_e) {
+        // no-op
+      }
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = LANGUAGE_SPEECH_CODE[language] || "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+
+    setVoiceListening(true);
+    setVoiceResult("Listening...");
+    setVoiceAttemptReady(false);
+    setVoiceAttemptSubmitted(false);
+    let finalTranscript = "";
+    let interimTranscript = "";
+
+    const clearTimers = () => {
+      if (listenSilenceTimerRef.current) window.clearTimeout(listenSilenceTimerRef.current);
+      if (listenMaxTimerRef.current) window.clearTimeout(listenMaxTimerRef.current);
+    };
+
+    const scheduleSilenceStop = () => {
+      if (listenSilenceTimerRef.current) window.clearTimeout(listenSilenceTimerRef.current);
+      listenSilenceTimerRef.current = window.setTimeout(() => {
+        try {
+          recognition.stop();
+        } catch (_e) {
+          // no-op
+        }
+      }, 1300);
+    };
+
+    listenMaxTimerRef.current = window.setTimeout(() => {
+      try {
+        recognition.stop();
+      } catch (_e) {
+        // no-op
+      }
+    }, 9000);
+
+    recognition.onresult = (event) => {
+      interimTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const phrase = event.results[i]?.[0]?.transcript || "";
+        if (!phrase) continue;
+        if (event.results[i].isFinal) {
+          finalTranscript = `${finalTranscript} ${phrase}`.trim();
+        } else {
+          interimTranscript = `${interimTranscript} ${phrase}`.trim();
+        }
+      }
+      const combined = `${finalTranscript} ${interimTranscript}`.trim();
+      if (combined) setVoiceTranscript(combined);
+      scheduleSilenceStop();
+    };
+
+    recognition.onerror = () => {
+      setVoiceResult("Could not capture speech. Please try again.");
+      clearTimers();
+    };
+
+    recognition.onend = () => {
+      clearTimers();
+      setVoiceListening(false);
+      const transcript = `${finalTranscript} ${interimTranscript}`.trim();
+      if (!transcript) return;
+      setVoiceTranscript(transcript);
+      setVoiceScore(null);
+      setVoiceAttemptReady(true);
+      setVoiceAttemptSubmitted(false);
+      setVoiceResult("Recording captured. Submit or re-record.");
+      recognitionRef.current = null;
+    };
+
+    recognition.start();
+  };
+
+  const submitVoiceAttempt = () => {
+    if (!voiceTranscript || !voiceSentence) return;
+    const score = calculateSpeechMatch(voiceSentence, voiceTranscript);
+    const minScore = requiredSpeechMatchThreshold(voiceSentence);
+    setVoiceScore(score);
+    setVoiceAttemptSubmitted(true);
+    if (score >= minScore) {
+      setVoiceResult(`Great pronunciation (${Math.round(score * 100)}% match).`);
+    } else {
+      setVoiceResult(`Try again (${Math.round(score * 100)}% match).`);
+    }
   };
 
   const handleSubmitAnswer = async () => {
@@ -171,6 +482,7 @@ const PracticePage = () => {
         setAnimatedMilestone(successfulMilestones);
         setShowTreasureAnimation(true);
         window.setTimeout(() => setAnimatedMilestone(nextMilestone), 80);
+        window.setTimeout(() => setShowTreasureAnimation(false), 1900);
         setFeedback(`Correct! +${payload.awarded_xp} XP / +${payload.awarded_points} points`);
         setFeedbackTone("success");
       } else {
@@ -179,6 +491,7 @@ const PracticePage = () => {
         setAnimationToMilestone(successfulMilestones);
         setAnimatedMilestone(successfulMilestones);
         setShowTreasureAnimation(true);
+        window.setTimeout(() => setShowTreasureAnimation(false), 1500);
         setFeedback(
           `Not quite. Correct answer: "${payload.correct_answer}" (+${payload.awarded_xp} XP)`
         );
@@ -221,11 +534,85 @@ const PracticePage = () => {
     const nextLanguage = event.target.value;
     setLanguage(nextLanguage);
     await bootstrapPractice(nextLanguage);
+    const voicePool = VOICE_SENTENCE_LIBRARY[nextLanguage] || VOICE_SENTENCE_LIBRARY.english;
+    setVoiceSentence(voicePool[Math.floor(Math.random() * voicePool.length)]);
+    setVoiceTranslation("");
+    setVoiceTranslationTarget("");
+    setVoiceTranslationLoading(false);
+    setVoiceTranscript("");
+    setVoiceScore(null);
+    setVoiceAttemptReady(false);
+    setVoiceAttemptSubmitted(false);
+    setVoiceResult("");
   };
   
   const closeTreasureOverlay = () => {
     setShowTreasureAnimation(false);
   };
+
+  useEffect(() => {
+    if (!language) return;
+    if (!voiceSentence) {
+      const voicePool = VOICE_SENTENCE_LIBRARY[language] || VOICE_SENTENCE_LIBRARY.english;
+      setVoiceSentence(voicePool[Math.floor(Math.random() * voicePool.length)]);
+    }
+  }, [language, voiceSentence]);
+
+  useEffect(() => {
+    const translateVoiceSentence = async () => {
+      if (!voiceSentence) return;
+      const baseLanguage = (user?.base_translate_language || "").trim().toLowerCase();
+      const nativeLanguage = (user?.native_language || "").trim().toLowerCase();
+      const sourceLanguage = (language || "").trim().toLowerCase();
+      const fallbackLanguage = "english";
+      const targetCandidates = [baseLanguage, nativeLanguage, fallbackLanguage].filter(
+        (item, index, arr) => item && arr.indexOf(item) === index && item !== sourceLanguage
+      );
+      if (!targetCandidates.length) {
+        setVoiceTranslation("");
+        setVoiceTranslationTarget("");
+        return;
+      }
+
+      setVoiceTranslationLoading(true);
+      try {
+        let translated = "";
+        let translatedTarget = "";
+
+        for (const targetLanguage of targetCandidates) {
+          const response = await fetch(`${BASE_URL}/api/messages/translate/`, {
+            method: "POST",
+            headers: authHeaders,
+            credentials: "include",
+            body: JSON.stringify({
+              text: voiceSentence,
+              target_language: targetLanguage,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            if (payload?.same_language) {
+              continue;
+            }
+            continue;
+          }
+          translated = payload?.translated_text || "";
+          translatedTarget = targetLanguage;
+          if (translated) break;
+        }
+
+        setVoiceTranslation(translated);
+        setVoiceTranslationTarget(translatedTarget);
+      } catch (_e) {
+        setVoiceTranslation("");
+        setVoiceTranslationTarget("");
+      } finally {
+        setVoiceTranslationLoading(false);
+      }
+    };
+
+    translateVoiceSentence();
+  }, [voiceSentence, language, user?.base_translate_language, user?.native_language, authHeaders]);
 
   const progress = levelProgressPercent(stats?.xp || 0);
   const mapProgress = Math.min(
@@ -239,21 +626,21 @@ const PracticePage = () => {
   return (
     <section className="py-5 sm:py-8">
       <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">
               Practice Arena
             </p>
-            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
-              Fill the missing word
+            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl leading-tight">
+              {gameMode === "treasure" ? "Fill the missing word" : "Speak & Repeat"}
             </h1>
           </div>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            Language
+          <label className="flex w-full items-center gap-2 text-sm font-medium text-slate-700 sm:w-auto">
+            <span className="shrink-0">Language</span>
             <select
               value={language}
               onChange={onLanguageChange}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm sm:min-w-[170px] sm:flex-none"
             >
               {languageOptions.map((option) => (
                 <option key={option} value={option}>
@@ -263,6 +650,30 @@ const PracticePage = () => {
             </select>
           </label>
         </div>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setGameMode("treasure")}
+            className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${
+              gameMode === "treasure"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-300 bg-white text-slate-700"
+            }`}
+          >
+            Treasure Hunt
+          </button>
+          <button
+            type="button"
+            onClick={() => setGameMode("voice")}
+            className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${
+              gameMode === "voice"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-300 bg-white text-slate-700"
+            }`}
+          >
+            Voice Repeat
+          </button>
+        </div>
 
         {loading ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
@@ -271,30 +682,56 @@ const PracticePage = () => {
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Points</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">{stats?.points || 0}</p>
+              <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-sky-50 to-amber-50 p-4 shadow-sm">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-white/80 px-3 py-2 text-center shadow-sm">
+                    <p className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <MonetizationOnRoundedIcon sx={{ fontSize: 14, color: "#f59e0b" }} />
+                      Points
+                    </p>
+                    <p className="mt-1 text-xl font-extrabold text-slate-900">{stats?.points || 0}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/80 px-3 py-2 text-center shadow-sm">
+                    <p className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <WorkspacePremiumRoundedIcon sx={{ fontSize: 14, color: "#d97706" }} />
+                      Level
+                    </p>
+                    <p className="mt-1 text-xl font-extrabold text-amber-600">{stats?.level || 1}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/80 px-3 py-2 text-center shadow-sm">
+                    <p className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <TrackChangesRoundedIcon sx={{ fontSize: 14, color: "#0891b2" }} />
+                      Accuracy
+                    </p>
+                    <p className="mt-1 text-xl font-extrabold text-cyan-600">{stats?.accuracy || 0}%</p>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Level</p>
-                  <p className="mt-1 text-2xl font-bold text-amber-600">{stats?.level || 1}</p>
+                <div className="mt-3 rounded-xl bg-white/75 px-3 py-2">
+                  <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-600">
+                    <p className="inline-flex items-center gap-1">
+                      <BoltRoundedIcon sx={{ fontSize: 15, color: "#0ea5e9" }} />
+                      XP Trail
+                    </p>
+                    <p>{stats?.xp || 0} XP</p>
+                  </div>
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,#06b6d4,#0ea5e9,#f59e0b)] transition-all duration-500"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Accuracy</p>
-                  <p className="mt-1 text-2xl font-bold text-cyan-600">{stats?.accuracy || 0}%</p>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
+                  <p className="inline-flex items-center gap-1">
+                    <MapRoundedIcon sx={{ fontSize: 14, color: "#d97706" }} />
+                    Treasure Hunt: {successfulMilestones}/{TREASURE_MILESTONES}
+                  </p>
+                  <p>Rank #{currentRank || "-"}</p>
                 </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">XP Progress</p>
-                  <p className="text-xs text-slate-500">{stats?.xp || 0} XP</p>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-slate-200">
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-cyan-500 transition-all duration-300"
-                    style={{ width: `${progress}%` }}
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#fbbf24,#f59e0b,#d97706)] transition-all duration-500"
+                    style={{ width: `${mapProgress}%` }}
                   />
                 </div>
               </div>
@@ -317,7 +754,8 @@ const PracticePage = () => {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+              {gameMode === "treasure" ? (
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-slate-500">
                     {challenge?.hint || "Drop the correct word in the blank."}
@@ -375,12 +813,12 @@ const PracticePage = () => {
                   </div>
                 )}
 
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
                   <button
                     type="button"
                     onClick={handleSubmitAnswer}
                     disabled={!droppedWord || submitted}
-                    className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     Check Answer
                   </button>
@@ -388,7 +826,7 @@ const PracticePage = () => {
                     type="button"
                     onClick={handleNext}
                     disabled={!submitted && !droppedWord}
-                    className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
                   >
                     {!submitted && droppedWord ? "Check & Next" : "Next Challenge"}
                   </button>
@@ -396,12 +834,109 @@ const PracticePage = () => {
                     type="button"
                     onClick={() => setDroppedWord("")}
                     disabled={submitted}
-                    className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
                   >
                     Clear
                   </button>
                 </div>
-              </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+                  <p className="text-xs text-slate-500">
+                    Hear the sentence, then repeat it using your microphone.
+                  </p>
+                  <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-base font-semibold text-amber-900 sm:text-lg">
+                      {voiceSentence || "Loading sentence..."}
+                    </p>
+                    <p className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900 sm:text-base">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-cyan-700">
+                        Translation{voiceTranslationTarget ? ` (${voiceTranslationTarget})` : ""}
+                      </span>
+                      <span className="mt-1 block">
+                        {voiceTranslationLoading
+                          ? "Translating..."
+                          : voiceTranslation || "No translation available."}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={playPronunciation}
+                      disabled={!speechVoicesReady}
+                      className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {speechVoicesReady ? "Hear pronunciation" : "Loading native voice..."}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startVoiceRecognition}
+                      disabled={!voiceSentence || voiceListening || !voiceSupported}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      {voiceListening ? "Listening..." : "Record & Verify"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadNextVoiceSentence}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:col-span-2 lg:col-span-1"
+                    >
+                      Next sentence
+                    </button>
+                  </div>
+                  {voiceAttemptReady && !voiceListening && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={submitVoiceAttempt}
+                        className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+                      >
+                        Submit recording
+                      </button>
+                      <button
+                        type="button"
+                        onClick={startVoiceRecognition}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Re-record
+                      </button>
+                    </div>
+                  )}
+
+                  {!voiceSupported && (
+                    <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                      Your browser does not support speech recognition/synthesis.
+                    </div>
+                  )}
+
+                  {voiceTranscript && (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">You said</p>
+                      <p className="mt-1">{voiceTranscript}</p>
+                    </div>
+                  )}
+
+                  {voiceScore !== null && voiceAttemptSubmitted && (
+                    <div
+                      className={`mt-3 rounded-xl px-3 py-2 text-sm font-semibold ${
+                        voiceScore >= requiredSpeechMatchThreshold(voiceSentence)
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-rose-50 text-rose-700"
+                      }`}
+                    >
+                      Match score: {Math.round(voiceScore * 100)}%
+                    </div>
+                  )}
+
+                  {voiceResult && (
+                    <div className="mt-3 rounded-xl bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+                      {voiceResult}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <aside className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -466,6 +1001,21 @@ const PracticePage = () => {
             >
               ×
             </button>
+            <div className="pointer-events-none absolute left-[12%] top-[16%] text-amber-800/80">
+              <ParkRoundedIcon sx={{ fontSize: 34 }} />
+            </div>
+            <div className="pointer-events-none absolute right-[10%] top-[26%] text-amber-800/80">
+              <TerrainRoundedIcon sx={{ fontSize: 34 }} />
+            </div>
+            <div className="pointer-events-none absolute left-[16%] bottom-[22%] text-amber-900/80">
+              <PetsRoundedIcon sx={{ fontSize: 32 }} />
+            </div>
+            <div className="pointer-events-none absolute right-[14%] bottom-[20%] text-amber-900/80">
+              <DirectionsBoatFilledRoundedIcon sx={{ fontSize: 34 }} />
+            </div>
+            <div className="pointer-events-none absolute left-[48%] top-[54%] text-amber-700/70">
+              <AutoAwesomeRoundedIcon sx={{ fontSize: 22 }} />
+            </div>
             <div className="relative h-[88dvh] w-[94vw] max-w-[520px] overflow-hidden rounded-3xl border-4 border-amber-900/60 shadow-2xl">
               <img
                 src={TREASURE_MAP_IMAGE_URL}
@@ -526,20 +1076,28 @@ const PracticePage = () => {
                       lineHeight: "22px",
                       textAlign: "center",
                     }}
-                  >
-                    {isTreasure ? "🏆" : index + 1}
-                  </div>
-                );
-              })}
-              <div
-                className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-[30px] transition-all duration-700 ${
-                  animationResult === "success" ? "scale-110" : "animate-pulse"
-                }`}
-                style={{ left: `${animatedPoint.x}%`, top: `${animatedPoint.y}%` }}
-                aria-hidden="true"
-              >
-                {animationToMilestone >= TREASURE_MILESTONES ? "💰" : "🧭"}
-              </div>
+                >
+                  {isTreasure ? (
+                    <WorkspacePremiumRoundedIcon sx={{ fontSize: 16, color: "#78350f" }} />
+                  ) : (
+                    index + 1
+                  )}
+                </div>
+              );
+            })}
+            <div
+              className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-[30px] transition-all duration-700 ${
+                animationResult === "success" ? "scale-110" : "animate-pulse"
+              }`}
+              style={{ left: `${animatedPoint.x}%`, top: `${animatedPoint.y}%` }}
+              aria-hidden="true"
+            >
+              {animationToMilestone >= TREASURE_MILESTONES ? (
+                <DiamondRoundedIcon sx={{ fontSize: 34, color: "#f59e0b" }} />
+              ) : (
+                <ExploreRoundedIcon sx={{ fontSize: 34, color: "#0f172a" }} />
+              )}
+            </div>
               <div className="absolute bottom-3 left-3 right-3 rounded-xl border border-amber-300/70 bg-white/85 px-3 py-2 text-center text-xs font-medium text-amber-900 shadow-md">
                 Progress: {animationFromMilestone} → {animationToMilestone} / {TREASURE_MILESTONES}
               </div>

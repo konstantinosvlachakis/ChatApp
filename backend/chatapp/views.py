@@ -46,7 +46,10 @@ PRACTICE_POINTS_CORRECT = 10
 PRACTICE_POINTS_WRONG = 1
 PRACTICE_GENERATOR_ENABLED = os.environ.get("PRACTICE_GENERATOR_ENABLED", "false").lower() == "true"
 PRACTICE_GENERATOR_PROVIDER = os.environ.get("PRACTICE_GENERATOR_PROVIDER", "huggingface").strip().lower()
+PRACTICE_GENERATOR_MODE = os.environ.get("PRACTICE_GENERATOR_MODE", "hybrid").strip().lower()
 PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(os.environ.get("PRACTICE_GENERATOR_TIMEOUT_SECONDS", "12"))
+PRACTICE_DAILY_LIBRARY_SIZE = int(os.environ.get("PRACTICE_DAILY_LIBRARY_SIZE", "20"))
+PRACTICE_DAILY_LIBRARY_MIN_READY = int(os.environ.get("PRACTICE_DAILY_LIBRARY_MIN_READY", "8"))
 
 PRACTICE_LIBRARY = {
     "english": {
@@ -127,6 +130,26 @@ PRACTICE_LIBRARY = {
             {"sentence": "Μέχρι του χρόνου, θα έχουμε ___ το μάθημα.", "answer": "ολοκληρώσει", "options": ["ολοκληρώνω", "ολοκλήρωσα", "ολοκληρώσει", "ολοκληρώνει"], "hint": "Συντελεσμένος μέλλοντας."},
             {"sentence": "Πρότεινε να ___ νωρίτερα.", "answer": "έρθει", "options": ["έρχεται", "ήρθε", "έρθει", "ερχόταν"], "hint": "Υποτακτική."},
             {"sentence": "Η αναφορά ___ πριν την προθεσμία.", "answer": "στάλθηκε", "options": ["στέλνεται", "έστειλε", "στάλθηκε", "στείλει"], "hint": "Παθητική φωνή, αόριστος."},
+        ],
+    },
+    "russian": {
+        1: [
+            {"sentence": "Я ___ в школу каждый день.", "answer": "хожу", "options": ["хожу", "ходит", "пошёл", "идти"], "hint": "Настоящее время, 1-е лицо."},
+            {"sentence": "Она ___ кофе утром.", "answer": "пьёт", "options": ["пью", "пьёт", "пила", "пить"], "hint": "Настоящее время, 3-е лицо."},
+            {"sentence": "Мы ___ в Афинах.", "answer": "живём", "options": ["живу", "живёт", "живём", "жил"], "hint": "Настоящее время, множественное число."},
+            {"sentence": "Они ___ футбол в воскресенье.", "answer": "играют", "options": ["играю", "играет", "играют", "играл"], "hint": "Настоящее время, 3-е лицо мн.ч."},
+        ],
+        2: [
+            {"sentence": "Вчера он ___ на рынок.", "answer": "пошёл", "options": ["идёт", "пошёл", "идти", "ходил"], "hint": "Прошедшее время."},
+            {"sentence": "Сейчас я ___ ужин.", "answer": "готовлю", "options": ["готовлю", "готовил", "готовит", "готовить"], "hint": "Действие сейчас."},
+            {"sentence": "Мы уже ___ домашнее задание.", "answer": "сделали", "options": ["делаем", "сделали", "сделать", "делал"], "hint": "Завершённое действие."},
+            {"sentence": "Когда ты позвонил, она ___ .", "answer": "спала", "options": ["спит", "спала", "спать", "уснёт"], "hint": "Длительное действие в прошлом."},
+        ],
+        3: [
+            {"sentence": "Если бы у меня было больше времени, я бы ___ русский.", "answer": "практиковал", "options": ["практикую", "практиковал", "практиковать", "практиковал бы"], "hint": "Условная конструкция."},
+            {"sentence": "К следующему году мы ___ курс.", "answer": "закончим", "options": ["заканчиваем", "закончим", "закончили", "закончить"], "hint": "Будущее действие."},
+            {"sentence": "Учитель попросил, чтобы он ___ раньше.", "answer": "пришёл", "options": ["приходит", "пришёл", "прийти", "приходил"], "hint": "Прошедшая форма в придаточном."},
+            {"sentence": "Отчёт ___ до дедлайна.", "answer": "был отправлен", "options": ["был отправлен", "отправляет", "отправил", "отправить"], "hint": "Страдательный залог."},
         ],
     },
 }
@@ -1517,21 +1540,101 @@ def get_generated_answer(user_id, challenge_id):
     return normalize_option_value(cached.get("answer")), (cached.get("language") or "").strip().lower()
 
 
+def daily_library_date_key():
+    return timezone.now().strftime("%Y%m%d")
+
+
+def daily_library_cache_key(language, bucket):
+    return f"practice:daily_library:v1:date:{daily_library_date_key()}:lang:{language}:bucket:{bucket}"
+
+
+def get_or_build_daily_library(language, level, bucket):
+    cache_key = daily_library_cache_key(language, bucket)
+    cached = cache.get(cache_key)
+    pool = cached if isinstance(cached, list) else []
+
+    unique_sentences = {
+        normalize_option_value(item.get("sentence"))
+        for item in pool
+        if isinstance(item, dict) and item.get("sentence")
+    }
+    target_size = max(PRACTICE_DAILY_LIBRARY_SIZE, PRACTICE_DAILY_LIBRARY_MIN_READY)
+    needs_refill = len(pool) < PRACTICE_DAILY_LIBRARY_MIN_READY
+
+    if needs_refill:
+        missing = max(0, target_size - len(pool))
+        max_attempts = max(6, missing * 4)
+        attempts = 0
+        while len(pool) < target_size and attempts < max_attempts:
+            attempts += 1
+            generated = fetch_generated_challenge(language, level, bucket)
+            if not generated:
+                continue
+
+            sentence_key = normalize_option_value(generated.get("sentence"))
+            if not sentence_key or sentence_key in unique_sentences:
+                continue
+
+            unique_sentences.add(sentence_key)
+            pool.append(
+                {
+                    "sentence": generated.get("sentence", ""),
+                    "answer": generated.get("answer", ""),
+                    "hint": generated.get("hint", ""),
+                    "options": list(generated.get("options") or []),
+                    "difficulty_bucket": bucket,
+                    "language": language,
+                    "source": "generator_daily",
+                }
+            )
+
+        if pool:
+            # Keep for ~36h so it survives day boundaries and cache jitter.
+            cache.set(cache_key, pool, timeout=60 * 60 * 36)
+
+    return pool
+
+
 def build_challenge(language, level, user_id):
     bucket = practice_bucket_for_level(level)
-    generated = fetch_generated_challenge(language, level, bucket)
-    if generated:
-        challenge_id = f"gen:{uuid.uuid4().hex[:16]}"
-        store_generated_answer(user_id, challenge_id, generated["answer"], language)
-        return {
-            "id": challenge_id,
-            "sentence_parts": split_sentence_parts(generated["sentence"]),
-            "options": generated["options"],
-            "hint": generated.get("hint", ""),
-            "difficulty_bucket": generated.get("difficulty_bucket", bucket),
-            "language": language,
-            "source": "generator",
-        }
+    if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"daily", "hybrid"}:
+        daily_pool = get_or_build_daily_library(language, level, bucket)
+        if daily_pool:
+            index = random.randrange(len(daily_pool))
+            template = daily_pool[index]
+            options = list(template.get("options") or [])
+            random.shuffle(options)
+            challenge_id = f"dailygen:{daily_library_date_key()}:{language}:{bucket}:{index}"
+            store_generated_answer(
+                user_id,
+                challenge_id,
+                template.get("answer", ""),
+                language,
+            )
+            return {
+                "id": challenge_id,
+                "sentence_parts": split_sentence_parts(template.get("sentence", "")),
+                "options": options,
+                "hint": template.get("hint", ""),
+                "difficulty_bucket": template.get("difficulty_bucket", bucket),
+                "language": language,
+                "source": "generator_daily",
+            }
+
+    if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"realtime", "hybrid"}:
+        generated = fetch_generated_challenge(language, level, bucket)
+        if generated:
+            challenge_id = f"gen:{uuid.uuid4().hex[:16]}"
+            store_generated_answer(user_id, challenge_id, generated["answer"], language)
+            return {
+                "id": challenge_id,
+                "sentence_parts": split_sentence_parts(generated["sentence"]),
+                "options": generated["options"],
+                "hint": generated.get("hint", ""),
+                "difficulty_bucket": generated.get("difficulty_bucket", bucket),
+                "language": language,
+                "source": "generator",
+            }
 
     challenges = PRACTICE_LIBRARY.get(language, PRACTICE_LIBRARY["english"]).get(bucket, [])
     if not challenges:
@@ -1555,8 +1658,27 @@ def build_challenge(language, level, user_id):
 
 def get_challenge_answer(challenge_id, user_id):
     challenge_key = str(challenge_id or "")
-    if challenge_key.startswith("gen:"):
-        return get_generated_answer(user_id, challenge_key)
+    if challenge_key.startswith("gen:") or challenge_key.startswith("dailygen:"):
+        cached_answer = get_generated_answer(user_id, challenge_key)
+        if cached_answer[0]:
+            return cached_answer
+        if challenge_key.startswith("dailygen:"):
+            try:
+                _, day_key, language_key, bucket_raw, index_raw = challenge_key.split(":")
+                bucket = int(bucket_raw)
+                index = int(index_raw)
+            except (ValueError, AttributeError):
+                return None, None
+
+            cache_key = (
+                f"practice:daily_library:v1:date:{day_key}:lang:{language_key}:bucket:{bucket}"
+            )
+            pool = cache.get(cache_key) or []
+            if 0 <= index < len(pool):
+                entry = pool[index] or {}
+                answer = normalize_option_value(entry.get("answer"))
+                if answer:
+                    return answer, (language_key or "").strip().lower()
 
     try:
         language, bucket_raw, index_raw = challenge_key.split(":")
