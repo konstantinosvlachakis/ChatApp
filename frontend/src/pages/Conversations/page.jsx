@@ -1,13 +1,10 @@
 import { useCallback, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import Sidebar from "./features/Sidebar";
 import ChatRoomWrapper from "./features/ChatRoomWrapper";
-import IconButton from "@mui/material/IconButton";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const ConversationsPage = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [typingByConversation, setTypingByConversation] = useState({});
   const activeConversationId = id ? Number(id) : null;
   const hasSelectedConversation = Number.isFinite(activeConversationId);
@@ -39,16 +36,6 @@ const ConversationsPage = () => {
       >
         {hasSelectedConversation ? (
           <div className="flex h-full min-h-0 flex-col">
-            <div className="absolute right-2 top-2 z-20 md:hidden">
-              <IconButton
-                size="small"
-                color="primary"
-                aria-label="Back to conversations"
-                onClick={() => navigate("/conversations")}
-              >
-                <ArrowBackIcon fontSize="small" />
-              </IconButton>
-            </div>
             <ChatRoomWrapper
               onConversationTypingChange={handleConversationTypingChange}
             />

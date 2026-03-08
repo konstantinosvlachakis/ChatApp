@@ -115,6 +115,15 @@ const Layout = () => {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
     const onPointerDown = (event) => {
       if (!profileMenuRef.current) return;
       if (!profileMenuRef.current.contains(event.target)) {
@@ -324,73 +333,141 @@ const Layout = () => {
 
           {/* Mobile nav */}
           {mobileMenuOpen && (
-            <div className="mt-3 rounded-xl border border-white/15 bg-slate-800/95 p-2 md:hidden">
-              <Link
-                to="/community"
-                className={`block rounded-lg px-3 py-2 text-sm font-medium ${
-                  location.pathname === "/community"
-                    ? "bg-white text-blue-600 shadow"
-                    : "text-white hover:bg-white/10"
-                }`}
-              >
-                People
-              </Link>
-              <Link
-                to="/conversations"
-                className={`mt-1 block rounded-lg px-3 py-2 text-sm font-medium ${
-                  location.pathname.startsWith("/conversations")
-                    ? "bg-white text-blue-600 shadow"
-                    : "text-white hover:bg-white/10"
-                }`}
-              >
-                Conversations
-                {unreadConversationCount > 0 && (
-                  <span className="ml-2 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                    {unreadConversationCount}
-                  </span>
-                )}
-              </Link>
-              <Link
-                to="/profile"
-                className={`mt-1 block rounded-lg px-3 py-2 text-sm font-medium ${
-                  location.pathname === "/profile"
-                    ? "bg-white text-blue-600 shadow"
-                    : "text-white hover:bg-white/10"
-                }`}
-              >
-                Profile
-              </Link>
-              <Link
-                to="/settings"
-                className={`mt-1 block rounded-lg px-3 py-2 text-sm font-medium ${
-                  location.pathname === "/settings"
-                    ? "bg-white text-blue-600 shadow"
-                    : "text-white hover:bg-white/10"
-                }`}
-              >
-                Settings
-              </Link>
+            <div className="fixed inset-0 z-40 md:hidden">
               <button
                 type="button"
-                onClick={handleLogout}
-                className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-4 w-4"
-                  aria-hidden="true"
+                className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close menu backdrop"
+              />
+              <aside className="absolute right-0 top-0 h-full w-[min(72vw,300px)] border-l border-white/15 bg-gradient-to-b from-slate-800 to-slate-900 p-3.5 shadow-2xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <img
+                      src={avatarUrl}
+                      alt="Profile avatar"
+                      className="h-10 w-10 rounded-full border border-white/25 object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">
+                        {user?.username || "Account"}
+                      </p>
+                      <p className="text-xs text-white/60">Navigation</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-label="Close menu"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                      aria-hidden="true"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-0.5">
+                  <Link
+                    to="/community"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/community"
+                        ? "text-sky-300"
+                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    People
+                  </Link>
+                  <Link
+                    to="/conversations"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname.startsWith("/conversations")
+                        ? "text-sky-300"
+                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    <span>Conversations</span>
+                    {unreadConversationCount > 0 && (
+                      <span className="ml-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">
+                        {unreadConversationCount}
+                      </span>
+                    )}
+                  </Link>
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/profile"
+                        ? "text-sky-300"
+                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    Profile
+                  </Link>
+                  <Link
+                    to="/settings"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/settings"
+                        ? "text-sky-300"
+                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                    }`}
+                  >
+                    Settings
+                  </Link>
+                </div>
+
+                <div className="mt-4 border-t border-white/10 pt-4">
+                  <Link
+                    to="/privacy-policy"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block rounded-lg px-3 py-2 text-sm text-white/80 transition hover:bg-white/10 hover:text-white"
+                  >
+                    Privacy Policy
+                  </Link>
+                  <Link
+                    to="/terms-and-conditions"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="mt-1 block rounded-lg px-3 py-2 text-sm text-white/80 transition hover:bg-white/10 hover:text-white"
+                  >
+                    Terms & Conditions
+                  </Link>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-5 inline-flex min-h-[46px] w-full items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-600"
                 >
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-                Sign out
-              </button>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  Sign out
+                </button>
+              </aside>
             </div>
           )}
         </nav>

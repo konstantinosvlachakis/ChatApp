@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../../context/UserContext";
 import { BASE_URL_IMG } from "../../../constants/constants";
@@ -39,19 +39,35 @@ function ConversationList({
   const navigate = useNavigate();
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
+  const [swipedConversationId, setSwipedConversationId] = useState(null);
+  const [swipeOffsetByConversation, setSwipeOffsetByConversation] = useState({});
+  const [conversationPendingDelete, setConversationPendingDelete] = useState(null);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false
+  );
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
   const [presenceTypingByConversation, setPresenceTypingByConversation] =
     useState({});
+  const touchStateRef = useRef({
+    id: null,
+    startX: 0,
+    startY: 0,
+    isSwiping: false,
+    currentOffset: 0,
+  });
 
   const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
 
 
   // Handles right-click event
   const handleRightClick = (e, conversationId) => {
+    if (isMobile) return;
     e.preventDefault(); // Prevent default right-click menu
     setRightClickedConversation(
       rightClickedConversation === conversationId ? null : conversationId
     );
+    setSwipedConversationId(null);
+    setSwipeOffsetByConversation({});
   };
 
   
@@ -75,6 +91,72 @@ function ConversationList({
   const handleDelete = (conversationId) => {
     deleteConversationMutation.mutate(conversationId);
     setRightClickedConversation(null);
+    setSwipedConversationId(null);
+    setSwipeOffsetByConversation({});
+    setConversationPendingDelete(null);
+  };
+
+  const requestDeleteConversation = (conversationId, username) => {
+    setConversationPendingDelete({
+      id: conversationId,
+      username: username || "this conversation",
+    });
+  };
+
+  const handleTouchStart = (event, conversationId) => {
+    if (!isMobile) return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    touchStateRef.current = {
+      id: conversationId,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      isSwiping: false,
+      currentOffset: swipedConversationId === conversationId ? -80 : 0,
+    };
+  };
+
+  const handleTouchMove = (event, conversationId) => {
+    if (!isMobile || touchStateRef.current.id !== conversationId) return;
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - touchStateRef.current.startX;
+    const deltaY = touch.clientY - touchStateRef.current.startY;
+
+    if (!touchStateRef.current.isSwiping) {
+      if (Math.abs(deltaX) < 10 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+      touchStateRef.current.isSwiping = true;
+    }
+    event.preventDefault();
+    const nextOffset = Math.max(-80, Math.min(0, deltaX));
+    touchStateRef.current.currentOffset = nextOffset;
+    setSwipeOffsetByConversation((prev) => ({
+      ...prev,
+      [conversationId]: nextOffset,
+    }));
+  };
+
+  const handleTouchEnd = () => {
+    const { id, currentOffset } = touchStateRef.current;
+    if (id != null) {
+      if (currentOffset <= -40) {
+        setSwipedConversationId(id);
+      } else {
+        setSwipedConversationId(null);
+      }
+      setSwipeOffsetByConversation((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+    touchStateRef.current = {
+      id: null,
+      startX: 0,
+      startY: 0,
+      isSwiping: false,
+      currentOffset: 0,
+    };
   };
 
   // Attach event listener to close delete button when clicking anywhere
@@ -83,13 +165,33 @@ function ConversationList({
       if (rightClickedConversation) {
         setRightClickedConversation(null);
       }
+      if (swipedConversationId) {
+        setSwipedConversationId(null);
+      }
+      setSwipeOffsetByConversation({});
     };
 
     document.addEventListener("click", onDocumentClick);
     return () => {
       document.removeEventListener("click", onDocumentClick);
     };
-  }, [rightClickedConversation]);
+  }, [rightClickedConversation, swipedConversationId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const onMediaChange = (event) => {
+      setIsMobile(event.matches);
+      if (!event.matches) {
+        setSwipedConversationId(null);
+        setSwipeOffsetByConversation({});
+      }
+    };
+    mediaQuery.addEventListener("change", onMediaChange);
+    return () => {
+      mediaQuery.removeEventListener("change", onMediaChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.username) return;
@@ -199,7 +301,7 @@ function ConversationList({
   }
 
   return (
-    <div className="">
+    <div>
       {conversations.map((conversation) => {
         const otherUser =
           conversation.sender?.username === user?.username
@@ -219,22 +321,57 @@ function ConversationList({
             });
         const isLastMessageFromCurrentUser =
           conversation.last_message?.sender?.id === user?.user_id;
+        const isDesktopDeleteVisible = rightClickedConversation === conversation.id;
+        const isMobileDeleteVisible = swipedConversationId === conversation.id;
+        const isDeleteVisible = isDesktopDeleteVisible || isMobileDeleteVisible;
+        const liveOffset = swipeOffsetByConversation[conversation.id];
+        const translateX = typeof liveOffset === "number"
+          ? liveOffset
+          : isDeleteVisible
+            ? -80
+            : 0;
+        const isDragging = typeof liveOffset === "number";
 
         return (
           <div key={conversation.id} className="relative">
+            <div
+              className={`absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-rose-500 text-white transition-all duration-200 ${
+                isDeleteVisible ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  requestDeleteConversation(conversation.id, otherUser?.username);
+                }}
+                className="h-full w-full text-xs font-semibold"
+              >
+                Delete
+              </button>
+            </div>
             {/* Conversation Container */}
             <div
-              className={`flex items-center gap-3 p-2 sm:p-3 cursor-pointer transition-all duration-300 ${
-                rightClickedConversation === conversation.id
-                  ? "w-[80%]"
-                  : "w-full"
+              className={`relative z-10 flex w-full cursor-pointer items-center gap-3 p-2 sm:p-3 ${
+                isDragging ? "transition-none" : "transition-transform duration-200 ease-out"
               }`}
+              style={{ transform: `translateX(${translateX}px)` }}
               onContextMenu={(e) => handleRightClick(e, conversation.id)}
+              onTouchStart={(e) => handleTouchStart(e, conversation.id)}
+              onTouchMove={(e) => handleTouchMove(e, conversation.id)}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
               onClick={() => {
-                if (rightClickedConversation !== conversation.id) {
-                  onSelectConversation?.(conversation);
-                  navigate(`/conversations/${conversation.id}`);
+                if (isMobileDeleteVisible) {
+                  setSwipedConversationId(null);
+                  return;
                 }
+                if (isDesktopDeleteVisible) {
+                  setRightClickedConversation(null);
+                  return;
+                }
+                onSelectConversation?.(conversation);
+                navigate(`/conversations/${conversation.id}`);
               }}
             >
               <div className="relative mr-3">
@@ -277,33 +414,40 @@ function ConversationList({
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleDelete(conversation.id);
-                }}
-                className="ml-2 rounded-md border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 md:hidden"
-                aria-label={`Delete conversation with ${otherUser?.username || "participant"}`}
-              >
-                Delete
-              </button>
-            </div>
-
-            {/* Delete Button (Slides in from the right) */}
-            <div
-              className={`absolute right-0 top-0 bottom-0 flex items-center justify-center w-20 bg-red-500 text-white font-bold text-sm cursor-pointer transition-all duration-300 ${
-                rightClickedConversation === conversation.id
-                  ? "opacity-100 w-20"
-                  : "opacity-0 w-0"
-              }`}
-              onClick={() => handleDelete(conversation.id)}
-            >
-              Delete
             </div>
           </div>
         );
       })}
+      {conversationPendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Delete conversation?</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove your conversation with{" "}
+              <span className="font-semibold text-slate-800">
+                {conversationPendingDelete.username}
+              </span>
+              .
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConversationPendingDelete(null)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(conversationPendingDelete.id)}
+                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

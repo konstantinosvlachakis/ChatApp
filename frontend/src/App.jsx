@@ -102,8 +102,6 @@ function App() {
               <Route path="/" element={<LoginPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-              <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
 
               {/* Protected Routes Wrapped in Layout */}
               <Route element={<Layout />}>
@@ -162,6 +160,14 @@ function App() {
                       <ConversationsPage />
                     </Suspense>
                   }
+                />
+                <Route
+                  path="/privacy-policy"
+                  element={<PrivacyPolicyPage />}
+                />
+                <Route
+                  path="/terms-and-conditions"
+                  element={<TermsAndConditionsPage />}
                 />
                 
               </Route>
