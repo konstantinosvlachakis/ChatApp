@@ -181,11 +181,13 @@ const ProfilePage = () => {
       <div className="mx-auto max-w-5xl 2xl:max-w-6xl">
         {/* Header */}
         <div className="flex flex-col items-center gap-4 rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] backdrop-blur sm:p-6 md:p-8">
-          <img
-            src={imageUrl}
-            alt="Profile"
-            className="h-24 w-24 rounded-full border-4 border-sky-200 object-cover shadow-sm sm:h-28 sm:w-28 md:h-32 md:w-32"
-          />
+          <div className="group h-28 w-28 overflow-hidden rounded-full border-4 border-sky-200 shadow-sm sm:h-32 sm:w-32 md:h-36 md:w-36">
+            <img
+              src={imageUrl}
+              alt="Profile"
+              className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
+            />
+          </div>
           <h1 className="text-center text-xl font-bold text-slate-800 sm:text-2xl">
             {user.username}, {user.age}
           </h1>

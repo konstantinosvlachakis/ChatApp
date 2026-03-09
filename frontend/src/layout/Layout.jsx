@@ -281,7 +281,7 @@ const Layout = () => {
                   <img
                     src={avatarUrl}
                     alt="Profile avatar"
-                    className="h-6 w-6 rounded-full border border-white/50 object-cover"
+                    className="h-7 w-7 rounded-full border border-white/50 object-cover sm:h-8 sm:w-8"
                   />
                   <span className="max-w-[120px] truncate">{user?.username || "Account"}</span>
                   <svg
