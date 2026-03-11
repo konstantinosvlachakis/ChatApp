@@ -4,13 +4,25 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 
-const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
-  const [message, setMessage] = useState("");
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+const MessageInput = ({
+  onSendMessage,
+  onTyping,
+  onStopTyping,
+  conversationId,
+  connectionStatus = "connected",
+}) => {
+  const draftStorageKey = conversationId
+    ? `chat:draft:${conversationId}`
+    : "chat:draft:global";
+  const [message, setMessage] = useState(() => localStorage.getItem(draftStorageKey) || "");
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [attachedFile, setAttachedFile] = useState(null);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [composerError, setComposerError] = useState("");
 
   const emojiPickerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -27,6 +39,18 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   useEffect(() => {
     onStopTypingRef.current = onStopTyping;
   }, [onStopTyping]);
+
+  useEffect(() => {
+    setMessage(localStorage.getItem(draftStorageKey) || "");
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (message.trim()) {
+      localStorage.setItem(draftStorageKey, message);
+      return;
+    }
+    localStorage.removeItem(draftStorageKey);
+  }, [draftStorageKey, message]);
 
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
@@ -48,6 +72,13 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
   const handleFileAttach = (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    setComposerError("");
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setComposerError("Files must be smaller than 25 MB.");
+      fileInputRef.current.value = null;
+      return;
+    }
 
     if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
       const imageUrl = URL.createObjectURL(file);
@@ -59,15 +90,16 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       setAudioBlob(file);
       setPreviewImage(null);
     } else {
-      alert("Please select a valid image, video, or audio file.");
+      setComposerError("Select an image, video, or audio file.");
     }
     fileInputRef.current.value = null;
   };
 
   // ---------------- Audio Recording ----------------
   const handleStartRecording = async () => {
+    setComposerError("");
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Audio recording not supported in this browser.");
+      setComposerError("Audio recording is not supported in this browser.");
       return;
     }
 
@@ -89,7 +121,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       setIsRecording(true);
     } catch (err) {
       console.error("Microphone access error:", err);
-      alert("Unable to access microphone.");
+      setComposerError("Unable to access the microphone.");
     }
   };
 
@@ -102,8 +134,9 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
 
   // ---------------- Send Message ----------------
   const handleSend = () => {
+    setComposerError("");
     if (!message.trim() && !attachedFile && !audioBlob) {
-      alert("Please enter a message or attach a file.");
+      setComposerError("Write a message or attach a file first.");
       return;
     }
 
@@ -128,6 +161,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       isTypingRef.current = false;
     }
     setMessage("");
+    localStorage.removeItem(draftStorageKey);
     setPreviewImage(null);
     setAttachedFile(null);
     setAudioBlob(null);
@@ -135,6 +169,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
 
   const handleInputChange = (e) => {
     const value = e.target.value;
+    setComposerError("");
     setMessage(value);
 
     if (!value.trim()) {
@@ -269,6 +304,23 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
               <SettingsVoiceIcon fontSize="small" />
             </button>
           </div>
+
+          {(composerError || connectionStatus !== "connected") && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              {composerError && (
+                <span className="rounded-full bg-rose-50 px-2 py-1 font-medium text-rose-600">
+                  {composerError}
+                </span>
+              )}
+              {connectionStatus !== "connected" && (
+                <span className="rounded-full bg-amber-50 px-2 py-1 font-medium text-amber-700">
+                  {connectionStatus === "reconnecting"
+                    ? "Chat is reconnecting. Draft is saved."
+                    : "Chat is offline. Draft is saved."}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Send Button */}

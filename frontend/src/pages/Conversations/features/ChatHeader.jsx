@@ -18,6 +18,7 @@ const ChatHeader = ({
   onStartVideoCall,
   callState = "idle",
   callDisabled = false,
+  socketStatus = "connecting",
 }) => {
   const navigate = useNavigate();
   const { user } = useUser();
@@ -27,6 +28,19 @@ const ChatHeader = ({
       : conversation.sender;
   const normalizedImageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
   const isInCallFlow = callState !== "idle";
+  const isOtherUserOnline = Boolean(otherUser?.is_online);
+  const connectionToneClass =
+    socketStatus === "connected"
+      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+      : socketStatus === "reconnecting"
+        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+        : "bg-slate-100 text-slate-500 ring-1 ring-slate-200";
+  const connectionLabel =
+    socketStatus === "connected"
+      ? "Live"
+      : socketStatus === "reconnecting"
+        ? "Reconnecting"
+        : "Offline";
 
   return (
     <div className="mx-2 mt-2 flex items-center rounded-2xl border border-slate-200/80 bg-white/90 px-2.5 py-2.5 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:mx-4 sm:px-4 sm:py-3">
@@ -55,7 +69,16 @@ const ChatHeader = ({
         >
           {otherUser.username}
         </h2>
-        <p className="text-xs font-medium text-slate-400">Conversation</p>
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <p className="text-xs font-medium text-slate-400">
+            {isOtherUserOnline ? "Online now" : "Conversation"}
+          </p>
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${connectionToneClass}`}
+          >
+            {connectionLabel}
+          </span>
+        </div>
       </div>
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <button

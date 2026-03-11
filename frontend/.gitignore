@@ -7,6 +7,9 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
+/.playwright-browsers
 
 # production
 /build
@@ -29,6 +32,7 @@
 # temporary files
 *.tmp
 *.temp
+!docs/screenshots/*.png
 
 # logs from npm/yarn
 npm-debug.log*

@@ -32,6 +32,9 @@
     "build": "react-scripts build",
     "postinstall": "npm run build",
     "test": "react-scripts test",
+    "e2e": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright test",
+    "e2e:ui": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright test --ui",
+    "e2e:screenshots": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright test tests/e2e/public-auth.spec.ts",
     "eject": "react-scripts eject",
     "run-both-dev": "concurrently \"npm start\" \"cd ../backend && python manage.py runserver\" \"redis-server\""
   },
@@ -54,6 +57,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "install": "^0.13.0",

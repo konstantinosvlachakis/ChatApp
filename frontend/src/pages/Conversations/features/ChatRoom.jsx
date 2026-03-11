@@ -15,6 +15,7 @@ const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
+const SOCKET_RECONNECT_DELAYS_MS = [800, 1500, 3000, 5000];
 
 const getIceServers = () => {
   const rawValue = process.env.REACT_APP_WEBRTC_ICE_SERVERS;
@@ -55,6 +56,7 @@ const resolveAvatarUrl = (path) => {
 const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [socketStatus, setSocketStatus] = useState("connecting");
   const [callState, setCallState] = useState("idle");
   const [callMode, setCallMode] = useState("audio");
   const [callError, setCallError] = useState("");
@@ -67,6 +69,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
   const socket = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const reconnectAttemptRef = useRef(0);
+  const isSocketUnmountingRef = useRef(false);
   const messagesContainerRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -161,10 +166,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const sendSocketEvent = useCallback((payload) => {
     if (!socket.current || socket.current.readyState !== WebSocket.OPEN) {
+      setSocketStatus((current) => (current === "connected" ? "reconnecting" : current));
       return false;
     }
     socket.current.send(JSON.stringify(payload));
     return true;
+  }, []);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (!reconnectTimeoutRef.current) return;
+    window.clearTimeout(reconnectTimeoutRef.current);
+    reconnectTimeoutRef.current = null;
   }, []);
 
   const getElapsedCallSeconds = useCallback(() => {
@@ -603,134 +615,165 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
     const query = token ? `?token=${encodeURIComponent(token)}` : "";
     const url = `${wsBaseUrl}/ws/socket-server/${conversation.id}/${query}`;
-    socket.current = new WebSocket(url);
+    isSocketUnmountingRef.current = false;
+    clearReconnectTimer();
 
-    socket.current.onopen = () => console.log("WebSocket connected.");
+    const connectSocket = () => {
+      if (isSocketUnmountingRef.current) return;
+      setSocketStatus(reconnectAttemptRef.current > 0 ? "reconnecting" : "connecting");
 
-    socket.current.onmessage = async (e) => {
-      try {
-        const data = JSON.parse(e.data);
+      const nextSocket = new WebSocket(url);
+      socket.current = nextSocket;
 
-        switch (data.type) {
-          case "chat":
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: data.id,
-                text: data.message,
-                sender: { id: data.senderId, username: data.sender },
-                attachmentUrl: data.attachmentUrl || null,
-                timestamp: new Date().toISOString(),
-                translated_text: null,
-                translated_source_language: null,
-                can_translate: Boolean((data.message || "").trim()),
-                reactions: [],
-                current_user_reaction: null,
-              },
-            ]);
-            requestAnimationFrame(() => scrollToBottom("smooth"));
-            if (data.senderId !== user.user_id) {
-              markConversationRead(conversation.id).catch(() => {});
-            }
-            invalidateConversationHistoryCache(conversation.id);
-            queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
-            break;
+      nextSocket.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setSocketStatus("connected");
+      };
 
-          case "deleteMessage":
-            setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
-            invalidateConversationHistoryCache(conversation.id);
-            break;
+      nextSocket.onmessage = async (e) => {
+        try {
+          const data = JSON.parse(e.data);
 
-          case "message_reaction":
-            if (data.message?.id) {
-              setMessages((prev) =>
-                prev.map((m) => (m.id === data.message.id ? { ...m, ...data.message } : m))
-              );
-            }
-            invalidateConversationHistoryCache(conversation.id);
-            break;
-
-          case "user_typing":
-            setIsOtherUserTyping(true);
-            onConversationTypingChange?.(conversation.id, true);
-            break;
-
-          case "user_stopped_typing":
-            setIsOtherUserTyping(false);
-            onConversationTypingChange?.(conversation.id, false);
-            break;
-
-          case "webrtc_offer":
-            if (callStateRef.current !== "idle") {
-              sendSocketEvent({ type: "call_reject", reason: "User is busy." });
+          switch (data.type) {
+            case "chat":
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: data.id,
+                  text: data.message,
+                  sender: { id: data.senderId, username: data.sender },
+                  attachmentUrl: data.attachmentUrl || null,
+                  timestamp: new Date().toISOString(),
+                  translated_text: null,
+                  translated_source_language: null,
+                  can_translate: Boolean((data.message || "").trim()),
+                  reactions: [],
+                  current_user_reaction: null,
+                },
+              ]);
+              requestAnimationFrame(() => scrollToBottom("smooth"));
+              if (data.senderId !== user.user_id) {
+                markConversationRead(conversation.id).catch(() => {});
+              }
+              invalidateConversationHistoryCache(conversation.id);
+              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
               break;
-            }
 
-            incomingOfferRef.current = data.sdp;
-            setCallMode(data.callMode === "video" ? "video" : "audio");
-            setCallState("incoming");
-            setCallError("");
-            break;
+            case "deleteMessage":
+              setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+              invalidateConversationHistoryCache(conversation.id);
+              break;
 
-          case "call_accept":
-            if (callStateRef.current === "calling") {
+            case "message_reaction":
+              if (data.message?.id) {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === data.message.id ? { ...m, ...data.message } : m))
+                );
+              }
+              invalidateConversationHistoryCache(conversation.id);
+              break;
+
+            case "user_typing":
+              setIsOtherUserTyping(true);
+              onConversationTypingChange?.(conversation.id, true);
+              break;
+
+            case "user_stopped_typing":
+              setIsOtherUserTyping(false);
+              onConversationTypingChange?.(conversation.id, false);
+              break;
+
+            case "webrtc_offer":
+              if (callStateRef.current !== "idle") {
+                sendSocketEvent({ type: "call_reject", reason: "User is busy." });
+                break;
+              }
+
+              incomingOfferRef.current = data.sdp;
+              setCallMode(data.callMode === "video" ? "video" : "audio");
+              setCallState("incoming");
+              setCallError("");
+              break;
+
+            case "call_accept":
+              if (callStateRef.current === "calling") {
+                setCallState("connecting");
+              }
+              break;
+
+            case "webrtc_answer":
+              if (!peerConnectionRef.current || !data.sdp) break;
+              await peerConnectionRef.current.setRemoteDescription(
+                new RTCSessionDescription(data.sdp)
+              );
+              await flushPendingIceCandidates();
               setCallState("connecting");
-            }
-            break;
+              break;
 
-          case "webrtc_answer":
-            if (!peerConnectionRef.current || !data.sdp) break;
-            await peerConnectionRef.current.setRemoteDescription(
-              new RTCSessionDescription(data.sdp)
-            );
-            await flushPendingIceCandidates();
-            setCallState("connecting");
-            break;
+            case "webrtc_ice_candidate":
+              if (!data.candidate) break;
+              if (
+                peerConnectionRef.current &&
+                peerConnectionRef.current.remoteDescription
+              ) {
+                await peerConnectionRef.current.addIceCandidate(
+                  new RTCIceCandidate(data.candidate)
+                );
+              } else {
+                pendingIceCandidatesRef.current.push(
+                  new RTCIceCandidate(data.candidate)
+                );
+              }
+              break;
 
-          case "webrtc_ice_candidate":
-            if (!data.candidate) break;
-            if (
-              peerConnectionRef.current &&
-              peerConnectionRef.current.remoteDescription
-            ) {
-              await peerConnectionRef.current.addIceCandidate(
-                new RTCIceCandidate(data.candidate)
+            case "call_reject":
+              setCallError(data.reason || "Call rejected.");
+              resetCallState();
+              break;
+
+            case "call_end":
+              setCallError("Call ended.");
+              appendCallSummary(
+                Number.isFinite(data.durationSeconds)
+                  ? data.durationSeconds
+                  : getElapsedCallSeconds(),
+                data.callMode || callModeRef.current
               );
-            } else {
-              pendingIceCandidatesRef.current.push(
-                new RTCIceCandidate(data.candidate)
-              );
-            }
-            break;
+              resetCallState();
+              break;
 
-          case "call_reject":
-            setCallError(data.reason || "Call rejected.");
-            resetCallState();
-            break;
-
-          case "call_end":
-            setCallError("Call ended.");
-            appendCallSummary(
-              Number.isFinite(data.durationSeconds)
-                ? data.durationSeconds
-                : getElapsedCallSeconds(),
-              data.callMode || callModeRef.current
-            );
-            resetCallState();
-            break;
-
-          default:
-            console.warn("Unknown message type:", data.type);
+            default:
+              console.warn("Unknown message type:", data.type);
+          }
+        } catch (err) {
+          console.error("Invalid WebSocket message:", e.data, err);
         }
-      } catch (err) {
-        console.error("Invalid WebSocket message:", e.data, err);
-      }
+      };
+
+      nextSocket.onclose = () => {
+        if (isSocketUnmountingRef.current) {
+          setSocketStatus("offline");
+          return;
+        }
+
+        setSocketStatus("reconnecting");
+        const delay =
+          SOCKET_RECONNECT_DELAYS_MS[
+            Math.min(reconnectAttemptRef.current, SOCKET_RECONNECT_DELAYS_MS.length - 1)
+          ];
+        reconnectAttemptRef.current += 1;
+        clearReconnectTimer();
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          connectSocket();
+        }, delay);
+      };
     };
 
-    socket.current.onclose = () =>
-      console.log("WebSocket disconnected for conversation:", conversation.id);
+    connectSocket();
 
     return () => {
+      isSocketUnmountingRef.current = true;
+      clearReconnectTimer();
       stopRinging();
       sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
       if (callStateRef.current !== "idle") {
@@ -742,9 +785,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       }
       cleanupCallResources();
       socket.current?.close();
+      socket.current = null;
+      setSocketStatus("offline");
       onConversationTypingChange?.(conversation.id, false);
     };
   }, [
+    clearReconnectTimer,
     cleanupCallResources,
     conversation?.id,
     flushPendingIceCandidates,
@@ -926,6 +972,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           onStartVideoCall={() => startCall("video")}
           callState={callState}
           callDisabled={!socket.current || socket.current.readyState !== WebSocket.OPEN}
+          socketStatus={socketStatus}
         />
       </div>
 
@@ -962,6 +1009,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       <div className="sticky bottom-0 z-20 flex-shrink-0 border-t bg-white">
         <MessageInput
+          conversationId={conversation.id}
+          connectionStatus={socketStatus}
           onSendMessage={handleSendMessage}
           onTyping={handleTyping}
           onStopTyping={handleStopTyping}
