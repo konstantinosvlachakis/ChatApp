@@ -319,29 +319,30 @@ function ConversationList({
   return (
     <div>
       {coachConversation && (
-        <div className="border-b border-slate-200/80 bg-gradient-to-r from-sky-50 via-white to-emerald-50 px-3 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
-            Practice Partner
+        <div className="border-b border-slate-200/80 bg-[linear-gradient(120deg,_rgba(240,249,255,0.96),_rgba(236,253,245,0.94)_58%,_rgba(255,251,235,0.96))] px-3 py-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
+            AI Studio
           </p>
           <button
             type="button"
             onClick={() => navigate(`/conversations/${COACH_CONVERSATION_ID}`)}
-            className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left shadow-sm transition ${
+            className={`flex w-full items-center gap-3 rounded-3xl border px-3 py-3 text-left shadow-sm transition ${
               activeConversationId === COACH_CONVERSATION_ID
-                ? "border-sky-300 bg-white"
-                : "border-sky-100 bg-white/90 hover:border-sky-200 hover:bg-white"
+                ? "border-teal-200 bg-white"
+                : "border-white/70 bg-white/75 hover:border-teal-100 hover:bg-white"
             }`}
           >
-            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-lg text-white shadow-sm">
-              AI
-              <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
-            </div>
+            <img
+              src={coachConversation.sender?.profile_image_url}
+              alt="Lumi avatar"
+              className="h-12 w-12 rounded-[18px] border border-slate-200 object-cover shadow-md"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                  LangVoyage Coach
+                  Lumi
                 </p>
-                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
                   AI
                 </span>
               </div>
@@ -352,7 +353,7 @@ function ConversationList({
                 </div>
               ) : (
                 <p className="truncate pt-1 text-xs text-slate-500 sm:text-sm">
-                  {coachConversation.last_message?.text || "Start practising with your personal coach."}
+                  {coachConversation.last_message?.text || "Switch modes, change languages, and practise with Lumi."}
                 </p>
               )}
             </div>

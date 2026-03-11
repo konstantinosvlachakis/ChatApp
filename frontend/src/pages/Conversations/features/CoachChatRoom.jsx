@@ -1,36 +1,226 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
+import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
-import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import TypingDots from "./TypingDots";
 import {
-  buildCoachReply,
   COACH_BOT_ID,
   COACH_CONVERSATION_ID,
+  COACH_MODES,
+  COACH_QUICK_PROMPTS,
   getCoachConversation,
+  getCoachLanguageOptions,
   persistCoachMessages,
+  persistCoachPreferences,
   readCoachMessages,
+  readCoachPreferences,
+  resetCoachConversation,
 } from "./coachConversation";
+
+const CoachHeader = ({
+  languageOptions,
+  selectedLanguage,
+  selectedMode,
+  collapsed,
+  onToggleCollapsed,
+  onLanguageChange,
+  onModeChange,
+  onResetConversation,
+}) => {
+  const activeMode = COACH_MODES.find((mode) => mode.id === selectedMode) || COACH_MODES[0];
+  const selectedLanguageLabel =
+    languageOptions.find((option) => option.value === selectedLanguage)?.label || selectedLanguage;
+
+  if (collapsed) {
+    return (
+      <div className="rounded-[20px] border border-slate-200/80 bg-white/90 px-3 py-3 shadow-[0_14px_35px_-28px_rgba(15,23,42,0.35)] backdrop-blur sm:px-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-[linear-gradient(135deg,_#f8fafc,_#ecfeff_52%,_#fef3c7)] text-slate-800 shadow-sm">
+            <div className="text-center">
+              <div className="font-serif text-xl leading-none">L</div>
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Lumi</h2>
+              <span className="inline-flex items-center rounded-full border border-emerald-300/70 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                Online
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/80">
+                {activeMode.label}
+              </span>
+              <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/80">
+                {selectedLanguageLabel}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+          >
+            Show coach tools
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-[22px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_34%),linear-gradient(135deg,_rgba(247,250,252,0.98),_rgba(236,253,245,0.95)_48%,_rgba(255,251,235,0.95))] p-3 text-slate-800 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.28)]">
+      <div className="absolute -right-8 top-4 h-20 w-20 rounded-full bg-cyan-400/10 blur-2xl" />
+      <div className="absolute -bottom-8 left-8 h-16 w-16 rounded-full bg-amber-300/10 blur-2xl" />
+      <div className="relative flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-slate-200/80 bg-white/80 text-center shadow-md backdrop-blur sm:h-14 sm:w-14">
+            <div>
+              <div className="font-serif text-xl leading-none text-slate-800 sm:text-2xl">L</div>
+              <div className="mt-1 text-[10px] uppercase tracking-[0.28em] text-teal-600">
+                Lumi
+              </div>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[1.65rem]">
+                Lumi
+              </h2>
+              <span className="inline-flex items-center rounded-full border border-emerald-300/70 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                Online
+              </span>
+            </div>
+            <p className="mt-1.5 max-w-xl text-sm leading-6 text-slate-600">
+              Adaptive language coach for real conversation, corrections, travel roleplay,
+              vocabulary drills, and short quizzes. Switch modes whenever you want.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200/80">
+                Active mode: {activeMode.label}
+              </span>
+              <span className="rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200/80">
+                Target language:{" "}
+                {languageOptions.find((option) => option.value === selectedLanguage)?.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2.5 xl:min-w-[44%] xl:max-w-[46rem]">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Language
+            </span>
+            <select
+              value={selectedLanguage}
+              onChange={(event) => onLanguageChange(event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none ring-0 transition focus:border-teal-400"
+            >
+              {languageOptions.map((option) => (
+                <option key={option.value} value={option.value} className="text-slate-900">
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Practice Mode
+            </span>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {COACH_MODES.map((mode) => {
+                const isActive = mode.id === selectedMode;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => onModeChange(mode.id)}
+                    className={`min-w-0 rounded-2xl border px-3 py-2 text-left transition ${
+                      isActive
+                        ? "border-teal-300 bg-teal-50 text-slate-800 shadow-sm"
+                        : "border-slate-200 bg-white/90 text-slate-600 hover:border-slate-300 hover:bg-white"
+                    }`}
+                  >
+                    <div className="text-sm font-semibold">{mode.shortLabel}</div>
+                    <div className="mt-1 text-xs leading-4.5 text-inherit/90">
+                      {mode.description}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </label>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={onResetConversation}
+              className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white hover:border-slate-300"
+            >
+              Reset coach thread
+            </button>
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="rounded-2xl border border-transparent bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Hide coach tools
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const CoachChatRoom = ({ onConversationTypingChange }) => {
   const { user, loading } = useUser();
   const [messages, setMessages] = useState([]);
   const [isCoachTyping, setIsCoachTyping] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("english");
+  const [selectedMode, setSelectedMode] = useState(COACH_MODES[0].id);
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const messagesContainerRef = useRef(null);
-  const replyTimeoutRef = useRef(null);
+  const previousMessageCountRef = useRef(0);
 
-  const coachConversation = useMemo(() => getCoachConversation(user), [user, messages.length]);
+  const languageOptions = useMemo(() => getCoachLanguageOptions(user), [user]);
+  const coachConversation = useMemo(
+    () => getCoachConversation(user),
+    [user, messages.length, selectedLanguage, selectedMode]
+  );
 
   const syncMessages = (nextMessages) => {
     setMessages(nextMessages);
     persistCoachMessages(user, nextMessages);
   };
 
+  const syncPreferences = (nextPreferences) => {
+    persistCoachPreferences(user, nextPreferences);
+    setSelectedLanguage(nextPreferences.language);
+    setSelectedMode(nextPreferences.mode);
+  };
+
   useEffect(() => {
     if (!user) return;
-    setMessages(readCoachMessages(user));
+    const preferences = readCoachPreferences(user);
+    setSelectedLanguage(preferences.language);
+    setSelectedMode(preferences.mode);
+    const storedMessages = readCoachMessages(user, preferences);
+    setMessages(storedMessages);
+    previousMessageCountRef.current = storedMessages.length;
+    setIsHeaderCollapsed(storedMessages.length > 1);
   }, [user]);
+
+  useEffect(() => {
+    if (messages.length > 1 && previousMessageCountRef.current <= 1) {
+      setIsHeaderCollapsed(true);
+    }
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length]);
 
   useEffect(() => {
     if (!messagesContainerRef.current) return;
@@ -42,9 +232,6 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
 
   useEffect(() => {
     return () => {
-      if (replyTimeoutRef.current) {
-        window.clearTimeout(replyTimeoutRef.current);
-      }
       onConversationTypingChange?.(COACH_CONVERSATION_ID, false);
     };
   }, [onConversationTypingChange]);
@@ -57,7 +244,25 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     return <div className="p-4 text-red-500">Failed to load coach.</div>;
   }
 
-  const handleSendMessage = (newMessage, attachedFile, previewImage) => {
+  const handlePreferenceChange = (partialPreferences) => {
+    const nextPreferences = {
+      language: partialPreferences.language || selectedLanguage,
+      mode: partialPreferences.mode || selectedMode,
+    };
+    syncPreferences(nextPreferences);
+    const nextMessages = resetCoachConversation(user, nextPreferences);
+    setMessages(nextMessages);
+  };
+
+  const handleResetConversation = () => {
+    const nextMessages = resetCoachConversation(user, {
+      language: selectedLanguage,
+      mode: selectedMode,
+    });
+    setMessages(nextMessages);
+  };
+
+  const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     const trimmed = newMessage.trim();
     if (!trimmed && !attachedFile) return;
 
@@ -83,19 +288,32 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     setIsCoachTyping(true);
     onConversationTypingChange?.(COACH_CONVERSATION_ID, true);
 
-    if (replyTimeoutRef.current) {
-      window.clearTimeout(replyTimeoutRef.current);
-    }
+    try {
+      const token =
+        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
+      const { data } = await axios.post(
+        `${BASE_URL}/api/coach/chat/`,
+        {
+          message: attachedFile
+            ? `${trimmed}\n\n[The user attached a file. Ask them to describe it or use it for language practice.]`.trim()
+            : trimmed,
+          target_language: selectedLanguage,
+          mode: selectedMode,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-    replyTimeoutRef.current = window.setTimeout(() => {
       const replyMessage = {
         id: `coach-bot-${Date.now()}`,
-        text: attachedFile
-          ? "I received your attachment. Describe it or ask me to quiz you on it in your target language."
-          : buildCoachReply(user, trimmed),
+        text: data?.reply || "I am ready. Send another message and we will keep practising.",
         sender: {
           id: COACH_BOT_ID,
-          username: "LangVoyage Coach",
+          username: "Lumi",
         },
         timestamp: new Date().toISOString(),
         can_translate: true,
@@ -104,9 +322,34 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
       };
 
       syncMessages([...nextMessages, replyMessage]);
+    } catch (error) {
+      const fallbackMessage =
+        error?.response?.data?.detail ||
+        "The coach is unavailable right now. Check the Gemini configuration and try again.";
+      syncMessages([
+        ...nextMessages,
+        {
+          id: `coach-error-${Date.now()}`,
+          text: fallbackMessage,
+          sender: {
+            id: COACH_BOT_ID,
+            username: "Lumi",
+          },
+          timestamp: new Date().toISOString(),
+          can_translate: false,
+          reactions: [],
+          current_user_reaction: null,
+        },
+      ]);
+    } finally {
       setIsCoachTyping(false);
       onConversationTypingChange?.(COACH_CONVERSATION_ID, false);
-    }, 1200);
+    }
+  };
+
+  const handleQuickPrompt = (prompt) => {
+    if (isCoachTyping) return;
+    handleSendMessage(prompt, null, null);
   };
 
   const handleDeleteMessage = (messageId) => {
@@ -123,16 +366,43 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-gray-50">
-      <div className="flex-shrink-0">
-        <ChatHeader
-          conversation={coachConversation}
-          onStartAudioCall={() => {}}
-          onStartVideoCall={() => {}}
-          callState="idle"
-          callDisabled
-          socketStatus="connected"
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,_#f8fafc_0%,_#eef6f6_42%,_#fff8ef_100%)]">
+      <div className="flex-shrink-0 px-2 pb-2 pt-2 sm:px-4 sm:pt-4">
+        <CoachHeader
+          languageOptions={languageOptions}
+          selectedLanguage={selectedLanguage}
+          selectedMode={selectedMode}
+          collapsed={isHeaderCollapsed}
+          onToggleCollapsed={() => setIsHeaderCollapsed((current) => !current)}
+          onLanguageChange={(language) => handlePreferenceChange({ language })}
+          onModeChange={(mode) => handlePreferenceChange({ mode })}
+          onResetConversation={handleResetConversation}
         />
+      </div>
+
+      <div className="flex-shrink-0 px-2 pb-2 sm:px-4">
+        <div className="rounded-[24px] border border-slate-200/80 bg-white/80 px-3 py-2.5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.55)] backdrop-blur">
+          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Quick Starts
+            </p>
+            <p className="text-xs text-slate-400">
+              Tap one to send a guided opener
+            </p>
+          </div>
+          <div className="grid gap-2 grid-cols-2 xl:grid-cols-4">
+            {COACH_QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => handleQuickPrompt(prompt)}
+                className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm leading-5 text-slate-700 transition hover:border-teal-300 hover:bg-teal-50"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div
@@ -144,20 +414,18 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
           userId={user.user_id}
           onDeleteMessage={handleDeleteMessage}
           onMessageReactionChange={handleMessageReactionChange}
-          baseTranslateLanguage={
-            user.base_translate_language || user.native_language || "english"
-          }
+          baseTranslateLanguage={selectedLanguage}
         />
       </div>
 
       {isCoachTyping && (
-        <div className="flex items-center gap-2 px-3 py-1 text-sm text-gray-500 sm:px-4">
+        <div className="mx-2 mb-2 flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-2 text-sm text-slate-600 shadow-sm sm:mx-4">
           <TypingDots />
-          <span>LangVoyage Coach is typing...</span>
+          <span>Lumi is thinking through the next response...</span>
         </div>
       )}
 
-      <div className="sticky bottom-0 z-20 flex-shrink-0 border-t bg-white">
+      <div className="sticky bottom-0 z-20 flex-shrink-0 border-t border-slate-200/80 bg-white/90 backdrop-blur">
         <MessageInput
           conversationId={COACH_CONVERSATION_ID}
           connectionStatus="connected"

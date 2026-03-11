@@ -31,6 +31,7 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.utils import timezone
 from django.db import transaction
+from .gemini import CoachAIError, CoachAIQuotaError, generate_coach_reply
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -51,6 +52,12 @@ PRACTICE_GENERATOR_MODE = os.environ.get("PRACTICE_GENERATOR_MODE", "hybrid").st
 PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(os.environ.get("PRACTICE_GENERATOR_TIMEOUT_SECONDS", "12"))
 PRACTICE_DAILY_LIBRARY_SIZE = int(os.environ.get("PRACTICE_DAILY_LIBRARY_SIZE", "20"))
 PRACTICE_DAILY_LIBRARY_MIN_READY = int(os.environ.get("PRACTICE_DAILY_LIBRARY_MIN_READY", "8"))
+COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(
+    os.environ.get("COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS", "60")
+)
+COACH_CHAT_RATE_LIMIT_REQUESTS = int(
+    os.environ.get("COACH_CHAT_RATE_LIMIT_REQUESTS", "12")
+)
 
 PRACTICE_LIBRARY = {
     "english": {
@@ -309,6 +316,79 @@ def mark_presence_offline_view(request):
         broadcast_presence_update(user.id, False)
 
     return Response({"ok": True})
+
+
+def get_coach_chat_rate_limit_key(user_id):
+    return f"coach_chat:rate_limit:user:{user_id}"
+
+
+def consume_coach_chat_rate_limit(user_id):
+    cache_key = get_coach_chat_rate_limit_key(user_id)
+    current_value = cache.get(cache_key)
+    if current_value is None:
+        cache.set(cache_key, 1, timeout=COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS)
+        return True
+
+    try:
+        next_value = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS)
+        return True
+
+    return int(next_value) <= COACH_CHAT_RATE_LIMIT_REQUESTS
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def coach_chat_view(request):
+    message = str(request.data.get("message") or "").strip()
+    if not message:
+        return Response({"detail": "Message is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not consume_coach_chat_rate_limit(request.user.id):
+        return Response(
+            {
+                "detail": "You are sending messages too quickly. Please wait a moment before asking the coach again."
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    target_language = (
+        str(request.data.get("target_language") or "").strip()
+        or getattr(request.user, "base_translate_language", None)
+        or getattr(request.user, "native_language", None)
+        or "english"
+    )
+    native_language = getattr(request.user, "native_language", None) or "english"
+    mode = str(request.data.get("mode") or "casual_chat").strip() or "casual_chat"
+
+    try:
+        reply = generate_coach_reply(
+            message=message,
+            target_language=target_language,
+            native_language=native_language,
+            mode=mode,
+        )
+    except CoachAIQuotaError as error:
+        return Response(
+            {"detail": str(error)},
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+    except CoachAIError as error:
+        return Response(
+            {"detail": str(error)},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    return Response(
+        {
+            "reply": reply,
+            "target_language": str(target_language).strip() or "english",
+            "native_language": str(native_language).strip() or "english",
+            "mode": mode,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @csrf_exempt
