@@ -54,7 +54,14 @@ const MessageInput = ({
 
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
-    setMessage((prev) => prev + emoji);
+    setMessage((prev) => {
+      const nextValue = `${prev}${emoji}`;
+      if (nextValue.trim() && !isTypingRef.current) {
+        onTypingRef.current?.();
+        isTypingRef.current = true;
+      }
+      return nextValue;
+    });
     setShowPicker(false);
   };
 
@@ -180,8 +187,10 @@ const MessageInput = ({
       return;
     }
 
-    onTypingRef.current?.();
-    isTypingRef.current = true;
+    if (!isTypingRef.current) {
+      onTypingRef.current?.();
+      isTypingRef.current = true;
+    }
   };
 
   useEffect(() => {

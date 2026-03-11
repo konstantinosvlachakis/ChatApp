@@ -32,11 +32,20 @@ const Layout = () => {
   });
   const previousUnreadMapRef = useRef(new Map());
   const hasHydratedUnreadRef = useRef(false);
+  const presenceSocketRef = useRef(null);
+  const presenceHeartbeatRef = useRef(null);
+  const presenceReconnectRef = useRef(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
 
   const handleLogout = () => {
+    presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
+    presenceHeartbeatRef.current = null;
+    presenceReconnectRef.current && window.clearTimeout(presenceReconnectRef.current);
+    presenceReconnectRef.current = null;
+    presenceSocketRef.current?.close();
+    presenceSocketRef.current = null;
     sessionStorage.removeItem("accessToken");
     sessionStorage.removeItem("refreshToken");
     localStorage.removeItem("accessToken");
@@ -67,6 +76,62 @@ const Layout = () => {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
+
+  useEffect(() => {
+    const token =
+      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
+    if (!token || !user?.user_id) return undefined;
+
+    const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
+    let isUnmounted = false;
+
+    const clearPresenceTimers = () => {
+      if (presenceHeartbeatRef.current) {
+        window.clearInterval(presenceHeartbeatRef.current);
+        presenceHeartbeatRef.current = null;
+      }
+      if (presenceReconnectRef.current) {
+        window.clearTimeout(presenceReconnectRef.current);
+        presenceReconnectRef.current = null;
+      }
+    };
+
+    const connectPresenceSocket = () => {
+      if (isUnmounted) return;
+      clearPresenceTimers();
+
+      const socket = new WebSocket(
+        `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`
+      );
+      presenceSocketRef.current = socket;
+
+      socket.onopen = () => {
+        clearPresenceTimers();
+        presenceHeartbeatRef.current = window.setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "heartbeat" }));
+          }
+        }, 20000);
+      };
+
+      socket.onclose = () => {
+        clearPresenceTimers();
+        if (isUnmounted) return;
+        presenceReconnectRef.current = window.setTimeout(() => {
+          connectPresenceSocket();
+        }, 3000);
+      };
+    };
+
+    connectPresenceSocket();
+
+    return () => {
+      isUnmounted = true;
+      clearPresenceTimers();
+      presenceSocketRef.current?.close();
+      presenceSocketRef.current = null;
+    };
+  }, [user?.user_id]);
 
   useEffect(() => {
     const currentMap = new Map();
