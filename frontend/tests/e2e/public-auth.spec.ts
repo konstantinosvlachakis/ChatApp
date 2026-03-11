@@ -151,6 +151,14 @@ const mockMessagesPage = {
   },
 };
 
+const mockCoachReply = {
+  reply:
+    "Privet! Excellent idea. Tell me one thing you would say first when meeting a friend at a cafe.",
+  target_language: "russian",
+  native_language: "Greek",
+  mode: "casual_chat",
+};
+
 const saveScreenshot = async (page: Page, name: string) => {
   fs.mkdirSync(screenshotsDir, { recursive: true });
   await page.screenshot({
@@ -385,6 +393,14 @@ const installMockChatTransport = async (
       }),
     });
   });
+
+  await page.route(`${apiOrigin}/api/coach/chat/`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(mockCoachReply),
+    });
+  });
 };
 
 test.describe("Public auth pages", () => {
@@ -456,6 +472,35 @@ test.describe("Public auth pages", () => {
     await expect(page.getByPlaceholder("Type your message...")).toBeVisible();
 
     await saveScreenshot(page, "chat-mobile.png");
+    await context.close();
+  });
+
+  test("captures desktop coach chat state", async ({ page }) => {
+    await installMockChatTransport(page);
+    await page.goto("/conversations/coach");
+
+    await expect(page.getByRole("heading", { name: "Lumi" })).toBeVisible();
+    await page.getByRole("button", { name: "Correct my last sentence and explain why." }).click();
+    await expect(page.getByText(/Privet! Excellent idea\./).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Show coach tools" })).toBeVisible();
+
+    await saveScreenshot(page, "coach-desktop.png");
+  });
+
+  test("captures mobile coach chat state", async ({ browser }) => {
+    const context = await browser.newContext({
+      ...devices["iPhone 13"],
+    });
+    const page = await context.newPage();
+
+    await installMockChatTransport(page);
+    await page.goto(`${appOrigin}/conversations/coach`);
+
+    await expect(page.getByRole("heading", { name: "Lumi" })).toBeVisible();
+    await page.getByRole("button", { name: "Correct my last sentence and explain why." }).click();
+    await expect(page.getByText(/Privet! Excellent idea\./).last()).toBeVisible();
+
+    await saveScreenshot(page, "coach-mobile.png");
     await context.close();
   });
 
@@ -563,5 +608,26 @@ test.describe("Public auth pages", () => {
 
     await expect(onlineDot).toBeHidden();
     await context.close();
+  });
+
+  test("coach quick starts hide after conversation begins and return on new conversation", async ({
+    page,
+  }) => {
+    await installMockChatTransport(page);
+    await page.goto("/conversations/coach");
+
+    const quickStart = page.getByRole("button", {
+      name: "Correct my last sentence and explain why.",
+    });
+    await expect(quickStart).toBeVisible();
+
+    await quickStart.click();
+    await expect(page.getByText(/Privet! Excellent idea\./).last()).toBeVisible();
+    await expect(quickStart).toBeHidden();
+
+    await page.getByRole("button", { name: "Show coach tools" }).click();
+    await page.getByRole("button", { name: "New conversation" }).click();
+
+    await expect(page.getByRole("button", { name: "Correct my last sentence and explain why." })).toBeVisible();
   });
 });

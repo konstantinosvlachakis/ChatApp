@@ -20,6 +20,14 @@ LangVoyage is a language-exchange app with a Django backend, a React web fronten
 
 ![Mobile chat](frontend/docs/screenshots/chat-mobile.png)
 
+### AI coach
+
+![AI coach](frontend/docs/screenshots/coach-desktop.png)
+
+### AI coach mobile
+
+![AI coach mobile](frontend/docs/screenshots/coach-mobile.png)
+
 ## Project Structure
 
 - `backend/`: Django API, websocket/chat backend, media, and tests

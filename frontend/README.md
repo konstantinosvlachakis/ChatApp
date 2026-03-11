@@ -24,6 +24,14 @@ React frontend for LangVoyage, a language-exchange chat app with account onboard
 
 ![Mobile chat](docs/screenshots/chat-mobile.png)
 
+### AI coach
+
+![AI coach](docs/screenshots/coach-desktop.png)
+
+### AI coach mobile
+
+![AI coach mobile](docs/screenshots/coach-mobile.png)
+
 ## Development
 
 From `frontend/`:
