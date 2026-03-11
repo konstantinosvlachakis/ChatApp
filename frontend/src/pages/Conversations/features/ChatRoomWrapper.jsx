@@ -2,14 +2,19 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import ChatRoom from "./ChatRoom";
+import CoachChatRoom from "./CoachChatRoom";
 import { BASE_URL } from "../../../constants/constants";
 import { markConversationRead } from "../api/markConversationRead";
+import { COACH_CONVERSATION_ID } from "./coachConversation";
 
 const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   const { id } = useParams(); // ✅ Extract conversation ID from URL
   const [conversation, setConversation] = useState(null);
   const [error, setError] = useState(null);
+  const isCoachConversation = id === COACH_CONVERSATION_ID;
+
   useEffect(() => {
+    if (isCoachConversation) return;
     const fetchConversation = async () => {
       try {
         const response = await axios.get(
@@ -33,12 +38,20 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
     };
 
     fetchConversation();
-  }, [id]);
+  }, [id, isCoachConversation]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || isCoachConversation) return;
     markConversationRead(id).catch(() => {});
-  }, [id]);
+  }, [id, isCoachConversation]);
+
+  if (isCoachConversation) {
+    return (
+      <div className="h-full min-h-0">
+        <CoachChatRoom onConversationTypingChange={onConversationTypingChange} />
+      </div>
+    );
+  }
 
   if (error) return <div className="h-full p-4 text-red-500">{error}</div>;
   if (!conversation) return <div className="h-full p-4 text-gray-500">Loading chat...</div>;

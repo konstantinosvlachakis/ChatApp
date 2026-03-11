@@ -16,6 +16,16 @@ const mockUser = {
   profile_image_url: `${appOrigin}/logo192.png`,
 };
 
+const mockViewerUser = {
+  id: 12,
+  user_id: 12,
+  username: "maya",
+  native_language: "Spanish",
+  base_translate_language: "english",
+  languages_practicing: ["greek", "english"],
+  profile_image_url: `${appOrigin}/logo192.png`,
+};
+
 const mockConversations = [
   {
     id: 42,
@@ -149,7 +159,33 @@ const saveScreenshot = async (page: Page, name: string) => {
   });
 };
 
-const installMockChatTransport = async (page: Page) => {
+const getSocketMessages = async (page: Page, urlPart: string) =>
+  page.evaluate((targetUrlPart) => {
+    const socketApi = (window as typeof window & {
+      __mockSocketApi?: {
+        getSentMessages: (match: string) => string[];
+      };
+    }).__mockSocketApi;
+
+    return socketApi?.getSentMessages(targetUrlPart) || [];
+  }, urlPart);
+
+const installMockChatTransport = async (
+  page: Page,
+  options: {
+    user?: typeof mockUser;
+    conversations?: typeof mockConversations;
+    conversationDetail?: typeof mockConversationDetail;
+    messagesPage?: typeof mockMessagesPage;
+  } = {}
+) => {
+  const {
+    user = mockUser,
+    conversations = mockConversations,
+    conversationDetail = mockConversationDetail,
+    messagesPage = mockMessagesPage,
+  } = options;
+
   await page.addInitScript(
     ({ user }) => {
       window.localStorage.setItem("accessToken", "playwright-token");
@@ -174,22 +210,56 @@ const installMockChatTransport = async (page: Page) => {
         close() {}
       }
 
+      const socketRegistry = new Map<
+        string,
+        Set<{
+          readyState: number;
+          onmessage: ((event: MessageEvent) => void) | null;
+          onclose: ((event?: CloseEvent) => void) | null;
+        }>
+      >();
+      const sentMessages = new Map<string, string[]>();
+
+      const registerSocket = (url: string, socket: MockWebSocket) => {
+        const sockets = socketRegistry.get(url) || new Set();
+        sockets.add(socket);
+        socketRegistry.set(url, sockets);
+      };
+
+      const unregisterSocket = (url: string, socket: MockWebSocket) => {
+        const sockets = socketRegistry.get(url);
+        if (!sockets) return;
+        sockets.delete(socket);
+        if (sockets.size === 0) {
+          socketRegistry.delete(url);
+        }
+      };
+
       class MockWebSocket {
         static CONNECTING = 0;
         static OPEN = 1;
         static CLOSING = 2;
         static CLOSED = 3;
+        url: string;
         readyState = MockWebSocket.OPEN;
         onopen: ((event?: Event) => void) | null = null;
         onmessage: ((event: MessageEvent) => void) | null = null;
         onclose: ((event?: CloseEvent) => void) | null = null;
         onerror: ((event?: Event) => void) | null = null;
-        constructor(_url: string) {
+        constructor(url: string) {
+          this.url = url;
+          registerSocket(url, this);
           queueMicrotask(() => this.onopen?.());
         }
-        send(_data?: string) {}
+        send(data?: string) {
+          if (!data) return;
+          const messages = sentMessages.get(this.url) || [];
+          messages.push(data);
+          sentMessages.set(this.url, messages);
+        }
         close() {
           this.readyState = MockWebSocket.CLOSED;
+          unregisterSocket(this.url, this);
           this.onclose?.();
         }
         addEventListener(type: string, handler: EventListener) {
@@ -197,6 +267,44 @@ const installMockChatTransport = async (page: Page) => {
         }
         removeEventListener() {}
       }
+
+      Object.defineProperty(window, "__mockSocketApi", {
+        configurable: true,
+        writable: true,
+        value: {
+          emit(targetUrlPart: string, payload: unknown) {
+            for (const [url, sockets] of socketRegistry.entries()) {
+              if (!url.includes(targetUrlPart)) continue;
+              for (const socket of sockets) {
+                if (socket.readyState !== MockWebSocket.OPEN) continue;
+                socket.onmessage?.(
+                  new MessageEvent("message", {
+                    data: JSON.stringify(payload),
+                  })
+                );
+              }
+            }
+          },
+          getConnectionCount(targetUrlPart: string) {
+            let count = 0;
+            for (const [url, sockets] of socketRegistry.entries()) {
+              if (url.includes(targetUrlPart)) {
+                count += sockets.size;
+              }
+            }
+            return count;
+          },
+          getSentMessages(targetUrlPart: string) {
+            const matches: string[] = [];
+            for (const [url, messages] of sentMessages.entries()) {
+              if (url.includes(targetUrlPart)) {
+                matches.push(...messages);
+              }
+            }
+            return matches;
+          },
+        },
+      });
 
       Object.defineProperty(window, "Notification", {
         configurable: true,
@@ -210,14 +318,14 @@ const installMockChatTransport = async (page: Page) => {
         value: MockWebSocket,
       });
     },
-    { user: mockUser }
+    { user }
   );
 
   await page.route(`${apiOrigin}/api/profile/`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(mockUser),
+      body: JSON.stringify(user),
     });
   });
 
@@ -226,7 +334,7 @@ const installMockChatTransport = async (page: Page) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockConversations),
+        body: JSON.stringify(conversations),
       });
       return;
     }
@@ -240,7 +348,7 @@ const installMockChatTransport = async (page: Page) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockConversationDetail),
+        body: JSON.stringify(conversationDetail),
       });
       return;
     }
@@ -257,7 +365,7 @@ const installMockChatTransport = async (page: Page) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(mockMessagesPage),
+        body: JSON.stringify(messagesPage),
       });
       return;
     }
@@ -348,6 +456,112 @@ test.describe("Public auth pages", () => {
     await expect(page.getByPlaceholder("Type your message...")).toBeVisible();
 
     await saveScreenshot(page, "chat-mobile.png");
+    await context.close();
+  });
+
+  test("stops typing when the chat input is cleared", async ({ page }) => {
+    await installMockChatTransport(page);
+    await page.goto("/conversations/42");
+
+    const composer = page.getByPlaceholder("Type your message...");
+    await expect(composer).toBeVisible();
+
+    await composer.fill("Practising Greek");
+    await expect
+      .poll(async () => {
+        const messages = await getSocketMessages(page, "/ws/socket-server/42/");
+        return messages.some((message) => JSON.parse(message).type === "user_typing");
+      })
+      .toBeTruthy();
+
+    await composer.clear();
+    await expect
+      .poll(async () => {
+        const messages = await getSocketMessages(page, "/ws/socket-server/42/");
+        return messages.some(
+          (message) => JSON.parse(message).type === "user_stopped_typing"
+        );
+      })
+      .toBeTruthy();
+  });
+
+  test("removes the online dot after logout presence update", async ({ browser }) => {
+    const context = await browser.newContext();
+    const viewerPage = await context.newPage();
+    const actorPage = await context.newPage();
+    let offlineRequestCount = 0;
+
+    await installMockChatTransport(viewerPage, { user: mockViewerUser });
+    await installMockChatTransport(actorPage, { user: mockUser });
+
+    await actorPage.route(`${apiOrigin}/api/presence/offline/`, async (route) => {
+      offlineRequestCount += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    });
+
+    await Promise.all([
+      viewerPage.goto(`${appOrigin}/conversations/42`),
+      actorPage.goto(`${appOrigin}/conversations/42`),
+    ]);
+
+    await expect(viewerPage.getByRole("heading", { name: "dinos" })).toBeVisible();
+    await expect
+      .poll(() =>
+        viewerPage.evaluate(() => {
+          const socketApi = (window as typeof window & {
+            __mockSocketApi?: {
+              getConnectionCount: (match: string) => number;
+            };
+          }).__mockSocketApi;
+
+          return socketApi?.getConnectionCount("/ws/presence/") || 0;
+        })
+      )
+      .toBeGreaterThan(0);
+
+    const onlineDot = viewerPage.getByLabel("User online");
+    await expect
+      .poll(async () => {
+        await viewerPage.evaluate(() => {
+          const socketApi = (window as typeof window & {
+            __mockSocketApi?: {
+              emit: (match: string, payload: unknown) => void;
+            };
+          }).__mockSocketApi;
+
+          socketApi?.emit("/ws/presence/", {
+            type: "presence_update",
+            user_id: 7,
+            is_online: true,
+          });
+        });
+
+        return viewerPage.locator('[aria-label="User online"]').count();
+      })
+      .toBe(1);
+
+    await actorPage.getByRole("button", { name: /profile avatar dinos/i }).click();
+    await actorPage.getByRole("menuitem", { name: "Sign out" }).click();
+
+    await expect
+      .poll(() => offlineRequestCount)
+      .toBe(1);
+
+    await viewerPage.evaluate(() => {
+      const socketApi = (window as typeof window & {
+        __mockSocketApi?: {
+          emit: (match: string, payload: unknown) => void;
+        };
+      }).__mockSocketApi;
+
+      socketApi?.emit("/ws/presence/", {
+        type: "presence_update",
+        user_id: 7,
+        is_online: false,
+      });
+    });
+
+    await expect(onlineDot).toBeHidden();
     await context.close();
   });
 });

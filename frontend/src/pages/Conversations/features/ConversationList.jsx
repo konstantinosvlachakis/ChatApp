@@ -7,6 +7,11 @@ import { BASE_URL } from "../../../constants/constants";
 import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
+import {
+  COACH_CONVERSATION_ID,
+  COACH_CONVERSATION_UPDATED_EVENT,
+  getCoachConversation,
+} from "./coachConversation";
 
 const DEFAULT_AVATAR = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
 
@@ -48,6 +53,7 @@ function ConversationList({
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
   const [presenceTypingByConversation, setPresenceTypingByConversation] =
     useState({});
+  const [, setCoachRefreshTick] = useState(0);
   const touchStateRef = useRef({
     id: null,
     startX: 0,
@@ -212,6 +218,14 @@ function ConversationList({
   }, [conversations, user?.username]);
 
   useEffect(() => {
+    const refreshCoach = () => setCoachRefreshTick((tick) => tick + 1);
+    window.addEventListener(COACH_CONVERSATION_UPDATED_EVENT, refreshCoach);
+    return () => {
+      window.removeEventListener(COACH_CONVERSATION_UPDATED_EVENT, refreshCoach);
+    };
+  }, []);
+
+  useEffect(() => {
     const token =
       sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
     if (!token) return;
@@ -300,8 +314,51 @@ function ConversationList({
     return <div className="text-red-500">{error.message || "Something went wrong"}</div>;
   }
 
+  const coachConversation = user ? getCoachConversation(user) : null;
+
   return (
     <div>
+      {coachConversation && (
+        <div className="border-b border-slate-200/80 bg-gradient-to-r from-sky-50 via-white to-emerald-50 px-3 py-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+            Practice Partner
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(`/conversations/${COACH_CONVERSATION_ID}`)}
+            className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left shadow-sm transition ${
+              activeConversationId === COACH_CONVERSATION_ID
+                ? "border-sky-300 bg-white"
+                : "border-sky-100 bg-white/90 hover:border-sky-200 hover:bg-white"
+            }`}
+          >
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-lg text-white shadow-sm">
+              AI
+              <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+                  LangVoyage Coach
+                </p>
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                  AI
+                </span>
+              </div>
+              {typingByConversation[COACH_CONVERSATION_ID] ? (
+                <div className="flex items-center gap-2 pt-1 text-sm text-slate-500">
+                  <TypingDots />
+                  <span>Typing...</span>
+                </div>
+              ) : (
+                <p className="truncate pt-1 text-xs text-slate-500 sm:text-sm">
+                  {coachConversation.last_message?.text || "Start practising with your personal coach."}
+                </p>
+              )}
+            </div>
+          </button>
+        </div>
+      )}
       {conversations.map((conversation) => {
         const otherUser =
           conversation.sender?.username === user?.username

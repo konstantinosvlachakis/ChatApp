@@ -30,6 +30,7 @@ from django.core.paginator import EmptyPage, Paginator
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.utils import timezone
+from django.db import transaction
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -272,6 +273,42 @@ def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=N
     }
     for user_id in normalized_user_ids:
         async_to_sync(channel_layer.group_send)(f"presence_user_{user_id}", payload)
+
+
+def broadcast_presence_update(user_id, is_online):
+    channel_layer = get_channel_layer()
+    if not channel_layer or not user_id:
+        return
+
+    async_to_sync(channel_layer.group_send)(
+        "presence_global",
+        {
+            "type": "presence_update_event",
+            "user_id": int(user_id),
+            "is_online": bool(is_online),
+        },
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_presence_offline_view(request):
+    user = request.user
+    with transaction.atomic():
+        profile = Profile.objects.select_for_update().filter(id=user.id).first()
+        if not profile:
+            return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        was_online = bool(profile.is_online or profile.ws_connection_count)
+        profile.ws_connection_count = 0
+        profile.is_online = False
+        profile.last_seen = timezone.now()
+        profile.save(update_fields=["ws_connection_count", "is_online", "last_seen"])
+
+    if was_online:
+        broadcast_presence_update(user.id, False)
+
+    return Response({"ok": True})
 
 
 @csrf_exempt

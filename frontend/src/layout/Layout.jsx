@@ -41,7 +41,19 @@ const Layout = () => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token =
+      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
+    if (token) {
+      await fetch(`${BASE_URL}/api/presence/offline/`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        keepalive: true,
+      }).catch(() => {});
+    }
+
     presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
     presenceHeartbeatRef.current = null;
     presenceReconnectRef.current && window.clearTimeout(presenceReconnectRef.current);

@@ -13,6 +13,7 @@ urlpatterns = [
     path("register/", register_view, name="register"),
     # Profile
     path("profile/", profile_view, name="profile"),
+    path("presence/offline/", mark_presence_offline_view, name="presence_offline"),
     path("profile/data", profile_data_view, name="profile_data"),
     path("profile/public/<str:username>/", public_profile_view, name="public_profile"),
     path("profile/edit/", profile_edit_view, name="profile_edit"),

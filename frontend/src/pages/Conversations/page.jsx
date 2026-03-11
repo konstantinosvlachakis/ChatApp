@@ -6,8 +6,8 @@ import ChatRoomWrapper from "./features/ChatRoomWrapper";
 const ConversationsPage = () => {
   const { id } = useParams();
   const [typingByConversation, setTypingByConversation] = useState({});
-  const activeConversationId = id ? Number(id) : null;
-  const hasSelectedConversation = Number.isFinite(activeConversationId);
+  const activeConversationId = id || null;
+  const hasSelectedConversation = Boolean(activeConversationId);
 
   const handleConversationTypingChange = useCallback((conversationId, isTyping) => {
     setTypingByConversation((prev) => ({

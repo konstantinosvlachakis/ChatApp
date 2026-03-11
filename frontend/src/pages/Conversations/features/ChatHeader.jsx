@@ -30,7 +30,9 @@ const ChatHeader = ({
       : conversation.sender;
   const normalizedImageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
   const isInCallFlow = callState !== "idle";
-  const isOtherUserOnline = Boolean(otherUser?.id && onlineUserIds?.has(otherUser.id));
+  const isOtherUserOnline = Boolean(
+    otherUser?.is_virtual_online || (otherUser?.id && onlineUserIds?.has(otherUser.id))
+  );
 
   return (
     <div className="mx-2 mt-2 flex items-center rounded-2xl border border-slate-200/80 bg-white/90 px-2.5 py-2.5 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] backdrop-blur sm:mx-4 sm:px-4 sm:py-3">

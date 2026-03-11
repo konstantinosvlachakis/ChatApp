@@ -29,6 +29,7 @@ const MessageInput = ({
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const isTypingRef = useRef(false);
+  const hasInitializedTypingRef = useRef(false);
   const onTypingRef = useRef(onTyping);
   const onStopTypingRef = useRef(onStopTyping);
 
@@ -52,16 +53,30 @@ const MessageInput = ({
     localStorage.removeItem(draftStorageKey);
   }, [draftStorageKey, message]);
 
+  useEffect(() => {
+    const hasContent = Boolean(message.trim());
+
+    if (!hasInitializedTypingRef.current) {
+      hasInitializedTypingRef.current = true;
+      isTypingRef.current = hasContent;
+      return;
+    }
+
+    if (hasContent && !isTypingRef.current) {
+      onTypingRef.current?.();
+      isTypingRef.current = true;
+      return;
+    }
+
+    if (!hasContent && isTypingRef.current) {
+      onStopTypingRef.current?.();
+      isTypingRef.current = false;
+    }
+  }, [message]);
+
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
-    setMessage((prev) => {
-      const nextValue = `${prev}${emoji}`;
-      if (nextValue.trim() && !isTypingRef.current) {
-        onTypingRef.current?.();
-        isTypingRef.current = true;
-      }
-      return nextValue;
-    });
+    setMessage((prev) => `${prev}${emoji}`);
     setShowPicker(false);
   };
 
@@ -178,19 +193,6 @@ const MessageInput = ({
     const value = e.target.value;
     setComposerError("");
     setMessage(value);
-
-    if (!value.trim()) {
-      if (isTypingRef.current) {
-        onStopTypingRef.current?.();
-        isTypingRef.current = false;
-      }
-      return;
-    }
-
-    if (!isTypingRef.current) {
-      onTypingRef.current?.();
-      isTypingRef.current = true;
-    }
   };
 
   useEffect(() => {
