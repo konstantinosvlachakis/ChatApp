@@ -27,7 +27,7 @@ const CoachHeader = ({
   onToggleCollapsed,
   onLanguageChange,
   onModeChange,
-  onResetConversation,
+  onStartNewConversation,
 }) => {
   const activeMode = COACH_MODES.find((mode) => mode.id === selectedMode) || COACH_MODES[0];
   const selectedLanguageLabel =
@@ -35,8 +35,8 @@ const CoachHeader = ({
 
   if (collapsed) {
     return (
-      <div className="rounded-[20px] border border-slate-200/80 bg-white/90 px-3 py-3 shadow-[0_14px_35px_-28px_rgba(15,23,42,0.35)] backdrop-blur sm:px-4">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="rounded-[18px] border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-[0_14px_35px_-28px_rgba(15,23,42,0.35)] backdrop-blur sm:px-4 sm:py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-[linear-gradient(135deg,_#f8fafc,_#ecfeff_52%,_#fef3c7)] text-slate-800 shadow-sm">
             <div className="text-center">
               <div className="font-serif text-xl leading-none">L</div>
@@ -61,7 +61,7 @@ const CoachHeader = ({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white sm:w-auto"
           >
             Show coach tools
           </button>
@@ -71,11 +71,11 @@ const CoachHeader = ({
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[22px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_34%),linear-gradient(135deg,_rgba(247,250,252,0.98),_rgba(236,253,245,0.95)_48%,_rgba(255,251,235,0.95))] p-3 text-slate-800 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.28)]">
+    <div className="relative overflow-hidden rounded-[20px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_34%),linear-gradient(135deg,_rgba(247,250,252,0.98),_rgba(236,253,245,0.95)_48%,_rgba(255,251,235,0.95))] p-3 text-slate-800 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.28)] sm:rounded-[22px]">
       <div className="absolute -right-8 top-4 h-20 w-20 rounded-full bg-cyan-400/10 blur-2xl" />
       <div className="absolute -bottom-8 left-8 h-16 w-16 rounded-full bg-amber-300/10 blur-2xl" />
       <div className="relative flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex items-start gap-3 sm:gap-4">
+        <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-slate-200/80 bg-white/80 text-center shadow-md backdrop-blur sm:h-14 sm:w-14">
             <div>
               <div className="font-serif text-xl leading-none text-slate-800 sm:text-2xl">L</div>
@@ -86,14 +86,14 @@ const CoachHeader = ({
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold tracking-tight text-slate-900 sm:text-[1.65rem]">
+              <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[1.65rem]">
                 Lumi
               </h2>
               <span className="inline-flex items-center rounded-full border border-emerald-300/70 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
                 Online
               </span>
             </div>
-            <p className="mt-1.5 max-w-xl text-sm leading-6 text-slate-600">
+            <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-slate-600 sm:text-sm sm:leading-6">
               Adaptive language coach for real conversation, corrections, travel roleplay,
               vocabulary drills, and short quizzes. Switch modes whenever you want.
             </p>
@@ -131,7 +131,7 @@ const CoachHeader = ({
             <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
               Practice Mode
             </span>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
               {COACH_MODES.map((mode) => {
                 const isActive = mode.id === selectedMode;
                 return (
@@ -139,14 +139,14 @@ const CoachHeader = ({
                     key={mode.id}
                     type="button"
                     onClick={() => onModeChange(mode.id)}
-                    className={`min-w-0 rounded-2xl border px-3 py-2 text-left transition ${
+                    className={`min-w-0 rounded-2xl border px-2.5 py-2 text-left transition sm:px-3 ${
                       isActive
                         ? "border-teal-300 bg-teal-50 text-slate-800 shadow-sm"
                         : "border-slate-200 bg-white/90 text-slate-600 hover:border-slate-300 hover:bg-white"
                     }`}
                   >
-                    <div className="text-sm font-semibold">{mode.shortLabel}</div>
-                    <div className="mt-1 text-xs leading-4.5 text-inherit/90">
+                    <div className="text-[13px] font-semibold sm:text-sm">{mode.shortLabel}</div>
+                    <div className="mt-1 text-[11px] leading-4 text-inherit/90 sm:text-xs">
                       {mode.description}
                     </div>
                   </button>
@@ -158,10 +158,10 @@ const CoachHeader = ({
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
-              onClick={onResetConversation}
+              onClick={onStartNewConversation}
               className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white hover:border-slate-300"
             >
-              Reset coach thread
+              New conversation
             </button>
             <button
               type="button"
@@ -192,6 +192,8 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     () => getCoachConversation(user),
     [user, messages.length, selectedLanguage, selectedMode]
   );
+  const hasActiveConversation = messages.length > 1;
+  const shouldShowQuickStarts = !hasActiveConversation;
 
   const syncMessages = (nextMessages) => {
     setMessages(nextMessages);
@@ -254,12 +256,13 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     setMessages(nextMessages);
   };
 
-  const handleResetConversation = () => {
+  const handleStartNewConversation = () => {
     const nextMessages = resetCoachConversation(user, {
       language: selectedLanguage,
       mode: selectedMode,
     });
     setMessages(nextMessages);
+    setIsHeaderCollapsed(false);
   };
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
@@ -376,34 +379,36 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
           onToggleCollapsed={() => setIsHeaderCollapsed((current) => !current)}
           onLanguageChange={(language) => handlePreferenceChange({ language })}
           onModeChange={(mode) => handlePreferenceChange({ mode })}
-          onResetConversation={handleResetConversation}
+          onStartNewConversation={handleStartNewConversation}
         />
       </div>
 
-      <div className="flex-shrink-0 px-2 pb-2 sm:px-4">
-        <div className="rounded-[24px] border border-slate-200/80 bg-white/80 px-3 py-2.5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.55)] backdrop-blur">
-          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Quick Starts
-            </p>
-            <p className="text-xs text-slate-400">
-              Tap one to send a guided opener
-            </p>
-          </div>
-          <div className="grid gap-2 grid-cols-2 xl:grid-cols-4">
-            {COACH_QUICK_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => handleQuickPrompt(prompt)}
-                className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm leading-5 text-slate-700 transition hover:border-teal-300 hover:bg-teal-50"
-              >
-                {prompt}
-              </button>
-            ))}
+      {shouldShowQuickStarts && (
+        <div className="flex-shrink-0 px-2 pb-2 sm:px-4">
+          <div className="rounded-[20px] border border-slate-200/80 bg-white/80 px-3 py-2.5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.55)] backdrop-blur sm:rounded-[24px]">
+            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Quick Starts
+              </p>
+              <p className="text-xs text-slate-400">
+                Tap one to send a guided opener
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {COACH_QUICK_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleQuickPrompt(prompt)}
+                  className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[13px] leading-5 text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 sm:text-sm"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div
         ref={messagesContainerRef}
