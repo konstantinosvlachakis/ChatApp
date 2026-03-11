@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL } from "../constants/constants";
@@ -35,6 +36,7 @@ const Layout = () => {
   const presenceSocketRef = useRef(null);
   const presenceHeartbeatRef = useRef(null);
   const presenceReconnectRef = useRef(null);
+  const [onlineUserIds, setOnlineUserIds] = useState(() => new Set());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
@@ -46,6 +48,7 @@ const Layout = () => {
     presenceReconnectRef.current = null;
     presenceSocketRef.current?.close();
     presenceSocketRef.current = null;
+    setOnlineUserIds(new Set());
     sessionStorage.removeItem("accessToken");
     sessionStorage.removeItem("refreshToken");
     localStorage.removeItem("accessToken");
@@ -114,6 +117,29 @@ const Layout = () => {
         }, 20000);
       };
 
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "initial_online_users") {
+            setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
+            return;
+          }
+          if (data.type === "presence_update" && typeof data.user_id === "number") {
+            setOnlineUserIds((prev) => {
+              const next = new Set(prev);
+              if (data.is_online) {
+                next.add(data.user_id);
+              } else {
+                next.delete(data.user_id);
+              }
+              return next;
+            });
+          }
+        } catch (_error) {
+          // Ignore malformed presence events.
+        }
+      };
+
       socket.onclose = () => {
         clearPresenceTimers();
         if (isUnmounted) return;
@@ -130,6 +156,7 @@ const Layout = () => {
       clearPresenceTimers();
       presenceSocketRef.current?.close();
       presenceSocketRef.current = null;
+      setOnlineUserIds(new Set());
     };
   }, [user?.user_id]);
 
@@ -209,11 +236,12 @@ const Layout = () => {
   }, []);
 
   return (
-    <div
-      className={`flex flex-col bg-gray-50 ${
-        isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
-      }`}
-    >
+    <PresenceProvider value={{ onlineUserIds }}>
+      <div
+        className={`flex flex-col bg-gray-50 ${
+          isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
+        }`}
+      >
       {/* Header/Menu */}
       <header className="sticky top-0 z-30 bg-gray-700 py-3 text-white shadow-md">
         <nav
@@ -583,14 +611,15 @@ const Layout = () => {
       </main>
 
       {/* Footer */}
-      <footer
-        className={`bg-gray-800 py-3 text-center text-xs text-gray-400 sm:text-sm ${
-          isChatRoute ? "hidden" : "hidden sm:block"
-        }`}
-      >
-        © {new Date().getFullYear()} LangVoyage. All rights reserved.
-      </footer>
-    </div>
+        <footer
+          className={`bg-gray-800 py-3 text-center text-xs text-gray-400 sm:text-sm ${
+            isChatRoute ? "hidden" : "hidden sm:block"
+          }`}
+        >
+          © {new Date().getFullYear()} LangVoyage. All rights reserved.
+        </footer>
+      </div>
+    </PresenceProvider>
   );
 };
 
