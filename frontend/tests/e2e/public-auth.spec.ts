@@ -530,6 +530,68 @@ test.describe("Public auth pages", () => {
       .toBeTruthy();
   });
 
+  test("announces typing on load when the composer already has draft text", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("chat:draft:42", "This is still in progress");
+    });
+
+    await installMockChatTransport(page);
+    await page.goto("/conversations/42");
+
+    await expect
+      .poll(async () => {
+        const messages = await getSocketMessages(page, "/ws/socket-server/42/");
+        return messages.some((message) => JSON.parse(message).type === "user_typing");
+      })
+      .toBeTruthy();
+  });
+
+  test("does not show typing indicator for the current user's own typing events", async ({
+    page,
+  }) => {
+    await installMockChatTransport(page);
+    await page.goto("/conversations/42");
+
+    await expect(page.getByRole("heading", { name: "maya" })).toBeVisible();
+    await expect(page.getByText("Typing...")).toHaveCount(0);
+
+    await page.evaluate(() => {
+      const socketApi = (window as typeof window & {
+        __mockSocketApi?: {
+          emit: (match: string, payload: unknown) => void;
+        };
+      }).__mockSocketApi;
+
+      socketApi?.emit("/ws/socket-server/42/", {
+        type: "user_typing",
+        senderId: 7,
+      });
+      socketApi?.emit("/ws/presence/", {
+        type: "typing_status",
+        conversation_id: 42,
+        sender_id: 7,
+        is_typing: true,
+      });
+    });
+
+    await expect(page.getByText("Typing...")).toHaveCount(0);
+
+    await page.evaluate(() => {
+      const socketApi = (window as typeof window & {
+        __mockSocketApi?: {
+          emit: (match: string, payload: unknown) => void;
+        };
+      }).__mockSocketApi;
+
+      socketApi?.emit("/ws/socket-server/42/", {
+        type: "user_typing",
+        senderId: 12,
+      });
+    });
+
+    await expect(page.getByText("Typing...")).toBeVisible();
+  });
+
   test("removes the online dot after logout presence update", async ({ browser }) => {
     const context = await browser.newContext();
     const viewerPage = await context.newPage();

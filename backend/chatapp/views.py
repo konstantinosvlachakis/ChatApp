@@ -8,7 +8,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Conversation, Message, MessageTranslation, MessageReaction, PracticeStats
+from .models import (
+    Conversation,
+    Message,
+    MessageTranslation,
+    MessageReaction,
+    PracticeStats,
+)
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -31,7 +37,12 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.utils import timezone
 from django.db import transaction
-from .gemini import CoachAIError, CoachAIQuotaError, generate_coach_reply
+from .gemini import (
+    CoachAIError,
+    CoachAIQuotaError,
+    generate_coach_reply,
+    generate_practice_challenge,
+)
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -40,18 +51,33 @@ PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
 PROFILE_LIST_MAX_PAGE_SIZE = 100
 PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
 PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
-CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = "conversation_list:version:user:{user_id}"
+CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = (
+    "conversation_list:version:user:{user_id}"
+)
 CONVERSATION_LIST_CACHE_TIMEOUT_SECONDS = 20
 PRACTICE_XP_CORRECT = 15
 PRACTICE_XP_WRONG = 3
 PRACTICE_POINTS_CORRECT = 10
 PRACTICE_POINTS_WRONG = 1
-PRACTICE_GENERATOR_ENABLED = os.environ.get("PRACTICE_GENERATOR_ENABLED", "false").lower() == "true"
-PRACTICE_GENERATOR_PROVIDER = os.environ.get("PRACTICE_GENERATOR_PROVIDER", "huggingface").strip().lower()
-PRACTICE_GENERATOR_MODE = os.environ.get("PRACTICE_GENERATOR_MODE", "hybrid").strip().lower()
-PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(os.environ.get("PRACTICE_GENERATOR_TIMEOUT_SECONDS", "12"))
+PRACTICE_GENERATOR_ENABLED = (
+    os.environ.get("PRACTICE_GENERATOR_ENABLED", "false").lower() == "true"
+)
+PRACTICE_GENERATOR_PROVIDER = (
+    os.environ.get("PRACTICE_GENERATOR_PROVIDER", "huggingface").strip().lower()
+)
+PRACTICE_GENERATOR_MODE = (
+    os.environ.get("PRACTICE_GENERATOR_MODE", "hybrid").strip().lower()
+)
+PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(
+    os.environ.get("PRACTICE_GENERATOR_TIMEOUT_SECONDS", "12")
+)
+PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT = int(
+    os.environ.get("PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT", "20")
+)
 PRACTICE_DAILY_LIBRARY_SIZE = int(os.environ.get("PRACTICE_DAILY_LIBRARY_SIZE", "20"))
-PRACTICE_DAILY_LIBRARY_MIN_READY = int(os.environ.get("PRACTICE_DAILY_LIBRARY_MIN_READY", "8"))
+PRACTICE_DAILY_LIBRARY_MIN_READY = int(
+    os.environ.get("PRACTICE_DAILY_LIBRARY_MIN_READY", "8")
+)
 COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(
     os.environ.get("COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS", "60")
 )
@@ -62,102 +88,407 @@ COACH_CHAT_RATE_LIMIT_REQUESTS = int(
 PRACTICE_LIBRARY = {
     "english": {
         1: [
-            {"sentence": "I ___ to school every day.", "answer": "go", "options": ["go", "goes", "went", "going"], "hint": "Present simple, first person."},
-            {"sentence": "She ___ coffee in the morning.", "answer": "drinks", "options": ["drink", "drinks", "drank", "drinking"], "hint": "Present simple, third person."},
-            {"sentence": "We ___ in Athens.", "answer": "live", "options": ["live", "lives", "lived", "living"], "hint": "Current fact."},
-            {"sentence": "They ___ football on Sunday.", "answer": "play", "options": ["play", "plays", "played", "playing"], "hint": "Habit action."},
+            {
+                "sentence": "I ___ to school every day.",
+                "answer": "go",
+                "options": ["go", "goes", "went", "going"],
+                "hint": "Present simple, first person.",
+            },
+            {
+                "sentence": "She ___ coffee in the morning.",
+                "answer": "drinks",
+                "options": ["drink", "drinks", "drank", "drinking"],
+                "hint": "Present simple, third person.",
+            },
+            {
+                "sentence": "We ___ in Athens.",
+                "answer": "live",
+                "options": ["live", "lives", "lived", "living"],
+                "hint": "Current fact.",
+            },
+            {
+                "sentence": "They ___ football on Sunday.",
+                "answer": "play",
+                "options": ["play", "plays", "played", "playing"],
+                "hint": "Habit action.",
+            },
         ],
         2: [
-            {"sentence": "Yesterday, he ___ to the market.", "answer": "went", "options": ["go", "goes", "went", "gone"], "hint": "Past tense of go."},
-            {"sentence": "I am ___ dinner right now.", "answer": "cooking", "options": ["cook", "cooked", "cooking", "cooks"], "hint": "Present continuous form."},
-            {"sentence": "They have ___ their homework.", "answer": "finished", "options": ["finish", "finished", "finishing", "finishes"], "hint": "Present perfect with 'have'."},
-            {"sentence": "She was ___ when I called.", "answer": "sleeping", "options": ["sleep", "sleeping", "slept", "sleeps"], "hint": "Past continuous action."},
+            {
+                "sentence": "Yesterday, he ___ to the market.",
+                "answer": "went",
+                "options": ["go", "goes", "went", "gone"],
+                "hint": "Past tense of go.",
+            },
+            {
+                "sentence": "I am ___ dinner right now.",
+                "answer": "cooking",
+                "options": ["cook", "cooked", "cooking", "cooks"],
+                "hint": "Present continuous form.",
+            },
+            {
+                "sentence": "They have ___ their homework.",
+                "answer": "finished",
+                "options": ["finish", "finished", "finishing", "finishes"],
+                "hint": "Present perfect with 'have'.",
+            },
+            {
+                "sentence": "She was ___ when I called.",
+                "answer": "sleeping",
+                "options": ["sleep", "sleeping", "slept", "sleeps"],
+                "hint": "Past continuous action.",
+            },
         ],
         3: [
-            {"sentence": "If I had more time, I would ___ Spanish.", "answer": "practice", "options": ["practice", "practiced", "practicing", "practices"], "hint": "Conditional base verb."},
-            {"sentence": "By next year, we will have ___ the course.", "answer": "completed", "options": ["complete", "completed", "completing", "completes"], "hint": "Future perfect."},
-            {"sentence": "He suggested that she ___ earlier.", "answer": "arrive", "options": ["arrive", "arrived", "arrives", "arriving"], "hint": "Subjunctive after 'suggested that'."},
-            {"sentence": "The project ___ before the deadline.", "answer": "was finished", "options": ["was finished", "is finishing", "finished", "has finish"], "hint": "Past passive voice."},
+            {
+                "sentence": "If I had more time, I would ___ Spanish.",
+                "answer": "practice",
+                "options": ["practice", "practiced", "practicing", "practices"],
+                "hint": "Conditional base verb.",
+            },
+            {
+                "sentence": "By next year, we will have ___ the course.",
+                "answer": "completed",
+                "options": ["complete", "completed", "completing", "completes"],
+                "hint": "Future perfect.",
+            },
+            {
+                "sentence": "He suggested that she ___ earlier.",
+                "answer": "arrive",
+                "options": ["arrive", "arrived", "arrives", "arriving"],
+                "hint": "Subjunctive after 'suggested that'.",
+            },
+            {
+                "sentence": "The project ___ before the deadline.",
+                "answer": "was finished",
+                "options": ["was finished", "is finishing", "finished", "has finish"],
+                "hint": "Past passive voice.",
+            },
         ],
     },
     "spanish": {
         1: [
-            {"sentence": "Yo ___ al trabajo cada día.", "answer": "voy", "options": ["voy", "vas", "fui", "ir"], "hint": "Presente, primera persona."},
-            {"sentence": "Ella ___ café por la mañana.", "answer": "bebe", "options": ["bebo", "bebe", "bebió", "beber"], "hint": "Presente, tercera persona."},
-            {"sentence": "Nosotros ___ en Grecia.", "answer": "vivimos", "options": ["vivo", "viven", "vivimos", "viví"], "hint": "Presente, nosotros."},
-            {"sentence": "Ellos ___ fútbol el domingo.", "answer": "juegan", "options": ["juegan", "juega", "jugaron", "jugar"], "hint": "Presente plural."},
+            {
+                "sentence": "Yo ___ al trabajo cada día.",
+                "answer": "voy",
+                "options": ["voy", "vas", "fui", "ir"],
+                "hint": "Presente, primera persona.",
+            },
+            {
+                "sentence": "Ella ___ café por la mañana.",
+                "answer": "bebe",
+                "options": ["bebo", "bebe", "bebió", "beber"],
+                "hint": "Presente, tercera persona.",
+            },
+            {
+                "sentence": "Nosotros ___ en Grecia.",
+                "answer": "vivimos",
+                "options": ["vivo", "viven", "vivimos", "viví"],
+                "hint": "Presente, nosotros.",
+            },
+            {
+                "sentence": "Ellos ___ fútbol el domingo.",
+                "answer": "juegan",
+                "options": ["juegan", "juega", "jugaron", "jugar"],
+                "hint": "Presente plural.",
+            },
         ],
         2: [
-            {"sentence": "Ayer, él ___ al mercado.", "answer": "fue", "options": ["va", "fue", "ir", "iba"], "hint": "Pretérito de ir."},
-            {"sentence": "Estoy ___ la cena ahora.", "answer": "cocinando", "options": ["cocino", "cocinando", "cociné", "cocinar"], "hint": "Gerundio."},
-            {"sentence": "Hemos ___ la tarea.", "answer": "terminado", "options": ["terminar", "terminado", "terminamos", "termina"], "hint": "Participio en pretérito perfecto."},
-            {"sentence": "Cuando llamé, ella estaba ___.", "answer": "durmiendo", "options": ["duerme", "durmió", "durmiendo", "dormir"], "hint": "Imperfecto progresivo."},
+            {
+                "sentence": "Ayer, él ___ al mercado.",
+                "answer": "fue",
+                "options": ["va", "fue", "ir", "iba"],
+                "hint": "Pretérito de ir.",
+            },
+            {
+                "sentence": "Estoy ___ la cena ahora.",
+                "answer": "cocinando",
+                "options": ["cocino", "cocinando", "cociné", "cocinar"],
+                "hint": "Gerundio.",
+            },
+            {
+                "sentence": "Hemos ___ la tarea.",
+                "answer": "terminado",
+                "options": ["terminar", "terminado", "terminamos", "termina"],
+                "hint": "Participio en pretérito perfecto.",
+            },
+            {
+                "sentence": "Cuando llamé, ella estaba ___.",
+                "answer": "durmiendo",
+                "options": ["duerme", "durmió", "durmiendo", "dormir"],
+                "hint": "Imperfecto progresivo.",
+            },
         ],
         3: [
-            {"sentence": "Si tuviera más tiempo, ___ más francés.", "answer": "practicaría", "options": ["practico", "practicaría", "practiqué", "practicar"], "hint": "Condicional."},
-            {"sentence": "Para el próximo año, habremos ___ el curso.", "answer": "completado", "options": ["completar", "completado", "completamos", "completará"], "hint": "Futuro perfecto."},
-            {"sentence": "Él sugirió que ella ___ temprano.", "answer": "llegara", "options": ["llega", "llegó", "llegara", "llegar"], "hint": "Subjuntivo pasado."},
-            {"sentence": "El informe ___ antes del plazo.", "answer": "fue enviado", "options": ["fue enviado", "envía", "enviando", "ha enviar"], "hint": "Voz pasiva."},
+            {
+                "sentence": "Si tuviera más tiempo, ___ más francés.",
+                "answer": "practicaría",
+                "options": ["practico", "practicaría", "practiqué", "practicar"],
+                "hint": "Condicional.",
+            },
+            {
+                "sentence": "Para el próximo año, habremos ___ el curso.",
+                "answer": "completado",
+                "options": ["completar", "completado", "completamos", "completará"],
+                "hint": "Futuro perfecto.",
+            },
+            {
+                "sentence": "Él sugirió que ella ___ temprano.",
+                "answer": "llegara",
+                "options": ["llega", "llegó", "llegara", "llegar"],
+                "hint": "Subjuntivo pasado.",
+            },
+            {
+                "sentence": "El informe ___ antes del plazo.",
+                "answer": "fue enviado",
+                "options": ["fue enviado", "envía", "enviando", "ha enviar"],
+                "hint": "Voz pasiva.",
+            },
         ],
     },
     "french": {
         1: [
-            {"sentence": "Je ___ au travail chaque jour.", "answer": "vais", "options": ["vais", "va", "allé", "aller"], "hint": "Présent, première personne."},
-            {"sentence": "Elle ___ du café le matin.", "answer": "boit", "options": ["bois", "boit", "bu", "boire"], "hint": "Présent, troisième personne."},
-            {"sentence": "Nous ___ à Paris.", "answer": "habitons", "options": ["habite", "habitent", "habitons", "habité"], "hint": "Présent, nous."},
-            {"sentence": "Ils ___ au football le dimanche.", "answer": "jouent", "options": ["joue", "jouent", "joué", "jouer"], "hint": "Présent pluriel."},
+            {
+                "sentence": "Je ___ au travail chaque jour.",
+                "answer": "vais",
+                "options": ["vais", "va", "allé", "aller"],
+                "hint": "Présent, première personne.",
+            },
+            {
+                "sentence": "Elle ___ du café le matin.",
+                "answer": "boit",
+                "options": ["bois", "boit", "bu", "boire"],
+                "hint": "Présent, troisième personne.",
+            },
+            {
+                "sentence": "Nous ___ à Paris.",
+                "answer": "habitons",
+                "options": ["habite", "habitent", "habitons", "habité"],
+                "hint": "Présent, nous.",
+            },
+            {
+                "sentence": "Ils ___ au football le dimanche.",
+                "answer": "jouent",
+                "options": ["joue", "jouent", "joué", "jouer"],
+                "hint": "Présent pluriel.",
+            },
         ],
         2: [
-            {"sentence": "Hier, il ___ au marché.", "answer": "est allé", "options": ["va", "allait", "est allé", "aller"], "hint": "Passé composé."},
-            {"sentence": "Je suis en train de ___ le dîner.", "answer": "préparer", "options": ["prépare", "préparer", "préparé", "préparant"], "hint": "Infinitif après expression."},
-            {"sentence": "Nous avons ___ nos devoirs.", "answer": "fini", "options": ["fini", "finissons", "finir", "finissait"], "hint": "Participe passé."},
-            {"sentence": "Quand tu as appelé, elle était en train de ___.", "answer": "dormir", "options": ["dort", "dormi", "dormir", "dormait"], "hint": "Action en cours."},
+            {
+                "sentence": "Hier, il ___ au marché.",
+                "answer": "est allé",
+                "options": ["va", "allait", "est allé", "aller"],
+                "hint": "Passé composé.",
+            },
+            {
+                "sentence": "Je suis en train de ___ le dîner.",
+                "answer": "préparer",
+                "options": ["prépare", "préparer", "préparé", "préparant"],
+                "hint": "Infinitif après expression.",
+            },
+            {
+                "sentence": "Nous avons ___ nos devoirs.",
+                "answer": "fini",
+                "options": ["fini", "finissons", "finir", "finissait"],
+                "hint": "Participe passé.",
+            },
+            {
+                "sentence": "Quand tu as appelé, elle était en train de ___.",
+                "answer": "dormir",
+                "options": ["dort", "dormi", "dormir", "dormait"],
+                "hint": "Action en cours.",
+            },
         ],
         3: [
-            {"sentence": "Si j'avais plus de temps, je ___ plus l'espagnol.", "answer": "pratiquerais", "options": ["pratique", "pratiquerais", "pratiqué", "pratiquer"], "hint": "Conditionnel présent."},
-            {"sentence": "D'ici l'an prochain, nous aurons ___ le cours.", "answer": "terminé", "options": ["terminer", "terminé", "terminons", "terminera"], "hint": "Futur antérieur."},
-            {"sentence": "Il faut que tu ___ tôt.", "answer": "arrives", "options": ["arrives", "arrivé", "arriver", "arrivait"], "hint": "Subjonctif présent."},
-            {"sentence": "Le dossier ___ avant la date limite.", "answer": "a été envoyé", "options": ["a été envoyé", "est envoyant", "envoie", "a envoyer"], "hint": "Voix passive composée."},
+            {
+                "sentence": "Si j'avais plus de temps, je ___ plus l'espagnol.",
+                "answer": "pratiquerais",
+                "options": ["pratique", "pratiquerais", "pratiqué", "pratiquer"],
+                "hint": "Conditionnel présent.",
+            },
+            {
+                "sentence": "D'ici l'an prochain, nous aurons ___ le cours.",
+                "answer": "terminé",
+                "options": ["terminer", "terminé", "terminons", "terminera"],
+                "hint": "Futur antérieur.",
+            },
+            {
+                "sentence": "Il faut que tu ___ tôt.",
+                "answer": "arrives",
+                "options": ["arrives", "arrivé", "arriver", "arrivait"],
+                "hint": "Subjonctif présent.",
+            },
+            {
+                "sentence": "Le dossier ___ avant la date limite.",
+                "answer": "a été envoyé",
+                "options": ["a été envoyé", "est envoyant", "envoie", "a envoyer"],
+                "hint": "Voix passive composée.",
+            },
         ],
     },
     "greek": {
         1: [
-            {"sentence": "Εγώ ___ στο σχολείο κάθε μέρα.", "answer": "πηγαίνω", "options": ["πηγαίνω", "πηγαίνει", "πήγα", "πηγαίνεις"], "hint": "Ενεστώτας, πρώτο πρόσωπο."},
-            {"sentence": "Αυτή ___ καφέ το πρωί.", "answer": "πίνει", "options": ["πίνω", "πίνει", "ήπιε", "πίνουν"], "hint": "Ενεστώτας, τρίτο πρόσωπο."},
-            {"sentence": "Εμείς ___ στην Αθήνα.", "answer": "μένουμε", "options": ["μένω", "μένει", "μένουμε", "έμεινα"], "hint": "Ενεστώτας, πρώτο πληθυντικό."},
-            {"sentence": "Αυτοί ___ ποδόσφαιρο την Κυριακή.", "answer": "παίζουν", "options": ["παίζω", "παίζει", "παίζουν", "έπαιξαν"], "hint": "Ενεστώτας, τρίτο πληθυντικό."},
+            {
+                "sentence": "Εγώ ___ στο σχολείο κάθε μέρα.",
+                "answer": "πηγαίνω",
+                "options": ["πηγαίνω", "πηγαίνει", "πήγα", "πηγαίνεις"],
+                "hint": "Ενεστώτας, πρώτο πρόσωπο.",
+            },
+            {
+                "sentence": "Αυτή ___ καφέ το πρωί.",
+                "answer": "πίνει",
+                "options": ["πίνω", "πίνει", "ήπιε", "πίνουν"],
+                "hint": "Ενεστώτας, τρίτο πρόσωπο.",
+            },
+            {
+                "sentence": "Εμείς ___ στην Αθήνα.",
+                "answer": "μένουμε",
+                "options": ["μένω", "μένει", "μένουμε", "έμεινα"],
+                "hint": "Ενεστώτας, πρώτο πληθυντικό.",
+            },
+            {
+                "sentence": "Αυτοί ___ ποδόσφαιρο την Κυριακή.",
+                "answer": "παίζουν",
+                "options": ["παίζω", "παίζει", "παίζουν", "έπαιξαν"],
+                "hint": "Ενεστώτας, τρίτο πληθυντικό.",
+            },
         ],
         2: [
-            {"sentence": "Χθες, αυτός ___ στην αγορά.", "answer": "πήγε", "options": ["πηγαίνει", "πήγε", "πάει", "πηγαίνω"], "hint": "Αόριστος του 'πηγαίνω'."},
-            {"sentence": "Τώρα ___ το βραδινό.", "answer": "μαγειρεύω", "options": ["μαγειρεύω", "μαγείρεψα", "μαγειρεύει", "μαγειρεύοντας"], "hint": "Ενεστώτας, τρέχουσα δράση."},
-            {"sentence": "Έχουμε ___ τις ασκήσεις.", "answer": "τελειώσει", "options": ["τελειώνουμε", "τελείωσα", "τελειώσει", "τελειώνει"], "hint": "Παρακείμενος."},
-            {"sentence": "Όταν τηλεφώνησες, αυτή ___ .", "answer": "κοιμόταν", "options": ["κοιμάται", "κοιμήθηκε", "κοιμόταν", "κοιμηθεί"], "hint": "Παρατατικός."},
+            {
+                "sentence": "Χθες, αυτός ___ στην αγορά.",
+                "answer": "πήγε",
+                "options": ["πηγαίνει", "πήγε", "πάει", "πηγαίνω"],
+                "hint": "Αόριστος του 'πηγαίνω'.",
+            },
+            {
+                "sentence": "Τώρα ___ το βραδινό.",
+                "answer": "μαγειρεύω",
+                "options": ["μαγειρεύω", "μαγείρεψα", "μαγειρεύει", "μαγειρεύοντας"],
+                "hint": "Ενεστώτας, τρέχουσα δράση.",
+            },
+            {
+                "sentence": "Έχουμε ___ τις ασκήσεις.",
+                "answer": "τελειώσει",
+                "options": ["τελειώνουμε", "τελείωσα", "τελειώσει", "τελειώνει"],
+                "hint": "Παρακείμενος.",
+            },
+            {
+                "sentence": "Όταν τηλεφώνησες, αυτή ___ .",
+                "answer": "κοιμόταν",
+                "options": ["κοιμάται", "κοιμήθηκε", "κοιμόταν", "κοιμηθεί"],
+                "hint": "Παρατατικός.",
+            },
         ],
         3: [
-            {"sentence": "Αν είχα περισσότερο χρόνο, θα ___ περισσότερα ισπανικά.", "answer": "εξασκούσα", "options": ["εξασκώ", "εξασκούσα", "εξάσκησα", "εξασκείται"], "hint": "Υποθετικός λόγος."},
-            {"sentence": "Μέχρι του χρόνου, θα έχουμε ___ το μάθημα.", "answer": "ολοκληρώσει", "options": ["ολοκληρώνω", "ολοκλήρωσα", "ολοκληρώσει", "ολοκληρώνει"], "hint": "Συντελεσμένος μέλλοντας."},
-            {"sentence": "Πρότεινε να ___ νωρίτερα.", "answer": "έρθει", "options": ["έρχεται", "ήρθε", "έρθει", "ερχόταν"], "hint": "Υποτακτική."},
-            {"sentence": "Η αναφορά ___ πριν την προθεσμία.", "answer": "στάλθηκε", "options": ["στέλνεται", "έστειλε", "στάλθηκε", "στείλει"], "hint": "Παθητική φωνή, αόριστος."},
+            {
+                "sentence": "Αν είχα περισσότερο χρόνο, θα ___ περισσότερα ισπανικά.",
+                "answer": "εξασκούσα",
+                "options": ["εξασκώ", "εξασκούσα", "εξάσκησα", "εξασκείται"],
+                "hint": "Υποθετικός λόγος.",
+            },
+            {
+                "sentence": "Μέχρι του χρόνου, θα έχουμε ___ το μάθημα.",
+                "answer": "ολοκληρώσει",
+                "options": ["ολοκληρώνω", "ολοκλήρωσα", "ολοκληρώσει", "ολοκληρώνει"],
+                "hint": "Συντελεσμένος μέλλοντας.",
+            },
+            {
+                "sentence": "Πρότεινε να ___ νωρίτερα.",
+                "answer": "έρθει",
+                "options": ["έρχεται", "ήρθε", "έρθει", "ερχόταν"],
+                "hint": "Υποτακτική.",
+            },
+            {
+                "sentence": "Η αναφορά ___ πριν την προθεσμία.",
+                "answer": "στάλθηκε",
+                "options": ["στέλνεται", "έστειλε", "στάλθηκε", "στείλει"],
+                "hint": "Παθητική φωνή, αόριστος.",
+            },
         ],
     },
     "russian": {
         1: [
-            {"sentence": "Я ___ в школу каждый день.", "answer": "хожу", "options": ["хожу", "ходит", "пошёл", "идти"], "hint": "Настоящее время, 1-е лицо."},
-            {"sentence": "Она ___ кофе утром.", "answer": "пьёт", "options": ["пью", "пьёт", "пила", "пить"], "hint": "Настоящее время, 3-е лицо."},
-            {"sentence": "Мы ___ в Афинах.", "answer": "живём", "options": ["живу", "живёт", "живём", "жил"], "hint": "Настоящее время, множественное число."},
-            {"sentence": "Они ___ футбол в воскресенье.", "answer": "играют", "options": ["играю", "играет", "играют", "играл"], "hint": "Настоящее время, 3-е лицо мн.ч."},
+            {
+                "sentence": "Я ___ в школу каждый день.",
+                "answer": "хожу",
+                "options": ["хожу", "ходит", "пошёл", "идти"],
+                "hint": "Настоящее время, 1-е лицо.",
+            },
+            {
+                "sentence": "Она ___ кофе утром.",
+                "answer": "пьёт",
+                "options": ["пью", "пьёт", "пила", "пить"],
+                "hint": "Настоящее время, 3-е лицо.",
+            },
+            {
+                "sentence": "Мы ___ в Афинах.",
+                "answer": "живём",
+                "options": ["живу", "живёт", "живём", "жил"],
+                "hint": "Настоящее время, множественное число.",
+            },
+            {
+                "sentence": "Они ___ футбол в воскресенье.",
+                "answer": "играют",
+                "options": ["играю", "играет", "играют", "играл"],
+                "hint": "Настоящее время, 3-е лицо мн.ч.",
+            },
         ],
         2: [
-            {"sentence": "Вчера он ___ на рынок.", "answer": "пошёл", "options": ["идёт", "пошёл", "идти", "ходил"], "hint": "Прошедшее время."},
-            {"sentence": "Сейчас я ___ ужин.", "answer": "готовлю", "options": ["готовлю", "готовил", "готовит", "готовить"], "hint": "Действие сейчас."},
-            {"sentence": "Мы уже ___ домашнее задание.", "answer": "сделали", "options": ["делаем", "сделали", "сделать", "делал"], "hint": "Завершённое действие."},
-            {"sentence": "Когда ты позвонил, она ___ .", "answer": "спала", "options": ["спит", "спала", "спать", "уснёт"], "hint": "Длительное действие в прошлом."},
+            {
+                "sentence": "Вчера он ___ на рынок.",
+                "answer": "пошёл",
+                "options": ["идёт", "пошёл", "идти", "ходил"],
+                "hint": "Прошедшее время.",
+            },
+            {
+                "sentence": "Сейчас я ___ ужин.",
+                "answer": "готовлю",
+                "options": ["готовлю", "готовил", "готовит", "готовить"],
+                "hint": "Действие сейчас.",
+            },
+            {
+                "sentence": "Мы уже ___ домашнее задание.",
+                "answer": "сделали",
+                "options": ["делаем", "сделали", "сделать", "делал"],
+                "hint": "Завершённое действие.",
+            },
+            {
+                "sentence": "Когда ты позвонил, она ___ .",
+                "answer": "спала",
+                "options": ["спит", "спала", "спать", "уснёт"],
+                "hint": "Длительное действие в прошлом.",
+            },
         ],
         3: [
-            {"sentence": "Если бы у меня было больше времени, я бы ___ русский.", "answer": "практиковал", "options": ["практикую", "практиковал", "практиковать", "практиковал бы"], "hint": "Условная конструкция."},
-            {"sentence": "К следующему году мы ___ курс.", "answer": "закончим", "options": ["заканчиваем", "закончим", "закончили", "закончить"], "hint": "Будущее действие."},
-            {"sentence": "Учитель попросил, чтобы он ___ раньше.", "answer": "пришёл", "options": ["приходит", "пришёл", "прийти", "приходил"], "hint": "Прошедшая форма в придаточном."},
-            {"sentence": "Отчёт ___ до дедлайна.", "answer": "был отправлен", "options": ["был отправлен", "отправляет", "отправил", "отправить"], "hint": "Страдательный залог."},
+            {
+                "sentence": "Если бы у меня было больше времени, я бы ___ русский.",
+                "answer": "практиковал",
+                "options": [
+                    "практикую",
+                    "практиковал",
+                    "практиковать",
+                    "практиковал бы",
+                ],
+                "hint": "Условная конструкция.",
+            },
+            {
+                "sentence": "К следующему году мы ___ курс.",
+                "answer": "закончим",
+                "options": ["заканчиваем", "закончим", "закончили", "закончить"],
+                "hint": "Будущее действие.",
+            },
+            {
+                "sentence": "Учитель попросил, чтобы он ___ раньше.",
+                "answer": "пришёл",
+                "options": ["приходит", "пришёл", "прийти", "приходил"],
+                "hint": "Прошедшая форма в придаточном.",
+            },
+            {
+                "sentence": "Отчёт ___ до дедлайна.",
+                "answer": "был отправлен",
+                "options": ["был отправлен", "отправляет", "отправил", "отправить"],
+                "hint": "Страдательный залог.",
+            },
         ],
     },
 }
@@ -246,7 +577,9 @@ def build_media_url(request, path):
     return media_url
 
 
-def broadcast_message_status_update(conversation_id, message_ids, status_value, actor_id):
+def broadcast_message_status_update(
+    conversation_id, message_ids, status_value, actor_id
+):
     if not message_ids:
         return
     channel_layer = get_channel_layer()
@@ -304,7 +637,9 @@ def mark_presence_offline_view(request):
     with transaction.atomic():
         profile = Profile.objects.select_for_update().filter(id=user.id).first()
         if not profile:
-            return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND
+            )
 
         was_online = bool(profile.is_online or profile.ws_connection_count)
         profile.ws_connection_count = 0
@@ -343,7 +678,9 @@ def consume_coach_chat_rate_limit(user_id):
 def coach_chat_view(request):
     message = str(request.data.get("message") or "").strip()
     if not message:
-        return Response({"detail": "Message is required."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "Message is required."}, status=status.HTTP_400_BAD_REQUEST
+        )
 
     if not consume_coach_chat_rate_limit(request.user.id):
         return Response(
@@ -477,8 +814,7 @@ def profile_view(request):
     if request.method == "GET":
         cache_version = get_profile_cache_version(user.id)
         cache_key = (
-            f"profile:v{cache_version}:user:{user.id}:"
-            f"host:{request.get_host()}"
+            f"profile:v{cache_version}:user:{user.id}:" f"host:{request.get_host()}"
         )
         cached_payload = cache.get(cache_key)
         if cached_payload:
@@ -691,7 +1027,11 @@ def profile_edit_view(request):
             normalized_email = str(email).strip().lower()
             if not normalized_email:
                 return JsonResponse({"error": "Email cannot be empty"}, status=400)
-            if Profile.objects.exclude(id=user.id).filter(email=normalized_email).exists():
+            if (
+                Profile.objects.exclude(id=user.id)
+                .filter(email=normalized_email)
+                .exists()
+            ):
                 return JsonResponse({"error": "Email already exists"}, status=400)
             user.email = normalized_email
         if date_of_birth is not None:
@@ -732,9 +1072,7 @@ def profile_edit_view(request):
                     "date_of_birth": user.date_of_birth,
                     "location": user.location or "",
                     "location_updated_at": user.location_updated_at,
-                    "profile_image_url": (
-                        user.profile_image_url or None
-                    ),
+                    "profile_image_url": (user.profile_image_url or None),
                 },
             },
             status=200,
@@ -844,7 +1182,9 @@ class MessageListView(APIView):
         # Page query is newest-first for paging semantics.
         # Reverse in response so UI receives messages in chronological order.
         messages = list(page_obj.object_list)[::-1]
-        serializer = MessageSerializer(messages, many=True, context={"request": request})
+        serializer = MessageSerializer(
+            messages, many=True, context={"request": request}
+        )
         payload = {
             "messages": serializer.data,
             "pagination": {
@@ -983,12 +1323,15 @@ class ConversationListView(APIView):
             .values("id")[:1]
         )
         conversations = (
-            Conversation.objects.filter(Q(sender=request.user) | Q(receiver=request.user))
+            Conversation.objects.filter(
+                Q(sender=request.user) | Q(receiver=request.user)
+            )
             .select_related("sender", "receiver")
             .annotate(
                 unread_count_for_request=Count(
                     "messages",
-                    filter=~Q(messages__sender=request.user) & ~Q(messages__status="read"),
+                    filter=~Q(messages__sender=request.user)
+                    & ~Q(messages__status="read"),
                 ),
                 last_message_id=last_message_id_subquery,
             )
@@ -1000,7 +1343,9 @@ class ConversationListView(APIView):
             .filter(status="sent")
         )
         updates_by_conversation = {}
-        for message_id, conv_id in messages_to_deliver.values_list("id", "conversation_id"):
+        for message_id, conv_id in messages_to_deliver.values_list(
+            "id", "conversation_id"
+        ):
             updates_by_conversation.setdefault(conv_id, []).append(message_id)
 
         if updates_by_conversation:
@@ -1024,8 +1369,12 @@ class ConversationListView(APIView):
             for conversation in conversations
             if getattr(conversation, "last_message_id", None)
         ]
-        last_messages = Message.objects.filter(id__in=last_message_ids).select_related("sender")
-        last_message_map = {message.conversation_id: message for message in last_messages}
+        last_messages = Message.objects.filter(id__in=last_message_ids).select_related(
+            "sender"
+        )
+        last_message_map = {
+            message.conversation_id: message for message in last_messages
+        }
 
         serializer = ConversationSerializer(
             conversations,
@@ -1148,7 +1497,9 @@ def update_profile_image(request, user_id):
                     unique_filename=True,
                     overwrite=False,
                 )
-                stored_url = upload_result.get("secure_url") or upload_result.get("url") or ""
+                stored_url = (
+                    upload_result.get("secure_url") or upload_result.get("url") or ""
+                )
             except Exception:
                 stored_url = ""
 
@@ -1175,7 +1526,9 @@ def update_profile_image(request, user_id):
             {
                 "message": "Profile image updated successfully.",
                 "slot": slot,
-                "profile_image_url": build_media_url(request, profile.profile_image_url),
+                "profile_image_url": build_media_url(
+                    request, profile.profile_image_url
+                ),
                 "complementary_image_1_url": build_media_url(
                     request, profile.complementary_image_1_url
                 ),
@@ -1248,7 +1601,10 @@ def translate_message_view(request):
 
     if message_id:
         message = get_object_or_404(Message, id=message_id)
-        participants = {message.conversation.sender_id, message.conversation.receiver_id}
+        participants = {
+            message.conversation.sender_id,
+            message.conversation.receiver_id,
+        }
         if request.user.id not in participants:
             return Response(
                 {"error": "You do not have access to this message."},
@@ -1274,7 +1630,9 @@ def translate_message_view(request):
             )
 
     if not text:
-        return Response({"error": "Text is required."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Text is required."}, status=status.HTTP_400_BAD_REQUEST
+        )
 
     normalized_text = normalize_translation_text(text)
     cache_key = build_translation_cache_key(normalized_text, target_language)
@@ -1289,7 +1647,9 @@ def translate_message_view(request):
                         user=request.user,
                         target_language=target_language,
                         defaults={
-                            "source_language": cached_result.get("source_language", "auto"),
+                            "source_language": cached_result.get(
+                                "source_language", "auto"
+                            ),
                             "translated_text": normalized_text,
                         },
                     )
@@ -1343,7 +1703,9 @@ def translate_message_view(request):
         translated_text = "".join(
             chunk[0] for chunk in translated_chunks if isinstance(chunk, list) and chunk
         ).strip()
-        source_language = payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
+        source_language = (
+            payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
+        )
 
         if not translated_text:
             return Response(
@@ -1515,7 +1877,9 @@ def parse_generator_json_payload(raw_text):
         return None
 
     candidate_text = str(raw_text).strip()
-    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", candidate_text, re.DOTALL)
+    fenced_match = re.search(
+        r"```(?:json)?\s*(\{.*?\})\s*```", candidate_text, re.DOTALL
+    )
     if fenced_match:
         candidate_text = fenced_match.group(1).strip()
     else:
@@ -1535,7 +1899,12 @@ def parse_generator_json_payload(raw_text):
     hint = normalize_option_value(payload.get("hint"))
     options = payload.get("options") or []
 
-    if not sentence or "___" not in sentence or not answer or not isinstance(options, list):
+    if (
+        not sentence
+        or "___" not in sentence
+        or not answer
+        or not isinstance(options, list)
+    ):
         return None
 
     normalized_options = []
@@ -1554,7 +1923,11 @@ def parse_generator_json_payload(raw_text):
         "sentence": sentence,
         "answer": answer,
         "hint": hint or "Generated challenge",
-        "options": normalized_options[:4] if len(normalized_options) > 4 else normalized_options,
+        "options": (
+            normalized_options[:4]
+            if len(normalized_options) > 4
+            else normalized_options
+        ),
     }
 
 
@@ -1630,11 +2003,46 @@ def fetch_generated_challenge_from_huggingface(language, level, bucket):
     }
 
 
+def fetch_generated_challenge_from_gemini(language, level, bucket):
+    try:
+        generated_text = generate_practice_challenge(
+            language=language,
+            cefr_level=cefr_level_for_level(level),
+        )
+    except CoachAIError:
+        return None
+
+    challenge_payload = parse_generator_json_payload(generated_text)
+    if not challenge_payload:
+        return None
+
+    options = list(challenge_payload["options"])
+    if len(options) > 4:
+        answer = challenge_payload["answer"]
+        distractors = [option for option in options if option != answer]
+        random.shuffle(distractors)
+        options = distractors[:3] + [answer]
+    random.shuffle(options)
+
+    return {
+        "sentence": challenge_payload["sentence"],
+        "answer": challenge_payload["answer"],
+        "hint": challenge_payload["hint"],
+        "options": options,
+        "difficulty_bucket": bucket,
+        "language": language,
+    }
+
+
 def fetch_generated_challenge(language, level, bucket):
     if not PRACTICE_GENERATOR_ENABLED:
         return None
+    if not consume_practice_generator_budget():
+        return None
     if PRACTICE_GENERATOR_PROVIDER == "huggingface":
         return fetch_generated_challenge_from_huggingface(language, level, bucket)
+    if PRACTICE_GENERATOR_PROVIDER == "gemini":
+        return fetch_generated_challenge_from_gemini(language, level, bucket)
     return None
 
 
@@ -1654,18 +2062,128 @@ def get_generated_answer(user_id, challenge_id):
     cached = cache.get(cache_key)
     if not cached:
         return None, None
-    return normalize_option_value(cached.get("answer")), (cached.get("language") or "").strip().lower()
+    return (
+        normalize_option_value(cached.get("answer")),
+        (cached.get("language") or "").strip().lower(),
+    )
 
 
 def daily_library_date_key():
     return timezone.now().strftime("%Y%m%d")
 
 
+def practice_generator_daily_budget_cache_key():
+    return f"practice:generator_budget:v1:date:{daily_library_date_key()}"
+
+
+def get_remaining_practice_generator_budget():
+    if PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT <= 0:
+        return 0
+
+    used = cache.get(practice_generator_daily_budget_cache_key())
+    try:
+        used_count = int(used or 0)
+    except (TypeError, ValueError):
+        used_count = 0
+    return max(0, PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT - used_count)
+
+
+def consume_practice_generator_budget():
+    if PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT <= 0:
+        return False
+
+    cache_key = practice_generator_daily_budget_cache_key()
+    current_value = cache.get(cache_key)
+    if current_value is None:
+        cache.set(cache_key, 1, timeout=60 * 60 * 36)
+        return True
+
+    try:
+        next_value = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=60 * 60 * 36)
+        return True
+
+    return int(next_value) <= PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT
+
+
 def daily_library_cache_key(language, bucket):
     return f"practice:daily_library:v1:date:{daily_library_date_key()}:lang:{language}:bucket:{bucket}"
 
 
-def get_or_build_daily_library(language, level, bucket):
+def daily_library_seen_cache_key(user_id, language, bucket):
+    return (
+        f"practice:daily_library_seen:v1:date:{daily_library_date_key()}:"
+        f"user:{user_id}:lang:{language}:bucket:{bucket}"
+    )
+
+
+def recent_practice_signatures_cache_key(user_id, language, bucket):
+    return (
+        f"practice:recent_signatures:v1:user:{user_id}:lang:{language}:bucket:{bucket}"
+    )
+
+
+def get_seen_daily_indexes(user_id, language, bucket):
+    cached = cache.get(daily_library_seen_cache_key(user_id, language, bucket))
+    if not isinstance(cached, list):
+        return set()
+    seen = set()
+    for item in cached:
+        try:
+            seen.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return seen
+
+
+def store_seen_daily_indexes(user_id, language, bucket, seen_indexes):
+    normalized = sorted(
+        {
+            int(index)
+            for index in (seen_indexes or set())
+            if isinstance(index, int) or str(index).isdigit()
+        }
+    )
+    cache.set(
+        daily_library_seen_cache_key(user_id, language, bucket),
+        normalized,
+        timeout=60 * 60 * 36,
+    )
+
+
+def get_recent_practice_signatures(user_id, language, bucket):
+    cached = cache.get(recent_practice_signatures_cache_key(user_id, language, bucket))
+    if not isinstance(cached, list):
+        return []
+    return [
+        normalize_option_value(item) for item in cached if normalize_option_value(item)
+    ]
+
+
+def store_recent_practice_signature(
+    user_id, language, bucket, signature, *, limit=6, timeout=60 * 60 * 36
+):
+    normalized_signature = normalize_option_value(signature)
+    if not normalized_signature:
+        return
+
+    recent = [
+        item
+        for item in get_recent_practice_signatures(user_id, language, bucket)
+        if item != normalized_signature
+    ]
+    recent.append(normalized_signature)
+    cache.set(
+        recent_practice_signatures_cache_key(user_id, language, bucket),
+        recent[-max(1, int(limit)) :],
+        timeout=timeout,
+    )
+
+
+def get_or_build_daily_library(
+    language, level, bucket, target_size=None, min_ready=None
+):
     cache_key = daily_library_cache_key(language, bucket)
     cached = cache.get(cache_key)
     pool = cached if isinstance(cached, list) else []
@@ -1675,14 +2193,22 @@ def get_or_build_daily_library(language, level, bucket):
         for item in pool
         if isinstance(item, dict) and item.get("sentence")
     }
-    target_size = max(PRACTICE_DAILY_LIBRARY_SIZE, PRACTICE_DAILY_LIBRARY_MIN_READY)
-    needs_refill = len(pool) < PRACTICE_DAILY_LIBRARY_MIN_READY
+    desired_target_size = max(
+        int(target_size or PRACTICE_DAILY_LIBRARY_SIZE),
+        int(min_ready or PRACTICE_DAILY_LIBRARY_MIN_READY),
+    )
+    desired_min_ready = int(min_ready or PRACTICE_DAILY_LIBRARY_MIN_READY)
+    needs_refill = len(pool) < desired_min_ready
 
     if needs_refill:
-        missing = max(0, target_size - len(pool))
-        max_attempts = max(6, missing * 4)
+        remaining_budget = get_remaining_practice_generator_budget()
+        if remaining_budget <= 0:
+            return pool
+
+        missing = max(0, desired_target_size - len(pool))
+        max_attempts = min(max(6, missing * 4), remaining_budget)
         attempts = 0
-        while len(pool) < target_size and attempts < max_attempts:
+        while len(pool) < desired_target_size and attempts < max_attempts:
             attempts += 1
             generated = fetch_generated_challenge(language, level, bucket)
             if not generated:
@@ -1714,19 +2240,46 @@ def get_or_build_daily_library(language, level, bucket):
 
 def build_challenge(language, level, user_id):
     bucket = practice_bucket_for_level(level)
+    recent_signatures = set(get_recent_practice_signatures(user_id, language, bucket))
     if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"daily", "hybrid"}:
         daily_pool = get_or_build_daily_library(language, level, bucket)
         if daily_pool:
-            index = random.randrange(len(daily_pool))
+            seen_indexes = get_seen_daily_indexes(user_id, language, bucket)
+            available_indexes = [
+                index for index in range(len(daily_pool)) if index not in seen_indexes
+            ]
+            if not available_indexes:
+                seen_indexes = set()
+                available_indexes = list(range(len(daily_pool)))
+
+            preferred_indexes = [
+                index
+                for index in available_indexes
+                if normalize_option_value((daily_pool[index] or {}).get("sentence"))
+                not in recent_signatures
+            ]
+            candidate_indexes = preferred_indexes or available_indexes
+
+            index = random.choice(candidate_indexes)
+            seen_indexes.add(index)
+            store_seen_daily_indexes(user_id, language, bucket, seen_indexes)
             template = daily_pool[index]
             options = list(template.get("options") or [])
             random.shuffle(options)
-            challenge_id = f"dailygen:{daily_library_date_key()}:{language}:{bucket}:{index}"
+            challenge_id = (
+                f"dailygen:{daily_library_date_key()}:{language}:{bucket}:{index}"
+            )
             store_generated_answer(
                 user_id,
                 challenge_id,
                 template.get("answer", ""),
                 language,
+            )
+            store_recent_practice_signature(
+                user_id,
+                language,
+                bucket,
+                template.get("sentence", ""),
             )
             return {
                 "id": challenge_id,
@@ -1739,10 +2292,26 @@ def build_challenge(language, level, user_id):
             }
 
     if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"realtime", "hybrid"}:
-        generated = fetch_generated_challenge(language, level, bucket)
+        generated = None
+        for _ in range(4):
+            candidate = fetch_generated_challenge(language, level, bucket)
+            if not candidate:
+                continue
+            sentence_signature = normalize_option_value(candidate.get("sentence"))
+            if sentence_signature and sentence_signature in recent_signatures:
+                generated = candidate
+                continue
+            generated = candidate
+            break
         if generated:
             challenge_id = f"gen:{uuid.uuid4().hex[:16]}"
             store_generated_answer(user_id, challenge_id, generated["answer"], language)
+            store_recent_practice_signature(
+                user_id,
+                language,
+                bucket,
+                generated.get("sentence", ""),
+            )
             return {
                 "id": challenge_id,
                 "sentence_parts": split_sentence_parts(generated["sentence"]),
@@ -1753,14 +2322,30 @@ def build_challenge(language, level, user_id):
                 "source": "generator",
             }
 
-    challenges = PRACTICE_LIBRARY.get(language, PRACTICE_LIBRARY["english"]).get(bucket, [])
+    challenges = PRACTICE_LIBRARY.get(language, PRACTICE_LIBRARY["english"]).get(
+        bucket, []
+    )
     if not challenges:
         return None
 
-    index = random.randrange(len(challenges))
+    available_indexes = list(range(len(challenges)))
+    preferred_indexes = [
+        index
+        for index, challenge in enumerate(challenges)
+        if normalize_option_value(challenge.get("sentence")) not in recent_signatures
+    ]
+    candidate_indexes = preferred_indexes or available_indexes
+
+    index = random.choice(candidate_indexes)
     template = challenges[index]
     options = list(template["options"])
     random.shuffle(options)
+    store_recent_practice_signature(
+        user_id,
+        language,
+        bucket,
+        template.get("sentence", ""),
+    )
 
     return {
         "id": f"{language}:{bucket}:{index}",
@@ -1781,15 +2366,15 @@ def get_challenge_answer(challenge_id, user_id):
             return cached_answer
         if challenge_key.startswith("dailygen:"):
             try:
-                _, day_key, language_key, bucket_raw, index_raw = challenge_key.split(":")
+                _, day_key, language_key, bucket_raw, index_raw = challenge_key.split(
+                    ":"
+                )
                 bucket = int(bucket_raw)
                 index = int(index_raw)
             except (ValueError, AttributeError):
                 return None, None
 
-            cache_key = (
-                f"practice:daily_library:v1:date:{day_key}:lang:{language_key}:bucket:{bucket}"
-            )
+            cache_key = f"practice:daily_library:v1:date:{day_key}:lang:{language_key}:bucket:{bucket}"
             pool = cache.get(cache_key) or []
             if 0 <= index < len(pool):
                 entry = pool[index] or {}
@@ -1850,9 +2435,7 @@ def get_leaderboard(language, current_user_id, limit=10):
     current_stats = PracticeStats.objects.filter(user_id=current_user_id).first()
     current_rank = None
     if current_stats:
-        current_rank = (
-            filtered_qs.filter(points__gt=current_stats.points).count() + 1
-        )
+        current_rank = filtered_qs.filter(points__gt=current_stats.points).count() + 1
 
     return leaderboard, current_rank
 
@@ -1929,14 +2512,19 @@ def practice_submit_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    answer, language_from_challenge = get_challenge_answer(challenge_id, request.user.id)
+    answer, language_from_challenge = get_challenge_answer(
+        challenge_id, request.user.id
+    )
     if not answer:
         return Response(
             {"error": "Invalid challenge_id."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    language = resolve_practice_language(request.user, requested_language) or language_from_challenge
+    language = (
+        resolve_practice_language(request.user, requested_language)
+        or language_from_challenge
+    )
     is_correct = normalize_option_value(selected_word) == normalize_option_value(answer)
 
     stats, _ = PracticeStats.objects.get_or_create(
@@ -1963,7 +2551,9 @@ def practice_submit_view(request):
             "correct": is_correct,
             "correct_answer": answer,
             "awarded_xp": PRACTICE_XP_CORRECT if is_correct else PRACTICE_XP_WRONG,
-            "awarded_points": PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG,
+            "awarded_points": (
+                PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG
+            ),
             "language": language,
             "stats": serialize_practice_stats(stats),
             "leaderboard": leaderboard,

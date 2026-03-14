@@ -5,35 +5,16 @@ import MonetizationOnRoundedIcon from "@mui/icons-material/MonetizationOnRounded
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import TrackChangesRoundedIcon from "@mui/icons-material/TrackChangesRounded";
 import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
-import MapRoundedIcon from "@mui/icons-material/MapRounded";
-import ParkRoundedIcon from "@mui/icons-material/ParkRounded";
-import TerrainRoundedIcon from "@mui/icons-material/TerrainRounded";
-import PetsRoundedIcon from "@mui/icons-material/PetsRounded";
-import DirectionsBoatFilledRoundedIcon from "@mui/icons-material/DirectionsBoatFilledRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
-import ExploreRoundedIcon from "@mui/icons-material/ExploreRounded";
-import DiamondRoundedIcon from "@mui/icons-material/DiamondRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import CancelRoundedIcon from "@mui/icons-material/CancelRounded";
 
 const getAuthToken = () =>
   sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken") || "";
 
 const levelProgressPercent = (xp) => Math.min(100, Math.max(0, xp % 100));
 const SPEECH_MATCH_THRESHOLD = 0.72;
-const TREASURE_MILESTONES = 10;
-const TREASURE_MAP_IMAGE_URL =
-  "https://www.foundmyself.com/gallery/albums/userpics/26339/treasure_map.jpg";
-const TREASURE_POINTS = [
-  { x: 20, y: 88 },
-  { x: 36, y: 80 },
-  { x: 55, y: 72 },
-  { x: 67, y: 61 },
-  { x: 58, y: 50 },
-  { x: 42, y: 41 },
-  { x: 29, y: 32 },
-  { x: 38, y: 23 },
-  { x: 56, y: 15 },
-  { x: 72, y: 10 },
-];
+const DAILY_SET_STEPS = 10;
 
 const LANGUAGE_SPEECH_CODE = {
   english: "en-US",
@@ -108,6 +89,12 @@ const pickBestVoiceForLanguage = (language) => {
   return sorted[0] || null;
 };
 
+const getChallengeSourceLabel = (source) => {
+  if (source === "generator_daily") return "Today's AI Set";
+  if (source === "generator") return "AI Generated";
+  return "Core Library";
+};
+
 const PracticePage = () => {
   const { user } = useUser();
   const [language, setLanguage] = useState("");
@@ -125,7 +112,6 @@ const PracticePage = () => {
   const [animationResult, setAnimationResult] = useState("success");
   const [animationFromMilestone, setAnimationFromMilestone] = useState(0);
   const [animationToMilestone, setAnimationToMilestone] = useState(0);
-  const [animatedMilestone, setAnimatedMilestone] = useState(0);
   const [voiceSentence, setVoiceSentence] = useState("");
   const [voiceTranslation, setVoiceTranslation] = useState("");
   const [voiceTranslationTarget, setVoiceTranslationTarget] = useState("");
@@ -474,14 +460,12 @@ const PracticePage = () => {
       setSubmitted(true);
 
       if (payload.correct) {
-        const nextMilestone = Math.min(TREASURE_MILESTONES, successfulMilestones + 1);
+        const nextMilestone = Math.min(DAILY_SET_STEPS, successfulMilestones + 1);
         setSuccessfulMilestones(nextMilestone);
         setAnimationResult("success");
         setAnimationFromMilestone(successfulMilestones);
         setAnimationToMilestone(nextMilestone);
-        setAnimatedMilestone(successfulMilestones);
         setShowTreasureAnimation(true);
-        window.setTimeout(() => setAnimatedMilestone(nextMilestone), 80);
         window.setTimeout(() => setShowTreasureAnimation(false), 1900);
         setFeedback(`Correct! +${payload.awarded_xp} XP / +${payload.awarded_points} points`);
         setFeedbackTone("success");
@@ -489,7 +473,6 @@ const PracticePage = () => {
         setAnimationResult("error");
         setAnimationFromMilestone(successfulMilestones);
         setAnimationToMilestone(successfulMilestones);
-        setAnimatedMilestone(successfulMilestones);
         setShowTreasureAnimation(true);
         window.setTimeout(() => setShowTreasureAnimation(false), 1500);
         setFeedback(
@@ -615,13 +598,7 @@ const PracticePage = () => {
   }, [voiceSentence, language, user?.base_translate_language, user?.native_language, authHeaders]);
 
   const progress = levelProgressPercent(stats?.xp || 0);
-  const mapProgress = Math.min(
-    100,
-    Math.round((successfulMilestones / TREASURE_MILESTONES) * 100)
-  );
-  const animationPathPoints = TREASURE_POINTS.slice(0, animationToMilestone + 1);
-  const animatedPoint =
-    TREASURE_POINTS[Math.max(0, Math.min(animatedMilestone, TREASURE_MILESTONES - 1))];
+  const mapProgress = Math.min(100, Math.round((successfulMilestones / DAILY_SET_STEPS) * 100));
 
   return (
     <section className="py-5 sm:py-8">
@@ -632,7 +609,7 @@ const PracticePage = () => {
               Practice Arena
             </p>
             <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl leading-tight">
-              {gameMode === "treasure" ? "Fill the missing word" : "Speak & Repeat"}
+              {gameMode === "treasure" ? "Daily Word Practice" : "Speak & Repeat"}
             </h1>
           </div>
           <label className="flex w-full items-center gap-2 text-sm font-medium text-slate-700 sm:w-auto">
@@ -660,7 +637,7 @@ const PracticePage = () => {
                 : "border border-slate-300 bg-white text-slate-700"
             }`}
           >
-            Treasure Hunt
+            Daily Drill
           </button>
           <button
             type="button"
@@ -723,8 +700,8 @@ const PracticePage = () => {
                 </div>
                 <div className="mt-2 flex items-center justify-between text-[11px] text-slate-600">
                   <p className="inline-flex items-center gap-1">
-                    <MapRoundedIcon sx={{ fontSize: 14, color: "#d97706" }} />
-                    Treasure Hunt: {successfulMilestones}/{TREASURE_MILESTONES}
+                    <AutoAwesomeRoundedIcon sx={{ fontSize: 14, color: "#d97706" }} />
+                    Daily set: {successfulMilestones}/{DAILY_SET_STEPS}
                   </p>
                   <p>Rank #{currentRank || "-"}</p>
                 </div>
@@ -738,13 +715,13 @@ const PracticePage = () => {
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Treasure Hunt</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Daily Progress</p>
                   <p className="text-xs text-slate-500">
-                    {successfulMilestones}/{TREASURE_MILESTONES} milestones
+                    {successfulMilestones}/{DAILY_SET_STEPS} solved in this run
                   </p>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
-                  The full map appears during answer check animation.
+                  Fresh daily items stay varied for you before repeating.
                 </p>
                 <div className="mt-2 h-2 rounded-full bg-slate-200">
                   <div
@@ -761,7 +738,7 @@ const PracticePage = () => {
                     {challenge?.hint || "Drop the correct word in the blank."}
                   </p>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                    {challenge?.source === "generator" ? "AI Generated" : "Template"}
+                    {getChallengeSourceLabel(challenge?.source)}
                   </span>
                 </div>
                 <p className="mt-3 text-lg leading-relaxed text-slate-900 sm:text-2xl">
@@ -985,11 +962,11 @@ const PracticePage = () => {
               closeTreasureOverlay();
             }
           }}
-          aria-label="Close treasure map overlay"
+          aria-label="Close practice result overlay"
         >
           <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" />
           <div
-            className="relative flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#fef3c7,transparent_42%),radial-gradient(circle_at_80%_15%,#fcd34d66,transparent_38%),linear-gradient(180deg,#fff7ed_0%,#fffbeb_100%)]"
+            className="relative flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe,transparent_36%),radial-gradient(circle_at_80%_15%,#fde68a66,transparent_30%),linear-gradient(180deg,#f8fafc_0%,#fffdf7_100%)]"
             onClick={(event) => event.stopPropagation()}
           >
             <button
@@ -997,109 +974,73 @@ const PracticePage = () => {
               onClick={closeTreasureOverlay}
               onTouchEnd={closeTreasureOverlay}
               className="absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-300 bg-white/95 text-lg font-bold text-amber-900 shadow-sm hover:bg-white"
-              aria-label="Close treasure map"
+              aria-label="Close practice result"
             >
               ×
             </button>
-            <div className="pointer-events-none absolute left-[12%] top-[16%] text-amber-800/80">
-              <ParkRoundedIcon sx={{ fontSize: 34 }} />
-            </div>
-            <div className="pointer-events-none absolute right-[10%] top-[26%] text-amber-800/80">
-              <TerrainRoundedIcon sx={{ fontSize: 34 }} />
-            </div>
-            <div className="pointer-events-none absolute left-[16%] bottom-[22%] text-amber-900/80">
-              <PetsRoundedIcon sx={{ fontSize: 32 }} />
-            </div>
-            <div className="pointer-events-none absolute right-[14%] bottom-[20%] text-amber-900/80">
-              <DirectionsBoatFilledRoundedIcon sx={{ fontSize: 34 }} />
-            </div>
-            <div className="pointer-events-none absolute left-[48%] top-[54%] text-amber-700/70">
-              <AutoAwesomeRoundedIcon sx={{ fontSize: 22 }} />
-            </div>
-            <div className="relative h-[88dvh] w-[94vw] max-w-[520px] overflow-hidden rounded-3xl border-4 border-amber-900/60 shadow-2xl">
-              <img
-                src={TREASURE_MAP_IMAGE_URL}
-                alt="Treasure map"
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-amber-950/10" />
-              <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-amber-300/70 bg-white/80 px-3 py-2 text-center text-xs font-semibold text-amber-900 shadow-md">
-                {animationResult === "success"
-                  ? "Great! Moving to the next milestone..."
-                  : "Wrong answer. Stay on current milestone and try again."}
-              </div>
-              <svg
-                viewBox="0 0 100 100"
-                className="absolute inset-0 h-full w-full"
-                preserveAspectRatio="none"
-                aria-hidden="true"
-              >
-                <polyline
-                  points={TREASURE_POINTS.map((point) => `${point.x},${point.y}`).join(" ")}
-                  fill="none"
-                  stroke="#1f2937"
-                  strokeOpacity="0.55"
-                  strokeWidth="3.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeDasharray="1 2.2"
-                />
-                {animationPathPoints.length > 1 && (
-                  <polyline
-                    points={animationPathPoints.map((point) => `${point.x},${point.y}`).join(" ")}
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth="4.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray="1.2 1.8"
-                  />
+            <div className="relative w-[92vw] max-w-[520px] rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-2xl">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                {animationResult === "success" ? (
+                  <CheckCircleRoundedIcon sx={{ fontSize: 40, color: "#059669" }} />
+                ) : (
+                  <CancelRoundedIcon sx={{ fontSize: 40, color: "#dc2626" }} />
                 )}
-              </svg>
-              {TREASURE_POINTS.map((point, index) => {
-                const isCompleted = index < animationToMilestone;
-                const isTreasure = index === TREASURE_MILESTONES - 1;
-                const isAnimatedTarget = index === animationToMilestone && animationResult === "success";
-                return (
-                  <div
-                    key={`overlay-${point.x}-${point.y}-${index}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border text-[10px] font-bold ${
-                      isCompleted
-                        ? "border-amber-700 bg-amber-300 text-amber-950"
-                        : "border-amber-900/50 bg-amber-50/90 text-amber-900"
-                    } ${isAnimatedTarget ? "animate-pulse ring-4 ring-amber-300/70" : ""}`}
-                    style={{
-                      left: `${point.x}%`,
-                      top: `${point.y}%`,
-                      width: 24,
-                      height: 24,
-                      lineHeight: "22px",
-                      textAlign: "center",
-                    }}
-                >
-                  {isTreasure ? (
-                    <WorkspacePremiumRoundedIcon sx={{ fontSize: 16, color: "#78350f" }} />
-                  ) : (
-                    index + 1
-                  )}
+              </div>
+              <div className="mt-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {animationResult === "success" ? "Nice Work" : "Try Again"}
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                  {animationResult === "success"
+                    ? "You cleared the next step."
+                    : "That answer did not land."}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  {animationResult === "success"
+                    ? "Your daily practice run keeps moving forward."
+                    : "Stay on the current step and take another shot."}
+                </p>
+              </div>
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>Run progress</span>
+                  <span className="font-semibold text-slate-900">
+                    {animationFromMilestone} → {animationToMilestone} / {DAILY_SET_STEPS}
+                  </span>
                 </div>
-              );
-            })}
-            <div
-              className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-[30px] transition-all duration-700 ${
-                animationResult === "success" ? "scale-110" : "animate-pulse"
-              }`}
-              style={{ left: `${animatedPoint.x}%`, top: `${animatedPoint.y}%` }}
-              aria-hidden="true"
-            >
-              {animationToMilestone >= TREASURE_MILESTONES ? (
-                <DiamondRoundedIcon sx={{ fontSize: 34, color: "#f59e0b" }} />
-              ) : (
-                <ExploreRoundedIcon sx={{ fontSize: 34, color: "#0f172a" }} />
-              )}
-            </div>
-              <div className="absolute bottom-3 left-3 right-3 rounded-xl border border-amber-300/70 bg-white/85 px-3 py-2 text-center text-xs font-medium text-amber-900 shadow-md">
-                Progress: {animationFromMilestone} → {animationToMilestone} / {TREASURE_MILESTONES}
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      animationResult === "success" ? "bg-emerald-500" : "bg-rose-500"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round((animationToMilestone / DAILY_SET_STEPS) * 100)
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <div className="mt-4 grid grid-cols-5 gap-2 sm:grid-cols-10">
+                  {Array.from({ length: DAILY_SET_STEPS }).map((_, index) => {
+                    const isComplete = index < animationToMilestone;
+                    const isCurrent =
+                      index === Math.max(0, animationToMilestone - 1) &&
+                      animationToMilestone > 0;
+                    return (
+                      <div
+                        key={`daily-step-${index}`}
+                        className={`flex h-9 items-center justify-center rounded-xl border text-xs font-bold ${
+                          isComplete
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-400"
+                        } ${isCurrent && animationResult === "success" ? "ring-2 ring-emerald-200" : ""}`}
+                      >
+                        {index + 1}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

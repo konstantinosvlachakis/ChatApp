@@ -78,6 +78,46 @@ def _build_payload(message, target_language, native_language, mode="casual_chat"
     }
 
 
+def _build_practice_generation_payload(language, cefr_level):
+    normalized_language = _normalize_language(language, "English")
+    normalized_cefr = _normalize_language(cefr_level, "A1").upper()
+    return {
+        "system_instruction": {
+            "parts": [
+                {
+                    "text": (
+                        "You generate language-learning fill-in-the-blank practice as strict JSON only. "
+                        "Return exactly one JSON object with keys sentence, answer, options, hint. "
+                        "The sentence must contain exactly one blank token '___'. "
+                        "The answer must fit the blank exactly. "
+                        "The options array must contain exactly 4 short options and include the answer exactly once. "
+                        "Do not wrap the JSON in markdown fences."
+                    )
+                }
+            ]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            f"Language: {normalized_language}. "
+                            f"Difficulty: CEFR {normalized_cefr}. "
+                            "Generate one fresh, natural, learner-friendly practice item."
+                        )
+                    }
+                ],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 1.0,
+            "topP": 0.95,
+            "maxOutputTokens": 220,
+        },
+    }
+
+
 def _parse_reply(body):
     candidates = body.get("candidates") or []
     if not candidates:
@@ -151,6 +191,32 @@ def generate_coach_reply(
         raise CoachAIError("Message is required.")
 
     payload = _build_payload(prompt, target_language, native_language, mode=mode)
+    model_chain = get_gemini_model_chain()
+    last_error = None
+
+    for index, model in enumerate(model_chain):
+        try:
+            return _request_model(api_key, model, payload)
+        except CoachAIQuotaError as error:
+            last_error = error
+            if index == len(model_chain) - 1:
+                raise
+        except CoachAIError as error:
+            last_error = error
+            if index == len(model_chain) - 1:
+                raise
+
+    raise last_error or CoachAIError(
+        "The AI coach is unavailable right now. Please try again shortly."
+    )
+
+
+def generate_practice_challenge(language="English", cefr_level="A1"):
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise CoachAIError("Missing GEMINI_API_KEY.")
+
+    payload = _build_practice_generation_payload(language, cefr_level)
     model_chain = get_gemini_model_chain()
     last_error = None
 

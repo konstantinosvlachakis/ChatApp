@@ -30,6 +30,7 @@ const MessageInput = ({
   const mediaRecorderRef = useRef(null);
   const isTypingRef = useRef(false);
   const hasInitializedTypingRef = useRef(false);
+  const previousConnectionStatusRef = useRef(connectionStatus);
   const onTypingRef = useRef(onTyping);
   const onStopTypingRef = useRef(onStopTyping);
 
@@ -59,6 +60,9 @@ const MessageInput = ({
     if (!hasInitializedTypingRef.current) {
       hasInitializedTypingRef.current = true;
       isTypingRef.current = hasContent;
+      if (hasContent) {
+        onTypingRef.current?.();
+      }
       return;
     }
 
@@ -73,6 +77,20 @@ const MessageInput = ({
       isTypingRef.current = false;
     }
   }, [message]);
+
+  useEffect(() => {
+    const hadPreviousConnection = previousConnectionStatusRef.current;
+    previousConnectionStatusRef.current = connectionStatus;
+
+    if (
+      connectionStatus === "connected" &&
+      hadPreviousConnection !== "connected" &&
+      message.trim() &&
+      isTypingRef.current
+    ) {
+      onTypingRef.current?.();
+    }
+  }, [connectionStatus, message]);
 
   // ---------------- Emoji Picker ----------------
   const handleEmojiSelect = (emoji) => {
@@ -194,16 +212,6 @@ const MessageInput = ({
     setComposerError("");
     setMessage(value);
   };
-
-  useEffect(() => {
-    return () => {
-      if (isTypingRef.current) {
-        onStopTypingRef.current?.();
-        isTypingRef.current = false;
-      }
-    };
-  }, []);
-
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {

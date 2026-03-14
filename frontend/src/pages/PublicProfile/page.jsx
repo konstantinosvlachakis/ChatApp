@@ -107,7 +107,7 @@ const PublicProfilePage = () => {
   if (!profile) return <div className="p-8 text-gray-500">Profile not found.</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-5 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-3 pb-24 sm:p-5 sm:pb-5 md:p-8">
       <div className="max-w-5xl mx-auto">
         <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
           <img
@@ -121,7 +121,7 @@ const PublicProfilePage = () => {
           <button
             type="button"
             onClick={handleStartConversation}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition"
+            className="hidden rounded-full bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600 sm:inline-flex"
           >
             Start Conversation
           </button>
@@ -244,6 +244,16 @@ const PublicProfilePage = () => {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-10px_30px_-20px_rgba(15,23,42,0.5)] backdrop-blur sm:hidden">
+        <button
+          type="button"
+          onClick={handleStartConversation}
+          className="w-full rounded-full bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-600"
+        >
+          Start Conversation
+        </button>
       </div>
     </div>
   );

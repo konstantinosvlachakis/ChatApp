@@ -139,39 +139,39 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 )
 
     async def disconnect(self, close_code):
-        conversation_id = None
-        try:
-            conversation_id = int(self.room_group_name)
-        except (TypeError, ValueError):
-            conversation_id = None
+        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        if self.user_id:
+            try:
+                conversation_id = int(self.room_group_name)
+            except (TypeError, ValueError):
+                conversation_id = None
 
-        if conversation_id is not None:
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "typing_event",
-                    "conversation_id": conversation_id,
-                    "event_type": "user_stopped_typing",
-                    "sender_channel_name": self.channel_name,
-                },
-            )
-
-        if self.user_id and conversation_id is not None:
-            recipient_id = await self.get_other_participant_id(
-                conversation_id, self.user_id
-            )
-            if recipient_id:
+            if conversation_id is not None:
                 await self.channel_layer.group_send(
-                    user_presence_group_name(recipient_id),
+                    self.room_group_name,
                     {
-                        "type": "typing_status_event",
+                        "type": "typing_event",
                         "conversation_id": conversation_id,
+                        "event_type": "user_stopped_typing",
                         "sender_id": self.user_id,
-                        "is_typing": False,
+                        "sender_channel_name": self.channel_name,
                     },
                 )
 
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+                recipient_id = await self.get_other_participant_id(
+                    conversation_id, self.user_id
+                )
+                if recipient_id:
+                    await self.channel_layer.group_send(
+                        user_presence_group_name(recipient_id),
+                        {
+                            "type": "typing_status_event",
+                            "conversation_id": conversation_id,
+                            "sender_id": self.user_id,
+                            "is_typing": False,
+                        },
+                    )
+
         if self.user_id:
             became_offline = await self.decrement_presence(self.user_id)
             if became_offline:
@@ -241,6 +241,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "type": "typing_event",
                     "conversation_id": conversation_id,
                     "event_type": message_type,
+                    "sender_id": self.user_id,
                     "sender_channel_name": self.channel_name,
                 },
             )
@@ -309,7 +310,11 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if self.channel_name == event["sender_channel_name"]:
             return
 
-        await self.send(text_data=json.dumps({"type": event["event_type"]}))
+        payload = {"type": event["event_type"]}
+        if event.get("sender_id") is not None:
+            payload["senderId"] = event.get("sender_id")
+
+        await self.send(text_data=json.dumps(payload))
 
     async def message_status_event(self, event):
         await self.send(

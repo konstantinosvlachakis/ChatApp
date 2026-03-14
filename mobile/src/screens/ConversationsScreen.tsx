@@ -24,6 +24,7 @@ import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native"
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { getCoachLanguageOptions } from "../features/coachConversation";
 import { tokenStorage } from "../services/storage";
 import {
   createOrGetConversation,
@@ -94,6 +95,10 @@ export function ConversationsScreen() {
   const currentUserId = user?.user_id;
   const currentUsername = user?.username;
   const wsBaseUrl = useMemo(() => API_BASE_URL.replace(/^http/, "ws"), []);
+  const coachLanguageLabel = useMemo(
+    () => getCoachLanguageOptions(user)[0]?.label || "English",
+    [user]
+  );
 
   const [conversations, setConversations] = useState<Conversation[]>(() => getCachedConversations() || []);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -127,7 +132,7 @@ export function ConversationsScreen() {
     at: 0,
   });
   const singleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stopTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLocalUserTypingRef = useRef(false);
   const remoteTypingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout> | null>>({});
   const messageListRef = useRef<FlatList<ChatMessage> | null>(null);
   const previousMessageCountRef = useRef(0);
@@ -148,9 +153,6 @@ export function ConversationsScreen() {
     return () => {
       if (singleTapTimeoutRef.current) {
         clearTimeout(singleTapTimeoutRef.current);
-      }
-      if (stopTypingTimeoutRef.current) {
-        clearTimeout(stopTypingTimeoutRef.current);
       }
       Object.values(remoteTypingTimeoutsRef.current).forEach((timer) => {
         if (timer) clearTimeout(timer);
@@ -306,13 +308,26 @@ export function ConversationsScreen() {
     [currentUsername]
   );
 
-  const scheduleStopTyping = useCallback(() => {
-    if (stopTypingTimeoutRef.current) {
-      clearTimeout(stopTypingTimeoutRef.current);
+  const emitTypingStarted = useCallback(() => {
+    if (isLocalUserTypingRef.current) return;
+    isLocalUserTypingRef.current = true;
+    const sent = sendTypingEvent("user_typing");
+    if (!sent) {
+      setTimeout(() => {
+        sendTypingEvent("user_typing");
+      }, 220);
     }
-    stopTypingTimeoutRef.current = setTimeout(() => {
-      sendTypingEvent("user_stopped_typing");
-    }, 1100);
+  }, [sendTypingEvent]);
+
+  const emitTypingStopped = useCallback(() => {
+    if (!isLocalUserTypingRef.current) return;
+    isLocalUserTypingRef.current = false;
+    const sent = sendTypingEvent("user_stopped_typing");
+    if (!sent) {
+      setTimeout(() => {
+        sendTypingEvent("user_stopped_typing");
+      }, 220);
+    }
   }, [sendTypingEvent]);
 
   const handleMessageInputChange = useCallback(
@@ -320,23 +335,12 @@ export function ConversationsScreen() {
       setMessageText(value);
       if (!selectedConversation) return;
       if (value.trim().length === 0) {
-        const sent = sendTypingEvent("user_stopped_typing");
-        if (!sent) {
-          setTimeout(() => {
-            sendTypingEvent("user_stopped_typing");
-          }, 220);
-        }
+        emitTypingStopped();
         return;
       }
-      const sent = sendTypingEvent("user_typing");
-      if (!sent) {
-        setTimeout(() => {
-          sendTypingEvent("user_typing");
-        }, 220);
-      }
-      scheduleStopTyping();
+      emitTypingStarted();
     },
-    [scheduleStopTyping, selectedConversation, sendTypingEvent]
+    [emitTypingStarted, emitTypingStopped, selectedConversation]
   );
 
   const sendMessage = useCallback(async () => {
@@ -363,7 +367,7 @@ export function ConversationsScreen() {
       });
       setMessageText("");
       setReplyTarget(null);
-      sendTypingEvent("user_stopped_typing");
+      emitTypingStopped();
       bumpConversationToTop({
         conversationId: selectedConversation.id,
         lastMessage: savedMessage,
@@ -408,17 +412,17 @@ export function ConversationsScreen() {
     bumpConversationToTop,
     currentUserId,
     currentUsername,
+    emitTypingStopped,
     loadConversations,
     messageText,
     replyTarget?.id,
     selectedConversation,
-    sendTypingEvent,
     sending,
   ]);
 
   const closeConversation = useCallback(() => {
     selectedConversationIdRef.current = null;
-    sendTypingEvent("user_stopped_typing");
+    emitTypingStopped();
     if (chatSocketRef.current) {
       chatSocketRef.current.close();
       chatSocketRef.current = null;
@@ -427,7 +431,7 @@ export function ConversationsScreen() {
     setMessageText("");
     setReactionPickerMessageId(null);
     setReplyTarget(null);
-  }, [sendTypingEvent]);
+  }, [emitTypingStopped]);
 
   const startConversation = useCallback(async () => {
     const username = participantUsername.trim();
@@ -630,6 +634,7 @@ export function ConversationsScreen() {
     connectChat();
     return () => {
       mounted = false;
+      isLocalUserTypingRef.current = false;
       sendTypingEvent("user_stopped_typing");
       if (chatSocketRef.current) {
         chatSocketRef.current.close();
@@ -765,20 +770,13 @@ export function ConversationsScreen() {
 
   const handleInputFocus = useCallback(() => {
     setReactionPickerMessageId(null);
-    const sent = sendTypingEvent("user_typing");
-    if (!sent) {
-      setTimeout(() => {
-        sendTypingEvent("user_typing");
-      }, 220);
-    }
-    scheduleStopTyping();
     const input = messageInputRef.current;
     if (!input) return;
     const cursorPosition = messageText.length;
     input.setNativeProps({
       selection: { start: cursorPosition, end: cursorPosition },
     });
-  }, [messageText.length, scheduleStopTyping, sendTypingEvent]);
+  }, [messageText.length]);
 
   const renderReplySwipeAction = useCallback(
     (isMine: boolean) => (
@@ -1275,6 +1273,26 @@ export function ConversationsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Conversations</Text>
+        <Pressable
+          style={styles.coachCard}
+          onPress={() => navigation.navigate("CoachChat")}
+        >
+          <View style={styles.coachAvatar}>
+            <Text style={styles.coachAvatarText}>L</Text>
+          </View>
+          <View style={styles.coachBody}>
+            <View style={styles.coachHeaderRow}>
+              <Text style={styles.coachName}>Lumi AI Coach</Text>
+              <View style={styles.coachOnlineBadge}>
+                <Text style={styles.coachOnlineBadgeText}>Online</Text>
+              </View>
+            </View>
+            <Text style={styles.coachPreview}>
+              Practice {coachLanguageLabel}, switch modes, and get quick corrections.
+            </Text>
+          </View>
+          <Ionicons name="sparkles" size={18} color={colors.primary} />
+        </Pressable>
         <View style={styles.newChatRow}>
           <TextInput
             style={styles.newChatInput}
@@ -1345,6 +1363,67 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 30,
       fontWeight: "800",
       color: colors.text,
+    },
+    coachCard: {
+      marginTop: 12,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 3,
+    },
+    coachAvatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: colors.navy,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    coachAvatarText: {
+      color: "#fff",
+      fontSize: 22,
+      fontWeight: "800",
+    },
+    coachBody: {
+      flex: 1,
+    },
+    coachHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    coachName: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    coachOnlineBadge: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    coachOnlineBadgeText: {
+      color: colors.success,
+      fontSize: 11,
+      fontWeight: "800",
+      textTransform: "uppercase",
+    },
+    coachPreview: {
+      color: colors.mutedText,
+      fontSize: 13,
+      lineHeight: 18,
+      marginTop: 4,
     },
     newChatRow: {
       marginTop: 10,

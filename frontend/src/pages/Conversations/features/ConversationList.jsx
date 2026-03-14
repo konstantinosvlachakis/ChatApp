@@ -277,6 +277,7 @@ function ConversationList({
         if (data.type === "typing_status") {
           const conversationId = data.conversation_id;
           if (typeof conversationId !== "number") return;
+          if (data.sender_id === user?.user_id) return;
 
           setPresenceTypingByConversation((prev) => ({
             ...prev,

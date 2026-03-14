@@ -8,6 +8,7 @@ import axios from "axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
+import { usePresence } from "../../../context/PresenceContext";
 import { markConversationRead } from "../api/markConversationRead";
 import { useQueryClient } from "react-query";
 
@@ -89,8 +90,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const remoteVideoRef = useRef(null);
   const scrollAdjustmentHeightRef = useRef(null);
   const isFetchingOlderRef = useRef(false);
+  const isLocalUserTypingRef = useRef(false);
+  const currentUserIdRef = useRef(null);
 
   const { user, loading } = useUser();
+  const { onlineUserIds } = usePresence();
   const queryClient = useQueryClient();
 
   const otherUser =
@@ -98,6 +102,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       ? conversation?.receiver
       : conversation?.sender;
   const otherUserAvatarUrl = resolveAvatarUrl(otherUser?.profile_image_url);
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.user_id ?? null;
+  }, [user?.user_id]);
 
   const scrollToBottom = useCallback((behavior = "auto") => {
     if (!messagesContainerRef.current) return;
@@ -652,7 +660,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 },
               ]);
               requestAnimationFrame(() => scrollToBottom("smooth"));
-              if (data.senderId !== user.user_id) {
+              if (data.senderId !== currentUserIdRef.current) {
                 markConversationRead(conversation.id).catch(() => {});
               }
               invalidateConversationHistoryCache(conversation.id);
@@ -674,11 +682,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               break;
 
             case "user_typing":
+              if (data.senderId === currentUserIdRef.current) {
+                break;
+              }
               setIsOtherUserTyping(true);
               onConversationTypingChange?.(conversation.id, true);
               break;
 
             case "user_stopped_typing":
+              if (data.senderId === currentUserIdRef.current) {
+                break;
+              }
               setIsOtherUserTyping(false);
               onConversationTypingChange?.(conversation.id, false);
               break;
@@ -775,7 +789,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       isSocketUnmountingRef.current = true;
       clearReconnectTimer();
       stopRinging();
-      sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
+      if (isLocalUserTypingRef.current) {
+        sendSocketEvent({ type: "user_stopped_typing", sender: user?.username });
+        isLocalUserTypingRef.current = false;
+      }
       if (callStateRef.current !== "idle") {
         sendSocketEvent({
           type: "call_end",
@@ -803,7 +820,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     appendCallSummary,
     invalidateConversationHistoryCache,
     stopRinging,
-    user,
+    user?.username,
   ]);
 
   useEffect(() => {
@@ -811,6 +828,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     markConversationRead(conversation.id).catch(() => {});
     queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
   }, [conversation?.id, queryClient]);
+
+  useEffect(() => {
+    if (!otherUser?.id) return;
+    if (onlineUserIds.has(otherUser.id)) return;
+    setIsOtherUserTyping(false);
+    onConversationTypingChange?.(conversation.id, false);
+  }, [conversation?.id, onConversationTypingChange, onlineUserIds, otherUser?.id]);
 
   if (loading) {
     return <div className="p-4 text-gray-500">Loading user info...</div>;
@@ -926,6 +950,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   const handleTyping = () => {
+    isLocalUserTypingRef.current = true;
     const sent = sendSocketEvent({ type: "user_typing", sender: user.username });
     if (!sent) {
       setTimeout(() => {
@@ -935,6 +960,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   const handleStopTyping = () => {
+    isLocalUserTypingRef.current = false;
     const sent = sendSocketEvent({ type: "user_stopped_typing", sender: user.username });
     if (!sent) {
       setTimeout(() => {

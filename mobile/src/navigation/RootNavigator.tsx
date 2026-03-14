@@ -25,6 +25,7 @@ import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
 import { CommunityScreen } from "../screens/CommunityScreen";
 import { ConversationsScreen } from "../screens/ConversationsScreen";
+import { CoachChatScreen } from "../screens/CoachChatScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { PublicProfileScreen } from "../screens/PublicProfileScreen";
@@ -34,6 +35,7 @@ import type { ThemeColors } from "../theme/colors";
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
 const PeopleStack = createNativeStackNavigator();
+const ChatsStack = createNativeStackNavigator();
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -312,8 +314,11 @@ function AppTabs() {
                   navigation.navigate("AppTabs", {
                     screen: "Chats",
                     params: {
-                      openConversationId: banner.conversationId,
-                      openFromBannerAt: Date.now(),
+                      screen: "ChatsHome",
+                      params: {
+                        openConversationId: banner.conversationId,
+                        openFromBannerAt: Date.now(),
+                      },
                     },
                   });
                   dismissBanner(banner.id);
@@ -376,7 +381,7 @@ function AppTabs() {
         <Tabs.Screen name="People" component={PeopleStackNavigator} />
         <Tabs.Screen
           name="Chats"
-          component={ConversationsScreen}
+          component={ChatsStackNavigator}
           options={{
             tabBarBadge: unreadChatsCount > 0 ? unreadChatsCount : undefined,
             tabBarBadgeStyle: {
@@ -436,6 +441,15 @@ function PeopleStackNavigator() {
       <PeopleStack.Screen name="CommunityHome" component={CommunityScreen} />
       <PeopleStack.Screen name="PublicProfile" component={PublicProfileScreen} />
     </PeopleStack.Navigator>
+  );
+}
+
+function ChatsStackNavigator() {
+  return (
+    <ChatsStack.Navigator screenOptions={{ headerShown: false }}>
+      <ChatsStack.Screen name="ChatsHome" component={ConversationsScreen} />
+      <ChatsStack.Screen name="CoachChat" component={CoachChatScreen} />
+    </ChatsStack.Navigator>
   );
 }
 
