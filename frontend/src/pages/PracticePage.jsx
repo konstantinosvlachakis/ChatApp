@@ -129,6 +129,7 @@ const PracticePage = () => {
   const recognitionRef = useRef(null);
   const listenSilenceTimerRef = useRef(null);
   const listenMaxTimerRef = useRef(null);
+  const autoNextTimerRef = useRef(null);
 
   const languageOptions = useMemo(() => {
     const set = new Set();
@@ -242,6 +243,7 @@ const PracticePage = () => {
 
   useEffect(
     () => () => {
+      if (autoNextTimerRef.current) window.clearTimeout(autoNextTimerRef.current);
       if (listenSilenceTimerRef.current) window.clearTimeout(listenSilenceTimerRef.current);
       if (listenMaxTimerRef.current) window.clearTimeout(listenMaxTimerRef.current);
       if (recognitionRef.current) {
@@ -436,9 +438,29 @@ const PracticePage = () => {
     }
   };
 
+  const loadNextChallenge = async (nextLanguage = language) => {
+    setError("");
+    try {
+      const payload = await fetchChallenge(nextLanguage);
+      setChallenge(payload.challenge || null);
+      if (payload.stats) setStats(payload.stats);
+      setDroppedWord("");
+      setFeedback("");
+      setFeedbackTone("neutral");
+      setSubmitted(false);
+      setShowTreasureAnimation(false);
+    } catch (err) {
+      setError(err.message || "Could not load next challenge.");
+    }
+  };
+
   const handleSubmitAnswer = async () => {
     if (!challenge?.id || !droppedWord || submitted || showTreasureAnimation) return false;
     setError("");
+    if (autoNextTimerRef.current) {
+      window.clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
     try {
       const response = await fetch(`${BASE_URL}/api/practice/submit/`, {
         method: "POST",
@@ -466,7 +488,6 @@ const PracticePage = () => {
         setAnimationFromMilestone(successfulMilestones);
         setAnimationToMilestone(nextMilestone);
         setShowTreasureAnimation(true);
-        window.setTimeout(() => setShowTreasureAnimation(false), 1900);
         setFeedback(`Correct! +${payload.awarded_xp} XP / +${payload.awarded_points} points`);
         setFeedbackTone("success");
       } else {
@@ -474,12 +495,15 @@ const PracticePage = () => {
         setAnimationFromMilestone(successfulMilestones);
         setAnimationToMilestone(successfulMilestones);
         setShowTreasureAnimation(true);
-        window.setTimeout(() => setShowTreasureAnimation(false), 1500);
         setFeedback(
           `Not quite. Correct answer: "${payload.correct_answer}" (+${payload.awarded_xp} XP)`
         );
         setFeedbackTone("error");
       }
+      autoNextTimerRef.current = window.setTimeout(() => {
+        autoNextTimerRef.current = null;
+        loadNextChallenge(language);
+      }, 2000);
       return true;
     } catch (err) {
       setError(err.message || "Could not submit answer.");
@@ -487,34 +511,12 @@ const PracticePage = () => {
     }
   };
 
-  const handleNext = async () => {
-    if (showTreasureAnimation) return;
-    if (!submitted && !droppedWord) {
-      setError("Choose an answer before moving to the next challenge.");
-      return;
-    }
-
-    if (!submitted) {
-      const didSubmit = await handleSubmitAnswer();
-      if (!didSubmit) return;
-    }
-
-    setError("");
-    try {
-      const payload = await fetchChallenge(language);
-      setChallenge(payload.challenge || null);
-      if (payload.stats) setStats(payload.stats);
-      setDroppedWord("");
-      setFeedback("");
-      setFeedbackTone("neutral");
-      setSubmitted(false);
-    } catch (err) {
-      setError(err.message || "Could not load next challenge.");
-    }
-  };
-
   const onLanguageChange = async (event) => {
     const nextLanguage = event.target.value;
+    if (autoNextTimerRef.current) {
+      window.clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
     setLanguage(nextLanguage);
     await bootstrapPractice(nextLanguage);
     const voicePool = VOICE_SENTENCE_LIBRARY[nextLanguage] || VOICE_SENTENCE_LIBRARY.english;
@@ -799,22 +801,6 @@ const PracticePage = () => {
                   >
                     Check Answer
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!submitted && !droppedWord}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
-                  >
-                    {!submitted && droppedWord ? "Check & Next" : "Next Challenge"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDroppedWord("")}
-                    disabled={submitted}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
-                  >
-                    Clear
-                  </button>
                 </div>
                 </div>
               ) : (
@@ -969,15 +955,6 @@ const PracticePage = () => {
             className="relative flex h-[100dvh] w-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_20%_20%,#dbeafe,transparent_36%),radial-gradient(circle_at_80%_15%,#fde68a66,transparent_30%),linear-gradient(180deg,#f8fafc_0%,#fffdf7_100%)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={closeTreasureOverlay}
-              onTouchEnd={closeTreasureOverlay}
-              className="absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-amber-300 bg-white/95 text-lg font-bold text-amber-900 shadow-sm hover:bg-white"
-              aria-label="Close practice result"
-            >
-              ×
-            </button>
             <div className="relative w-[92vw] max-w-[520px] rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-2xl">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
                 {animationResult === "success" ? (
@@ -999,6 +976,9 @@ const PracticePage = () => {
                   {animationResult === "success"
                     ? "Your daily practice run keeps moving forward."
                     : "Stay on the current step and take another shot."}
+                </p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Next challenge in 2 seconds
                 </p>
               </div>
               <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">

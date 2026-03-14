@@ -13,12 +13,21 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+      },
+      "bundleIdentifier": "com.anonymous.langvoyagemobile"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.langvoyagemobile"
     },
     "web": {
       "bundler": "metro"
@@ -30,7 +39,9 @@
         {
           "photosPermission": "Allow LangVoyage to access your photos so you can upload profile pictures."
         }
-      ]
+      ],
+      "expo-speech-recognition",
+      "expo-font"
     ]
   }
 }

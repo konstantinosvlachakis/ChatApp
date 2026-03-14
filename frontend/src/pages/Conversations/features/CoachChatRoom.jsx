@@ -5,6 +5,7 @@ import { useUser } from "../../../context/UserContext";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import TypingDots from "./TypingDots";
+import CoachAvatar from "../../../components/CoachAvatar";
 import {
   COACH_BOT_ID,
   COACH_CONVERSATION_ID,
@@ -37,11 +38,12 @@ const CoachHeader = ({
     return (
       <div className="rounded-[18px] border border-slate-200/80 bg-white/90 px-3 py-2.5 shadow-[0_14px_35px_-28px_rgba(15,23,42,0.35)] backdrop-blur sm:px-4 sm:py-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-[linear-gradient(135deg,_#f8fafc,_#ecfeff_52%,_#fef3c7)] text-slate-800 shadow-sm">
-            <div className="text-center">
-              <div className="font-serif text-xl leading-none">L</div>
-            </div>
-          </div>
+          <CoachAvatar
+            language={selectedLanguage}
+            size={44}
+            hideBadge
+            className="rounded-[16px] border border-slate-200 shadow-sm"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Lumi</h2>
@@ -76,14 +78,12 @@ const CoachHeader = ({
       <div className="absolute -bottom-8 left-8 h-16 w-16 rounded-full bg-amber-300/10 blur-2xl" />
       <div className="relative flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[18px] border border-slate-200/80 bg-white/80 text-center shadow-md backdrop-blur sm:h-14 sm:w-14">
-            <div>
-              <div className="font-serif text-xl leading-none text-slate-800 sm:text-2xl">L</div>
-              <div className="mt-1 text-[10px] uppercase tracking-[0.28em] text-teal-600">
-                Lumi
-              </div>
-            </div>
-          </div>
+          <CoachAvatar
+            language={selectedLanguage}
+            size={56}
+            hideBadge
+            className="rounded-[18px] border border-slate-200/80 shadow-md"
+          />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold tracking-tight text-slate-900 sm:text-[1.65rem]">

@@ -13,10 +13,14 @@ urlpatterns = [
     path("register/", register_view, name="register"),
     # Profile
     path("profile/", profile_view, name="profile"),
+    path("profile/delete/", delete_account_view, name="delete_account"),
+    path("profile/moderation/", moderation_summary_view, name="moderation_summary"),
     path("presence/offline/", mark_presence_offline_view, name="presence_offline"),
     path("coach/chat/", coach_chat_view, name="coach_chat"),
     path("profile/data", profile_data_view, name="profile_data"),
     path("profile/public/<str:username>/", public_profile_view, name="public_profile"),
+    path("profile/public/<str:username>/block/", block_user_view, name="block_user"),
+    path("profile/public/<str:username>/report/", report_user_view, name="report_user"),
     path("profile/edit/", profile_edit_view, name="profile_edit"),
     path("profile/location/", profile_location_update_view, name="profile_location_update"),
     path(

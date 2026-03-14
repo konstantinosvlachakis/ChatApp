@@ -111,6 +111,28 @@ export const getDefaultCoachPreferences = (user?: Profile | null): CoachPreferen
   mode: COACH_MODES[0].id,
 });
 
+export const getCoachAvatarUri = (language?: string | null) => {
+  const accent = encodeURIComponent(language || "language");
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#334155" />
+          <stop offset="50%" stop-color="#0f766e" />
+          <stop offset="100%" stop-color="#f8b4d9" />
+        </linearGradient>
+      </defs>
+      <rect width="160" height="160" rx="40" fill="url(#bg)"/>
+      <circle cx="80" cy="80" r="52" fill="rgba(255,255,255,0.08)"/>
+      <text x="80" y="76" text-anchor="middle" font-family="Georgia, serif" font-size="36" fill="#ffffff">L</text>
+      <text x="80" y="103" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" letter-spacing="3" fill="#e0f2fe">LUMI</text>
+      <text x="80" y="132" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#fce7f3">${accent}</text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 const createBotProfile = () => ({
   id: COACH_BOT_ID,
   username: "Lumi",

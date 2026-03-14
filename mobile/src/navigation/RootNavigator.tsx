@@ -26,9 +26,11 @@ import { RegisterScreen } from "../screens/RegisterScreen";
 import { CommunityScreen } from "../screens/CommunityScreen";
 import { ConversationsScreen } from "../screens/ConversationsScreen";
 import { CoachChatScreen } from "../screens/CoachChatScreen";
+import { PracticeScreen } from "../screens/PracticeScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { PublicProfileScreen } from "../screens/PublicProfileScreen";
+import { PremiumScreen } from "../screens/PremiumScreen";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 
@@ -362,6 +364,8 @@ function AppTabs() {
 
             if (route.name === "People") {
               iconName = focused ? "people" : "people-outline";
+            } else if (route.name === "Practice") {
+              iconName = focused ? "trophy" : "trophy-outline";
             } else if (route.name === "Chats") {
               const hasUnreadChats = unreadChatsCount > 0;
               iconName = hasUnreadChats || focused ? "chatbubbles" : "chatbubbles-outline";
@@ -370,8 +374,8 @@ function AppTabs() {
               }
             } else if (route.name === "Profile") {
               iconName = focused ? "person-circle" : "person-circle-outline";
-            } else if (route.name === "Settings") {
-              iconName = focused ? "settings" : "settings-outline";
+            } else if (route.name === "Premium") {
+              iconName = focused ? "diamond" : "diamond-outline";
             }
 
             return <Ionicons name={iconName} size={size} color={iconColor} />;
@@ -379,6 +383,7 @@ function AppTabs() {
         })}
       >
         <Tabs.Screen name="People" component={PeopleStackNavigator} />
+        <Tabs.Screen name="Practice" component={PracticeScreen} />
         <Tabs.Screen
           name="Chats"
           component={ChatsStackNavigator}
@@ -393,7 +398,7 @@ function AppTabs() {
           }}
         />
         <Tabs.Screen name="Profile" component={ProfileScreen} />
-        <Tabs.Screen name="Settings" component={SettingsScreen} />
+        <Tabs.Screen name="Premium" component={PremiumScreen} />
       </Tabs.Navigator>
     </View>
   );
@@ -424,7 +429,10 @@ export function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isAuthenticated ? (
-        <Stack.Screen name="AppTabs" component={AppTabs} />
+        <>
+          <Stack.Screen name="AppTabs" component={AppTabs} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+        </>
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />

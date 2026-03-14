@@ -4,6 +4,7 @@ import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL } from "../constants/constants";
+import CoachAvatar from "../components/CoachAvatar";
 
 const DEFAULT_PROFILE_AVATAR = `${BASE_URL}/media/profile_images/MainAfter.jpg`;
 
@@ -255,7 +256,10 @@ const Layout = () => {
         }`}
       >
       {/* Header/Menu */}
-      <header className="sticky top-0 z-30 bg-gray-700 py-3 text-white shadow-md">
+      <header
+        className="sticky top-0 z-30 py-3 text-white shadow-md"
+        style={{ backgroundColor: "var(--lv-navy)", boxShadow: "0 10px 30px rgba(8,19,32,0.18)" }}
+      >
         <nav
           className={`mx-auto ${routeContainerClass} px-3 sm:px-4 md:px-6`}
         >
@@ -267,15 +271,7 @@ const Layout = () => {
                 className="inline-flex items-center gap-2.5 rounded-xl  px-2 py-1.5"
                 aria-label="Go to profile"
               >
-                <img
-                  src={`${BASE_URL}/media/logo.png`}
-                  alt="LangVoyage Logo"
-                  className="h-9 w-9 rounded-lg object-cover"
-                  onError={(event) => {
-                    event.currentTarget.onerror = null;
-                    event.currentTarget.src = "/logo192.png";
-                  }}
-                />
+                <CoachAvatar size={36} hideBadge />
                 <span className="truncate text-base font-bold tracking-wide sm:text-xl">
                   LangVoyage
                 </span>
@@ -284,7 +280,8 @@ const Layout = () => {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((open) => !open)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white md:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border text-white md:hidden"
+              style={{ borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.08)" }}
               aria-label="Toggle menu"
               aria-expanded={mobileMenuOpen}
             >
@@ -327,46 +324,84 @@ const Layout = () => {
               <div className="flex items-center gap-2">
                 <Link
                   to="/community"
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
                     location.pathname === "/community"
-                      ? "bg-white text-blue-600 shadow"
-                      : "hover:bg-blue-700 hover:text-white"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
                   }`}
+                  style={
+                    location.pathname === "/community"
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
                 >
                   People
                 </Link>
                 <Link
                   to="/conversations"
-                  className={`relative rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                  className={`relative rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
                     location.pathname.startsWith("/conversations")
-                      ? "bg-white text-blue-600 shadow"
-                      : "hover:bg-blue-700 hover:text-white"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
                   }`}
+                  style={
+                    location.pathname.startsWith("/conversations")
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
                 >
                   Conversations
                   {unreadConversationCount > 0 && (
-                    <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                    <span
+                      className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: "var(--lv-danger)" }}
+                    >
                       {unreadConversationCount}
                     </span>
                   )}
                 </Link>
                 <Link
                   to="/profile"
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
                     location.pathname === "/profile"
-                      ? "bg-white text-blue-600 shadow"
-                      : "hover:bg-blue-700 hover:text-white"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
                   }`}
+                  style={
+                    location.pathname === "/profile"
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
                 >
                   Profile
                 </Link>
                 <Link
-                  to="/practice"
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
-                    location.pathname === "/practice"
-                      ? "bg-white text-blue-600 shadow"
-                      : "hover:bg-blue-700 hover:text-white"
+                  to="/premium"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
+                    location.pathname === "/premium"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
                   }`}
+                  style={
+                    location.pathname === "/premium"
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
+                >
+                  Premium
+                </Link>
+                <Link
+                  to="/practice"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
+                    location.pathname === "/practice"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
+                  }`}
+                  style={
+                    location.pathname === "/practice"
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
                 >
                   Practice
                 </Link>
@@ -375,11 +410,16 @@ const Layout = () => {
                 <button
                   type="button"
                   onClick={() => setProfileMenuOpen((open) => !open)}
-                  className={`inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm ${
+                  className={`inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
                     profileMenuOpen
-                      ? "bg-white text-blue-600 shadow"
-                      : "hover:bg-blue-700 hover:text-white"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
                   }`}
+                  style={
+                    profileMenuOpen
+                      ? { color: "var(--lv-primary)" }
+                      : { backgroundColor: "transparent" }
+                  }
                   aria-expanded={profileMenuOpen}
                   aria-haspopup="menu"
                 >
@@ -405,30 +445,42 @@ const Layout = () => {
                   </svg>
                 </button>
                 <div
-                  className={`absolute right-0 mt-2 w-56 origin-top-right rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-xl transition-all duration-200 ${
+                  className={`absolute right-0 mt-2 w-56 origin-top-right rounded-xl border bg-white p-1.5 shadow-xl transition-all duration-200 ${
                     profileMenuOpen
                       ? "pointer-events-auto translate-y-0 opacity-100"
                       : "pointer-events-none -translate-y-2 opacity-0"
                   }`}
+                  style={{ borderColor: "var(--lv-border)", color: "var(--lv-text)" }}
                   role="menu"
                 >
                   <Link
                     to="/settings"
-                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    className="block rounded-lg px-3 py-2 text-sm"
+                    style={{ color: "var(--lv-text)" }}
                     role="menuitem"
                   >
                     Settings
                   </Link>
                   <Link
+                    to="/premium"
+                    className="block rounded-lg px-3 py-2 text-sm"
+                    style={{ color: "var(--lv-text)" }}
+                    role="menuitem"
+                  >
+                    Premium
+                  </Link>
+                  <Link
                     to="/privacy-policy"
-                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    className="block rounded-lg px-3 py-2 text-sm"
+                    style={{ color: "var(--lv-text)" }}
                     role="menuitem"
                   >
                     Privacy Policy
                   </Link>
                   <Link
                     to="/terms-and-conditions"
-                    className="block rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
+                    className="block rounded-lg px-3 py-2 text-sm"
+                    style={{ color: "var(--lv-text)" }}
                     role="menuitem"
                   >
                     Terms and Conditions
@@ -436,7 +488,8 @@ const Layout = () => {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                    className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm"
+                    style={{ color: "var(--lv-danger)" }}
                     role="menuitem"
                   >
                     Sign out
@@ -451,11 +504,18 @@ const Layout = () => {
             <div className="fixed inset-0 z-40 md:hidden">
               <button
                 type="button"
-                className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]"
+                className="absolute inset-0 backdrop-blur-[2px]"
+                style={{ backgroundColor: "rgba(8,19,32,0.58)" }}
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Close menu backdrop"
               />
-              <aside className="absolute right-0 top-0 h-full w-[min(72vw,300px)] border-l border-white/15 bg-gradient-to-b from-slate-800 to-slate-900 p-3.5 shadow-2xl">
+              <aside
+                className="absolute right-0 top-0 h-full w-[min(72vw,300px)] border-l p-3.5 shadow-2xl"
+                style={{
+                  borderColor: "rgba(255,255,255,0.12)",
+                  background: "linear-gradient(180deg, #14314a 0%, #081320 100%)",
+                }}
+              >
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <img
@@ -470,12 +530,13 @@ const Layout = () => {
                       <p className="text-xs text-white/60">Navigation</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                    aria-label="Close menu"
-                  >
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border text-white"
+                      style={{ borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.08)" }}
+                      onClick={() => setMobileMenuOpen(false)}
+                      aria-label="Close menu"
+                    >
                     <svg
                       viewBox="0 0 24 24"
                       fill="none"
@@ -498,9 +559,14 @@ const Layout = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
                       location.pathname === "/community"
-                        ? "text-sky-300"
-                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                        ? ""
+                        : "text-white/90 hover:text-white"
                     }`}
+                    style={
+                      location.pathname === "/community"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
                   >
                     People
                   </Link>
@@ -509,13 +575,21 @@ const Layout = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
                       location.pathname.startsWith("/conversations")
-                        ? "text-sky-300"
-                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                        ? ""
+                        : "text-white/90 hover:text-white"
                     }`}
+                    style={
+                      location.pathname.startsWith("/conversations")
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
                   >
                     <span>Conversations</span>
                     {unreadConversationCount > 0 && (
-                      <span className="ml-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">
+                      <span
+                        className="ml-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white"
+                        style={{ backgroundColor: "var(--lv-danger)" }}
+                      >
                         {unreadConversationCount}
                       </span>
                     )}
@@ -525,20 +599,46 @@ const Layout = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
                       location.pathname === "/profile"
-                        ? "text-sky-300"
-                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                        ? ""
+                        : "text-white/90 hover:text-white"
                     }`}
+                    style={
+                      location.pathname === "/profile"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
                   >
                     Profile
+                  </Link>
+                  <Link
+                    to="/premium"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/premium"
+                        ? ""
+                        : "text-white/90 hover:text-white"
+                    }`}
+                    style={
+                      location.pathname === "/premium"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
+                  >
+                    Premium
                   </Link>
                   <Link
                     to="/settings"
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
                       location.pathname === "/settings"
-                        ? "text-sky-300"
-                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                        ? ""
+                        : "text-white/90 hover:text-white"
                     }`}
+                    style={
+                      location.pathname === "/settings"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
                   >
                     Settings
                   </Link>
@@ -547,9 +647,14 @@ const Layout = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
                       location.pathname === "/practice"
-                        ? "text-sky-300"
-                        : "text-white/90 hover:bg-white/8 hover:text-white"
+                        ? ""
+                        : "text-white/90 hover:text-white"
                     }`}
+                    style={
+                      location.pathname === "/practice"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {}
+                    }
                   >
                     Practice
                   </Link>
@@ -575,7 +680,8 @@ const Layout = () => {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="mt-5 inline-flex min-h-[46px] w-full items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-600"
+                  className="mt-5 inline-flex min-h-[46px] w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-white transition"
+                  style={{ backgroundColor: "var(--lv-danger)" }}
                 >
                   <svg
                     viewBox="0 0 24 24"

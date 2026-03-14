@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --lv-background: #f5f7fb;
+  --lv-surface: #ffffff;
+  --lv-surface-muted: #edf3f7;
+  --lv-text: #14314a;
+  --lv-muted-text: #6b7a90;
+  --lv-primary: #1b7f79;
+  --lv-danger: #d95b70;
+  --lv-border: #d7e2ea;
+  --lv-navy: #14314a;
+  --lv-shadow: #081320;
+  --lv-link: #177f8d;
+  --lv-blush: #ecb1d0;
+}
+
 .scroll-container {
   scroll-behavior: smooth;
 }

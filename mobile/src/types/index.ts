@@ -1,6 +1,8 @@
 export interface Profile {
   user_id?: number;
   username: string;
+  email?: string;
+  date_of_birth?: string;
   location?: string;
   location_updated_at?: string | null;
   native_language?: string;
@@ -12,6 +14,9 @@ export interface Profile {
   profile_image_url?: string;
   complementary_image_1_url?: string;
   complementary_image_2_url?: string;
+  support_email?: string;
+  is_blocked_by_me?: boolean;
+  has_blocked_me?: boolean;
   reviews?: Array<{
     author?: string;
     rating?: number;
@@ -80,4 +85,19 @@ export interface ProfileListResponse {
     has_next: boolean;
     has_previous: boolean;
   };
+}
+
+export interface ModerationSummary {
+  blocked_profiles: Array<{
+    username: string;
+    profile_image_url?: string | null;
+    created_at: string;
+  }>;
+  reported_profiles: Array<{
+    username: string;
+    profile_image_url?: string | null;
+    reason: string;
+    details?: string;
+    created_at: string;
+  }>;
 }

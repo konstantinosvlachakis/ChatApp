@@ -7,6 +7,7 @@ import { BASE_URL } from "../../../constants/constants";
 import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
+import CoachAvatar from "../../../components/CoachAvatar";
 import {
   COACH_CONVERSATION_ID,
   COACH_CONVERSATION_UPDATED_EVENT,
@@ -333,10 +334,11 @@ function ConversationList({
                 : "border-white/70 bg-white/75 hover:border-teal-100 hover:bg-white"
             }`}
           >
-            <img
-              src={coachConversation.sender?.profile_image_url}
-              alt="Lumi avatar"
-              className="h-12 w-12 rounded-[18px] border border-slate-200 object-cover shadow-md"
+            <CoachAvatar
+              language={coachConversation.sender?.language}
+              size={48}
+              hideBadge
+              className="rounded-[18px] border border-slate-200 shadow-md"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">

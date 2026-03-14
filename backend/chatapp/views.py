@@ -9,11 +9,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import (
+    BlockedUser,
     Conversation,
     Message,
     MessageTranslation,
     MessageReaction,
     PracticeStats,
+    UserReport,
 )
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
@@ -84,6 +86,7 @@ COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(
 COACH_CHAT_RATE_LIMIT_REQUESTS = int(
     os.environ.get("COACH_CHAT_RATE_LIMIT_REQUESTS", "12")
 )
+SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@langvoyage.app")
 
 PRACTICE_LIBRARY = {
     "english": {
@@ -577,6 +580,40 @@ def build_media_url(request, path):
     return media_url
 
 
+def get_blocked_user_ids(user_id):
+    blocked_pairs = BlockedUser.objects.filter(
+        Q(blocker_id=user_id) | Q(blocked_id=user_id)
+    ).values_list("blocker_id", "blocked_id")
+    blocked_ids = set()
+    for blocker_id, blocked_id in blocked_pairs:
+        if blocker_id == user_id:
+            blocked_ids.add(blocked_id)
+        else:
+            blocked_ids.add(blocker_id)
+    return blocked_ids
+
+
+def users_are_blocked(user_a_id, user_b_id):
+    if not user_a_id or not user_b_id:
+        return False
+    return BlockedUser.objects.filter(
+        Q(blocker_id=user_a_id, blocked_id=user_b_id)
+        | Q(blocker_id=user_b_id, blocked_id=user_a_id)
+    ).exists()
+
+
+def get_block_state(viewer_id, profile_id):
+    if not viewer_id or not profile_id or viewer_id == profile_id:
+        return False, False
+    is_blocked_by_me = BlockedUser.objects.filter(
+        blocker_id=viewer_id, blocked_id=profile_id
+    ).exists()
+    has_blocked_me = BlockedUser.objects.filter(
+        blocker_id=profile_id, blocked_id=viewer_id
+    ).exists()
+    return is_blocked_by_me, has_blocked_me
+
+
 def broadcast_message_status_update(
     conversation_id, message_ids, status_value, actor_id
 ):
@@ -838,6 +875,7 @@ def profile_view(request):
         ),
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
+        "support_email": SUPPORT_EMAIL,
     }
     if request.method == "GET":
         cache.set(cache_key, profile_data, PROFILE_CACHE_TIMEOUT_SECONDS)
@@ -874,7 +912,10 @@ def profile_data_view(request):
     if cached_payload:
         return JsonResponse(cached_payload, status=200)
 
+    blocked_user_ids = get_blocked_user_ids(request.user.id)
     profiles_qs = Profile.objects.exclude(id=request.user.id)
+    if blocked_user_ids:
+        profiles_qs = profiles_qs.exclude(id__in=blocked_user_ids)
     if match_only:
         practicing_languages = getattr(request.user, "languages_practicing", []) or []
         normalized_languages = [
@@ -947,9 +988,12 @@ def profile_data_view(request):
 @permission_classes([IsAuthenticated])
 def public_profile_view(request, username):
     profile = get_object_or_404(Profile, username=username)
+    is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
+    if is_blocked_by_me or has_blocked_me:
+        return JsonResponse({"error": "This user is unavailable."}, status=403)
     cache_version = get_profile_cache_version(profile.id)
     cache_key = (
-        f"public_profile:v{cache_version}:user:{profile.id}:"
+        f"public_profile:v{cache_version}:user:{profile.id}:viewer:{request.user.id}:"
         f"host:{request.get_host()}"
     )
     cached_payload = cache.get(cache_key)
@@ -972,6 +1016,8 @@ def public_profile_view(request, username):
         "bio": "Passionate about language exchange and cultural learning.",
         "learning_goal": "Improve fluency through daily conversations.",
         "reviews": [],
+        "is_blocked_by_me": is_blocked_by_me,
+        "has_blocked_me": has_blocked_me,
     }
     cache.set(cache_key, profile_data, PROFILE_CACHE_TIMEOUT_SECONDS)
     return JsonResponse(profile_data, status=200)
@@ -1122,6 +1168,147 @@ def profile_location_update_view(request):
     )
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_account_view(request):
+    user = request.user
+    user_id = user.id
+    username = user.username
+    user.delete()
+    bump_profile_list_cache_version()
+    bump_profile_cache_version(user_id)
+    bump_conversation_list_cache_version(user_id)
+    return Response(
+        {"message": f"Account for {username} deleted successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def block_user_view(request, username):
+    target = get_object_or_404(Profile, username=username)
+
+    if target.id == request.user.id:
+        return Response(
+            {"error": "You cannot block yourself."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if request.method == "POST":
+        BlockedUser.objects.get_or_create(blocker=request.user, blocked=target)
+        Conversation.objects.filter(
+            Q(sender=request.user, receiver=target)
+            | Q(sender=target, receiver=request.user)
+        ).delete()
+        bump_conversation_list_cache_version(request.user.id)
+        bump_conversation_list_cache_version(target.id)
+        bump_profile_list_cache_version()
+        bump_profile_cache_version(target.id)
+        return Response(
+            {"message": f"You blocked {target.username}.", "is_blocked_by_me": True},
+            status=status.HTTP_200_OK,
+        )
+
+    BlockedUser.objects.filter(blocker=request.user, blocked=target).delete()
+    bump_conversation_list_cache_version(request.user.id)
+    bump_conversation_list_cache_version(target.id)
+    bump_profile_list_cache_version()
+    bump_profile_cache_version(target.id)
+    return Response(
+        {"message": f"You unblocked {target.username}.", "is_blocked_by_me": False},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def moderation_summary_view(request):
+    blocked_pairs = (
+        BlockedUser.objects.filter(blocker=request.user)
+        .select_related("blocked")
+        .order_by("-created_at")
+    )
+    reports = (
+        UserReport.objects.filter(reporter=request.user)
+        .select_related("reported_user")
+        .order_by("-created_at")
+    )
+
+    return Response(
+        {
+            "blocked_profiles": [
+                {
+                    "username": pair.blocked.username,
+                    "profile_image_url": pair.blocked.profile_image_url or None,
+                    "created_at": pair.created_at,
+                }
+                for pair in blocked_pairs
+            ],
+            "reported_profiles": [
+                {
+                    "username": report.reported_user.username,
+                    "profile_image_url": report.reported_user.profile_image_url or None,
+                    "reason": report.reason,
+                    "details": report.details,
+                    "created_at": report.created_at,
+                }
+                for report in reports
+            ],
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def report_user_view(request, username):
+    target = get_object_or_404(Profile, username=username)
+
+    if target.id == request.user.id:
+        return Response(
+            {"error": "You cannot report yourself."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    reason = str(request.data.get("reason", "")).strip().lower()
+    details = str(request.data.get("details", "")).strip()
+    allowed_reasons = {
+        "spam",
+        "harassment",
+        "inappropriate_content",
+        "impersonation",
+        "scam",
+        "other",
+    }
+    if not reason:
+        return Response(
+            {"error": "A report reason is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if reason not in allowed_reasons:
+        return Response(
+            {"error": "Invalid report reason."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if reason == "other" and not details:
+        return Response(
+            {"error": "Please provide details for the 'other' reason."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    UserReport.objects.create(
+        reporter=request.user,
+        reported_user=target,
+        reason=reason[:64],
+        details=details[:2000],
+    )
+    return Response(
+        {"message": f"Report submitted for {target.username}."},
+        status=status.HTTP_201_CREATED,
+    )
+
+
 class MessageListView(APIView):
     def get(self, request, conversation_id):
         conversation = get_object_or_404(
@@ -1131,6 +1318,11 @@ class MessageListView(APIView):
         if request.user.id not in (conversation.sender_id, conversation.receiver_id):
             return Response(
                 {"error": "You are not a participant in this conversation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "This conversation is unavailable."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1206,6 +1398,16 @@ class MessageListView(APIView):
             Conversation,
             id=conversation_id,
         )
+        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "You are not a participant in this conversation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "You cannot message a blocked user."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         # Extract text and file from the request
         text = request.data.get("text", "").strip()
         attachment = request.FILES.get("attachment")
@@ -1283,6 +1485,11 @@ class ConversationDetailView(APIView):
                 {"error": "You are not a participant in this conversation."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
+            return Response(
+                {"error": "This conversation is unavailable."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         messages_to_deliver = (
             Message.objects.filter(conversation=conversation)
@@ -1337,6 +1544,11 @@ class ConversationListView(APIView):
             )
             .order_by("-updated_at", "-id")
         )
+        blocked_user_ids = get_blocked_user_ids(request.user.id)
+        if blocked_user_ids:
+            conversations = conversations.exclude(sender_id__in=blocked_user_ids).exclude(
+                receiver_id__in=blocked_user_ids
+            )
         messages_to_deliver = (
             Message.objects.filter(conversation__in=conversations)
             .exclude(sender=request.user)
@@ -1405,6 +1617,13 @@ class ConversationListView(APIView):
             participant = Profile.objects.get(username=participant_username)
         except Profile.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
+        if participant.id == user.id:
+            return Response({"error": "You cannot message yourself."}, status=400)
+        if users_are_blocked(user.id, participant.id):
+            return Response(
+                {"error": "You cannot start a conversation with this user."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Check if a conversation already exists between the two users
         conversation = Conversation.objects.filter(

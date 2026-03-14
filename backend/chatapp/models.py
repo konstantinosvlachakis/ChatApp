@@ -220,3 +220,38 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"Reaction on message {self.message_id} by user {self.user_id}"
+
+
+class BlockedUser(models.Model):
+    blocker = models.ForeignKey(
+        Profile, related_name="blocked_users", on_delete=models.CASCADE
+    )
+    blocked = models.ForeignKey(
+        Profile, related_name="blocked_by_users", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["blocker", "blocked"], name="uniq_blocker_blocked_pair"
+            )
+        ]
+
+    def __str__(self):
+        return f"Block({self.blocker_id}->{self.blocked_id})"
+
+
+class UserReport(models.Model):
+    reporter = models.ForeignKey(
+        Profile, related_name="submitted_reports", on_delete=models.CASCADE
+    )
+    reported_user = models.ForeignKey(
+        Profile, related_name="received_reports", on_delete=models.CASCADE
+    )
+    reason = models.CharField(max_length=64)
+    details = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report({self.reporter_id}->{self.reported_user_id}:{self.reason})"

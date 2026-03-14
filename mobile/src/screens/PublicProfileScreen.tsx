@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -11,15 +12,27 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { useRoute } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { API_BASE_URL } from "../config/api";
+import { ReportUserModal } from "../components/ReportUserModal";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { fetchPublicProfile } from "../services/api/auth";
+import {
+  blockUser,
+  fetchPublicProfile,
+  reportUser,
+  unblockUser,
+} from "../services/api/auth";
+import { createOrGetConversation } from "../services/api/conversations";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
+import { fontFamilies } from "../theme/typography";
 
 export function PublicProfileScreen() {
   const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+  const { user } = useAuth();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -32,6 +45,10 @@ export function PublicProfileScreen() {
   const [error, setError] = React.useState("");
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   const [previewIndex, setPreviewIndex] = React.useState(0);
+  const [blocking, setBlocking] = React.useState(false);
+  const [reporting, setReporting] = React.useState(false);
+  const [startingConversation, setStartingConversation] = React.useState(false);
+  const [reportModalOpen, setReportModalOpen] = React.useState(false);
   const previewScrollRef = React.useRef<ScrollView | null>(null);
 
   React.useEffect(() => {
@@ -96,11 +113,103 @@ export function PublicProfileScreen() {
   const complementaryTwo = resolveMediaUrl(profile.complementary_image_2_url, false);
   const previewImages = [profileImage, complementaryOne, complementaryTwo].filter(Boolean);
   const practicingLanguages = profile.languages_practicing || [];
+  const isOwnProfile = user?.username === profile.username;
+
+  const handleToggleBlock = () => {
+    if (!profile.username || isOwnProfile || blocking) return;
+    const isBlocked = Boolean(profile.is_blocked_by_me);
+    Alert.alert(
+      isBlocked ? "Unblock user" : "Block user",
+      isBlocked
+        ? `You will be able to see ${profile.username} again.`
+        : `You will hide ${profile.username} from people and chats.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: isBlocked ? "Unblock" : "Block",
+          onPress: async () => {
+            try {
+              setBlocking(true);
+              if (isBlocked) {
+                await unblockUser(profile.username);
+                setProfile((prev) =>
+                  prev ? { ...prev, is_blocked_by_me: false, has_blocked_me: false } : prev
+                );
+              } else {
+                await blockUser(profile.username);
+                setProfile((prev) =>
+                  prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false } : prev
+                );
+              }
+            } catch {
+              Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+            } finally {
+              setBlocking(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const submitReport = async (reason: string, details = "") => {
+    if (!profile.username || reporting) return;
+    try {
+      setReporting(true);
+      await reportUser({ username: profile.username, reason, details });
+      Alert.alert("Report sent", "Thanks. We will review this report.");
+      setReportModalOpen(false);
+    } catch {
+      Alert.alert("Failed", "Could not send this report.");
+    } finally {
+      setReporting(false);
+    }
+  };
+
+  const handleMoreActions = () => {
+    if (isOwnProfile) return;
+    Alert.alert(profile.username, "Profile options", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: profile.is_blocked_by_me ? "Unblock user" : "Block user",
+        onPress: handleToggleBlock,
+      },
+      {
+        text: "Report user",
+        style: "destructive",
+        onPress: () => setReportModalOpen(true),
+      },
+    ]);
+  };
+
+  const handleStartConversation = async () => {
+    if (!profile.username || isOwnProfile || startingConversation) return;
+    try {
+      setStartingConversation(true);
+      const { id } = await createOrGetConversation(profile.username);
+      navigation.navigate("Chats", {
+        screen: "ChatsHome",
+        params: {
+          openConversationId: id,
+          openFromBannerAt: Date.now(),
+        },
+      });
+    } catch {
+      Alert.alert("Failed", "Could not start a conversation.");
+    } finally {
+      setStartingConversation(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.heroCard}>
+          {!isOwnProfile ? (
+            <Pressable style={styles.heroMenuButton} onPress={handleMoreActions}>
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => {
               setPreviewIndex(0);
@@ -116,6 +225,19 @@ export function PublicProfileScreen() {
             {profile.username}
             {typeof profile.age === "number" ? `, ${profile.age}` : ""}
           </Text>
+          {!isOwnProfile ? (
+            <View style={styles.actionRow}>
+              <Pressable
+                style={styles.primaryActionButton}
+                onPress={handleStartConversation}
+                disabled={startingConversation}
+              >
+                <Text style={styles.primaryActionButtonText}>
+                  {startingConversation ? "Opening..." : "Start conversation"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.sectionCard}>
@@ -203,6 +325,15 @@ export function PublicProfileScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <ReportUserModal
+        colors={colors}
+        visible={reportModalOpen}
+        username={profile.username}
+        loading={reporting}
+        onClose={() => setReportModalOpen(false)}
+        onSubmit={({ reason, details }) => submitReport(reason, details)}
+      />
     </SafeAreaView>
   );
 }
@@ -220,6 +351,20 @@ const createStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       padding: 18,
       alignItems: "center",
+      position: "relative",
+    },
+    heroMenuButton: {
+      position: "absolute",
+      top: 14,
+      right: 14,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
     },
     avatar: {
       width: 110,
@@ -231,10 +376,28 @@ const createStyles = (colors: ThemeColors) =>
     },
     heroTitle: {
       fontSize: 34,
-      fontWeight: "800",
+      fontFamily: fontFamilies.displayBold,
       color: colors.text,
       textTransform: "capitalize",
       textAlign: "center",
+    },
+    actionRow: {
+      marginTop: 12,
+      width: "100%",
+      justifyContent: "center",
+    },
+    primaryActionButton: {
+      minHeight: 48,
+      borderRadius: 16,
+      backgroundColor: colors.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 18,
+    },
+    primaryActionButtonText: {
+      color: "#ffffff",
+      fontSize: 15,
+      fontFamily: fontFamilies.displaySemiBold,
     },
     sectionCard: {
       backgroundColor: colors.surface,
@@ -247,17 +410,18 @@ const createStyles = (colors: ThemeColors) =>
     sectionTitle: {
       color: colors.text,
       fontSize: 24,
-      fontWeight: "800",
+      fontFamily: fontFamilies.displayBold,
       marginBottom: 6,
     },
     rowText: {
       color: colors.mutedText,
       fontSize: 16,
       lineHeight: 24,
+      fontFamily: fontFamilies.bodyMedium,
     },
     rowLabel: {
       color: colors.text,
-      fontWeight: "700",
+      fontFamily: fontFamilies.bodyBold,
     },
     chipsWrap: {
       flexDirection: "row",
@@ -274,7 +438,7 @@ const createStyles = (colors: ThemeColors) =>
     chipText: {
       color: colors.text,
       fontSize: 14,
-      fontWeight: "600",
+      fontFamily: fontFamilies.bodySemiBold,
     },
     previewBackdrop: {
       flex: 1,
@@ -348,6 +512,6 @@ const createStyles = (colors: ThemeColors) =>
     },
     previewCloseText: {
       color: "#fff",
-      fontWeight: "700",
+      fontFamily: fontFamilies.bodyBold,
     },
   });

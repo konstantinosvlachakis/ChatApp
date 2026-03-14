@@ -4,7 +4,7 @@ import {
   Alert,
   DeviceEventEmitter,
   FlatList,
-  Image,
+  Image as RNImage,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -21,11 +21,19 @@ import {
 import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
+import { CoachAvatar } from "../components/CoachAvatar";
+import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { tokenStorage } from "../services/storage";
+import {
+  blockUser,
+  fetchPublicProfile,
+  reportUser,
+  unblockUser,
+} from "../services/api/auth";
 import {
   createOrGetConversation,
   fetchConversation,
@@ -99,6 +107,10 @@ export function ConversationsScreen() {
     () => getCoachLanguageOptions(user)[0]?.label || "English",
     [user]
   );
+  const coachLanguageValue = useMemo(
+    () => getCoachLanguageOptions(user)[0]?.value || "english",
+    [user]
+  );
 
   const [conversations, setConversations] = useState<Conversation[]>(() => getCachedConversations() || []);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -120,6 +132,8 @@ export function ConversationsScreen() {
     top: number;
     align: "left" | "right";
   } | null>(null);
+  const [chatActionLoading, setChatActionLoading] = useState(false);
+  const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
 
   const selectedConversationIdRef = useRef<number | null>(null);
   const presenceSocketRef = useRef<WebSocket | null>(null);
@@ -462,6 +476,61 @@ export function ConversationsScreen() {
       };
     });
   }, []);
+
+  const handleReportUser = useCallback((username: string) => {
+    if (chatActionLoading) return;
+    setReportTargetUsername(username);
+  }, [chatActionLoading]);
+
+  const openChatActions = useCallback(
+    async (username: string) => {
+      if (chatActionLoading) return;
+      try {
+        setChatActionLoading(true);
+        const profile = await fetchPublicProfile(username);
+        const isBlocked = Boolean(profile.is_blocked_by_me);
+        Alert.alert(username, "Conversation options", [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "View profile",
+            onPress: () => navigation.navigate("PublicProfile", { username }),
+          },
+          {
+            text: isBlocked ? "Unblock user" : "Block user",
+            onPress: async () => {
+              try {
+                setChatActionLoading(true);
+                if (isBlocked) {
+                  await unblockUser(username);
+                  await loadConversations(true);
+                  Alert.alert("Unblocked", `${username} can contact you again.`);
+                } else {
+                  await blockUser(username);
+                  closeConversation();
+                  await loadConversations(true);
+                  Alert.alert("Blocked", `${username} has been blocked.`);
+                }
+              } catch {
+                Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+              } finally {
+                setChatActionLoading(false);
+              }
+            },
+          },
+          {
+            text: "Report user",
+            style: "destructive",
+            onPress: () => handleReportUser(username),
+          },
+        ]);
+      } catch {
+        Alert.alert("Unavailable", "Could not load chat options right now.");
+      } finally {
+        setChatActionLoading(false);
+      }
+    },
+    [chatActionLoading, closeConversation, handleReportUser, loadConversations, navigation]
+  );
 
   const handleReactionSelect = useCallback(
     async (message: ChatMessage, emoji: string) => {
@@ -1117,7 +1186,7 @@ export function ConversationsScreen() {
             </Pressable>
             <View style={styles.chatTitleWrap}>
               <View>
-                <Image source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.chatAvatar} />
+                <RNImage source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.chatAvatar} />
                 {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDotChat} /> : null}
               </View>
               <View>
@@ -1129,7 +1198,15 @@ export function ConversationsScreen() {
                 ) : null}
               </View>
             </View>
-            <View style={styles.chatHeaderSpacer} />
+            <Pressable
+              style={styles.chatHeaderAction}
+              onPress={(event) => {
+                event.stopPropagation();
+                openChatActions(otherUser.username);
+              }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
+            </Pressable>
           </Pressable>
 
           {loadingConversation ? (
@@ -1218,6 +1295,26 @@ export function ConversationsScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+        <ReportUserModal
+          colors={colors}
+          visible={Boolean(reportTargetUsername)}
+          username={reportTargetUsername || undefined}
+          loading={chatActionLoading}
+          onClose={() => setReportTargetUsername(null)}
+          onSubmit={async ({ reason, details }) => {
+            if (!reportTargetUsername) return;
+            try {
+              setChatActionLoading(true);
+              await reportUser({ username: reportTargetUsername, reason, details });
+              Alert.alert("Report sent", "Thanks. We will review this report.");
+              setReportTargetUsername(null);
+            } catch {
+              Alert.alert("Failed", "Could not send this report.");
+            } finally {
+              setChatActionLoading(false);
+            }
+          }}
+        />
         <Modal
           transparent
           visible={Boolean(messageMenu)}
@@ -1277,9 +1374,7 @@ export function ConversationsScreen() {
           style={styles.coachCard}
           onPress={() => navigation.navigate("CoachChat")}
         >
-          <View style={styles.coachAvatar}>
-            <Text style={styles.coachAvatarText}>L</Text>
-          </View>
+          <CoachAvatar language={coachLanguageValue} size={48} />
           <View style={styles.coachBody}>
             <View style={styles.coachHeaderRow}>
               <Text style={styles.coachName}>Lumi AI Coach</Text>
@@ -1315,7 +1410,7 @@ export function ConversationsScreen() {
           return (
             <Pressable style={styles.conversationCard} onPress={() => openConversation(item.id)}>
               <View>
-                <Image source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.avatarImageWrap} />
+                <RNImage source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.avatarImageWrap} />
                 {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDot} /> : null}
               </View>
               <View style={styles.conversationBody}>
@@ -1385,14 +1480,6 @@ const createStyles = (colors: ThemeColors) =>
       width: 48,
       height: 48,
       borderRadius: 24,
-      backgroundColor: colors.navy,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    coachAvatarText: {
-      color: "#fff",
-      fontSize: 22,
-      fontWeight: "800",
     },
     coachBody: {
       flex: 1,
@@ -1579,8 +1666,15 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.success,
       marginTop: 1,
     },
-    chatHeaderSpacer: {
+    chatHeaderAction: {
       width: 34,
+      height: 34,
+      borderRadius: 17,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
     },
     chatLoading: {
       flex: 1,

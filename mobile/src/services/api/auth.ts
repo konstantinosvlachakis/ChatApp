@@ -1,6 +1,6 @@
 import { api } from "./client";
 import { tokenStorage } from "../storage";
-import type { Profile, ProfileListResponse } from "../../types";
+import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
 
 export async function register(payload: {
   username: string;
@@ -49,6 +49,57 @@ export async function updateSettings(payload: {
   languages_practicing?: string[];
 }) {
   const response = await api.patch("/profile/edit/", payload);
+  return response.data;
+}
+
+export async function updateProfile(payload: {
+  username?: string;
+  email?: string;
+  date_of_birth?: string | null;
+  native_language?: string;
+  base_translate_language?: string;
+  location?: string;
+  bio?: string;
+  learning_goal?: string;
+  languages_practicing?: string[];
+}) {
+  const response = await api.patch("/profile/edit/", payload);
+  return response.data as Partial<Profile>;
+}
+
+export async function fetchModerationSummary() {
+  const response = await api.get<ModerationSummary>("/profile/moderation/");
+  return response.data;
+}
+
+export async function deleteAccount() {
+  const response = await api.delete("/profile/delete/");
+  await tokenStorage.clear();
+  return response.data;
+}
+
+export async function blockUser(username: string) {
+  const response = await api.post(`/profile/public/${encodeURIComponent(username)}/block/`);
+  return response.data;
+}
+
+export async function unblockUser(username: string) {
+  const response = await api.delete(`/profile/public/${encodeURIComponent(username)}/block/`);
+  return response.data;
+}
+
+export async function reportUser(payload: {
+  username: string;
+  reason: string;
+  details?: string;
+}) {
+  const response = await api.post(
+    `/profile/public/${encodeURIComponent(payload.username)}/report/`,
+    {
+      reason: payload.reason,
+      details: payload.details || "",
+    }
+  );
   return response.data;
 }
 

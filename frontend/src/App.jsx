@@ -18,6 +18,8 @@ const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const SettingsPage = React.lazy(() => import("./pages/Settings/page"));
 const PublicProfilePage = React.lazy(() => import("./pages/PublicProfile/page"));
 const PracticePage = React.lazy(() => import("./pages/PracticePage"));
+const PremiumPage = React.lazy(() => import("./pages/PremiumPage"));
+const ComparePlansPage = React.lazy(() => import("./pages/ComparePlansPage"));
 
 
 function App() {
@@ -167,6 +169,22 @@ function App() {
                   element={
                     <Suspense fallback={<div>Loading Practice...</div>}>
                       <PracticePage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/premium"
+                  element={
+                    <Suspense fallback={<div>Loading Premium...</div>}>
+                      <PremiumPage />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/premium/compare"
+                  element={
+                    <Suspense fallback={<div>Loading Compare Plans...</div>}>
+                      <ComparePlansPage />
                     </Suspense>
                   }
                 />

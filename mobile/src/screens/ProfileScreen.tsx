@@ -3,36 +3,56 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { fetchProfile, uploadProfilePhoto } from "../services/api/auth";
+import { getCoachLanguageOptions } from "../features/coachConversation";
+import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
 import type { ProfilePhotoSlot } from "../services/api/auth";
+import { fontFamilies } from "../theme/typography";
 
 export function ProfileScreen() {
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser } = useAuth();
+  const navigation = useNavigation<any>();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [user, setUser] = useState<Profile | null>(authUser);
   const [loading, setLoading] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<ProfilePhotoSlot | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const previewScrollRef = useRef<ScrollView | null>(null);
+  const languageOptions = React.useMemo(() => getCoachLanguageOptions(user), [user]);
+  const [editForm, setEditForm] = useState({
+    username: "",
+    email: "",
+    location: "",
+    nativeLanguage: "english",
+    baseLanguage: "english",
+    practiceLanguage: "english",
+    bio: "",
+    learningGoal: "",
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -50,6 +70,22 @@ export function ProfileScreen() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const fallback = languageOptions[0]?.value || "english";
+    setEditForm({
+      username: user?.username || "",
+      email: user?.email || "",
+      location: user?.location || "",
+      nativeLanguage: (user?.native_language || fallback).trim().toLowerCase(),
+      baseLanguage: (user?.base_translate_language || user?.native_language || fallback)
+        .trim()
+        .toLowerCase(),
+      practiceLanguage: (user?.languages_practicing?.[0] || fallback).trim().toLowerCase(),
+      bio: user?.bio || "",
+      learningGoal: user?.learning_goal || "",
+    });
+  }, [languageOptions, user]);
 
   if (loading) {
     return (
@@ -77,6 +113,10 @@ export function ProfileScreen() {
     { key: "complementary_2", image: complementaryTwo },
   ];
   const previewImages = [profileImage, complementaryOne, complementaryTwo].filter(Boolean);
+
+  const updateEditField = (field: keyof typeof editForm, value: string) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
 
   const onUploadPhoto = async (slot: ProfilePhotoSlot) => {
     if (!user?.user_id) {
@@ -135,22 +175,32 @@ export function ProfileScreen() {
     }
   };
 
-  const onLogout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setLoggingOut(true);
-            await logout();
-          } finally {
-            setLoggingOut(false);
-          }
-        },
-      },
-    ]);
+  const handleSaveProfile = async () => {
+    try {
+      setSavingProfile(true);
+      const payload = await updateProfile({
+        username: editForm.username.trim(),
+        email: editForm.email.trim().toLowerCase(),
+        location: editForm.location.trim(),
+        native_language: editForm.nativeLanguage,
+        base_translate_language: editForm.baseLanguage,
+        languages_practicing: editForm.practiceLanguage ? [editForm.practiceLanguage] : [],
+        bio: editForm.bio.trim(),
+        learning_goal: editForm.learningGoal.trim(),
+      });
+      const mergedProfile = { ...user, ...payload } as Profile;
+      setUser(mergedProfile);
+      setIsEditProfileOpen(false);
+      Alert.alert("Profile updated", "Your profile changes have been saved.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        "Could not update your profile.";
+      Alert.alert("Save failed", message);
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -158,8 +208,8 @@ export function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topBar}>
           <Text style={styles.pageTitle}>Profile</Text>
-          <Pressable style={styles.logoutButton} onPress={onLogout} disabled={loggingOut}>
-            <Text style={styles.logoutButtonText}>{loggingOut ? "Logging out..." : "Log out"}</Text>
+          <Pressable style={styles.settingsButton} onPress={() => navigation.navigate("Settings")}>
+            <Ionicons name="settings-outline" size={20} color={colors.text} />
           </Pressable>
         </View>
 
@@ -181,7 +231,7 @@ export function ProfileScreen() {
           </Text>
           <Pressable
             style={styles.editButton}
-            onPress={() => Alert.alert("Coming soon", "Edit profile on mobile will be added next.")}
+            onPress={() => setIsEditProfileOpen(true)}
           >
             <Text style={styles.editButtonText}>Edit Profile</Text>
           </Pressable>
@@ -197,8 +247,8 @@ export function ProfileScreen() {
             {typeof user?.age === "number" ? user.age : "Not provided"}
           </Text>
           <Text style={styles.rowText}>
-            <Text style={styles.rowLabel}>Bio:</Text> Passionate about learning new languages and
-            connecting with people from different cultures.
+            <Text style={styles.rowLabel}>Bio:</Text>{" "}
+            {user?.bio?.trim() || "Tell people a little about yourself."}
           </Text>
         </View>
 
@@ -223,8 +273,8 @@ export function ProfileScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Learning Goals</Text>
           <Text style={styles.rowText}>
-            My goal is to become fluent and confident in new languages for both travel and
-            communication.
+            {user?.learning_goal?.trim() ||
+              "My goal is to become fluent and confident in new languages for both travel and communication."}
           </Text>
         </View>
 
@@ -333,6 +383,175 @@ export function ProfileScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <Modal
+        visible={isEditProfileOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsEditProfileOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.editModalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <Pressable style={styles.editModalBackdropTouchable} onPress={() => setIsEditProfileOpen(false)} />
+          <View style={styles.editModalSheet}>
+            <View style={styles.editModalHeader}>
+              <View>
+                <Text style={styles.editModalEyebrow}>Profile</Text>
+                <Text style={styles.editModalTitle}>Edit profile</Text>
+              </View>
+              <Pressable style={styles.editModalCloseButton} onPress={() => setIsEditProfileOpen(false)}>
+                <Ionicons name="close" size={18} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.editModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Username</Text>
+                <TextInput
+                  value={editForm.username}
+                  onChangeText={(value) => updateEditField("username", value)}
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor={colors.mutedText}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  value={editForm.email}
+                  onChangeText={(value) => updateEditField("email", value)}
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={colors.mutedText}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Location</Text>
+                <TextInput
+                  value={editForm.location}
+                  onChangeText={(value) => updateEditField("location", value)}
+                  style={styles.input}
+                  placeholder="City, Country"
+                  placeholderTextColor={colors.mutedText}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Native language</Text>
+                <View style={styles.languageChips}>
+                  {languageOptions.map((option) => {
+                    const active = editForm.nativeLanguage === option.value;
+                    return (
+                      <Pressable
+                        key={`native-${option.value}`}
+                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
+                        onPress={() => updateEditField("nativeLanguage", option.value)}
+                      >
+                        <Text style={[styles.languageChipText, active ? styles.languageChipTextActive : undefined]}>
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Base translate language</Text>
+                <View style={styles.languageChips}>
+                  {languageOptions.map((option) => {
+                    const active = editForm.baseLanguage === option.value;
+                    return (
+                      <Pressable
+                        key={`base-${option.value}`}
+                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
+                        onPress={() => updateEditField("baseLanguage", option.value)}
+                      >
+                        <Text style={[styles.languageChipText, active ? styles.languageChipTextActive : undefined]}>
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Main practice language</Text>
+                <View style={styles.languageChips}>
+                  {languageOptions.map((option) => {
+                    const active = editForm.practiceLanguage === option.value;
+                    return (
+                      <Pressable
+                        key={`practice-${option.value}`}
+                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
+                        onPress={() => updateEditField("practiceLanguage", option.value)}
+                      >
+                        <Text style={[styles.languageChipText, active ? styles.languageChipTextActive : undefined]}>
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Bio</Text>
+                <TextInput
+                  value={editForm.bio}
+                  onChangeText={(value) => updateEditField("bio", value)}
+                  style={[styles.input, styles.inputMultiline]}
+                  placeholder="Tell people a little about yourself"
+                  placeholderTextColor={colors.mutedText}
+                  multiline
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Learning goal</Text>
+                <TextInput
+                  value={editForm.learningGoal}
+                  onChangeText={(value) => updateEditField("learningGoal", value)}
+                  style={[styles.input, styles.inputMultiline]}
+                  placeholder="What are you trying to achieve?"
+                  placeholderTextColor={colors.mutedText}
+                  multiline
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.editModalFooter}>
+              <Pressable
+                style={styles.editModalSecondaryButton}
+                onPress={() => setIsEditProfileOpen(false)}
+                disabled={savingProfile}
+              >
+                <Text style={styles.editModalSecondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={styles.editModalPrimaryButton}
+                onPress={handleSaveProfile}
+                disabled={savingProfile}
+              >
+                <Text style={styles.editModalPrimaryButtonText}>
+                  {savingProfile ? "Saving..." : "Save changes"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -350,19 +569,18 @@ const createStyles = (colors: ThemeColors) =>
     },
     pageTitle: {
       color: colors.text,
-      fontWeight: "800",
       fontSize: 28,
+      fontFamily: fontFamilies.displayBold,
     },
-    logoutButton: {
-      backgroundColor: colors.danger,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 10,
-    },
-    logoutButtonText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 13,
+    settingsButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
     },
     heroCard: {
       backgroundColor: colors.surface,
@@ -382,21 +600,26 @@ const createStyles = (colors: ThemeColors) =>
     },
     heroTitle: {
       fontSize: 34,
-      fontWeight: "800",
       color: colors.text,
+      fontFamily: fontFamilies.displayBold,
       marginBottom: 12,
       textTransform: "capitalize",
     },
     editButton: {
-      backgroundColor: colors.primary,
+      backgroundColor: colors.navy,
       borderRadius: 999,
       paddingHorizontal: 18,
       paddingVertical: 10,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.1,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 3,
     },
     editButtonText: {
       color: "#fff",
-      fontWeight: "700",
       fontSize: 16,
+      fontFamily: fontFamilies.bodyBold,
     },
     sectionCard: {
       backgroundColor: colors.surface,
@@ -409,17 +632,18 @@ const createStyles = (colors: ThemeColors) =>
     sectionTitle: {
       color: colors.text,
       fontSize: 24,
-      fontWeight: "800",
+      fontFamily: fontFamilies.displayBold,
       marginBottom: 6,
     },
     rowText: {
       color: colors.mutedText,
       fontSize: 16,
       lineHeight: 24,
+      fontFamily: fontFamilies.bodyMedium,
     },
     rowLabel: {
       color: colors.text,
-      fontWeight: "700",
+      fontFamily: fontFamilies.bodyBold,
     },
     chipsWrap: {
       flexDirection: "row",
@@ -436,7 +660,7 @@ const createStyles = (colors: ThemeColors) =>
     chipText: {
       color: colors.text,
       fontSize: 14,
-      fontWeight: "600",
+      fontFamily: fontFamilies.bodySemiBold,
     },
     photosRow: {
       flexDirection: "row",
@@ -498,8 +722,149 @@ const createStyles = (colors: ThemeColors) =>
     },
     photoOverlayText: {
       color: "#fff",
-      fontWeight: "700",
       fontSize: 12,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    editModalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(8, 19, 32, 0.46)",
+      justifyContent: "flex-end",
+    },
+    editModalBackdropTouchable: {
+      flex: 1,
+    },
+    editModalSheet: {
+      maxHeight: "88%",
+      borderTopLeftRadius: 30,
+      borderTopRightRadius: 30,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 18,
+      paddingTop: 16,
+      paddingBottom: 20,
+      gap: 14,
+    },
+    editModalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12,
+    },
+    editModalEyebrow: {
+      color: colors.link,
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1.1,
+      fontFamily: fontFamilies.displayBold,
+    },
+    editModalTitle: {
+      marginTop: 4,
+      color: colors.text,
+      fontSize: 28,
+      fontFamily: fontFamilies.displayBold,
+    },
+    editModalCloseButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    editModalContent: {
+      gap: 16,
+      paddingBottom: 8,
+    },
+    inputGroup: {
+      gap: 8,
+    },
+    inputLabel: {
+      color: colors.text,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    input: {
+      minHeight: 52,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    inputMultiline: {
+      minHeight: 104,
+      textAlignVertical: "top",
+    },
+    languageChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    languageChip: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    languageChipActive: {
+      backgroundColor: colors.navy,
+      borderColor: colors.navy,
+    },
+    languageChipText: {
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodySemiBold,
+    },
+    languageChipTextActive: {
+      color: "#fff",
+    },
+    editModalFooter: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    editModalSecondaryButton: {
+      flex: 1,
+      minHeight: 50,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    editModalSecondaryButtonText: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    editModalPrimaryButton: {
+      flex: 1.2,
+      minHeight: 50,
+      borderRadius: 16,
+      backgroundColor: colors.navy,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 3,
+    },
+    editModalPrimaryButtonText: {
+      color: "#fff",
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyExtraBold,
     },
     previewBackdrop: {
       flex: 1,
