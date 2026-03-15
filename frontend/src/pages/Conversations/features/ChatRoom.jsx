@@ -4,7 +4,7 @@ import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
-import axios from "axios";
+import axios from "../../../utils/axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
@@ -570,13 +570,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (loading) return;
     if (!conversation?.id) return;
     let isMounted = true;
+    const seedMessages = Array.isArray(conversation.messages) ? conversation.messages : [];
 
     const loadLatestMessages = async () => {
+      setMessages(seedMessages);
       setLoadingHistory(true);
       setLoadingOlderMessages(false);
       isFetchingOlderRef.current = false;
       try {
-        const payload = await fetchMessagesPage(conversation.id, 1, { force: false });
+        const payload = await fetchMessagesPage(conversation.id, 1, { force: true });
         if (!isMounted) return;
         setMessages(payload.messages || []);
         setCurrentMessagesPage(payload.pagination?.page || 1);
@@ -587,7 +589,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         });
       } catch (error) {
         if (!isMounted) return;
-        setMessages([]);
+        console.error("Failed to load conversation history:", error);
+        setCurrentMessagesPage(1);
+        setHasOlderMessages(false);
       } finally {
         if (isMounted) {
           setLoadingHistory(false);
@@ -599,7 +603,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     return () => {
       isMounted = false;
     };
-  }, [conversation?.id, fetchMessagesPage, loading, scrollToBottom]);
+  }, [conversation?.id, conversation?.messages, fetchMessagesPage, loading, scrollToBottom]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
