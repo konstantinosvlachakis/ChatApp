@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { BASE_URL } from "../constants/constants";
-import AuthShell from "../components/Auth/AuthShell";
 
 const languageOptions = [
   {
@@ -251,38 +250,9 @@ const RegisterPage = () => {
     "w-full rounded-2xl border border-[#d6e0e8] bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#1b7f79] focus:ring-4 focus:ring-[rgba(27,127,121,0.12)]";
 
   return (
-    <AuthShell
-      eyebrow="Create Account"
-      title="Join LangVoyage with the same tone as the mobile app."
-      description="Create your profile, choose your native language, and start from a web flow that finally feels branded, intentional, and calm."
-      footer={
-        <>
-          <p className="text-center text-sm text-slate-600">
-            Already have an account?{" "}
-            <button
-              type="button"
-              className="font-semibold text-[#1b7f79] hover:text-[#14314a]"
-              onClick={() => navigate("/login")}
-            >
-              Log in
-            </button>
-          </p>
-          <p className="mt-3 text-center text-xs leading-6 text-slate-500">
-            By creating an account, you agree to our{" "}
-            <Link to="/terms-and-conditions" className="font-medium text-[#1b7f79] hover:text-[#14314a]">
-              Terms and Conditions
-            </Link>{" "}
-            and{" "}
-            <Link to="/privacy-policy" className="font-medium text-[#1b7f79] hover:text-[#14314a]">
-              Privacy Policy
-            </Link>
-            .
-          </p>
-        </>
-      }
-    >
-      <form onSubmit={handleRegister} className="space-y-4">
-            <div>
+      <form onSubmit={handleRegister} className="space-y-3.5 lg:space-y-3">
+            <div className="grid gap-3.5 lg:grid-cols-2 lg:gap-3">
+              <div>
               <label htmlFor="username" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
                 Username
               </label>
@@ -312,8 +282,9 @@ const RegisterPage = () => {
               />
               {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email}</p>}
             </div>
+            </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:gap-3">
               <div>
                 <label
                   htmlFor="date-of-birth"
@@ -490,7 +461,8 @@ const RegisterPage = () => {
               </div>
             </div>
 
-            <div>
+            <div className="grid gap-3.5 lg:grid-cols-2 lg:gap-3">
+              <div>
               <label htmlFor="password" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
                 Password
               </label>
@@ -555,6 +527,7 @@ const RegisterPage = () => {
                 <p className="mt-1 text-xs text-rose-600">{errors.confirmPassword}</p>
               )}
             </div>
+            </div>
 
             {submitError && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -570,7 +543,6 @@ const RegisterPage = () => {
               {submitting ? "Creating account..." : "Create account"}
             </button>
           </form>
-    </AuthShell>
   );
 };
 
