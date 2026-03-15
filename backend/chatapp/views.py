@@ -873,6 +873,7 @@ def profile_view(request):
         "complementary_image_2_url": build_media_url(
             request, user.complementary_image_2_url
         ),
+        "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
         "support_email": SUPPORT_EMAIL,
@@ -1039,6 +1040,7 @@ def profile_edit_view(request):
         email = data.get("email")
         date_of_birth = data.get("date_of_birth")
         location = data.get("location")
+        avatar_ring_color = data.get("avatar_ring_color")
         profile_image_url = data.get(
             "profile_image_url"
         )  # Include profile image URL if necessary
@@ -1096,6 +1098,14 @@ def profile_edit_view(request):
             user.location = str(location).strip()[:255]
             if user.location:
                 user.location_updated_at = timezone.now()
+        if avatar_ring_color is not None:
+            normalized_ring_color = str(avatar_ring_color).strip().lower()
+            if not re.fullmatch(r"#[0-9a-f]{6}", normalized_ring_color):
+                return JsonResponse(
+                    {"error": "Invalid avatar ring color"},
+                    status=400,
+                )
+            user.avatar_ring_color = normalized_ring_color
         if profile_image_url:
             user.profile_image_url = profile_image_url  # Update profile image URL
 
@@ -1119,6 +1129,7 @@ def profile_edit_view(request):
                     "location": user.location or "",
                     "location_updated_at": user.location_updated_at,
                     "profile_image_url": (user.profile_image_url or None),
+                    "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
                 },
             },
             status=200,

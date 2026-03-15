@@ -149,6 +149,9 @@ const ProfilePage = () => {
   };
 
   const imageUrl = resolveMediaUrl(user.profile_image_url) || "/default-avatar.png";
+  const avatarRingColor = /^#[0-9a-fA-F]{6}$/.test(user.avatar_ring_color || "")
+    ? user.avatar_ring_color
+    : "#1b7f79";
   const photoCards = [
     {
       key: "profile",
@@ -173,7 +176,10 @@ const ProfilePage = () => {
       <div className="mx-auto max-w-5xl 2xl:max-w-6xl">
         {/* Header */}
         <div className="flex flex-col items-center gap-4 rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] backdrop-blur sm:p-6 md:p-8">
-          <div className="group h-28 w-28 overflow-hidden rounded-full border-4 border-sky-200 shadow-sm sm:h-32 sm:w-32 md:h-36 md:w-36">
+          <div
+            className="group h-28 w-28 overflow-hidden rounded-full border-4 shadow-sm sm:h-32 sm:w-32 md:h-36 md:w-36"
+            style={{ borderColor: avatarRingColor }}
+          >
             <img
               src={imageUrl}
               alt="Profile"

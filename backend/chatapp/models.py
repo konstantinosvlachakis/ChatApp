@@ -39,6 +39,7 @@ class Profile(AbstractBaseUser):
     )
     complementary_image_1_url = models.CharField(max_length=255, blank=True, default="")
     complementary_image_2_url = models.CharField(max_length=255, blank=True, default="")
+    avatar_ring_color = models.CharField(max_length=7, default="#1b7f79")
     password = models.CharField(max_length=128, blank=True, null=True)
     is_online = models.BooleanField(default=False, db_index=True)
     last_seen = models.DateTimeField(null=True, blank=True)

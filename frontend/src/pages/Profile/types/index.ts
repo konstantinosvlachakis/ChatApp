@@ -18,6 +18,7 @@ export interface User {
     profile_image_url?: string;
     complementary_image_1_url?: string;
     complementary_image_2_url?: string;
+    avatar_ring_color?: string;
     age?: number | null;
   }
   

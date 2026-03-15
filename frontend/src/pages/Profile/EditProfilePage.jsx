@@ -30,6 +30,31 @@ const LANGUAGE_OPTIONS = [
   "hindi",
 ];
 
+const AVATAR_RING_OPTIONS = [
+  {
+    value: "#1b7f79",
+    label: "Teal",
+  },
+  {
+    value: "#ecb1d0",
+    label: "Blush",
+  },
+  {
+    value: "#d7b054",
+    label: "Gold",
+  },
+  {
+    value: "#a499e4",
+    label: "Lavender",
+  },
+  {
+    value: "#6b7a90",
+    label: "Slate",
+  },
+];
+
+const isValidHexColor = (value = "") => /^#[0-9a-fA-F]{6}$/.test(String(value).trim());
+
 const toTitleCase = (value = "") =>
   String(value)
     .trim()
@@ -54,6 +79,7 @@ const EditProfilePage = () => {
     base_translate_language: "english",
     location: "",
     languages_practicing: [],
+    avatar_ring_color: "#1b7f79",
   });
 
   useEffect(() => {
@@ -74,6 +100,7 @@ const EditProfilePage = () => {
         languages_practicing: (user.languages_practicing || [])
           .map((lang) => normalizeLanguage(lang))
           .filter(Boolean),
+        avatar_ring_color: user.avatar_ring_color || "#1b7f79",
       });
       setLoading(false);
     };
@@ -87,6 +114,14 @@ const EditProfilePage = () => {
         .map((lang) => toTitleCase(lang)),
     [form.languages_practicing]
   );
+
+  const previewImageUrl = useMemo(() => {
+    const raw = user?.profile_image_url || "";
+    if (!raw) return `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+    if (raw.startsWith("http")) return raw;
+    if (raw.startsWith("/media/")) return `${BASE_URL}${raw}`;
+    return `${BASE_URL}/media/${raw}`;
+  }, [user?.profile_image_url]);
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -139,6 +174,7 @@ const EditProfilePage = () => {
           languages_practicing: form.languages_practicing.map((lang) =>
             toTitleCase(lang)
           ),
+          avatar_ring_color: form.avatar_ring_color,
         }),
       });
 
@@ -307,15 +343,130 @@ const EditProfilePage = () => {
           </p>
         </div>
 
+        <div className="mt-6 overflow-hidden rounded-[28px] border border-slate-200">
+          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#f7fafc_0%,#eef5f8_100%)] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--lv-link)]">
+              Avatar Accent
+            </p>
+            <div className="mt-4 grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+              <div className="flex flex-col items-center rounded-[26px] border border-white/70 bg-white/80 p-5 text-center">
+                <div
+                  className="group h-28 w-28 overflow-hidden rounded-full border-4 shadow-sm sm:h-32 sm:w-32"
+                  style={{ borderColor: form.avatar_ring_color }}
+                >
+                  <img
+                    src={previewImageUrl}
+                    alt="Avatar preview"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <p className="mt-4 text-sm font-semibold text-slate-800">Live profile preview</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  This uses the same ring thickness and size as your main profile avatar.
+                </p>
+              </div>
+
+              <div className="rounded-[26px] border border-white/70 bg-white/80 p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-slate-700">Pick a custom color</span>
+                    <input
+                      type="color"
+                      value={isValidHexColor(form.avatar_ring_color) ? form.avatar_ring_color : "#1b7f79"}
+                      onChange={(event) => updateField("avatar_ring_color", event.target.value.toLowerCase())}
+                      className="h-12 w-16 cursor-pointer rounded-2xl border border-slate-200 bg-white p-1"
+                    />
+                  </label>
+                  <label className="flex-1">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Hex value
+                    </span>
+                    <input
+                      type="text"
+                      value={form.avatar_ring_color}
+                      onChange={(event) => updateField("avatar_ring_color", event.target.value)}
+                      placeholder="#1b7f79"
+                      className={`w-full rounded-2xl border px-4 py-3 text-sm text-slate-900 outline-none transition ${
+                        isValidHexColor(form.avatar_ring_color)
+                          ? "border-slate-200 focus:border-[var(--lv-primary)]"
+                          : "border-rose-300 focus:border-rose-400"
+                      }`}
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5">
+                  <span
+                    className="h-3 w-3 rounded-full border border-white"
+                    style={{ backgroundColor: form.avatar_ring_color }}
+                  />
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {form.avatar_ring_color}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Quick palettes</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Start from a balanced color, then fine-tune it with the picker.
+                </p>
+              </div>
+            </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {AVATAR_RING_OPTIONS.map((option) => {
+              const isSelected = form.avatar_ring_color.toLowerCase() === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => updateField("avatar_ring_color", option.value)}
+                  className={`rounded-[22px] border px-3 py-3 text-left transition ${
+                    isSelected
+                      ? "border-[var(--lv-primary)] bg-[rgba(27,127,121,0.06)]"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div
+                    className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border-[3px]"
+                    style={{
+                      borderColor: option.value,
+                      backgroundColor: `${option.value}1a`,
+                    }}
+                  >
+                    <span className="h-7 w-7 rounded-full bg-slate-200" />
+                  </div>
+                  <p className="text-sm font-medium text-slate-800">{option.label}</p>
+                </button>
+              );
+            })}
+          </div>
+          {!isValidHexColor(form.avatar_ring_color) && (
+            <p className="mt-3 text-xs text-rose-600">
+              Enter a valid 6-digit hex color like `#1b7f79`.
+            </p>
+          )}
+          </div>
+        </div>
+
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
         {success && <p className="mt-4 text-sm text-emerald-700">{success}</p>}
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-8 flex flex-col gap-3 rounded-[24px] border border-[var(--lv-border)] bg-[var(--lv-surface-muted)] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[var(--lv-text)]">Ready to update your profile?</p>
+            <p className="mt-1 text-sm text-[var(--lv-muted-text)]">
+              Save your changes to refresh how your profile appears across LangVoyage.
+            </p>
+          </div>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[var(--lv-navy)] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#10263a] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <SaveOutlinedIcon fontSize="small" />
             {saving ? "Saving..." : "Save Changes"}
