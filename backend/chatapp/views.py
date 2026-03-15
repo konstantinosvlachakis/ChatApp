@@ -1331,12 +1331,6 @@ class MessageListView(APIView):
                 {"error": "You are not a participant in this conversation."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
-            return Response(
-                {"error": "This conversation is unavailable."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         messages_to_deliver = (
             Message.objects.filter(conversation=conversation)
             .exclude(sender=request.user)
@@ -1496,12 +1490,6 @@ class ConversationDetailView(APIView):
                 {"error": "You are not a participant in this conversation."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
-            return Response(
-                {"error": "This conversation is unavailable."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
         messages_to_deliver = (
             Message.objects.filter(conversation=conversation)
             .exclude(sender=request.user)
@@ -1555,11 +1543,6 @@ class ConversationListView(APIView):
             )
             .order_by("-updated_at", "-id")
         )
-        blocked_user_ids = get_blocked_user_ids(request.user.id)
-        if blocked_user_ids:
-            conversations = conversations.exclude(sender_id__in=blocked_user_ids).exclude(
-                receiver_id__in=blocked_user_ids
-            )
         messages_to_deliver = (
             Message.objects.filter(conversation__in=conversations)
             .exclude(sender=request.user)
