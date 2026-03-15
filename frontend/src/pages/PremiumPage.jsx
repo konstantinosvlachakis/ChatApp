@@ -40,11 +40,9 @@ const comparison = [
 
 const PremiumPage = () => {
   return (
-    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(27,127,121,0.16),_transparent_30%),linear-gradient(180deg,_var(--lv-background)_0%,_#eef4f7_100%)] px-3 py-4 sm:px-5 md:px-8">
+    <div className="min-h-full bg-[var(--lv-background)] px-3 py-4 sm:px-5 md:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        <section className="relative overflow-hidden rounded-[32px] bg-[var(--lv-navy)] px-6 py-7 text-white shadow-[0_24px_80px_rgba(8,19,32,0.22)] sm:px-8 sm:py-9">
-          <div className="absolute -right-10 top-0 h-52 w-52 rounded-full bg-[rgba(27,127,121,0.28)] blur-3xl" />
-          <div className="absolute -left-8 bottom-0 h-44 w-44 rounded-full bg-[rgba(236,177,208,0.22)] blur-3xl" />
+        <section className="relative overflow-hidden rounded-[32px] bg-[var(--lv-navy)] px-6 py-7 text-white sm:px-8 sm:py-9">
           <div className="relative grid gap-8 lg:grid-cols-[1.35fr_0.85fr] lg:items-end">
             <div>
               <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--lv-link)]">
@@ -77,7 +75,7 @@ const PremiumPage = () => {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+            <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-[rgba(245,247,251,0.72)]">Premium plan</p>
@@ -110,7 +108,7 @@ const PremiumPage = () => {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6 shadow-sm">
+          <div className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--lv-link)]">
               What You Unlock
             </p>
@@ -133,7 +131,7 @@ const PremiumPage = () => {
             </div>
           </div>
 
-          <div className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6 shadow-sm">
+          <div className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--lv-danger)]">
               Why Premium Exists
             </p>
@@ -160,7 +158,7 @@ const PremiumPage = () => {
           </div>
         </section>
 
-        <section className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6 shadow-sm">
+        <section className="rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--lv-muted-text)]">

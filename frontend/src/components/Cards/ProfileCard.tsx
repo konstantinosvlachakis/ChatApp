@@ -54,9 +54,9 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className="group relative flex w-full max-w-lg cursor-pointer rounded-2xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative flex w-full cursor-pointer gap-5 rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] p-6 transition hover:border-[rgba(27,127,121,0.34)] hover:bg-[#fbfdff]"
     >
-      <div className="h-28 w-28 flex-shrink-0 overflow-hidden rounded-full border-2 border-slate-200 bg-slate-100">
+      <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-[26px] border border-[var(--lv-border)] bg-[var(--lv-surface-muted)]">
         <img
           src={smallSrc}
           srcSet={`${largeSrc} 2x`}
@@ -71,17 +71,19 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
         />
       </div>
 
-      <div className="ml-6 flex min-w-0 flex-1 flex-col justify-between">
-        <div className="pr-10">
-          <h3 className="truncate text-xl font-semibold text-slate-900">{username}</h3>
-          <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
+        <div className="pr-12">
+          <h3 className="truncate text-[2rem] font-semibold leading-none text-[var(--lv-text)]">
+            {username}
+          </h3>
+          <p className="mt-3 line-clamp-2 text-[15px] leading-7 text-[var(--lv-muted-text)]">
             {bio || "Open to language exchange and meaningful chats."}
           </p>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-700">
-          <span className="font-semibold tracking-wide text-slate-500">FLUENT</span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1">
+        <div className="mt-5 flex flex-wrap items-center gap-2.5 text-xs text-slate-700">
+          <span className="font-semibold tracking-[0.18em] text-[var(--lv-muted-text)]">FLUENT</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--lv-surface-muted)] px-3 py-1.5 text-[15px] text-[var(--lv-text)]">
             {nativeLanguage}
             <img
               src={`https://flagcdn.com/w20/${getFlagIcon(nativeLanguage)}.png`}
@@ -91,8 +93,8 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
           </span>
           {learningLanguage && (
             <>
-              <span className="font-semibold tracking-wide text-slate-500">LEARNS</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-1 text-cyan-800">
+              <span className="font-semibold tracking-[0.18em] text-[var(--lv-muted-text)]">LEARNS</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[rgba(27,127,121,0.1)] px-3 py-1.5 text-[15px] text-[var(--lv-primary)]">
                 {learningLanguage}
                 <img
                   src={`https://flagcdn.com/w20/${getFlagIcon(learningLanguage)}.png`}
@@ -106,12 +108,12 @@ const ProfileCard: React.FC<ProfileCardProps> = ({
       </div>
 
       {typeof score === "number" && (
-        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700">
+        <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-[rgba(27,127,121,0.1)] px-3 py-1.5 text-sm font-semibold text-[var(--lv-primary)]">
           {score}
           <svg
             viewBox="0 0 24 24"
             fill="currentColor"
-            className="h-3.5 w-3.5"
+            className="h-4 w-4"
             aria-hidden="true"
           >
             <path d="M12 3c-4.97 0-9 3.58-9 8 0 2.21 1.01 4.21 2.64 5.66L4 21l4.8-2.19c1 .3 2.07.46 3.2.46 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />

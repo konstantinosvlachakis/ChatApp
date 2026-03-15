@@ -122,7 +122,7 @@ const LoginPage = () => {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500"
             >
               {showPassword ? "Hide" : "Show"}
             </button>
@@ -138,7 +138,7 @@ const LoginPage = () => {
           </div>
         )}
 
-        <div className="flex items-center justify-between rounded-2xl bg-[#eef4f8] px-4 py-2.5 text-sm text-slate-600">
+        <div className="flex flex-col gap-2 rounded-2xl bg-[#eef4f8] px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:py-2.5">
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -148,7 +148,9 @@ const LoginPage = () => {
             />
             Remember me
           </label>
-          <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Secure sign in</span>
+          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400 sm:text-xs sm:tracking-[0.2em]">
+            Secure sign in
+          </span>
         </div>
 
         <button
@@ -159,7 +161,7 @@ const LoginPage = () => {
           {loading ? <CircularProgress size={20} color="inherit" /> : "Log in"}
         </button>
 
-        <div className="grid gap-3 rounded-[1.6rem] border border-[#d6e0e8] bg-[#f7fafc] px-4 py-3.5 sm:grid-cols-3">
+        <div className="hidden gap-3 rounded-[1.6rem] border border-[#d6e0e8] bg-[#f7fafc] px-4 py-3.5 sm:grid sm:grid-cols-3">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-[#1b7f79]">Coach</p>
             <p className="mt-1 text-sm text-slate-600">Resume guided speaking practice instantly.</p>

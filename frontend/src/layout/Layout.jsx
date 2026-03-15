@@ -385,21 +385,6 @@ const Layout = () => {
                   Profile
                 </Link>
                 <Link
-                  to="/premium"
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
-                    location.pathname === "/premium"
-                      ? "bg-white shadow"
-                      : "text-white hover:text-white"
-                  }`}
-                  style={
-                    location.pathname === "/premium"
-                      ? { color: "var(--lv-primary)" }
-                      : { backgroundColor: "transparent" }
-                  }
-                >
-                  Premium
-                </Link>
-                <Link
                   to="/practice"
                   className={`rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
                     location.pathname === "/practice"
@@ -413,6 +398,38 @@ const Layout = () => {
                   }
                 >
                   Practice
+                </Link>
+                <Link
+                  to="/premium"
+                  className={`inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium sm:px-3 sm:py-2 sm:text-sm transition ${
+                    location.pathname === "/premium"
+                      ? "bg-white shadow"
+                      : "text-white hover:text-white"
+                  }`}
+                  style={
+                    location.pathname === "/premium"
+                      ? { color: "var(--lv-primary)" }
+                      : {
+                          backgroundColor: "rgba(236,177,208,0.09)",
+                          border: "1px solid rgba(236,177,208,0.16)",
+                        }
+                  }
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-3.5 w-3.5"
+                    style={{
+                      color:
+                        location.pathname === "/premium"
+                          ? "var(--lv-danger)"
+                          : "var(--lv-blush)",
+                    }}
+                    aria-hidden="true"
+                  >
+                    <path d="m12 3.2 5.8 5.8-5.8 11.8L6.2 9 12 3.2Z" />
+                  </svg>
+                  Premium
                 </Link>
               </div>
               <div className="relative ml-auto" ref={profileMenuRef}>
@@ -471,14 +488,6 @@ const Layout = () => {
                     Settings
                   </Link>
                   <Link
-                    to="/premium"
-                    className="block rounded-lg px-3 py-2 text-sm"
-                    style={{ color: "var(--lv-text)" }}
-                    role="menuitem"
-                  >
-                    Premium
-                  </Link>
-                  <Link
                     to="/privacy-policy"
                     className="block rounded-lg px-3 py-2 text-sm"
                     style={{ color: "var(--lv-text)" }}
@@ -493,6 +502,26 @@ const Layout = () => {
                     role="menuitem"
                   >
                     Terms and Conditions
+                  </Link>
+                  <Link
+                    to="/premium"
+                    className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                    style={{
+                      color: "var(--lv-text)",
+                      backgroundColor: "rgba(236,177,208,0.09)",
+                    }}
+                    role="menuitem"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="h-3.5 w-3.5"
+                      style={{ color: "var(--lv-danger)" }}
+                      aria-hidden="true"
+                    >
+                      <path d="m12 3.2 5.8 5.8-5.8 11.8L6.2 9 12 3.2Z" />
+                    </svg>
+                    Premium
                   </Link>
                   <button
                     type="button"
@@ -620,22 +649,6 @@ const Layout = () => {
                     Profile
                   </Link>
                   <Link
-                    to="/premium"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
-                      location.pathname === "/premium"
-                        ? ""
-                        : "text-white/90 hover:text-white"
-                    }`}
-                    style={
-                      location.pathname === "/premium"
-                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
-                        : {}
-                    }
-                  >
-                    Premium
-                  </Link>
-                  <Link
                     to="/settings"
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex min-h-[42px] items-center rounded-lg px-2.5 text-sm font-semibold transition ${
@@ -650,6 +663,39 @@ const Layout = () => {
                     }
                   >
                     Settings
+                  </Link>
+                  <Link
+                    to="/premium"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex min-h-[42px] items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition ${
+                      location.pathname === "/premium"
+                        ? ""
+                        : "text-white/90 hover:text-white"
+                    }`}
+                    style={
+                      location.pathname === "/premium"
+                        ? { color: "var(--lv-link)", backgroundColor: "rgba(255,255,255,0.06)" }
+                        : {
+                            backgroundColor: "rgba(236,177,208,0.09)",
+                            border: "1px solid rgba(236,177,208,0.16)",
+                          }
+                    }
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="h-3.5 w-3.5"
+                      style={{
+                        color:
+                          location.pathname === "/premium"
+                            ? "var(--lv-danger)"
+                            : "var(--lv-blush)",
+                      }}
+                      aria-hidden="true"
+                    >
+                      <path d="m12 3.2 5.8 5.8-5.8 11.8L6.2 9 12 3.2Z" />
+                    </svg>
+                    Premium
                   </Link>
                   <Link
                     to="/practice"
