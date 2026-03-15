@@ -30,16 +30,23 @@ import { fontFamilies } from "../theme/typography";
 
 const AVATAR_RING_OPTIONS = [
   { value: "#1b7f79", label: "Teal" },
-  { value: "#ecb1d0", label: "Blush" },
-  { value: "#d7b054", label: "Gold" },
+  { value: "#177f8d", label: "Ocean" },
+  { value: "#2b5dff", label: "Blue" },
   { value: "#a499e4", label: "Lavender" },
   { value: "#6b7a90", label: "Slate" },
+  { value: "#ecb1d0", label: "Blush" },
+  { value: "#d95b70", label: "Rose" },
+  { value: "#f08aa6", label: "Pink" },
+  { value: "#d7b054", label: "Gold" },
+  { value: "#ef8b3a", label: "Apricot" },
+  { value: "#57c2a2", label: "Mint" },
+  { value: "#228b67", label: "Forest" },
 ];
 
 const isValidHexColor = (value = "") => /^#[0-9a-fA-F]{6}$/.test(String(value).trim());
 
 export function ProfileScreen() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, refreshProfile } = useAuth();
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -210,6 +217,7 @@ export function ProfileScreen() {
       });
       const mergedProfile = { ...user, ...payload } as Profile;
       setUser(mergedProfile);
+      refreshProfile().catch(() => {});
       setIsEditProfileOpen(false);
       Alert.alert("Profile updated", "Your profile changes have been saved.");
     } catch (error: any) {
@@ -597,7 +605,7 @@ export function ProfileScreen() {
                     </Text>
                   ) : null}
 
-                  <Text style={styles.avatarAccentSectionLabel}>Quick picks</Text>
+                  <Text style={styles.avatarAccentSectionLabel}>Color palette</Text>
                   <View style={styles.avatarAccentSwatches}>
                     {AVATAR_RING_OPTIONS.map((option) => {
                       const active = editForm.avatarRingColor.toLowerCase() === option.value;
@@ -983,13 +991,13 @@ const createStyles = (colors: ThemeColors) =>
       gap: 10,
     },
     avatarAccentSwatchButton: {
+      width: "31%",
       minWidth: 88,
-      flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 12,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
@@ -999,16 +1007,17 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surface,
     },
     avatarAccentSwatch: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.5)",
     },
     avatarAccentSwatchLabel: {
       color: colors.text,
-      fontSize: 13,
+      fontSize: 12,
       fontFamily: fontFamilies.bodySemiBold,
+      textAlign: "center",
     },
     languageChips: {
       flexDirection: "row",

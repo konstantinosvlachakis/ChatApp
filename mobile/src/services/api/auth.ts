@@ -65,7 +65,7 @@ export async function updateProfile(payload: {
   languages_practicing?: string[];
 }) {
   const response = await api.patch("/profile/edit/", payload);
-  return response.data as Partial<Profile>;
+  return (response.data?.updated_profile || response.data) as Partial<Profile>;
 }
 
 export async function fetchModerationSummary() {

@@ -30,10 +30,23 @@ const normalizeLanguageValue = (value) => {
   return labelMatch ? labelMatch.value : "";
 };
 
+const resolveProfileImage = (path) => {
+  if (!path) return "";
+  if (String(path).startsWith("http")) return path;
+  if (String(path).startsWith("/media/")) return `${BASE_URL}${path}`;
+  return `${BASE_URL}/media/${path}`;
+};
+
 const SettingsPage = () => {
   const { user, refreshUserProfile } = useUser();
   const languagesDropdownRef = useRef(null);
   const [saving, setSaving] = useState(false);
+  const [moderationLoading, setModerationLoading] = useState(true);
+  const [moderation, setModeration] = useState({
+    blocked_profiles: [],
+    reported_profiles: [],
+  });
+  const [unblockingUsername, setUnblockingUsername] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isLanguagesDropdownOpen, setIsLanguagesDropdownOpen] = useState(false);
@@ -75,6 +88,34 @@ const SettingsPage = () => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  useEffect(() => {
+    const loadModeration = async () => {
+      try {
+        setModerationLoading(true);
+        const response = await fetch(`${BASE_URL}/api/profile/moderation/`, {
+          credentials: "include",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || "Failed to load moderation history.");
+        }
+        setModeration({
+          blocked_profiles: Array.isArray(payload.blocked_profiles) ? payload.blocked_profiles : [],
+          reported_profiles: Array.isArray(payload.reported_profiles) ? payload.reported_profiles : [],
+        });
+      } catch {
+        setModeration({
+          blocked_profiles: [],
+          reported_profiles: [],
+        });
+      } finally {
+        setModerationLoading(false);
+      }
+    };
+
+    loadModeration();
+  }, []);
+
   const selectedLanguageLabel = useMemo(() => {
     return LANGUAGE_OPTIONS.find((lang) => lang.value === baseTranslateLanguage);
   }, [baseTranslateLanguage]);
@@ -102,6 +143,44 @@ const SettingsPage = () => {
         ? prev.filter((language) => language !== value)
         : [...prev, value]
     );
+  };
+
+  const formatHistoryDate = (value) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const handleUnblock = async (username) => {
+    try {
+      setUnblockingUsername(username);
+      const response = await fetch(
+        `${BASE_URL}/api/profile/public/${encodeURIComponent(username)}/block/`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to unblock user.");
+      }
+      setModeration((prev) => ({
+        ...prev,
+        blocked_profiles: prev.blocked_profiles.filter((entry) => entry.username !== username),
+      }));
+      setSuccess(`${username} has been unblocked.`);
+      await refreshUserProfile().catch(() => {});
+    } catch (err) {
+      setError(err.message || "Failed to unblock user.");
+    } finally {
+      setUnblockingUsername("");
+    }
   };
 
   const handleSave = async () => {
@@ -250,6 +329,113 @@ const SettingsPage = () => {
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>
+
+        <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-800">Safety history</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Review who you have blocked and which profiles you have reported.
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Blocked profiles
+              </h3>
+              <div className="mt-3 space-y-2">
+                {moderationLoading ? (
+                  <p className="text-sm text-gray-500">Loading blocked profiles...</p>
+                ) : moderation.blocked_profiles.length > 0 ? (
+                  moderation.blocked_profiles.map((entry) => (
+                    <div
+                      key={`blocked-${entry.username}-${entry.created_at}`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        {resolveProfileImage(entry.profile_image_url) ? (
+                          <img
+                            src={resolveProfileImage(entry.profile_image_url)}
+                            alt={entry.username}
+                            className="h-11 w-11 rounded-full border border-gray-200 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-400">
+                            {entry.username?.slice(0, 1)?.toUpperCase() || "?"}
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-800">{entry.username}</p>
+                          <p className="text-xs uppercase tracking-wide text-gray-500">
+                            Blocked {formatHistoryDate(entry.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleUnblock(entry.username)}
+                        disabled={unblockingUsername === entry.username}
+                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {unblockingUsername === entry.username ? "Unblocking..." : "Unblock"}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">You have not blocked anyone yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Reported profiles
+              </h3>
+              <div className="mt-3 space-y-2">
+                {moderationLoading ? (
+                  <p className="text-sm text-gray-500">Loading reports...</p>
+                ) : moderation.reported_profiles.length > 0 ? (
+                  moderation.reported_profiles.map((entry, index) => (
+                    <div
+                      key={`reported-${entry.username}-${entry.created_at}-${index}`}
+                      className="rounded-xl border border-gray-200 bg-white px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {resolveProfileImage(entry.profile_image_url) ? (
+                            <img
+                              src={resolveProfileImage(entry.profile_image_url)}
+                              alt={entry.username}
+                              className="h-11 w-11 rounded-full border border-gray-200 object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-400">
+                              {entry.username?.slice(0, 1)?.toUpperCase() || "?"}
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-800">{entry.username}</p>
+                            <p className="text-xs uppercase tracking-wide text-gray-500">
+                              Reported {formatHistoryDate(entry.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-600">
+                          {String(entry.reason || "").replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      {entry.details ? (
+                        <p className="mt-3 text-sm leading-6 text-gray-600">{entry.details}</p>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">You have not reported any profiles yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

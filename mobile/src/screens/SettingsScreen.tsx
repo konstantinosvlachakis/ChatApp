@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Image,
   Linking,
   Modal,
   Pressable,
@@ -16,9 +17,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
+import { API_BASE_URL } from "../config/api";
 import {
   deleteAccount,
   fetchModerationSummary,
+  unblockUser,
   updateSettings,
 } from "../services/api/auth";
 import type { ThemeColors } from "../theme/colors";
@@ -28,6 +31,13 @@ import type { ModerationSummary } from "../types";
 type LanguageOption = {
   value: string;
   label: string;
+};
+
+const resolveMediaUrl = (path?: string | null) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
+  return `${API_BASE_URL}/media/${path}`;
 };
 
 export function SettingsScreen() {
@@ -42,6 +52,7 @@ export function SettingsScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"base" | "practice" | null>(null);
+  const [unblockingUsername, setUnblockingUsername] = useState<string | null>(null);
   const [moderation, setModeration] = useState<ModerationSummary>({
     blocked_profiles: [],
     reported_profiles: [],
@@ -142,6 +153,42 @@ export function SettingsScreen() {
       setPracticeLanguage(value);
     }
     setPickerTarget(null);
+  };
+
+  const formatHistoryDate = (value?: string) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const onUnblock = (username: string) => {
+    Alert.alert("Unblock user", `Allow ${username} to contact you again?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Unblock",
+        onPress: async () => {
+          try {
+            setUnblockingUsername(username);
+            await unblockUser(username);
+            setModeration((prev) => ({
+              ...prev,
+              blocked_profiles: prev.blocked_profiles.filter((entry) => entry.username !== username),
+            }));
+            await refreshProfile().catch(() => {});
+            Alert.alert("Unblocked", `${username} has been removed from your blocked list.`);
+          } catch {
+            Alert.alert("Failed", "Could not unblock this user.");
+          } finally {
+            setUnblockingUsername(null);
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -273,9 +320,34 @@ export function SettingsScreen() {
             <Text style={styles.historyTitle}>Blocked profiles</Text>
             {moderation.blocked_profiles.length ? (
               moderation.blocked_profiles.map((entry) => (
-                <View key={`blocked-${entry.username}-${entry.created_at}`} style={styles.historyRow}>
-                  <Text style={styles.historyName}>{entry.username}</Text>
-                  <Text style={styles.historyMeta}>Blocked</Text>
+                <View key={`blocked-${entry.username}-${entry.created_at}`} style={styles.historyRowStack}>
+                  <View style={styles.historyRow}>
+                    {resolveMediaUrl(entry.profile_image_url) ? (
+                      <Image
+                        source={{ uri: resolveMediaUrl(entry.profile_image_url) || undefined }}
+                        style={styles.historyAvatar}
+                      />
+                    ) : (
+                      <View style={styles.historyAvatarPlaceholder}>
+                        <Ionicons name="person" size={16} color={colors.mutedText} />
+                      </View>
+                    )}
+                    <View style={styles.historyCopy}>
+                      <Text style={styles.historyName}>{entry.username}</Text>
+                      <Text style={styles.historyMeta}>
+                        Blocked {formatHistoryDate(entry.created_at)}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.historyActionButton}
+                      onPress={() => onUnblock(entry.username)}
+                      disabled={unblockingUsername === entry.username}
+                    >
+                      <Text style={styles.historyActionButtonText}>
+                        {unblockingUsername === entry.username ? "..." : "Unblock"}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))
             ) : (
@@ -292,10 +364,23 @@ export function SettingsScreen() {
                   style={styles.historyRowStack}
                 >
                   <View style={styles.historyRow}>
-                    <Text style={styles.historyName}>{entry.username}</Text>
-                    <Text style={styles.reportedMeta}>
-                      {entry.reason.replace(/_/g, " ")}
-                    </Text>
+                    {resolveMediaUrl(entry.profile_image_url) ? (
+                      <Image
+                        source={{ uri: resolveMediaUrl(entry.profile_image_url) || undefined }}
+                        style={styles.historyAvatar}
+                      />
+                    ) : (
+                      <View style={styles.historyAvatarPlaceholder}>
+                        <Ionicons name="person" size={16} color={colors.mutedText} />
+                      </View>
+                    )}
+                    <View style={styles.historyCopy}>
+                      <Text style={styles.historyName}>{entry.username}</Text>
+                      <Text style={styles.historyMeta}>
+                        Reported {formatHistoryDate(entry.created_at)}
+                      </Text>
+                    </View>
+                    <Text style={styles.reportedMeta}>{entry.reason.replace(/_/g, " ")}</Text>
                   </View>
                   {entry.details ? (
                     <Text style={styles.historyDetails}>{entry.details}</Text>
@@ -543,6 +628,7 @@ const createStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: 12,
     },
     historyRowStack: {
       borderRadius: 16,
@@ -554,6 +640,29 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.text,
       fontSize: 15,
       fontFamily: fontFamilies.bodyBold,
+    },
+    historyAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    historyAvatarPlaceholder: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    historyCopy: {
+      flex: 1,
+      gap: 4,
+      paddingRight: 12,
     },
     historyMeta: {
       color: colors.mutedText,
@@ -578,6 +687,19 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 13,
       lineHeight: 19,
       fontFamily: fontFamilies.bodyMedium,
+    },
+    historyActionButton: {
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    historyActionButtonText: {
+      color: colors.text,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyBold,
     },
     secondaryButton: {
       marginTop: 4,
