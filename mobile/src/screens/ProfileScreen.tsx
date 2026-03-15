@@ -28,6 +28,16 @@ import { API_BASE_URL } from "../config/api";
 import type { ProfilePhotoSlot } from "../services/api/auth";
 import { fontFamilies } from "../theme/typography";
 
+const AVATAR_RING_OPTIONS = [
+  { value: "#1b7f79", label: "Teal" },
+  { value: "#ecb1d0", label: "Blush" },
+  { value: "#d7b054", label: "Gold" },
+  { value: "#a499e4", label: "Lavender" },
+  { value: "#6b7a90", label: "Slate" },
+];
+
+const isValidHexColor = (value = "") => /^#[0-9a-fA-F]{6}$/.test(String(value).trim());
+
 export function ProfileScreen() {
   const { user: authUser } = useAuth();
   const navigation = useNavigation<any>();
@@ -52,6 +62,7 @@ export function ProfileScreen() {
     practiceLanguage: "english",
     bio: "",
     learningGoal: "",
+    avatarRingColor: "#1b7f79",
   });
 
   useEffect(() => {
@@ -84,6 +95,9 @@ export function ProfileScreen() {
       practiceLanguage: (user?.languages_practicing?.[0] || fallback).trim().toLowerCase(),
       bio: user?.bio || "",
       learningGoal: user?.learning_goal || "",
+      avatarRingColor: isValidHexColor(user?.avatar_ring_color || "")
+        ? String(user?.avatar_ring_color).toLowerCase()
+        : "#1b7f79",
     });
   }, [languageOptions, user]);
 
@@ -105,6 +119,9 @@ export function ProfileScreen() {
   };
 
   const profileImage = resolveMediaUrl(user?.profile_image_url);
+  const avatarRingColor = isValidHexColor(user?.avatar_ring_color || "")
+    ? String(user?.avatar_ring_color).toLowerCase()
+    : "#1b7f79";
   const complementaryOne = resolveMediaUrl(user?.complementary_image_1_url, false);
   const complementaryTwo = resolveMediaUrl(user?.complementary_image_2_url, false);
   const practicingLanguages = user?.languages_practicing || [];
@@ -187,6 +204,9 @@ export function ProfileScreen() {
         languages_practicing: editForm.practiceLanguage ? [editForm.practiceLanguage] : [],
         bio: editForm.bio.trim(),
         learning_goal: editForm.learningGoal.trim(),
+        avatar_ring_color: isValidHexColor(editForm.avatarRingColor)
+          ? editForm.avatarRingColor.toLowerCase()
+          : "#1b7f79",
       });
       const mergedProfile = { ...user, ...payload } as Profile;
       setUser(mergedProfile);
@@ -223,7 +243,7 @@ export function ProfileScreen() {
               });
             }}
           >
-            <Image source={{ uri: profileImage }} style={styles.avatar} />
+            <Image source={{ uri: profileImage }} style={[styles.avatar, { borderColor: avatarRingColor }]} />
           </Pressable>
           <Text style={styles.heroTitle}>
             {user?.username || "Profile"}
@@ -528,6 +548,76 @@ export function ProfileScreen() {
                   multiline
                 />
               </View>
+
+              <View style={styles.avatarAccentCard}>
+                <View style={styles.avatarAccentPreviewRow}>
+                  <View
+                    style={[
+                      styles.avatarAccentPreview,
+                      { borderColor: isValidHexColor(editForm.avatarRingColor) ? editForm.avatarRingColor : "#1b7f79" },
+                    ]}
+                  >
+                    <Image source={{ uri: profileImage }} style={styles.avatarAccentPreviewImage} />
+                  </View>
+                  <View style={styles.avatarAccentTextWrap}>
+                    <Text style={styles.avatarAccentTitle}>Avatar ring color</Text>
+                    <Text style={styles.avatarAccentDescription}>
+                      Pick a personal accent for your profile photo. It updates your profile ring when you save.
+                    </Text>
+                    <Text style={styles.avatarAccentCode}>
+                      {isValidHexColor(editForm.avatarRingColor)
+                        ? editForm.avatarRingColor.toLowerCase()
+                        : "Enter a valid hex color"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.avatarAccentPickerCard}>
+                  <Text style={styles.avatarAccentSectionLabel}>Custom color</Text>
+                  <TextInput
+                    value={editForm.avatarRingColor}
+                    onChangeText={(value) => updateEditField("avatarRingColor", value.replace(/\s+/g, ""))}
+                    style={[
+                      styles.avatarAccentHexInput,
+                      editForm.avatarRingColor.length > 0 &&
+                      !isValidHexColor(editForm.avatarRingColor)
+                        ? styles.avatarAccentHexInputInvalid
+                        : undefined,
+                    ]}
+                    placeholder="#1b7f79"
+                    placeholderTextColor={colors.mutedText}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={7}
+                  />
+                  {editForm.avatarRingColor.length > 0 &&
+                  !isValidHexColor(editForm.avatarRingColor) ? (
+                    <Text style={styles.avatarAccentError}>
+                      Use a full hex color like #1b7f79.
+                    </Text>
+                  ) : null}
+
+                  <Text style={styles.avatarAccentSectionLabel}>Quick picks</Text>
+                  <View style={styles.avatarAccentSwatches}>
+                    {AVATAR_RING_OPTIONS.map((option) => {
+                      const active = editForm.avatarRingColor.toLowerCase() === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          style={[
+                            styles.avatarAccentSwatchButton,
+                            active ? styles.avatarAccentSwatchButtonActive : undefined,
+                          ]}
+                          onPress={() => updateEditField("avatarRingColor", option.value)}
+                        >
+                          <View style={[styles.avatarAccentSwatch, { backgroundColor: option.value }]} />
+                          <Text style={styles.avatarAccentSwatchLabel}>{option.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
             </ScrollView>
 
             <View style={styles.editModalFooter}>
@@ -803,6 +893,122 @@ const createStyles = (colors: ThemeColors) =>
     inputMultiline: {
       minHeight: 104,
       textAlignVertical: "top",
+    },
+    avatarAccentCard: {
+      gap: 14,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      padding: 14,
+    },
+    avatarAccentPreviewRow: {
+      flexDirection: "row",
+      gap: 14,
+      alignItems: "center",
+    },
+    avatarAccentPreview: {
+      width: 82,
+      height: 82,
+      borderRadius: 41,
+      borderWidth: 3,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+    avatarAccentPreviewImage: {
+      width: 74,
+      height: 74,
+      borderRadius: 37,
+    },
+    avatarAccentTextWrap: {
+      flex: 1,
+      gap: 4,
+    },
+    avatarAccentTitle: {
+      color: colors.text,
+      fontSize: 17,
+      fontFamily: fontFamilies.displayBold,
+    },
+    avatarAccentDescription: {
+      color: colors.mutedText,
+      fontSize: 14,
+      lineHeight: 20,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    avatarAccentCode: {
+      color: colors.link,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodyBold,
+      textTransform: "lowercase",
+    },
+    avatarAccentPickerCard: {
+      gap: 10,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      padding: 12,
+    },
+    avatarAccentSectionLabel: {
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    avatarAccentHexInput: {
+      minHeight: 50,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 14,
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodySemiBold,
+      textTransform: "lowercase",
+    },
+    avatarAccentHexInputInvalid: {
+      borderColor: colors.danger,
+    },
+    avatarAccentError: {
+      color: colors.danger,
+      fontSize: 12,
+      lineHeight: 18,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    avatarAccentSwatches: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    avatarAccentSwatchButton: {
+      minWidth: 88,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+    },
+    avatarAccentSwatchButtonActive: {
+      borderColor: colors.navy,
+      backgroundColor: colors.surface,
+    },
+    avatarAccentSwatch: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.5)",
+    },
+    avatarAccentSwatchLabel: {
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodySemiBold,
     },
     languageChips: {
       flexDirection: "row",

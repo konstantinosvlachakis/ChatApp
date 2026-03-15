@@ -61,6 +61,7 @@ export async function updateProfile(payload: {
   location?: string;
   bio?: string;
   learning_goal?: string;
+  avatar_ring_color?: string;
   languages_practicing?: string[];
 }) {
   const response = await api.patch("/profile/edit/", payload);

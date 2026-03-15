@@ -11,6 +11,7 @@ export interface Profile {
   bio?: string;
   age?: number | null;
   learning_goal?: string;
+  avatar_ring_color?: string;
   profile_image_url?: string;
   complementary_image_1_url?: string;
   complementary_image_2_url?: string;
