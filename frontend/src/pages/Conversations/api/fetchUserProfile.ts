@@ -1,33 +1,29 @@
 // api/userApi.ts
 import { User } from "../../Profile/types";
 import { BASE_URL } from "../../../constants/constants";
+import { clearLegacyTokens, refreshSession } from "../../../utils/auth";
 
 export const fetchUserProfile = async (): Promise<User> => {
-  const token =
-    sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
-  if (!token) throw new Error("No access token found");
-
-  // Keep session storage in sync for APIs that still read from session storage.
-  if (!sessionStorage.getItem("accessToken")) {
-    sessionStorage.setItem("accessToken", token);
-  }
-
-  const response = await fetch(BASE_URL + "/api/profile/", {
+  const makeRequest = () => fetch(BASE_URL + "/api/profile/", {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
     },
     credentials: "include",
   });
 
+  let response = await makeRequest();
+  if (response.status === 401) {
+    const refreshed = await refreshSession().catch(() => false);
+    if (refreshed) {
+      response = await makeRequest();
+    }
+  }
+
   if (response.ok) {
     return response.json();
   } else if (response.status === 401) {
-    sessionStorage.removeItem("accessToken");
-    sessionStorage.removeItem("refreshToken");
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
+    clearLegacyTokens();
     throw new Error("Unauthorized");
   } else {
     const errorData = await response.json();

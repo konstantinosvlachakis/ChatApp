@@ -36,21 +36,12 @@ const CommunityPage: React.FC = () => {
         setLoadingMore(true);
       }
       try {
-        const token = sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
-        if (!token) {
-          if (isMounted) {
-            setHasNextPage(false);
-          }
-          return;
-        }
-
         const response = await fetch(
           `${BASE_URL}/api/profile/data?page=${page}&page_size=${PAGE_SIZE}`,
           {
             method: "GET",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             credentials: "include",
           }

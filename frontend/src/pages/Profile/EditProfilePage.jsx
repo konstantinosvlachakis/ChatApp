@@ -123,13 +123,12 @@ const EditProfilePage = () => {
     setError("");
     setSuccess("");
     try {
-      const token = sessionStorage.getItem("accessToken");
       const response = await fetch(`${BASE_URL}/api/profile/edit/`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           username: form.username.trim(),
           email: form.email.trim().toLowerCase(),

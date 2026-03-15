@@ -95,16 +95,13 @@ const Conversation = ({
 
     try {
       setTranslatingMessageId(msg.id);
-      const token =
-        sessionStorage.getItem("accessToken") ||
-        localStorage.getItem("accessToken");
 
       const res = await fetch(`${BASE_URL}/api/messages/translate/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           message_id: msg.id,
           target_language: baseTranslateLanguage,
@@ -133,15 +130,12 @@ const Conversation = ({
 
   const handleReact = async (messageId, emoji) => {
     try {
-      const token =
-        sessionStorage.getItem("accessToken") ||
-        localStorage.getItem("accessToken");
       const response = await fetch(`${BASE_URL}/api/messages/${messageId}/react/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify({ emoji }),
       });
 

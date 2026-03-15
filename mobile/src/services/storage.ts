@@ -1,24 +1,32 @@
+import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const ACCESS_TOKEN_KEY = "lv_access_token";
 const REFRESH_TOKEN_KEY = "lv_refresh_token";
 const THEME_MODE_KEY = "lv_theme_mode";
 
+const secureStoreOptions: SecureStore.SecureStoreOptions = {
+  keychainService: "langvoyage.auth",
+};
+
 export const tokenStorage = {
   async getAccessToken() {
-    return AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    return SecureStore.getItemAsync(ACCESS_TOKEN_KEY, secureStoreOptions);
   },
   async setAccessToken(token: string) {
-    return AsyncStorage.setItem(ACCESS_TOKEN_KEY, token);
+    return SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token, secureStoreOptions);
   },
   async getRefreshToken() {
-    return AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+    return SecureStore.getItemAsync(REFRESH_TOKEN_KEY, secureStoreOptions);
   },
   async setRefreshToken(token: string) {
-    return AsyncStorage.setItem(REFRESH_TOKEN_KEY, token);
+    return SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token, secureStoreOptions);
   },
   async clear() {
-    await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+    await Promise.all([
+      SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY, secureStoreOptions),
+      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY, secureStoreOptions),
+    ]);
   },
 };
 

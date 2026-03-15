@@ -20,15 +20,11 @@ const ProfilePage = () => {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const token = sessionStorage.getItem("accessToken");
-        if (!token) return navigate("/login");
-
         const res = await fetch(`${BASE_URL_IMG}/api/profile/`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
 
         if (res.status === 401) {
-          sessionStorage.removeItem("accessToken");
           navigate("/login");
           return;
         }
@@ -61,13 +57,12 @@ const ProfilePage = () => {
         const locationString = `${city}, ${country}`;
         console.log(`Detected location: ${locationString}`);
 
-        const token = sessionStorage.getItem("accessToken");
         const response = await fetch(`${BASE_URL_IMG}/api/profile/location/`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
           body: JSON.stringify({
             city,
             country,
@@ -118,7 +113,6 @@ const ProfilePage = () => {
 
     try {
       setUploadingSlot(slot);
-      const token = sessionStorage.getItem("accessToken");
       const formData = new FormData();
       formData.append("profile_image", file);
       formData.append("slot", slot);
@@ -127,9 +121,7 @@ const ProfilePage = () => {
         `${BASE_URL_IMG}/api/profile/${user.user_id}/update-image/`,
         {
           method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          credentials: "include",
           body: formData,
         }
       );

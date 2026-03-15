@@ -48,8 +48,8 @@ const DragDropImage = ({ initialImage }) => {
         {
           headers: {
             "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
           },
+          withCredentials: true,
         }
       );
       console.log("Server response:", response.data);

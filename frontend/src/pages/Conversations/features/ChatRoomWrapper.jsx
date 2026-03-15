@@ -17,18 +17,12 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
     if (isCoachConversation) return;
     const fetchConversation = async () => {
       try {
-        const response = await axios.get(
-          `${BASE_URL}/api/conversations/${id}/`,
-          {
-            headers: {
-              Authorization: `Bearer ${
-                sessionStorage.getItem("accessToken") ||
-                localStorage.getItem("accessToken")
-              }`, // ✅ Ensure auth header is correct
-              "Content-Type": "application/json", // ✅ No need for multipart/form-data in GET request
-            },
-          }
-        );
+        const response = await axios.get(`${BASE_URL}/api/conversations/${id}/`, {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
 
         setConversation(response.data);
       } catch (err) {

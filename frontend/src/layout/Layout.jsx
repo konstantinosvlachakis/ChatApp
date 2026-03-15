@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL } from "../constants/constants";
 import CoachAvatar from "../components/CoachAvatar";
+import { clearLegacyTokens, getLegacyAccessToken } from "../utils/auth";
 
 const DEFAULT_PROFILE_AVATAR = `${BASE_URL}/media/profile_images/MainAfter.jpg`;
 
@@ -27,9 +28,7 @@ const Layout = () => {
       refetchInterval: false,
       refetchOnWindowFocus: true,
       staleTime: 15000,
-      enabled: Boolean(
-        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken")
-      ),
+      enabled: Boolean(user?.user_id),
     },
   });
   const previousUnreadMapRef = useRef(new Map());
@@ -37,23 +36,22 @@ const Layout = () => {
   const presenceSocketRef = useRef(null);
   const presenceHeartbeatRef = useRef(null);
   const presenceReconnectRef = useRef(null);
+  const presenceListenersRef = useRef(new Set());
   const [onlineUserIds, setOnlineUserIds] = useState(() => new Set());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
 
   const handleLogout = async () => {
-    const token =
-      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
-    if (token) {
-      await fetch(`${BASE_URL}/api/presence/offline/`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        keepalive: true,
-      }).catch(() => {});
-    }
+    await fetch(`${BASE_URL}/api/presence/offline/`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+    }).catch(() => {});
+    await fetch(`${BASE_URL}/api/logout/`, {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {});
 
     presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
     presenceHeartbeatRef.current = null;
@@ -62,10 +60,7 @@ const Layout = () => {
     presenceSocketRef.current?.close();
     presenceSocketRef.current = null;
     setOnlineUserIds(new Set());
-    sessionStorage.removeItem("accessToken");
-    sessionStorage.removeItem("refreshToken");
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
+    clearLegacyTokens();
     setUser(null);
     navigate("/login");
   };
@@ -86,6 +81,13 @@ const Layout = () => {
     return DEFAULT_PROFILE_AVATAR;
   }, [user?.profile_image_url]);
 
+  const subscribeToPresenceEvents = useCallback((listener) => {
+    presenceListenersRef.current.add(listener);
+    return () => {
+      presenceListenersRef.current.delete(listener);
+    };
+  }, []);
+
   useEffect(() => {
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
@@ -94,9 +96,7 @@ const Layout = () => {
   }, []);
 
   useEffect(() => {
-    const token =
-      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
-    if (!token || !user?.user_id) return undefined;
+    if (!user?.user_id) return undefined;
 
     const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
     let isUnmounted = false;
@@ -116,9 +116,11 @@ const Layout = () => {
       if (isUnmounted) return;
       clearPresenceTimers();
 
-      const socket = new WebSocket(
-        `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`
-      );
+      const legacyAccessToken = getLegacyAccessToken();
+      const socketUrl = legacyAccessToken
+        ? `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(legacyAccessToken)}`
+        : `${wsBaseUrl}/ws/presence/`;
+      const socket = new WebSocket(socketUrl);
       presenceSocketRef.current = socket;
 
       socket.onopen = () => {
@@ -147,7 +149,10 @@ const Layout = () => {
               }
               return next;
             });
+            presenceListenersRef.current.forEach((listener) => listener(data));
+            return;
           }
+          presenceListenersRef.current.forEach((listener) => listener(data));
         } catch (_error) {
           // Ignore malformed presence events.
         }
@@ -156,6 +161,10 @@ const Layout = () => {
       socket.onclose = () => {
         clearPresenceTimers();
         if (isUnmounted) return;
+        const isAuthClose = socket.code === 1008 || socket.code === 4401 || socket.code === 4403;
+        if (isAuthClose) {
+          return;
+        }
         presenceReconnectRef.current = window.setTimeout(() => {
           connectPresenceSocket();
         }, 3000);
@@ -249,7 +258,7 @@ const Layout = () => {
   }, []);
 
   return (
-    <PresenceProvider value={{ onlineUserIds }}>
+    <PresenceProvider value={{ onlineUserIds, subscribeToPresenceEvents }}>
       <div
         className={`flex flex-col bg-gray-50 ${
           isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"

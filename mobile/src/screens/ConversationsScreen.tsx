@@ -555,10 +555,14 @@ export function ConversationsScreen() {
       const token = await tokenStorage.getAccessToken();
       if (!token || !mounted) return;
 
-      const socket = new WebSocket(`${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`);
+      const socket = new (WebSocket as any)(`${wsBaseUrl}/ws/presence/`, undefined, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       presenceSocketRef.current = socket;
 
-      socket.onmessage = (event) => {
+      socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
           const data = JSON.parse(event.data) as PresencePayload;
           if (data.type === "initial_online_users") {
@@ -611,12 +615,14 @@ export function ConversationsScreen() {
       const token = await tokenStorage.getAccessToken();
       if (!token || !mounted) return;
 
-      const socket = new WebSocket(
-        `${wsBaseUrl}/ws/socket-server/${conversationId}/?token=${encodeURIComponent(token)}`
-      );
+      const socket = new (WebSocket as any)(`${wsBaseUrl}/ws/socket-server/${conversationId}/`, undefined, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       chatSocketRef.current = socket;
 
-      socket.onmessage = (event) => {
+      socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
           const data = JSON.parse(event.data) as ChatPayload;
           if (data.type === "chat") {

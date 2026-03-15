@@ -4,10 +4,12 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.generic.base import TemplateView
 from django.views.static import serve
+from .views import csrf
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/csrf/", csrf, name="csrf"),
     path("api/", include("chatapp.urls")),
 ]
 

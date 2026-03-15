@@ -252,10 +252,14 @@ function AppTabs() {
       const token = await tokenStorage.getAccessToken();
       if (!token || cancelled) return;
 
-      const socket = new WebSocket(`${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`);
+      const socket = new (WebSocket as any)(`${wsBaseUrl}/ws/presence/`, undefined, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       presenceUpdatesSocketRef.current = socket;
 
-      socket.onmessage = (event) => {
+      socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
           const payload = JSON.parse(event.data) as PresenceSocketPayload;
           if (payload.type === "conversation_update") {

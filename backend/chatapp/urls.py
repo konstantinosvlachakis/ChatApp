@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import *
-from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken
+from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken, logout_view
 from django.conf import settings
 from django.conf.urls.static import static
 from . import consumers
@@ -9,6 +9,7 @@ urlpatterns = [
     # Authentication
     path("token/", CustomObtainJWTToken.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CustomRefreshJWTToken.as_view(), name="token_refresh"),
+    path("logout/", logout_view, name="logout"),
     path("login/", login_view, name="login"),
     path("register/", register_view, name="register"),
     # Profile

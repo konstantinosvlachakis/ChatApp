@@ -13,14 +13,11 @@ type UserProfileDTO = {
 
 // Function to update the user's native language
 const editProfile = async (userData: UserProfileDTO): Promise<UserProfileDTO> => {
-  const token = sessionStorage.getItem("accessToken"); // Retrieve the token from local storage
   const response = await axios.patch(
     BASE_URL + "/api/profile/edit/",
     userData,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,  // Include the token in the header
-      },
+      withCredentials: true,
     }
   );  
   return response.data;

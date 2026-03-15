@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
+import { clearLegacyTokens, isPublicPath } from "../utils/auth";
 
 interface UserContextType {
   user: User | null;
@@ -18,29 +19,21 @@ const USER_PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 type CachedUserPayload = {
   user: User;
   cachedAt: number;
-  token: string;
 };
 
-const getAccessToken = () =>
-  sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken") || "";
-
 const readCachedUser = (): User | null => {
-  const token = getAccessToken();
-  if (!token) return null;
-
   const rawCache = localStorage.getItem(USER_PROFILE_CACHE_KEY);
   if (!rawCache) return null;
 
   try {
     const parsed = JSON.parse(rawCache) as CachedUserPayload;
-    if (!parsed?.user || !parsed?.cachedAt || !parsed?.token) {
+    if (!parsed?.user || !parsed?.cachedAt) {
       localStorage.removeItem(USER_PROFILE_CACHE_KEY);
       return null;
     }
 
     const isExpired = Date.now() - parsed.cachedAt > USER_PROFILE_CACHE_TTL_MS;
-    const isTokenMismatch = parsed.token !== token;
-    if (isExpired || isTokenMismatch) {
+    if (isExpired) {
       localStorage.removeItem(USER_PROFILE_CACHE_KEY);
       return null;
     }
@@ -54,7 +47,7 @@ const readCachedUser = (): User | null => {
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUserState] = useState<User | null>(() => readCachedUser());
-  const [loading, setLoading] = useState(() => Boolean(getAccessToken()));
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const setUser: React.Dispatch<React.SetStateAction<User | null>> = useCallback((nextUser) => {
@@ -64,15 +57,6 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const refreshUserProfile = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) {
-      setUser(null);
-      setError("No access token found");
-      setLoading(false);
-      localStorage.removeItem(USER_PROFILE_CACHE_KEY);
-      return;
-    }
-
     setLoading(true);
     try {
       const userData = await fetchUserProfile();
@@ -82,12 +66,11 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setError((err as Error).message);
       if ((err as Error).message === "Unauthorized") {
-        sessionStorage.removeItem("accessToken");
-        sessionStorage.removeItem("refreshToken");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
+        clearLegacyTokens();
         localStorage.removeItem(USER_PROFILE_CACHE_KEY);
-        window.location.href = "/login";
+        if (!isPublicPath(window.location.pathname)) {
+          window.location.href = "/login";
+        }
       }
     } finally {
       setLoading(false);
@@ -95,8 +78,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   }, [setUser]);
 
   useEffect(() => {
-    const token = getAccessToken();
-    if (!token || !user) {
+    if (!user) {
       localStorage.removeItem(USER_PROFILE_CACHE_KEY);
       return;
     }
@@ -104,7 +86,6 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     const payload: CachedUserPayload = {
       user,
       cachedAt: Date.now(),
-      token,
     };
     localStorage.setItem(USER_PROFILE_CACHE_KEY, JSON.stringify(payload));
   }, [user]);

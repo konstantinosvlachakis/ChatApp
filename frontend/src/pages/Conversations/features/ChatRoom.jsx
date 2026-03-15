@@ -11,6 +11,7 @@ import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
 import { markConversationRead } from "../api/markConversationRead";
 import { useQueryClient } from "react-query";
+import { getLegacyAccessToken } from "../../../utils/auth";
 
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
@@ -123,15 +124,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         if (cached) return cached;
       }
 
-      const token =
-        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
       const response = await axios.get(
         `${BASE_URL}/api/conversations/${conversationId}/messages/`,
         {
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          withCredentials: true,
           params: {
             page,
             page_size: MESSAGE_PAGE_SIZE,
@@ -618,11 +617,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   useEffect(() => {
     if (!conversation?.id || !user) return;
 
-    const token =
-      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
     const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
-    const query = token ? `?token=${encodeURIComponent(token)}` : "";
-    const url = `${wsBaseUrl}/ws/socket-server/${conversation.id}/${query}`;
+    const legacyAccessToken = getLegacyAccessToken();
+    const url = legacyAccessToken
+      ? `${wsBaseUrl}/ws/socket-server/${conversation.id}/?token=${encodeURIComponent(legacyAccessToken)}`
+      : `${wsBaseUrl}/ws/socket-server/${conversation.id}/`;
     isSocketUnmountingRef.current = false;
     clearReconnectTimer();
 
@@ -879,12 +878,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         formData,
         {
           headers: {
-            Authorization: `Bearer ${
-              sessionStorage.getItem("accessToken") ||
-              localStorage.getItem("accessToken")
-            }`,
             "Content-Type": "multipart/form-data",
           },
+          withCredentials: true,
         }
       );
 

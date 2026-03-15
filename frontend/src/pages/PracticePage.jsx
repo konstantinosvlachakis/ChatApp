@@ -9,9 +9,6 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CancelRoundedIcon from "@mui/icons-material/CancelRounded";
 
-const getAuthToken = () =>
-  sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken") || "";
-
 const levelProgressPercent = (xp) => Math.min(100, Math.max(0, xp % 100));
 const SPEECH_MATCH_THRESHOLD = 0.72;
 const DAILY_SET_STEPS = 10;
@@ -149,7 +146,6 @@ const PracticePage = () => {
   const authHeaders = useMemo(
     () => ({
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getAuthToken()}`,
     }),
     []
   );

@@ -48,11 +48,18 @@ load_local_env_file(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-qj$oesh)3^qim64zfab^5+yv8*ijqsc@qa1=0b8)%c6zfa0=u-"
 env = os.getenv("DJANGO_ENV")
 if not env:
     # Auto-detect production for Heroku/runtime DB environments.
     env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") else "local"
+
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if env == "local":
+        SECRET_KEY = "django-insecure-local-dev-key"
+    else:
+        raise RuntimeError("DJANGO_SECRET_KEY must be set outside local development.")
+
 redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
 use_redis_realtime = os.environ.get("USE_REDIS_REALTIME", "false").lower() == "true"
 use_cloudinary_media = bool(os.environ.get("CLOUDINARY_URL"))
@@ -130,7 +137,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add this
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    # "django.middleware.csrf.CsrfViewMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -154,12 +161,42 @@ if env == "local":
     BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
     # Local development across browser + simulator/phone can use changing LAN IPs.
     ALLOWED_HOSTS = ["*"]
+    CSRF_TRUSTED_ORIGINS.extend(
+        [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+    ]
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
 else:
     DEBUG = False
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     USE_X_FORWARDED_HOST = True
     BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com"  # Production URL
+    CORS_ALLOWED_ORIGINS = [
+        "https://langvoyage.com",
+        "https://www.langvoyage.com",
+        "https://langvoyage-d3781c6fad54.herokuapp.com",
+    ]
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = "same-origin"
+AUTH_COOKIE_ACCESS = "lv_access"
+AUTH_COOKIE_REFRESH = "lv_refresh"
 
 INSTALLED_APPS.append("chatapp")
 if use_cloudinary_media:
@@ -244,16 +281,6 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:8000",
-    "https://langvoyage.com",
-    "https://www.langvoyage.com",
-    "https://langvoyage-d3781c6fad54.herokuapp.com",
-    "http://langvoyage.com",
-    "http://www.langvoyage.com",
-    "http://langvoyage-d3781c6fad54.herokuapp.com",
-]
 CORS_ALLOW_CREDENTIALS = True
 
 
@@ -261,10 +288,10 @@ AUTH_USER_MODEL = "chatapp.Profile"
 
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=5),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": True,
+    "BLACKLIST_AFTER_ROTATION": False,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "VERIFYING_KEY": None,
@@ -279,7 +306,7 @@ SIMPLE_JWT = {
 # Define the default authentication classes
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "chatapp.authentication.CookieOrHeaderJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

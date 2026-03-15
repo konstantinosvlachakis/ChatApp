@@ -109,14 +109,12 @@ const SettingsPage = () => {
       setSaving(true);
       setError("");
       setSuccess("");
-      const token = sessionStorage.getItem("accessToken");
-
       const response = await fetch(`${BASE_URL}/api/profile/edit/`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           base_translate_language: baseTranslateLanguage,
           languages_practicing: languagesPracticing.map(

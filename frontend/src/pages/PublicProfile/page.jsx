@@ -23,13 +23,12 @@ const PublicProfilePage = () => {
     const loadPublicProfile = async () => {
       try {
         setLoading(true);
-        const token = sessionStorage.getItem("accessToken");
         const response = await fetch(`${BASE_URL}/api/profile/public/${username}/`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
         });
 
         if (!response.ok) {

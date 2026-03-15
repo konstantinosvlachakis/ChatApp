@@ -292,8 +292,6 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     onConversationTypingChange?.(COACH_CONVERSATION_ID, true);
 
     try {
-      const token =
-        sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
       const { data } = await axios.post(
         `${BASE_URL}/api/coach/chat/`,
         {
@@ -305,9 +303,9 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
         },
         {
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          withCredentials: true,
         }
       );
 

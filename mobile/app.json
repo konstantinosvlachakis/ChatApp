@@ -41,7 +41,8 @@
         }
       ],
       "expo-speech-recognition",
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ]
   }
 }

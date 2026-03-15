@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
 import { BASE_URL_IMG } from "../../../constants/constants";
 import axios from "../../../utils/axios";
@@ -42,6 +43,7 @@ function ConversationList({
   const { data: conversations = [], error, isLoading } = useGetConversations();
   const queryClient = useQueryClient();
   const { user } = useUser();
+  const { onlineUserIds, subscribeToPresenceEvents } = usePresence();
   const navigate = useNavigate();
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
@@ -51,10 +53,10 @@ function ConversationList({
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false
   );
-  const [onlineUserIds, setOnlineUserIds] = useState(new Set());
   const [presenceTypingByConversation, setPresenceTypingByConversation] =
     useState({});
   const [, setCoachRefreshTick] = useState(0);
+  const conversationsRef = useRef(conversations);
   const touchStateRef = useRef({
     id: null,
     startX: 0,
@@ -62,10 +64,6 @@ function ConversationList({
     isSwiping: false,
     currentOffset: 0,
   });
-
-  const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
-
-
   // Handles right-click event
   const handleRightClick = (e, conversationId) => {
     if (isMobile) return;
@@ -80,13 +78,8 @@ function ConversationList({
   
   const deleteConversationMutation = useMutation({
     mutationFn: async (conversationId) => {
-      const token =
-        sessionStorage.getItem("accessToken") ||
-        localStorage.getItem("accessToken");
       return axios.delete(`${BASE_URL}/api/conversations/${conversationId}/`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        withCredentials: true,
       });
     },
     onSuccess: () => {
@@ -201,22 +194,8 @@ function ConversationList({
   }, []);
 
   useEffect(() => {
-    if (!user?.username) return;
-    const nextOnline = new Set();
-
-    conversations.forEach((conversation) => {
-      const otherUser =
-        conversation.sender?.username === user.username
-          ? conversation.receiver
-          : conversation.sender;
-
-      if (otherUser?.is_online) {
-        nextOnline.add(otherUser.id);
-      }
-    });
-
-    setOnlineUserIds(nextOnline);
-  }, [conversations, user?.username]);
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   useEffect(() => {
     const refreshCoach = () => setCoachRefreshTick((tick) => tick + 1);
@@ -227,89 +206,48 @@ function ConversationList({
   }, []);
 
   useEffect(() => {
-    const token =
-      sessionStorage.getItem("accessToken") || localStorage.getItem("accessToken");
-    if (!token) return;
+    return subscribeToPresenceEvents((data) => {
+      if (data?.type === "presence_update") {
+        const userId = data.user_id;
+        if (typeof userId !== "number" || data.is_online) return;
 
-    const socket = new WebSocket(
-      `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(token)}`
-    );
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === "initial_online_users") {
-          setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
-          return;
-        }
-
-        if (data.type === "presence_update") {
-          const userId = data.user_id;
-          if (typeof userId !== "number") return;
-
-          setOnlineUserIds((prev) => {
-            const next = new Set(prev);
-            if (data.is_online) {
-              next.add(userId);
-            } else {
-              next.delete(userId);
+        setPresenceTypingByConversation((prev) => {
+          const next = { ...prev };
+          conversationsRef.current.forEach((conversation) => {
+            const otherUser =
+              conversation.sender?.username === user?.username
+                ? conversation.receiver
+                : conversation.sender;
+            if (otherUser?.id === userId) {
+              next[conversation.id] = false;
             }
-            return next;
           });
-          if (!data.is_online) {
-            setPresenceTypingByConversation((prev) => {
-              const next = { ...prev };
-              conversations.forEach((conversation) => {
-                const otherUser =
-                  conversation.sender?.username === user?.username
-                    ? conversation.receiver
-                    : conversation.sender;
-                if (otherUser?.id === userId) {
-                  next[conversation.id] = false;
-                }
-              });
-              return next;
-            });
-          }
-          return;
-        }
-
-        if (data.type === "typing_status") {
-          const conversationId = data.conversation_id;
-          if (typeof conversationId !== "number") return;
-          if (data.sender_id === user?.user_id) return;
-
-          setPresenceTypingByConversation((prev) => ({
-            ...prev,
-            [conversationId]: !!data.is_typing,
-          }));
-          return;
-        }
-
-        if (data.type === "conversation_update") {
-          queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
-          queryClient.refetchQueries({
-            queryKey: ["conversationsList"],
-            type: "active",
-          });
-        }
-      } catch (parseError) {
-        console.error("Failed to parse presence event:", parseError);
+          return next;
+        });
+        return;
       }
-    };
 
-    const heartbeatInterval = window.setInterval(() => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "heartbeat" }));
+      if (data?.type === "typing_status") {
+        const conversationId = data.conversation_id;
+        if (typeof conversationId !== "number") return;
+        if (data.sender_id === user?.user_id) return;
+
+        setPresenceTypingByConversation((prev) => ({
+          ...prev,
+          [conversationId]: !!data.is_typing,
+        }));
+        return;
       }
-    }, 20000);
 
-    return () => {
-      window.clearInterval(heartbeatInterval);
-      socket.close();
-    };
-  }, [conversations, queryClient, user?.username, wsBaseUrl]);
+      if (data?.type === "conversation_update") {
+        queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+        queryClient.refetchQueries({
+          queryKey: ["conversationsList"],
+          type: "active",
+        });
+      }
+    });
+  }, [queryClient, subscribeToPresenceEvents, user?.user_id, user?.username]);
 
   if (isLoading) return <div>Loading conversations...</div>;
   if (error) {

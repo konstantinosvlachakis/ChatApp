@@ -1,9 +1,11 @@
 import json
 import os
+from http.cookies import SimpleCookie
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -21,8 +23,12 @@ def user_presence_group_name(user_id):
 
 class PresenceTrackingMixin:
     async def get_user_id_from_token(self):
-        query_string = self.scope.get("query_string", b"").decode()
-        token = parse_qs(query_string).get("token", [None])[0]
+        token = self._get_token_from_authorization_header()
+        if not token:
+            token = self._get_token_from_cookies()
+        if not token:
+            query_string = self.scope.get("query_string", b"").decode()
+            token = parse_qs(query_string).get("token", [None])[0]
         if not token:
             return None
 
@@ -33,6 +39,30 @@ class PresenceTrackingMixin:
             if not user_id:
                 return None
             return int(user_id)
+        except Exception:
+            return None
+
+    def _get_token_from_cookies(self):
+        try:
+            raw_headers = dict(self.scope.get("headers", []))
+            cookie_header = raw_headers.get(b"cookie", b"").decode()
+            if not cookie_header:
+                return None
+            cookies = SimpleCookie()
+            cookies.load(cookie_header)
+            cookie = cookies.get(getattr(settings, "AUTH_COOKIE_ACCESS", "lv_access"))
+            return cookie.value if cookie else None
+        except Exception:
+            return None
+
+    def _get_token_from_authorization_header(self):
+        try:
+            raw_headers = dict(self.scope.get("headers", []))
+            auth_header = raw_headers.get(b"authorization", b"").decode().strip()
+            if not auth_header.lower().startswith("bearer "):
+                return None
+            token = auth_header[7:].strip()
+            return token or None
         except Exception:
             return None
 

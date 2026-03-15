@@ -2,14 +2,22 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { initCsrfProtection } from './utils/csrf';
 import './index.css';  // Ensure this line is present to import Tailwind CSS
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+initCsrfProtection()
+  .catch((error) => {
+    console.error("Failed to initialise CSRF protection", error);
+  })
+  .finally(() => {
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+  });
 
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))

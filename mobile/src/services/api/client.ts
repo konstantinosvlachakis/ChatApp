@@ -1,4 +1,4 @@
-import axios from "axios/dist/browser/axios.cjs";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "../../config/api";
 import { tokenStorage } from "../storage";
 
@@ -7,7 +7,7 @@ export const api = axios.create({
   timeout: 15000,
 });
 
-api.interceptors.request.use(async (config) => {
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await tokenStorage.getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

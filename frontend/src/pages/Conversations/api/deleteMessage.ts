@@ -13,9 +13,7 @@ export type DeleteMessageDTO = {
 export const deleteMessage = async (messageId: number): Promise<{ messageId: number }> => {
   try {
     await axios.delete(BASE_URL + `/api/messages/${messageId}/delete/`, {
-      headers: {
-        Authorization: `Bearer ${sessionStorage.getItem("accessToken")}`,
-      },
+      withCredentials: true,
     });
     return { messageId };
   } catch (error) {
@@ -23,4 +21,3 @@ export const deleteMessage = async (messageId: number): Promise<{ messageId: num
     throw error; // Rethrow the error for handling in the mutation
   }
 };
-
