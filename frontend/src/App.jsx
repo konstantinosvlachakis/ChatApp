@@ -2,6 +2,7 @@ import React, { Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { UserProvider } from "./context/UserContext"; 
 import Layout from "./layout/Layout";
+import AuthLandingPage from "./pages/AuthLandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
@@ -102,7 +103,7 @@ function App() {
             )}
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<LoginPage />} />
+              <Route path="/" element={<AuthLandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
 
