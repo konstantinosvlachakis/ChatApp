@@ -2,7 +2,7 @@ import axios, { AxiosHeaders } from "axios";
 import { ensureCsrfToken, getStoredCsrfToken } from "./csrf";
 
 const instance = axios.create({
-  baseURL: process.env.REACT_APP_BASE_URL || "https://langvoyage-d3781c6fad54.herokuapp.com", // Replace with your backend's base URL
+  baseURL: process.env.REACT_APP_BASE_URL || "",
   withCredentials: true, // Ensures cookies are sent
 });
 
