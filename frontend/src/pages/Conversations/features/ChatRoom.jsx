@@ -71,6 +71,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
+  const [replyingMessage, setReplyingMessage] = useState(null);
 
   const socket = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -668,6 +669,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                     text: data.message,
                     sender: { id: data.senderId, username: data.sender },
                     attachmentUrl: data.attachmentUrl || null,
+                    reply_to: data.replyTo || null,
                     timestamp: new Date().toISOString(),
                     translated_text: null,
                     translated_source_language: null,
@@ -882,6 +884,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     const formData = new FormData();
     if (newMessage.trim()) formData.append("text", newMessage);
     if (attachedFile) formData.append("attachment", attachedFile);
+    if (replyingMessage?.id) formData.append("reply_to", String(replyingMessage.id));
 
     const localAttachmentUrl =
       previewImage || (attachedFile ? URL.createObjectURL(attachedFile) : null);
@@ -894,6 +897,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       timestamp: new Date().toISOString(),
       attachmentUrl: localAttachmentUrl,
       attachment_url: localAttachmentUrl,
+      reply_to: replyingMessage || null,
       reactions: [],
       current_user_reaction: null,
     };
@@ -931,6 +935,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 timestamp: savedMessage.timestamp || message.timestamp,
                 sender: savedMessage.sender || message.sender,
                 status: savedMessage.status || message.status,
+                reply_to: savedMessage.reply_to || message.reply_to || null,
               }
             : message
         )
@@ -948,6 +953,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         senderId: user.user_id,
         attachmentUrl:
           savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+        replyTo: savedMessage.reply_to || null,
       });
       if (!sent) {
         setTimeout(() => {
@@ -959,6 +965,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             senderId: user.user_id,
             attachmentUrl:
               savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+            replyTo: savedMessage.reply_to || null,
           });
           if (!retrySent) {
             console.error("WebSocket is not open. Unable to send message.");
@@ -971,7 +978,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
       }
+      return;
     }
+
+    setReplyingMessage(null);
   };
 
   const handleTyping = () => {
@@ -1016,6 +1026,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const handleStartEditMessage = (message) => {
     if (!message?.id) return;
+    setReplyingMessage(null);
     setEditingMessage({
       id: message.id,
       text: message.text || "",
@@ -1024,6 +1035,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const handleCancelEditMessage = () => {
     setEditingMessage(null);
+  };
+
+  const handleStartCommentMessage = (message) => {
+    if (!message?.id) return;
+    setEditingMessage(null);
+    setReplyingMessage(message);
+  };
+
+  const handleCancelCommentMessage = () => {
+    setReplyingMessage(null);
   };
 
   const handleSaveEditedMessage = async (nextText) => {
@@ -1043,7 +1064,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-gray-50">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex-shrink-0">
         <ChatHeader
           conversation={conversation}
@@ -1071,6 +1092,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               userId={user.user_id}
               onDeleteMessage={handleDeleteMessage}
               onEditMessage={handleStartEditMessage}
+              onCommentMessage={handleStartCommentMessage}
               onMessageReactionChange={handleMessageReactionChange}
               baseTranslateLanguage={
                 user.base_translate_language || user.native_language || "english"
@@ -1092,7 +1114,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           conversationId={conversation.id}
           connectionStatus={socketStatus}
           editingMessage={editingMessage}
+          replyingMessage={replyingMessage}
           onCancelEdit={handleCancelEditMessage}
+          onCancelReply={handleCancelCommentMessage}
           onSendMessage={handleSendMessage}
           onSaveEdit={handleSaveEditedMessage}
           onTyping={handleTyping}

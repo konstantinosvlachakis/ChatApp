@@ -4,20 +4,45 @@ import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
+import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
 const MOBILE_BREAKPOINT = 640;
+const MESSAGE_ACTIONS_MENU_HEIGHT = 320;
+const LANGUAGE_SPEECH_CODE = {
+  english: "en-US",
+  en: "en-US",
+  spanish: "es-ES",
+  es: "es-ES",
+  french: "fr-FR",
+  fr: "fr-FR",
+  greek: "el-GR",
+  el: "el-GR",
+  russian: "ru-RU",
+  ru: "ru-RU",
+};
+const LANGUAGE_SPEECH_SETTINGS = {
+  english: { rate: 0.84, pitch: 0.68 },
+  spanish: { rate: 0.92, pitch: 1.0 },
+  french: { rate: 0.9, pitch: 0.98 },
+  greek: { rate: 0.9, pitch: 1.0 },
+  russian: { rate: 0.9, pitch: 0.97 },
+};
 
 const Conversation = ({
   messages,
   userId,
   onDeleteMessage,
   onEditMessage,
+  onCommentMessage,
   onMessageReactionChange,
   baseTranslateLanguage = "english",
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
+  const [copyFeedback, setCopyFeedback] = useState("");
   const [translationsByMessageId, setTranslationsByMessageId] = useState({});
   const [blockedTranslateByMessageId, setBlockedTranslateByMessageId] =
     useState({});
@@ -52,6 +77,21 @@ const Conversation = ({
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return undefined;
+
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener?.("voiceschanged", loadVoices);
+    };
+  }, []);
+
+  useEffect(() => {
     const initialTranslations = {};
     messages.forEach((msg) => {
       if (msg.translated_text) {
@@ -69,13 +109,78 @@ const Conversation = ({
     !translationsByMessageId[msg.id] &&
     !msg.translated_text;
 
+  const handleCopyMessage = async (msg) => {
+    const text = (msg?.text || "").trim();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback("Copied to clipboard");
+      window.setTimeout(() => {
+        setCopyFeedback((current) => (current === "Copied to clipboard" ? "" : current));
+      }, 1800);
+    } catch (error) {
+      console.error("Copy error:", error);
+      setCopyFeedback("Copy failed");
+      window.setTimeout(() => {
+        setCopyFeedback((current) => (current === "Copy failed" ? "" : current));
+      }, 1800);
+    } finally {
+      closeMessageActionsMenu();
+    }
+  };
+
+  const speakWithBrowserVoice = (msg, text) => {
+    if (!text || typeof window === "undefined" || !window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+    const preferredLanguage = resolveSpeechLanguage(msg, text, baseTranslateLanguage);
+    const utterance = new SpeechSynthesisUtterance(
+      prepareTextForSpeech(text, preferredLanguage)
+    );
+    const preferredVoice = pickBestVoiceForLanguage(preferredLanguage);
+    const fallbackLanguageCode =
+      LANGUAGE_SPEECH_CODE[preferredLanguage] || LANGUAGE_SPEECH_CODE.english;
+    const speechSettings =
+      LANGUAGE_SPEECH_SETTINGS[preferredLanguage] || LANGUAGE_SPEECH_SETTINGS.english;
+
+    utterance.lang = preferredVoice?.lang || fallbackLanguageCode;
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+    utterance.rate = speechSettings.rate;
+    utterance.pitch = speechSettings.pitch;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleSpeakMessage = async (msg) => {
+    const text = (msg?.text || "").trim();
+    if (!text) return;
+
+    try {
+      speakWithBrowserVoice(msg, text);
+    } catch (error) {
+      console.error("Speak error:", error);
+    } finally {
+      closeMessageActionsMenu();
+    }
+  };
+
   const openMessageActionsMenu = (messageId, position = null) => {
     const padding = 12;
     const defaultTop = Math.max(padding, window.innerHeight / 2 - 120);
     const defaultRight = padding;
+    const preferredTop = position?.top ?? defaultTop;
+    const maxTop = Math.max(padding, window.innerHeight - MESSAGE_ACTIONS_MENU_HEIGHT - padding);
+    const shouldOpenUpward = preferredTop + MESSAGE_ACTIONS_MENU_HEIGHT > window.innerHeight - padding;
+    const adjustedTop = shouldOpenUpward && position?.anchorTop != null
+      ? Math.max(padding, position.anchorTop - MESSAGE_ACTIONS_MENU_HEIGHT - 10)
+      : Math.min(Math.max(preferredTop, padding), maxTop);
+
     setMessageActionsMenu({
       messageId,
-      top: position?.top ?? defaultTop,
+      top: adjustedTop,
       right: position?.right ?? defaultRight,
     });
   };
@@ -95,6 +200,7 @@ const Conversation = ({
     longPressTimerRef.current = window.setTimeout(() => {
       openMessageActionsMenu(messageId, {
         top: touch.clientY + 12,
+        anchorTop: touch.clientY,
         right: Math.max(12, window.innerWidth - touch.clientX - 12),
       });
       clearLongPressTimer();
@@ -170,6 +276,100 @@ const Conversation = ({
     return Object.entries(counts);
   };
 
+  const normalizeLanguageName = (language) => {
+    if (!language) return "";
+    return String(language).trim().toLowerCase().split("-")[0];
+  };
+
+  const inferLanguageFromText = (text) => {
+    if (!text) return "";
+    if (/[\u0370-\u03FF]/.test(text)) return "greek";
+    if (/[\u0400-\u04FF]/.test(text)) return "russian";
+
+    const lowered = text.toLowerCase();
+    if (/[¿¡ñáéíóúü]/.test(lowered)) return "spanish";
+    if (/[àâçéèêëîïôùûüÿœæ]/.test(lowered)) return "french";
+    return "";
+  };
+
+  const prepareTextForSpeech = (text, language) => {
+    if (!text) return "";
+
+    const normalized = text
+      .replace(/\s+/g, " ")
+      .replace(/([,;:])(?=\S)/g, "$1 ")
+      .replace(/([.!?])(?=\S)/g, "$1 ")
+      .replace(/\.\.\./g, ". ")
+      .trim();
+
+    // A tiny pause after line breaks tends to sound much more human.
+    if (normalizeLanguageName(language) === "french") {
+      return normalized.replace(/\n+/g, ". ");
+    }
+    return normalized.replace(/\n+/g, ", ");
+  };
+
+  const resolveSpeechLanguage = (msg, text, fallbackLanguage) => {
+    const candidates = [
+      msg?.translated_source_language,
+      msg?.source_language,
+      msg?.language,
+      inferLanguageFromText(text),
+      fallbackLanguage,
+    ];
+
+    return candidates.map(normalizeLanguageName).find(Boolean) || "english";
+  };
+
+  const pickBestVoiceForLanguage = (language) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null;
+
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) return null;
+
+    const targetLang =
+      (LANGUAGE_SPEECH_CODE[normalizeLanguageName(language)] || LANGUAGE_SPEECH_CODE.english).toLowerCase();
+    const baseLang = targetLang.split("-")[0];
+
+    const matchingVoices = voices.filter((voice) => {
+      const voiceLang = (voice.lang || "").toLowerCase();
+      return (
+        voiceLang === targetLang ||
+        voiceLang === baseLang ||
+        voiceLang.startsWith(`${baseLang}-`)
+      );
+    });
+
+    const candidates = matchingVoices.length ? matchingVoices : voices;
+    const scoreVoice = (voice) => {
+      const voiceLang = (voice.lang || "").toLowerCase();
+      const voiceName = `${voice.name || ""} ${voice.voiceURI || ""}`.toLowerCase();
+      let score = 0;
+
+      if (voiceLang === targetLang) score += 60;
+      else if (voiceLang === baseLang || voiceLang.startsWith(`${baseLang}-`)) score += 40;
+      if (voice.localService) score += 20;
+      if (voice.default) score += 10;
+      if (voiceName.includes("siri")) score += 24;
+      if (baseLang === "en" && /male|daniel|david|fred|jorge|oliver|thomas/.test(voiceName)) score += 18;
+      if (baseLang === "en" && /female|zira|samantha|victoria|karen|moira|tingting/.test(voiceName)) score -= 10;
+      if (voiceName.includes("neural")) score += 16;
+      if (voiceName.includes("premium")) score += 14;
+      if (voiceName.includes("natural")) score += 12;
+      if (voiceName.includes("enhanced")) score += 10;
+      if (voiceName.includes("compact")) score -= 10;
+      if (voiceName.includes("espeak")) score -= 18;
+      if (voiceName.includes("festival")) score -= 18;
+      if (voiceName.includes("google")) score += 8;
+      if (voiceName.includes("microsoft")) score += 7;
+      if (voiceName.includes("apple")) score += 6;
+
+      return score;
+    };
+
+    return [...candidates].sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
+  };
+
   const getMessageActionsMenuStyle = () => {
     if (!messageActionsMenu) return {};
 
@@ -194,7 +394,7 @@ const Conversation = ({
   };
 
   return (
-    <div className="flex w-full flex-col overflow-x-hidden bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
+    <div className="flex w-full flex-col overflow-x-hidden px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
           void index;
@@ -203,6 +403,14 @@ const Conversation = ({
           const isSentByUser = msg.sender?.id === userId;
           const messageReactions = groupedReactions(msg.reactions || []);
           const isSystemMessage = Boolean(msg.isSystem);
+          const hasText = Boolean(msg.text?.trim());
+          const isImageAttachment = attachmentUrl
+            ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl)
+            : false;
+          const isVideoAttachment = attachmentUrl
+            ? /\.(mp4|webm)$/i.test(attachmentUrl)
+            : false;
+          const isAudioAttachment = attachmentUrl ? isLikelyAudio(attachmentUrl) : false;
 
           if (isSystemMessage) {
             return (
@@ -231,6 +439,7 @@ const Conversation = ({
                   e.preventDefault();
                   openMessageActionsMenu(msg.id, {
                     top: e.clientY + 12,
+                    anchorTop: e.clientY,
                     right: Math.max(12, window.innerWidth - e.clientX - 12),
                   });
                 }}
@@ -252,6 +461,7 @@ const Conversation = ({
                       const rect = event.currentTarget.getBoundingClientRect();
                       openMessageActionsMenu(msg.id, {
                         top: rect.bottom + 10,
+                        anchorTop: rect.top,
                         right: Math.max(12, window.innerWidth - rect.right),
                       });
                     }}
@@ -263,53 +473,67 @@ const Conversation = ({
                   </button>
                 </div>
 
-                {attachmentUrl ? (
-                  /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl) ? (
-                    <img
-                      src={attachmentUrl}
-                      alt="Attachment"
-                      className="h-auto max-w-full rounded-lg"
-                    />
-                  ) : /\.(mp4|webm)$/i.test(attachmentUrl) ? (
-                    <video
-                      src={attachmentUrl}
-                      controls
-                      className="h-48 max-w-full rounded-lg sm:h-60"
-                    />
-                  ) : isLikelyAudio(attachmentUrl) ? (
-                    <audio controls src={attachmentUrl} className="w-52 sm:w-60" />
-                  ) : (
-                    <a
-                      href={attachmentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-blue-500 underline"
-                    >
-                      <span role="img" aria-label="attachment">
-                        📎
-                      </span>
-                      <span>View Attachment</span>
-                    </a>
-                  )
-                ) : msg.text ? (
-                  <div>
-                    <p>{msg.text}</p>
-                    {msg.edited_at && (
-                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">
-                        Edited
+                <div className="space-y-2">
+                  {msg.reply_to && (
+                    <div className="rounded-2xl border border-slate-300/70 bg-white/45 px-3 py-2 text-xs text-slate-600">
+                      <p className="font-semibold text-slate-700">
+                        Replying to {msg.reply_to.sender?.username || "message"}
                       </p>
-                    )}
-                    {(translationsByMessageId[msg.id] || msg.translated_text) && (
-                      <>
-                        <hr className="my-2 border-black" />
-                        <p>{translationsByMessageId[msg.id] || msg.translated_text}</p>
-                      </>
-                    )}
-                    {translatingMessageId === msg.id && (
-                      <p className="mt-2 text-xs text-gray-600">Translating...</p>
-                    )}
-                  </div>
-                ) : (
+                      <p className="mt-1 line-clamp-2">{msg.reply_to.text || "Attachment"}</p>
+                    </div>
+                  )}
+
+                  {attachmentUrl && (
+                    isImageAttachment ? (
+                      <img
+                        src={attachmentUrl}
+                        alt="Attachment"
+                        className="h-auto max-w-full rounded-lg"
+                      />
+                    ) : isVideoAttachment ? (
+                      <video
+                        src={attachmentUrl}
+                        controls
+                        className="h-48 max-w-full rounded-lg sm:h-60"
+                      />
+                    ) : isAudioAttachment ? (
+                      <audio controls src={attachmentUrl} className="w-52 sm:w-60" />
+                    ) : (
+                      <a
+                        href={attachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-1 text-blue-500 underline"
+                      >
+                        <span role="img" aria-label="attachment">
+                          📎
+                        </span>
+                        <span>View Attachment</span>
+                      </a>
+                    )
+                  )}
+
+                  {hasText && (
+                    <div>
+                      <p>{msg.text}</p>
+                      {msg.edited_at && (
+                        <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">
+                          Edited
+                        </p>
+                      )}
+                      {(translationsByMessageId[msg.id] || msg.translated_text) && (
+                        <>
+                          <hr className="my-2 border-black" />
+                          <p>{translationsByMessageId[msg.id] || msg.translated_text}</p>
+                        </>
+                      )}
+                      {translatingMessageId === msg.id && (
+                        <p className="mt-2 text-xs text-gray-600">Translating...</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {!attachmentUrl && !hasText && (
                   <p className="italic text-gray-500">Audio message</p>
                 )}
               </div>
@@ -379,6 +603,36 @@ const Conversation = ({
                   {(canEditMessage(msg) || canShowTranslate(msg, isSentByUser)) && (
                     <div className="my-1 border-t border-slate-200" />
                   )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onCommentMessage?.(msg);
+                      closeMessageActionsMenu();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <ReplyRoundedIcon sx={{ fontSize: 18 }} />
+                    <span>Comment</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyMessage(msg)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <ContentCopyRoundedIcon sx={{ fontSize: 18 }} />
+                    <span>Copy</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSpeakMessage(msg)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <CampaignRoundedIcon sx={{ fontSize: 18 }} />
+                    <span>Speak</span>
+                  </button>
+                  {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg)) && (
+                    <div className="my-1 border-t border-slate-200" />
+                  )}
                   {canShowTranslate(msg, isSentByUser) && (
                     <button
                       type="button"
@@ -420,6 +674,20 @@ const Conversation = ({
             })()}
           </div>
         </>
+      )}
+
+      {copyFeedback && (
+        <div className="pointer-events-none fixed bottom-5 left-1/2 z-[10000] -translate-x-1/2">
+          <div
+            className={`rounded-full px-4 py-2 text-sm font-medium shadow-lg ${
+              copyFeedback === "Copy failed"
+                ? "bg-rose-600 text-white"
+                : "bg-slate-900 text-white"
+            }`}
+          >
+            {copyFeedback}
+          </div>
+        </div>
       )}
     </div>
   );
