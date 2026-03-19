@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BASE_URL } from "../../../constants/constants";
+import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
@@ -9,20 +13,16 @@ const Conversation = ({
   messages,
   userId,
   onDeleteMessage,
+  onEditMessage,
   onMessageReactionChange,
   baseTranslateLanguage = "english",
 }) => {
-  const [dropdownIndex, setDropdownIndex] = useState(null);
-  const [menuState, setMenuState] = useState(null);
+  const [messageActionsMenu, setMessageActionsMenu] = useState(null);
   const [translationsByMessageId, setTranslationsByMessageId] = useState({});
   const [blockedTranslateByMessageId, setBlockedTranslateByMessageId] =
     useState({});
   const [translatingMessageId, setTranslatingMessageId] = useState(null);
   const longPressTimerRef = useRef(null);
-
-  const toggleDropdown = (index) => {
-    setDropdownIndex((prevIndex) => (prevIndex === index ? null : index));
-  };
 
   const normalizeUrl = (url) => {
     if (!url) return null;
@@ -35,16 +35,18 @@ const Conversation = ({
     url.includes("/media/attachments/blob_") ||
     url.includes("/media/audio/");
 
-  const closeMenu = () => setMenuState(null);
+  const closeMessageActionsMenu = () => setMessageActionsMenu(null);
+  const canEditMessage = (msg) => msg?.sender?.id === userId;
 
   useEffect(() => {
-    const closeMenus = () => closeMenu();
-    window.addEventListener("click", closeMenus);
-    return () => window.removeEventListener("click", closeMenus);
+    window.addEventListener("click", closeMessageActionsMenu);
+    return () => window.removeEventListener("click", closeMessageActionsMenu);
   }, []);
 
   useEffect(() => {
-    const handleResize = () => closeMenu();
+    const handleResize = () => {
+      closeMessageActionsMenu();
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -67,9 +69,15 @@ const Conversation = ({
     !translationsByMessageId[msg.id] &&
     !msg.translated_text;
 
-  const openMessageMenu = (x, y, messageId) => {
-    setDropdownIndex(null);
-    setMenuState({ x, y, messageId });
+  const openMessageActionsMenu = (messageId, position = null) => {
+    const padding = 12;
+    const defaultTop = Math.max(padding, window.innerHeight / 2 - 120);
+    const defaultRight = padding;
+    setMessageActionsMenu({
+      messageId,
+      top: position?.top ?? defaultTop,
+      right: position?.right ?? defaultRight,
+    });
   };
 
   const clearLongPressTimer = () => {
@@ -85,7 +93,10 @@ const Conversation = ({
 
     clearLongPressTimer();
     longPressTimerRef.current = window.setTimeout(() => {
-      openMessageMenu(touch.clientX, touch.clientY, messageId);
+      openMessageActionsMenu(messageId, {
+        top: touch.clientY + 12,
+        right: Math.max(12, window.innerWidth - touch.clientX - 12),
+      });
       clearLongPressTimer();
     }, LONG_PRESS_MS);
   };
@@ -124,7 +135,7 @@ const Conversation = ({
       console.error("Translate error:", error);
     } finally {
       setTranslatingMessageId(null);
-      closeMenu();
+      closeMessageActionsMenu();
     }
   };
 
@@ -147,7 +158,7 @@ const Conversation = ({
     } catch (error) {
       console.error("Reaction error:", error);
     } finally {
-      closeMenu();
+      closeMessageActionsMenu();
     }
   };
 
@@ -159,8 +170,8 @@ const Conversation = ({
     return Object.entries(counts);
   };
 
-  const getMenuStyle = () => {
-    if (!menuState) return {};
+  const getMessageActionsMenuStyle = () => {
+    if (!messageActionsMenu) return {};
 
     if (window.innerWidth < MOBILE_BREAKPOINT) {
       return {
@@ -171,24 +182,22 @@ const Conversation = ({
     }
 
     const menuWidth = 260;
-    const menuHeight = 220;
     const padding = 12;
-    const clampedLeft = Math.max(
-      padding,
-      Math.min(menuState.x, window.innerWidth - menuWidth - padding)
-    );
-    const clampedTop = Math.max(
-      padding,
-      Math.min(menuState.y, window.innerHeight - menuHeight - padding)
-    );
+    const maxRight = Math.max(padding, window.innerWidth - menuWidth - padding);
+    const rightOffset = Math.min(Math.max(messageActionsMenu.right, padding), maxRight);
+    const topOffset = Math.max(padding, messageActionsMenu.top);
 
-    return { left: `${clampedLeft}px`, top: `${clampedTop}px` };
+    return {
+      top: `${topOffset}px`,
+      right: `${rightOffset}px`,
+    };
   };
 
   return (
     <div className="flex w-full flex-col overflow-x-hidden bg-gray-50 px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
+          void index;
           const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
           const attachmentUrl = normalizeUrl(rawUrl);
           const isSentByUser = msg.sender?.id === userId;
@@ -208,7 +217,7 @@ const Conversation = ({
           return (
             <div
               key={msg.id || index}
-              className={`mb-3 flex flex-col ${
+              className={`group mb-3 flex flex-col ${
                 isSentByUser ? "items-end" : "items-start"
               }`}
             >
@@ -220,41 +229,39 @@ const Conversation = ({
                 }`}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  openMessageMenu(e.clientX, e.clientY, msg.id);
+                  openMessageActionsMenu(msg.id, {
+                    top: e.clientY + 12,
+                    right: Math.max(12, window.innerWidth - e.clientX - 12),
+                  });
                 }}
                 onTouchStart={(e) => handleTouchStart(e, msg.id)}
                 onTouchEnd={clearLongPressTimer}
                 onTouchCancel={clearLongPressTimer}
                 onTouchMove={clearLongPressTimer}
               >
-                {isSentByUser && (
-                  <div className="group absolute -left-6 top-1/2 z-20 -translate-y-1/2">
-                    <button
-                      className="text-gray-500 hover:text-gray-700 focus:outline-none"
-                      onClick={() => toggleDropdown(index)}
-                    >
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-500"></span>
-                      <span className="mx-0.5 inline-block h-1.5 w-1.5 rounded-full bg-gray-500"></span>
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-gray-500"></span>
-                    </button>
-                    {dropdownIndex === index && (
-                      <div
-                        className="absolute right-full top-0 z-50 mr-2 rounded border bg-white shadow-lg"
-                        onMouseLeave={() => setDropdownIndex(null)}
-                      >
-                        <button
-                          onClick={() => {
-                            onDeleteMessage(msg.id);
-                            setDropdownIndex(null);
-                          }}
-                          className="block px-4 py-2 text-sm text-red-500 hover:bg-red-100"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div
+                  className={`absolute top-1/2 z-20 -translate-y-1/2 ${
+                    isSentByUser ? "-left-5" : "-right-5"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/92 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600 hover:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      openMessageActionsMenu(msg.id, {
+                        top: rect.bottom + 10,
+                        right: Math.max(12, window.innerWidth - rect.right),
+                      });
+                    }}
+                    aria-label="Open message actions"
+                  >
+                    <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
+                    <span className="mx-[3px] inline-block h-1 w-1 rounded-full bg-current"></span>
+                    <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
+                  </button>
+                </div>
 
                 {attachmentUrl ? (
                   /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl) ? (
@@ -287,6 +294,11 @@ const Conversation = ({
                 ) : msg.text ? (
                   <div>
                     <p>{msg.text}</p>
+                    {msg.edited_at && (
+                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">
+                        Edited
+                      </p>
+                    )}
                     {(translationsByMessageId[msg.id] || msg.translated_text) && (
                       <>
                         <hr className="my-2 border-black" />
@@ -321,52 +333,88 @@ const Conversation = ({
         <div className="text-gray-500">No messages yet!</div>
       )}
 
-      {menuState && (
+      {messageActionsMenu && (
         <>
-          <div className="fixed inset-0 z-[9998] bg-black/20" onClick={closeMenu} />
           <div
-            className="fixed z-[9999] min-w-[220px] rounded-md border border-gray-200 bg-white/95 py-1 shadow-lg backdrop-blur-sm transition-all duration-150 ease-out sm:min-w-[260px]"
-            style={getMenuStyle()}
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[9998]"
+            onClick={closeMessageActionsMenu}
+          />
+          <div
+            className="fixed z-[9999] w-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white/98 p-1.5 shadow-[0_18px_44px_-22px_rgba(15,23,42,0.45)] backdrop-blur-sm"
+            style={getMessageActionsMenuStyle()}
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="grid grid-cols-6 gap-1 px-2 py-1">
-              {REACTION_OPTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  className="rounded px-2 py-2 text-xl transition-colors duration-150 hover:bg-gray-100"
-                  onClick={() => handleReact(menuState.messageId, emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
-            {messages.find((m) => m.id === menuState.messageId)
-              ?.current_user_reaction && (
-              <button
-                className="w-full px-3 py-2 text-left text-sm text-red-600 transition-colors duration-150 hover:bg-gray-100"
-                onClick={() => handleReact(menuState.messageId, "")}
-              >
-                Remove reaction
-              </button>
-            )}
-
             {(() => {
-              const msg = messages.find((m) => m.id === menuState.messageId);
-              const isSentByUser = msg?.sender?.id === userId;
-              if (!msg || !canShowTranslate(msg, isSentByUser)) {
+              const msg = messages.find((message) => message.id === messageActionsMenu.messageId);
+              if (!msg) {
                 return null;
               }
+              const isSentByUser = msg.sender?.id === userId;
+
               return (
                 <>
-                  <hr className="my-1 border-gray-200" />
-                  <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-gray-100"
-                    onClick={() => handleTranslate(msg)}
-                  >
-                    <span aria-hidden="true">🌐</span>
-                    <span>Translate</span>
-                  </button>
+                  <div className="grid grid-cols-6 gap-1 px-1 py-1">
+                    {REACTION_OPTIONS.map((emoji) => (
+                      <button
+                        key={`${msg.id}-menu-${emoji}`}
+                        type="button"
+                        className="rounded-xl px-2 py-2 text-xl transition hover:bg-slate-100"
+                        onClick={() => handleReact(msg.id, emoji)}
+                        aria-label={`React with ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  {msg.current_user_reaction && (
+                    <button
+                      type="button"
+                      onClick={() => handleReact(msg.id, "")}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                    >
+                      <RemoveCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                      <span>Remove reaction</span>
+                    </button>
+                  )}
+                  {(canEditMessage(msg) || canShowTranslate(msg, isSentByUser)) && (
+                    <div className="my-1 border-t border-slate-200" />
+                  )}
+                  {canShowTranslate(msg, isSentByUser) && (
+                    <button
+                      type="button"
+                      onClick={() => handleTranslate(msg)}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                    >
+                      <TranslateRoundedIcon sx={{ fontSize: 18 }} />
+                      <span>Translate</span>
+                    </button>
+                  )}
+                  {canEditMessage(msg) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onEditMessage?.(msg);
+                          closeMessageActionsMenu();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                      >
+                        <EditRoundedIcon sx={{ fontSize: 18 }} />
+                        <span>Edit message</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteMessage(msg.id);
+                          closeMessageActionsMenu();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                      >
+                        <DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                        <span>Delete message</span>
+                      </button>
+                    </>
+                  )}
                 </>
               );
             })()}

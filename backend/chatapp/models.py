@@ -178,6 +178,7 @@ class Message(models.Model):
 
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
         # Update the conversation's updated_at field when a message is created

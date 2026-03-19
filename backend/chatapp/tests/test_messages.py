@@ -56,3 +56,42 @@ class MessageReplyValidationTests(TestCase):
         self.assertIsNotNone(response.data["reply_to"])
         self.assertEqual(response.data["reply_to"]["id"], original_message.id)
         self.assertEqual(response.data["reply_to"]["text"], "Original message")
+
+
+class MessageEditTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user1 = make_user(username="carol", email="carol@example.com")
+        self.user2 = make_user(username="dave", email="dave@example.com")
+        self.conversation = make_conversation(sender=self.user1, receiver=self.user2)
+        self.message = make_message(
+            conversation=self.conversation,
+            sender=self.user1,
+            text="Original text",
+        )
+
+    def test_sender_can_edit_message(self):
+        self.client.force_authenticate(user=self.user1)
+
+        response = self.client.patch(
+            f"/api/messages/{self.message.id}/edit/",
+            {"text": "Updated text"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["text"], "Updated text")
+        self.assertIsNotNone(response.data["edited_at"])
+
+        self.message.refresh_from_db()
+        self.assertEqual(self.message.text, "Updated text")
+        self.assertIsNotNone(self.message.edited_at)
+
+    def test_non_sender_cannot_edit_message(self):
+        self.client.force_authenticate(user=self.user2)
+
+        response = self.client.patch(
+            f"/api/messages/{self.message.id}/edit/",
+            {"text": "Should fail"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

@@ -51,6 +51,11 @@ urlpatterns = [
         MessageDeleteView.as_view(),
         name="delete_message",  # Delete a specific message
     ),
+    path(
+        "messages/<int:message_id>/edit/",
+        MessageEditView.as_view(),
+        name="edit_message",
+    ),
     path("messages/translate/", translate_message_view, name="translate_message"),
     path(
         "messages/<int:message_id>/react/",

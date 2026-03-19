@@ -112,6 +112,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "attachment",
             "attachment_url",
             "timestamp",
+            "edited_at",
             "reply_to",
             "translated_text",
             "translated_source_language",

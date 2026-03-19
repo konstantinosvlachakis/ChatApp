@@ -1477,6 +1477,51 @@ class MessageDeleteView(APIView):
         )
 
 
+class MessageEditView(APIView):
+    def patch(self, request, message_id):
+        message = get_object_or_404(Message, id=message_id, sender=request.user)
+        updated_text = str(request.data.get("text", "")).strip()
+
+        if not updated_text and not message.attachment:
+            return Response(
+                {"error": "Message content is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if message.text == updated_text:
+            serializer = MessageSerializer(message, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        message.text = updated_text
+        message.edited_at = timezone.now()
+        message.save(update_fields=["text", "edited_at"])
+
+        conversation = message.conversation
+        bump_conversation_list_cache_version(conversation.sender_id)
+        bump_conversation_list_cache_version(conversation.receiver_id)
+        broadcast_conversation_update(
+            [conversation.sender_id, conversation.receiver_id],
+            conversation.id,
+            "message_updated",
+            actor_id=request.user.id,
+        )
+
+        serializer = MessageSerializer(message, context={"request": request})
+        serialized_message = serializer.data
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                str(message.conversation_id),
+                {
+                    "type": "message_edit_event",
+                    "message": serialized_message,
+                },
+            )
+
+        return Response(serialized_message, status=status.HTTP_200_OK)
+
+
 class ConversationDetailView(APIView):
     permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access
 

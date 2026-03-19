@@ -6,6 +6,7 @@ import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
 import axios from "../../../utils/axios";
 import { deleteMessage } from "../api/deleteMessage";
+import { editMessage } from "../api/editMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
@@ -69,6 +70,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(null);
 
   const socket = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -103,6 +105,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       ? conversation?.receiver
       : conversation?.sender;
   const otherUserAvatarUrl = resolveAvatarUrl(otherUser?.profile_image_url);
+
+  const mergeMessageUpdate = useCallback((updatedMessage) => {
+    if (!updatedMessage?.id) return;
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
+    );
+  }, []);
 
   useEffect(() => {
     currentUserIdRef.current = user?.user_id ?? null;
@@ -647,21 +656,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
           switch (data.type) {
             case "chat":
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: data.id,
-                  text: data.message,
-                  sender: { id: data.senderId, username: data.sender },
-                  attachmentUrl: data.attachmentUrl || null,
-                  timestamp: new Date().toISOString(),
-                  translated_text: null,
-                  translated_source_language: null,
-                  can_translate: Boolean((data.message || "").trim()),
-                  reactions: [],
-                  current_user_reaction: null,
-                },
-              ]);
+              setMessages((prev) => {
+                if (data.id && prev.some((message) => message.id === data.id)) {
+                  return prev;
+                }
+
+                return [
+                  ...prev,
+                  {
+                    id: data.id,
+                    text: data.message,
+                    sender: { id: data.senderId, username: data.sender },
+                    attachmentUrl: data.attachmentUrl || null,
+                    timestamp: new Date().toISOString(),
+                    translated_text: null,
+                    translated_source_language: null,
+                    can_translate: Boolean((data.message || "").trim()),
+                    reactions: [],
+                    current_user_reaction: null,
+                  },
+                ];
+              });
               requestAnimationFrame(() => scrollToBottom("smooth"));
               if (data.senderId !== currentUserIdRef.current) {
                 markConversationRead(conversation.id).catch(() => {});
@@ -677,11 +692,20 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
             case "message_reaction":
               if (data.message?.id) {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === data.message.id ? { ...m, ...data.message } : m))
+                mergeMessageUpdate(data.message);
+              }
+              invalidateConversationHistoryCache(conversation.id);
+              break;
+
+            case "message_edited":
+              if (data.message?.id) {
+                mergeMessageUpdate(data.message);
+                setEditingMessage((current) =>
+                  current?.id === data.message.id ? null : current
                 );
               }
               invalidateConversationHistoryCache(conversation.id);
+              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
               break;
 
             case "user_typing":
@@ -815,6 +839,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     conversation?.id,
     flushPendingIceCandidates,
     getElapsedCallSeconds,
+    mergeMessageUpdate,
     onConversationTypingChange,
     queryClient,
     resetCallState,
@@ -970,6 +995,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   const handleDeleteMessage = async (messageId) => {
+    if (editingMessage?.id === messageId) {
+      setEditingMessage(null);
+    }
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
     try {
@@ -982,11 +1010,36 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   const handleMessageReactionChange = (updatedMessage) => {
-    if (!updatedMessage?.id) return;
-    setMessages((prev) =>
-      prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
-    );
+    mergeMessageUpdate(updatedMessage);
     invalidateConversationHistoryCache(conversation.id);
+  };
+
+  const handleStartEditMessage = (message) => {
+    if (!message?.id) return;
+    setEditingMessage({
+      id: message.id,
+      text: message.text || "",
+    });
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessage(null);
+  };
+
+  const handleSaveEditedMessage = async (nextText) => {
+    if (!editingMessage?.id) return false;
+
+    try {
+      const updatedMessage = await editMessage(editingMessage.id, nextText);
+      mergeMessageUpdate(updatedMessage);
+      setEditingMessage(null);
+      invalidateConversationHistoryCache(conversation.id);
+      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      return true;
+    } catch (error) {
+      console.error("Failed to edit message:", error);
+      return false;
+    }
   };
 
   return (
@@ -1017,6 +1070,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               messages={messages}
               userId={user.user_id}
               onDeleteMessage={handleDeleteMessage}
+              onEditMessage={handleStartEditMessage}
               onMessageReactionChange={handleMessageReactionChange}
               baseTranslateLanguage={
                 user.base_translate_language || user.native_language || "english"
@@ -1037,7 +1091,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         <MessageInput
           conversationId={conversation.id}
           connectionStatus={socketStatus}
+          editingMessage={editingMessage}
+          onCancelEdit={handleCancelEditMessage}
           onSendMessage={handleSendMessage}
+          onSaveEdit={handleSaveEditedMessage}
           onTyping={handleTyping}
           onStopTyping={handleStopTyping}
         />

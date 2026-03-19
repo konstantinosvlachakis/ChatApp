@@ -8,10 +8,13 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const MessageInput = ({
   onSendMessage,
+  onSaveEdit,
+  onCancelEdit,
   onTyping,
   onStopTyping,
   conversationId,
   connectionStatus = "connected",
+  editingMessage = null,
 }) => {
   const draftStorageKey = conversationId
     ? `chat:draft:${conversationId}`
@@ -33,6 +36,8 @@ const MessageInput = ({
   const previousConnectionStatusRef = useRef(connectionStatus);
   const onTypingRef = useRef(onTyping);
   const onStopTypingRef = useRef(onStopTyping);
+  const draftBeforeEditRef = useRef("");
+  const previousEditingMessageIdRef = useRef(null);
 
   useEffect(() => {
     onTypingRef.current = onTyping;
@@ -43,10 +48,40 @@ const MessageInput = ({
   }, [onStopTyping]);
 
   useEffect(() => {
+    const previousEditingMessageId = previousEditingMessageIdRef.current;
+    const currentEditingMessageId = editingMessage?.id ?? null;
+
+    if (previousEditingMessageId === currentEditingMessageId) {
+      return;
+    }
+
+    previousEditingMessageIdRef.current = currentEditingMessageId;
+
+    if (!editingMessage) {
+      setMessage(draftBeforeEditRef.current || localStorage.getItem(draftStorageKey) || "");
+      draftBeforeEditRef.current = "";
+      return;
+    }
+
+    draftBeforeEditRef.current = message;
+    setMessage(editingMessage.text || "");
+    setComposerError("");
+    setShowPicker(false);
+    setPreviewImage(null);
+    setAttachedFile(null);
+    setAudioBlob(null);
+    setIsRecording(false);
+    inputRef.current?.focus();
+  }, [draftStorageKey, editingMessage?.id]);
+
+  useEffect(() => {
     setMessage(localStorage.getItem(draftStorageKey) || "");
   }, [draftStorageKey]);
 
   useEffect(() => {
+    if (editingMessage) {
+      return;
+    }
     if (message.trim()) {
       localStorage.setItem(draftStorageKey, message);
       return;
@@ -173,29 +208,22 @@ const MessageInput = ({
   };
 
   // ---------------- Send Message ----------------
-  const handleSend = () => {
+  const handleSend = async () => {
     setComposerError("");
+    if (editingMessage) {
+      const didSave = await onSaveEdit?.(message.trim());
+      if (!didSave) {
+        setComposerError("We couldn't save your edit. Please try again.");
+      }
+      return;
+    }
+
     if (!message.trim() && !attachedFile && !audioBlob) {
       setComposerError("Write a message or attach a file first.");
       return;
     }
 
-    const formData = new FormData();
-    if (message.trim()) formData.append("text", message);
-
-    if (attachedFile) {
-      // If it's an audio blob, give it a filename and type
-      if (attachedFile instanceof Blob && attachedFile.type.startsWith("audio/")) {
-        const file = new File([attachedFile], `recording_${Date.now()}.webm`, {
-          type: attachedFile.type || "audio/webm",
-        });
-        formData.append("attachment", file);
-      } else {
-        formData.append("attachment", attachedFile);
-      }
-    }
-
-    onSendMessage(message, attachedFile, previewImage);
+    await onSendMessage(message, attachedFile, previewImage);
     if (isTypingRef.current) {
       onStopTypingRef.current?.();
       isTypingRef.current = false;
@@ -236,6 +264,7 @@ const MessageInput = ({
         <button
           type="button"
           onClick={() => setShowPicker((prev) => !prev)}
+          disabled={Boolean(editingMessage)}
           className="mb-1 rounded-full border border-slate-200 bg-white p-2 text-base shadow-sm transition hover:bg-slate-50"
           aria-label="Open emoji picker"
         >
@@ -243,6 +272,21 @@ const MessageInput = ({
         </button>
 
         <div className="flex-1 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+          {editingMessage && (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <div>
+                <p className="font-semibold">Editing message</p>
+                <p className="text-xs text-amber-700">Press Enter to save, or cancel to keep the original.</p>
+              </div>
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-amber-800 transition hover:bg-amber-100"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           {(previewImage || audioBlob) && (
             <div className="mb-2">
               {previewImage && (
@@ -291,7 +335,7 @@ const MessageInput = ({
               value={message}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message..."
+              placeholder={editingMessage ? "Edit your message..." : "Type your message..."}
               className="w-full min-w-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:text-base"
             />
 
@@ -300,6 +344,7 @@ const MessageInput = ({
               type="button"
               className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100"
               onClick={() => fileInputRef.current.click()}
+              disabled={Boolean(editingMessage)}
               aria-label="Attach file"
             >
               <AttachFileIcon fontSize="small" />
@@ -318,6 +363,7 @@ const MessageInput = ({
                 isRecording ? "text-rose-500" : "text-slate-500"
               }`}
               onClick={isRecording ? handleStopRecording : handleStartRecording}
+              disabled={Boolean(editingMessage)}
               aria-label={isRecording ? "Stop recording" : "Start recording"}
             >
               <SettingsVoiceIcon fontSize="small" />
@@ -347,9 +393,15 @@ const MessageInput = ({
           type="button"
           className="mb-1 rounded-full bg-slate-800 p-2 text-white shadow-sm transition hover:bg-slate-700"
           onClick={handleSend}
-          aria-label="Send message"
+          aria-label={editingMessage ? "Save edited message" : "Send message"}
         >
-          <SendIcon fontSize="small" />
+          {editingMessage ? (
+            <span className="px-2 text-xs font-semibold uppercase tracking-[0.16em]">
+              Save
+            </span>
+          ) : (
+            <SendIcon fontSize="small" />
+          )}
         </button>
       </div>
     </div>
