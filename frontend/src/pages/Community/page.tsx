@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ProfileCard from "../../components/Cards/ProfileCard";
+import { ProfileCard } from "../../components/Cards";
 import { BASE_URL } from "../../constants/constants";
 
 interface RawProfile {
