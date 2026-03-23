@@ -10,6 +10,7 @@ interface RawProfile {
   languagesPracticing?: string[];
   bio?: string;
   profileImage?: string;
+  isPremium?: boolean;
 }
 
 const PAGE_SIZE = 24;
@@ -75,6 +76,7 @@ const CommunityPage: React.FC = () => {
                 ? `${BASE_URL}${p.profile_image_url}`
                 : `${BASE_URL}/media/${p.profile_image_url}`
             : undefined,
+          isPremium: Boolean(p.is_premium || p.premium || p.isPremium),
         }));
 
         if (isMounted) {
@@ -231,7 +233,7 @@ const CommunityPage: React.FC = () => {
             <p className="py-16 text-center text-[var(--lv-muted-text)]">Loading profiles…</p>
           ) : filteredProfiles.length > 0 ? (
             <>
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {filteredProfiles.map((profile, index) => (
                   <ProfileCard
                     key={profile.username}
@@ -241,6 +243,7 @@ const CommunityPage: React.FC = () => {
                     learningLanguage={profile.learningLanguage}
                     profileImage={profile.profileImage}
                     score={Math.max(1, 14 - (index % 14))}
+                    isPremium={profile.isPremium}
                     onClick={() => handleCardClick(profile)}
                   />
                 ))}

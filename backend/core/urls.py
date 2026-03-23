@@ -2,9 +2,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
-from django.views.generic.base import TemplateView
 from django.views.static import serve
-from .views import csrf
+from .views import csrf, front
 
 
 urlpatterns = [
@@ -27,5 +26,5 @@ else:
 
 # Serve React frontend for all other routes (development and production)
 urlpatterns += [
-    re_path(r"^.*$", TemplateView.as_view(template_name="index.html"), name="home"),
+    re_path(r"^.*$", front, name="home"),
 ]

@@ -1,6 +1,6 @@
 {
   "short_name": "LangVoyage",
-  "name": "A simple social network for language learners",
+  "name": "LangVoyage - Language exchange and speaking practice",
   "icons": [
     {
       "src": "/favicon.ico",
@@ -20,6 +20,7 @@
   ],
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#14314a",
+  "background_color": "#081320",
+  "description": "Language exchange and speaking practice with guided conversations and daily routines."
 }

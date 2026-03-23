@@ -10,7 +10,9 @@ const queryConfig: DefaultOptions = {
   },
 };
 
-export const queryClient = new QueryClient({ defaultOptions: queryConfig });
+export const createQueryClient = () => new QueryClient({ defaultOptions: queryConfig });
+
+export const queryClient = createQueryClient();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ExtractFnReturnType<FnType extends (...args: any) => any> = PromiseValue<
