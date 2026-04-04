@@ -7,6 +7,7 @@ import CallPanel from "./CallPanel";
 import axios from "../../../utils/axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { editMessage } from "../api/editMessage";
+import { pinMessage } from "../api/pinMessage";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
@@ -58,6 +59,7 @@ const resolveAvatarUrl = (path) => {
 
 const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
+  const [pinnedMessages, setPinnedMessages] = useState(conversation.pinned_messages || []);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [socketStatus, setSocketStatus] = useState("connecting");
   const [callState, setCallState] = useState("idle");
@@ -112,6 +114,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setMessages((prev) =>
       prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
     );
+    setPinnedMessages((prev) => {
+      const remaining = prev.filter((msg) => msg.id !== updatedMessage.id);
+      if (!updatedMessage.is_pinned) {
+        return remaining;
+      }
+      return [...remaining, updatedMessage].sort((a, b) => {
+        const left = new Date(b.pinned_at || b.timestamp || 0).getTime();
+        const right = new Date(a.pinned_at || a.timestamp || 0).getTime();
+        return left - right;
+      });
+    });
   }, []);
 
   useEffect(() => {
@@ -151,6 +164,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       const payload = response.data || {};
       const normalized = {
         messages: Array.isArray(payload.messages) ? payload.messages : [],
+        pinned_messages: Array.isArray(payload.pinned_messages)
+          ? payload.pinned_messages
+          : [],
         pagination: payload.pagination || null,
       };
       queryClient.setQueryData(cacheKey, normalized);
@@ -581,9 +597,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (!conversation?.id) return;
     let isMounted = true;
     const seedMessages = Array.isArray(conversation.messages) ? conversation.messages : [];
+    const seedPinnedMessages = Array.isArray(conversation.pinned_messages)
+      ? conversation.pinned_messages
+      : [];
 
     const loadLatestMessages = async () => {
       setMessages(seedMessages);
+      setPinnedMessages(seedPinnedMessages);
       setLoadingHistory(true);
       setLoadingOlderMessages(false);
       isFetchingOlderRef.current = false;
@@ -591,6 +611,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         const payload = await fetchMessagesPage(conversation.id, 1, { force: true });
         if (!isMounted) return;
         setMessages(payload.messages || []);
+        setPinnedMessages(payload.pinned_messages || []);
         setCurrentMessagesPage(payload.pagination?.page || 1);
         setHasOlderMessages(Boolean(payload.pagination?.has_next));
         requestAnimationFrame(() => {
@@ -613,7 +634,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     return () => {
       isMounted = false;
     };
-  }, [conversation?.id, conversation?.messages, fetchMessagesPage, loading, scrollToBottom]);
+  }, [
+    conversation?.id,
+    conversation?.messages,
+    conversation?.pinned_messages,
+    fetchMessagesPage,
+    loading,
+    scrollToBottom,
+  ]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -705,6 +733,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 setEditingMessage((current) =>
                   current?.id === data.message.id ? null : current
                 );
+              }
+              invalidateConversationHistoryCache(conversation.id);
+              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+              break;
+
+            case "message_pinned":
+              if (data.message?.id) {
+                mergeMessageUpdate(data.message);
               }
               invalidateConversationHistoryCache(conversation.id);
               queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
@@ -1009,6 +1045,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       setEditingMessage(null);
     }
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+    setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
     try {
       await deleteMessage(messageId);
@@ -1063,6 +1100,19 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     }
   };
 
+  const handleTogglePinMessage = async (message) => {
+    if (!message?.id) return;
+
+    try {
+      const updatedMessage = await pinMessage(message.id, !message.is_pinned);
+      mergeMessageUpdate(updatedMessage);
+      invalidateConversationHistoryCache(conversation.id);
+      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+    } catch (error) {
+      console.error("Failed to update pinned message:", error);
+    }
+  };
+
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex-shrink-0">
@@ -1075,6 +1125,43 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           socketStatus={socketStatus}
         />
       </div>
+
+      {pinnedMessages.length > 0 && (
+        <div className="mx-2 mt-2 flex-shrink-0 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 shadow-[0_8px_24px_-20px_rgba(120,53,15,0.35)] sm:mx-4 sm:px-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
+              Pinned messages
+            </p>
+            <span className="text-xs text-amber-700/80">
+              {pinnedMessages.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {pinnedMessages.map((message) => (
+              <div
+                key={`pinned-${message.id}`}
+                className="rounded-2xl border border-amber-200/70 bg-white/80 px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="truncate text-sm font-semibold text-slate-800">
+                    {message.sender?.username || "Unknown user"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePinMessage(message)}
+                    className="shrink-0 rounded-full border border-amber-200 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition hover:bg-amber-100"
+                  >
+                    Unpin
+                  </button>
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                  {message.text?.trim() || "Attachment"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         ref={messagesContainerRef}
@@ -1094,6 +1181,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               onEditMessage={handleStartEditMessage}
               onCommentMessage={handleStartCommentMessage}
               onMessageReactionChange={handleMessageReactionChange}
+              onTogglePinMessage={handleTogglePinMessage}
               baseTranslateLanguage={
                 user.base_translate_language || user.native_language || "english"
               }

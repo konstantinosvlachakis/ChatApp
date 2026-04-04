@@ -7,6 +7,7 @@ import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutl
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
+import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
@@ -39,6 +40,7 @@ const Conversation = ({
   onEditMessage,
   onCommentMessage,
   onMessageReactionChange,
+  onTogglePinMessage,
   baseTranslateLanguage = "english",
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
@@ -516,6 +518,12 @@ const Conversation = ({
                   {hasText && (
                     <div>
                       <p>{msg.text}</p>
+                      {msg.is_pinned && (
+                        <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <PushPinRoundedIcon sx={{ fontSize: 12 }} />
+                          Pinned
+                        </p>
+                      )}
                       {msg.edited_at && (
                         <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500">
                           Edited
@@ -629,6 +637,21 @@ const Conversation = ({
                   >
                     <CampaignRoundedIcon sx={{ fontSize: 18 }} />
                     <span>Speak</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onTogglePinMessage?.(msg);
+                      closeMessageActionsMenu();
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+                      msg.is_pinned
+                        ? "text-amber-700 hover:bg-amber-50"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    <PushPinRoundedIcon sx={{ fontSize: 18 }} />
+                    <span>{msg.is_pinned ? "Unpin message" : "Pin message"}</span>
                   </button>
                   {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg)) && (
                     <div className="my-1 border-t border-slate-200" />

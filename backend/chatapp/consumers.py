@@ -378,6 +378,16 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
         )
 
+    async def message_pin_event(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_pinned",
+                    "message": event.get("message"),
+                }
+            )
+        )
+
     async def call_event(self, event):
         if self.channel_name == event["sender_channel_name"]:
             return

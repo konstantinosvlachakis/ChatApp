@@ -84,6 +84,10 @@ const LoginPage = () => {
 
   const inputClassName =
     "w-full rounded-2xl border border-[#d6e0e8] bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#1b7f79] focus:ring-4 focus:ring-[rgba(27,127,121,0.12)]";
+  const passwordFieldClassName =
+    "flex items-center gap-2 rounded-2xl border border-[#d6e0e8] bg-white px-3 shadow-sm transition focus-within:border-[#1b7f79] focus-within:ring-4 focus-within:ring-[rgba(27,127,121,0.12)]";
+  const passwordInputClassName =
+    "min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
 
   return (
       <form onSubmit={handleLogin} className="space-y-3.5 lg:space-y-3">
@@ -109,11 +113,11 @@ const LoginPage = () => {
           <label htmlFor="password" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
             Password
           </label>
-          <div className="relative">
+          <div className={passwordFieldClassName}>
             <input
               id="password"
               type={showPassword ? "text" : "password"}
-              className={inputClassName}
+              className={passwordInputClassName}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
@@ -122,7 +126,7 @@ const LoginPage = () => {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500"
+              className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-200"
             >
               {showPassword ? "Hide" : "Show"}
             </button>

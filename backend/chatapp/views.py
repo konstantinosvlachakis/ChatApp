@@ -1384,6 +1384,13 @@ class MessageListView(APIView):
         )
         payload = {
             "messages": serializer.data,
+            "pinned_messages": MessageSerializer(
+                conversation.messages.filter(pinned_at__isnull=False)
+                .select_related("sender", "pinned_by", "reply_to__sender")
+                .order_by("-pinned_at", "-id"),
+                many=True,
+                context={"request": request},
+            ).data,
             "pagination": {
                 "page": page_obj.number,
                 "page_size": page_size,
@@ -2063,6 +2070,62 @@ def react_to_message_view(request, message_id):
             str(message.conversation_id),
             {
                 "type": "message_reaction_event",
+                "message": serialized_message,
+            },
+        )
+
+    return Response(serialized_message, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def pin_message_view(request, message_id):
+    message = get_object_or_404(Message, id=message_id)
+    conversation = message.conversation
+    participants = {conversation.sender_id, conversation.receiver_id}
+
+    if request.user.id not in participants:
+        return Response(
+            {"error": "You do not have access to this message."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    raw_is_pinned = request.data.get("is_pinned")
+    if isinstance(raw_is_pinned, str):
+        should_pin = raw_is_pinned.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        should_pin = bool(raw_is_pinned)
+    update_fields = ["pinned_at", "pinned_by"]
+
+    if should_pin:
+        message.pinned_at = timezone.now()
+        message.pinned_by = request.user
+        trigger = "message_pinned"
+    else:
+        message.pinned_at = None
+        message.pinned_by = None
+        trigger = "message_unpinned"
+
+    message.save(update_fields=update_fields)
+
+    bump_conversation_list_cache_version(conversation.sender_id)
+    bump_conversation_list_cache_version(conversation.receiver_id)
+    broadcast_conversation_update(
+        [conversation.sender_id, conversation.receiver_id],
+        conversation.id,
+        trigger,
+        actor_id=request.user.id,
+    )
+
+    serializer = MessageSerializer(message, context={"request": request})
+    serialized_message = serializer.data
+
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            str(message.conversation_id),
+            {
+                "type": "message_pin_event",
                 "message": serialized_message,
             },
         )

@@ -40,6 +40,7 @@ export interface Conversation {
       };
       timestamp: string;
     };
+    pinned_messages?: Message[];
   }
 
   export interface Message {
@@ -50,7 +51,29 @@ export interface Conversation {
       username: string;
     };
     timestamp: string;
+    status?: "sent" | "delivered" | "read";
+    edited_at?: string | null;
     attachment_url?: string; // Optional field for attachment URL
+    attachment?: string | null;
+    attachmentUrl?: string | null;
+    is_pinned?: boolean;
+    pinned_at?: string | null;
+    pinned_by?: {
+      id: number;
+      username: string;
+    } | null;
+    reply_to?: {
+      id: number;
+      text: string;
+      timestamp: string;
+      sender: {
+        id: number | null;
+        username: string;
+      };
+    } | null;
+    translated_text?: string | null;
+    translated_source_language?: string | null;
+    can_translate?: boolean;
     reactions?: {
       id: number;
       user_id: number;

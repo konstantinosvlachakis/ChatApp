@@ -101,6 +101,8 @@ class MessageSerializer(serializers.ModelSerializer):
     reactions = serializers.SerializerMethodField()
     current_user_reaction = serializers.SerializerMethodField()
     reply_to = serializers.SerializerMethodField()
+    pinned_by = serializers.SerializerMethodField()
+    is_pinned = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -113,6 +115,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "attachment_url",
             "timestamp",
             "edited_at",
+            "is_pinned",
+            "pinned_at",
+            "pinned_by",
             "reply_to",
             "translated_text",
             "translated_source_language",
@@ -228,6 +233,19 @@ class MessageSerializer(serializers.ModelSerializer):
             },
         }
 
+    def get_pinned_by(self, obj):
+        pinned_by = getattr(obj, "pinned_by", None)
+        if not pinned_by:
+            return None
+
+        return {
+            "id": pinned_by.id,
+            "username": pinned_by.username,
+        }
+
+    def get_is_pinned(self, obj):
+        return bool(getattr(obj, "pinned_at", None))
+
 
 class ConversationSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
@@ -235,6 +253,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     messages = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    pinned_messages = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -246,6 +265,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "updated_at",
             "last_message",
             "unread_count",
+            "pinned_messages",
             "messages",
         ]
 
@@ -284,3 +304,20 @@ class ConversationSerializer(serializers.ModelSerializer):
             return 0
 
         return obj.messages.exclude(sender=request.user).exclude(status="read").count()
+
+    def get_pinned_messages(self, obj):
+        include_messages = bool(self.context.get("include_messages"))
+        include_pinned_messages = bool(self.context.get("include_pinned_messages"))
+        if not include_messages and not include_pinned_messages:
+            return []
+
+        pinned_messages = (
+            obj.messages.filter(pinned_at__isnull=False)
+            .select_related("sender", "pinned_by", "reply_to__sender")
+            .order_by("-pinned_at", "-id")
+        )
+        return MessageSerializer(
+            pinned_messages,
+            many=True,
+            context=self.context,
+        ).data
