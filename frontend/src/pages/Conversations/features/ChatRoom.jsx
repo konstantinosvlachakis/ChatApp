@@ -8,6 +8,8 @@ import axios from "../../../utils/axios";
 import { deleteMessage } from "../api/deleteMessage";
 import { editMessage } from "../api/editMessage";
 import { pinMessage } from "../api/pinMessage";
+import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { BASE_URL } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
@@ -60,6 +62,7 @@ const resolveAvatarUrl = (path) => {
 const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [pinnedMessages, setPinnedMessages] = useState(conversation.pinned_messages || []);
+  const [showPinnedMenu, setShowPinnedMenu] = useState(false);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [socketStatus, setSocketStatus] = useState("connecting");
   const [callState, setCallState] = useState("idle");
@@ -98,6 +101,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const isFetchingOlderRef = useRef(false);
   const isLocalUserTypingRef = useRef(false);
   const currentUserIdRef = useRef(null);
+  const currentMessagesPageRef = useRef(1);
+  const hasOlderMessagesRef = useRef(false);
+  const pinnedMenuRef = useRef(null);
 
   const { user, loading } = useUser();
   const { onlineUserIds } = usePresence();
@@ -131,6 +137,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     currentUserIdRef.current = user?.user_id ?? null;
   }, [user?.user_id]);
 
+  useEffect(() => {
+    currentMessagesPageRef.current = currentMessagesPage;
+  }, [currentMessagesPage]);
+
+  useEffect(() => {
+    hasOlderMessagesRef.current = hasOlderMessages;
+  }, [hasOlderMessages]);
+
+  useEffect(() => {
+    if (!showPinnedMenu) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!pinnedMenuRef.current?.contains(event.target)) {
+        setShowPinnedMenu(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [showPinnedMenu]);
+
   const scrollToBottom = useCallback((behavior = "auto") => {
     if (!messagesContainerRef.current) return;
     messagesContainerRef.current.scrollTo({
@@ -138,6 +165,40 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       behavior,
     });
   }, []);
+
+  const waitForNextPaint = useCallback(
+    () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      }),
+    []
+  );
+
+  const scrollToMessage = useCallback(
+    async (messageId, behavior = "smooth") => {
+      const container = messagesContainerRef.current;
+      if (!container || !messageId) return false;
+
+      const selector = `[data-message-id="${messageId}"]`;
+      const target = container.querySelector(selector);
+      if (!target) return false;
+
+      target.scrollIntoView({ behavior, block: "center" });
+      const bubble = target.querySelector('[data-message-bubble="true"]');
+      if (bubble) {
+        bubble.style.transition = "box-shadow 900ms ease, transform 260ms ease";
+        bubble.style.boxShadow =
+          "0 0 0 3px rgba(148, 163, 184, 0.28), 0 16px 32px -24px rgba(15, 23, 42, 0.35)";
+        bubble.style.transform = "translateY(-1px)";
+        window.setTimeout(() => {
+          bubble.style.boxShadow = "";
+          bubble.style.transform = "";
+        }, 260);
+      }
+      return true;
+    },
+    []
+  );
 
   const fetchMessagesPage = useCallback(
     async (conversationId, page, { force = false } = {}) => {
@@ -173,6 +234,55 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       return normalized;
     },
     [queryClient]
+  );
+
+  const jumpToPinnedMessage = useCallback(
+    async (messageId) => {
+      if (!conversation?.id || !messageId) return;
+
+      const foundInCurrentMessages = await scrollToMessage(messageId);
+      if (foundInCurrentMessages) return;
+
+      let nextPage = currentMessagesPageRef.current + 1;
+      let hasMore = hasOlderMessagesRef.current;
+      if (!hasMore || isFetchingOlderRef.current) return;
+
+      setLoadingOlderMessages(true);
+      isFetchingOlderRef.current = true;
+
+      try {
+        while (hasMore) {
+          const container = messagesContainerRef.current;
+          if (container) {
+            scrollAdjustmentHeightRef.current = container.scrollHeight;
+          }
+
+          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
+
+          setMessages((prev) => {
+            const seen = new Set(prev.map((msg) => msg.id));
+            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
+            return [...uniqueOlder, ...prev];
+          });
+          setCurrentMessagesPage(payload.pagination?.page || nextPage);
+          setHasOlderMessages(Boolean(payload.pagination?.has_next));
+
+          nextPage = (payload.pagination?.page || nextPage) + 1;
+          hasMore = Boolean(payload.pagination?.has_next);
+
+          await waitForNextPaint();
+          const foundAfterLoad = await scrollToMessage(messageId);
+          if (foundAfterLoad) return;
+        }
+      } catch (error) {
+        console.error("Failed to load older messages while jumping to pinned message:", error);
+      } finally {
+        isFetchingOlderRef.current = false;
+        setLoadingOlderMessages(false);
+      }
+    },
+    [conversation?.id, fetchMessagesPage, scrollToMessage, waitForNextPaint]
   );
 
   const invalidateConversationHistoryCache = useCallback(
@@ -1106,12 +1216,18 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     try {
       const updatedMessage = await pinMessage(message.id, !message.is_pinned);
       mergeMessageUpdate(updatedMessage);
+      if (message.id === latestPinnedMessage?.id && pinnedMessages.length <= 1) {
+        setShowPinnedMenu(false);
+      }
       invalidateConversationHistoryCache(conversation.id);
       queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
     } catch (error) {
       console.error("Failed to update pinned message:", error);
     }
   };
+
+  const latestPinnedMessage = pinnedMessages[0] || null;
+  const additionalPinnedCount = Math.max(0, pinnedMessages.length - 1);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -1126,43 +1242,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         />
       </div>
 
-      {pinnedMessages.length > 0 && (
-        <div className="mx-2 mt-2 flex-shrink-0 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 shadow-[0_8px_24px_-20px_rgba(120,53,15,0.35)] sm:mx-4 sm:px-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
-              Pinned messages
-            </p>
-            <span className="text-xs text-amber-700/80">
-              {pinnedMessages.length}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {pinnedMessages.map((message) => (
-              <div
-                key={`pinned-${message.id}`}
-                className="rounded-2xl border border-amber-200/70 bg-white/80 px-3 py-2"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-sm font-semibold text-slate-800">
-                    {message.sender?.username || "Unknown user"}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => handleTogglePinMessage(message)}
-                    className="shrink-0 rounded-full border border-amber-200 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition hover:bg-amber-100"
-                  >
-                    Unpin
-                  </button>
-                </div>
-                <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                  {message.text?.trim() || "Attachment"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div
         ref={messagesContainerRef}
         className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-24 sm:px-4"
@@ -1171,6 +1250,98 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           <div className="p-4 text-center text-sm text-gray-500">Loading chat history...</div>
         ) : (
           <>
+            {latestPinnedMessage && (
+              <div className="sticky top-0 z-20 mb-2 flex justify-center pt-1">
+                <div ref={pinnedMenuRef} className="relative w-full max-w-[30rem]">
+                  <div
+                    onClick={() => jumpToPinnedMessage(latestPinnedMessage.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        jumpToPinnedMessage(latestPinnedMessage.id);
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-full border border-[rgba(214,206,184,0.7)] bg-[rgba(244,239,228,0.8)] px-3 py-2 text-left shadow-[0_10px_26px_-24px_rgba(91,77,44,0.18)] backdrop-blur-xl transition hover:bg-[rgba(244,239,228,0.9)] supports-[backdrop-filter]:bg-[rgba(239,233,219,0.66)]"
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/68 text-[#8a7958]">
+                      <PushPinRoundedIcon sx={{ fontSize: 13 }} />
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm text-[#6c6353]">
+                      {latestPinnedMessage.text?.trim() || "Pinned attachment"}
+                    </p>
+                    {additionalPinnedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setShowPinnedMenu((current) => !current);
+                        }}
+                        className="shrink-0 rounded-full bg-white/76 px-2 py-0.5 text-xs font-semibold text-[#7a705f] transition hover:bg-white"
+                        aria-label="Show all pinned messages"
+                      >
+                        +{additionalPinnedCount}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleTogglePinMessage(latestPinnedMessage);
+                      }}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#9b8d74] transition hover:bg-white/75 hover:text-[#6c6353]"
+                      aria-label="Unpin message"
+                    >
+                      <CloseRoundedIcon sx={{ fontSize: 15 }} />
+                    </button>
+                  </div>
+                  {showPinnedMenu && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+0.45rem)] rounded-2xl border border-[rgba(214,206,184,0.7)] bg-[rgba(248,244,236,0.94)] p-2 shadow-[0_18px_40px_-26px_rgba(91,77,44,0.18)] backdrop-blur-xl">
+                      <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8e826e]">
+                        All pinned
+                      </div>
+                      <div className="space-y-1">
+                        {pinnedMessages.map((message) => (
+                          <div
+                            key={`pinned-menu-${message.id}`}
+                            onClick={() => {
+                              setShowPinnedMenu(false);
+                              jumpToPinnedMessage(message.id);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setShowPinnedMenu(false);
+                                jumpToPinnedMessage(message.id);
+                              }
+                            }}
+                            className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-white/75"
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <p className="min-w-0 flex-1 truncate text-sm text-[#6c6353]">
+                              {message.text?.trim() || "Pinned attachment"}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleTogglePinMessage(message);
+                              }}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#a1937b] transition hover:bg-white hover:text-[#6c6353]"
+                              aria-label="Unpin message"
+                            >
+                              <CloseRoundedIcon sx={{ fontSize: 14 }} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {loadingOlderMessages && (
               <div className="pb-2 text-center text-xs text-gray-400">Loading older messages...</div>
             )}

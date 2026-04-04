@@ -427,11 +427,13 @@ const Conversation = ({
           return (
             <div
               key={msg.id || index}
+              data-message-id={msg.id}
               className={`group mb-3 flex flex-col ${
                 isSentByUser ? "items-end" : "items-start"
               }`}
             >
               <div
+                data-message-bubble="true"
                 className={`relative max-w-[calc(100%-2rem)] break-words rounded-2xl px-3 py-2 shadow-sm sm:max-w-md sm:px-4 ${
                   isSentByUser
                     ? "bg-blue-100 text-gray-900"
