@@ -81,6 +81,13 @@ export async function reactToMessage(messageId: number, emoji?: string) {
   return response.data;
 }
 
+export async function pinConversationMessage(messageId: number, isPinned: boolean) {
+  const response = await api.patch(`/messages/${messageId}/pin/`, {
+    is_pinned: isPinned,
+  });
+  return response.data;
+}
+
 export async function deleteConversationMessage(messageId: number) {
   const response = await api.delete(`/messages/${messageId}/delete/`);
   return response.data;

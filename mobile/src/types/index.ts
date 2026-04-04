@@ -39,6 +39,13 @@ export interface ChatMessage {
   sender: ConversationParticipant;
   attachment_url?: string | null;
   timestamp: string;
+  edited_at?: string | null;
+  is_pinned?: boolean;
+  pinned_at?: string | null;
+  pinned_by?: {
+    id: number;
+    username: string;
+  } | null;
   translated_text?: string | null;
   translated_source_language?: string | null;
   can_translate?: boolean;
@@ -68,6 +75,7 @@ export interface Conversation {
   updated_at: string;
   last_message: ChatMessage | null;
   unread_count: number;
+  pinned_messages?: ChatMessage[];
   messages: ChatMessage[];
 }
 

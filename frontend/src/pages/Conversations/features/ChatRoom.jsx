@@ -1620,7 +1620,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           <>
             {latestPinnedMessage && (
               <div className="sticky top-0 z-20 mb-2 flex justify-center pt-1">
-                <div ref={pinnedMenuRef} className="relative w-full max-w-[30rem]">
+                <div ref={pinnedMenuRef} className="relative w-full max-w-[30rem] px-1 sm:px-0">
                   <div
                     onClick={() => jumpToPinnedMessage(latestPinnedMessage.id)}
                     onKeyDown={(event) => {
@@ -1629,14 +1629,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                         jumpToPinnedMessage(latestPinnedMessage.id);
                       }
                     }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-full border border-[rgba(214,206,184,0.7)] bg-[rgba(244,239,228,0.8)] px-3 py-2 text-left shadow-[0_10px_26px_-24px_rgba(91,77,44,0.18)] backdrop-blur-xl transition hover:bg-[rgba(244,239,228,0.9)] supports-[backdrop-filter]:bg-[rgba(239,233,219,0.66)]"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-full border border-[rgba(214,206,184,0.7)] bg-[rgba(244,239,228,0.8)] px-2.5 py-1.5 text-left shadow-[0_10px_26px_-24px_rgba(91,77,44,0.18)] backdrop-blur-xl transition hover:bg-[rgba(244,239,228,0.9)] supports-[backdrop-filter]:bg-[rgba(239,233,219,0.66)] sm:px-3 sm:py-2"
                     role="button"
                     tabIndex={0}
                   >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/68 text-[#8a7958]">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/68 text-[#8a7958] sm:h-6 sm:w-6">
                       <PushPinRoundedIcon sx={{ fontSize: 13 }} />
                     </span>
-                    <p className="min-w-0 flex-1 truncate text-sm text-[#6c6353]">
+                    <p className="min-w-0 flex-1 truncate text-[13px] text-[#6c6353] sm:text-sm">
                       {latestPinnedMessage.text?.trim() || "Pinned attachment"}
                     </p>
                     {additionalPinnedCount > 0 && (
@@ -1646,7 +1646,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                           event.stopPropagation();
                           setShowPinnedMenu((current) => !current);
                         }}
-                        className="shrink-0 rounded-full bg-white/76 px-2 py-0.5 text-xs font-semibold text-[#7a705f] transition hover:bg-white"
+                        className="shrink-0 rounded-full bg-white/76 px-2 py-0.5 text-[11px] font-semibold text-[#7a705f] transition hover:bg-white sm:text-xs"
                         aria-label="Show all pinned messages"
                       >
                         +{additionalPinnedCount}
@@ -1658,14 +1658,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                         event.stopPropagation();
                         handleTogglePinMessage(latestPinnedMessage);
                       }}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#9b8d74] transition hover:bg-white/75 hover:text-[#6c6353]"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#9b8d74] transition hover:bg-white/75 hover:text-[#6c6353] sm:h-7 sm:w-7"
                       aria-label="Unpin message"
                     >
                       <CloseRoundedIcon sx={{ fontSize: 15 }} />
                     </button>
                   </div>
                   {showPinnedMenu && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+0.45rem)] rounded-2xl border border-[rgba(214,206,184,0.7)] bg-[rgba(248,244,236,0.94)] p-2 shadow-[0_18px_40px_-26px_rgba(91,77,44,0.18)] backdrop-blur-xl">
+                    <div className="absolute left-1 right-1 top-[calc(100%+0.45rem)] rounded-2xl border border-[rgba(214,206,184,0.7)] bg-[rgba(248,244,236,0.94)] p-2 shadow-[0_18px_40px_-26px_rgba(91,77,44,0.18)] backdrop-blur-xl sm:left-0 sm:right-0">
                       <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8e826e]">
                         All pinned
                       </div>
@@ -1744,7 +1744,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         <button
           type="button"
           onClick={handleJumpToLatest}
-          className="absolute bottom-24 right-4 z-20 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-[0_12px_28px_-18px_rgba(15,23,42,0.45)] backdrop-blur transition hover:bg-white hover:text-slate-800"
+          className="absolute bottom-24 right-3 z-20 rounded-full border border-slate-200 bg-white/95 px-2.5 py-2 text-[11px] font-semibold text-slate-600 shadow-[0_12px_28px_-18px_rgba(15,23,42,0.45)] backdrop-blur transition hover:bg-white hover:text-slate-800 sm:bottom-24 sm:right-4 sm:px-3 sm:text-xs"
         >
           Latest
         </button>

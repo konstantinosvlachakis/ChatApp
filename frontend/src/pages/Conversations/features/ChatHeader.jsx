@@ -51,9 +51,10 @@ const ChatHeader = ({
   const isOtherUserOnline = Boolean(
     otherUser?.is_virtual_online || (otherUser?.id && onlineUserIds?.has(otherUser.id))
   );
+  const shouldCollapseActionsForSearch = isSearchOpen;
 
   return (
-    <div className="mx-2 mt-2 flex items-center gap-3 rounded-[1.35rem] border border-slate-200/80 bg-white/92 px-3 py-2 shadow-[0_14px_32px_-24px_rgba(15,23,42,0.38)] backdrop-blur sm:mx-4 sm:gap-4 sm:px-5 sm:py-2.5">
+    <div className="mx-2 mt-2 flex items-center gap-2 rounded-[1.2rem] border border-slate-200/80 bg-white/92 px-2.5 py-2 shadow-[0_14px_32px_-24px_rgba(15,23,42,0.38)] backdrop-blur sm:mx-4 sm:gap-4 sm:rounded-[1.35rem] sm:px-5 sm:py-2.5">
       <button
         type="button"
         className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 md:hidden"
@@ -65,7 +66,7 @@ const ChatHeader = ({
       <img
         src={normalizedImageSrc}
         alt={otherUser.username}
-        className="h-10 w-10 cursor-pointer rounded-full border border-white object-cover shadow-[0_8px_18px_-10px_rgba(15,23,42,0.35)] ring-1 ring-slate-200 sm:h-11 sm:w-11"
+        className="h-9 w-9 cursor-pointer rounded-full border border-white object-cover shadow-[0_8px_18px_-10px_rgba(15,23,42,0.35)] ring-1 ring-slate-200 sm:h-11 sm:w-11"
         onError={(e) => {
           e.currentTarget.onerror = null;
           e.currentTarget.src = DEFAULT_AVATAR;
@@ -74,7 +75,7 @@ const ChatHeader = ({
       />
       <div className="min-w-0 flex-1">
         <h2
-          className="flex items-center gap-2 truncate cursor-pointer text-[1.05rem] font-semibold leading-none text-slate-800 sm:text-[1.15rem]"
+          className="flex items-center gap-2 truncate cursor-pointer text-[0.98rem] font-semibold leading-none text-slate-800 sm:text-[1.15rem]"
           onClick={() => navigate(`/people/${otherUser.username}`)}
         >
           {isOtherUserOnline && (
@@ -94,9 +95,13 @@ const ChatHeader = ({
               : "Conversation"}
         </p>
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div
+        className={`ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5 sm:gap-2 ${
+          shouldCollapseActionsForSearch ? "flex-1" : ""
+        }`}
+      >
         {isSearchOpen ? (
-          <div className="flex items-center gap-1 rounded-full border border-slate-200/90 bg-slate-50/90 px-2 py-1.5 shadow-inner shadow-white/70">
+          <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-slate-200/90 bg-slate-50/90 px-2 py-1.5 shadow-inner shadow-white/70 sm:max-w-[17rem] sm:flex-none">
             <SearchRoundedIcon sx={{ fontSize: 17 }} className="text-slate-400" />
             <input
               type="text"
@@ -109,10 +114,10 @@ const ChatHeader = ({
                 }
               }}
               placeholder="Search"
-              className="w-24 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:w-36"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:w-36 sm:flex-none"
               autoFocus
             />
-            <span className="min-w-[3rem] text-center text-[11px] font-medium text-slate-400">
+            <span className="hidden min-w-[3rem] text-center text-[11px] font-medium text-slate-400 sm:block">
               {isSearchingMessages ? "..." : searchResultLabel}
             </span>
             <button
@@ -156,7 +161,9 @@ const ChatHeader = ({
         )}
         <button
           type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10 ${
+            shouldCollapseActionsForSearch ? "hidden sm:flex" : "flex"
+          }`}
           onClick={onStartAudioCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start audio call"
@@ -166,7 +173,9 @@ const ChatHeader = ({
         </button>
         <button
           type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10 ${
+            shouldCollapseActionsForSearch ? "hidden sm:flex" : "flex"
+          }`}
           onClick={onStartVideoCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start video call"

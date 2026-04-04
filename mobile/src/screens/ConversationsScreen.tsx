@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   DeviceEventEmitter,
+  Easing,
   FlatList,
   Image as RNImage,
   Keyboard,
@@ -41,6 +43,7 @@ import {
   getCachedConversations,
   markConversationRead,
   deleteConversationMessage,
+  pinConversationMessage,
   reactToMessage,
   sendConversationMessage,
   translateConversationMessage,
@@ -66,6 +69,7 @@ type ChatPayload =
     }
   | { type: "deleteMessage"; messageId: number }
   | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
+  | { type: "message_pinned"; message?: ChatMessage }
   | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
   | { type: "user_typing" | "user_stopped_typing" };
 
@@ -90,6 +94,88 @@ function toReplyPreviewText(message?: { text?: string | null } | null) {
   const trimmed = message.text.trim();
   if (!trimmed) return "Attachment";
   return trimmed.length > 70 ? `${trimmed.slice(0, 70)}...` : trimmed;
+}
+
+function formatMessageTime(timestamp?: string | null) {
+  if (!timestamp) return "";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
+      .format(new Date(timestamp))
+      .replace(/\b(am|pm)\b/i, (value) => value.toUpperCase());
+  } catch {
+    return "";
+  }
+}
+
+function buildPinnedMessages(messages?: ChatMessage[] | null) {
+  return [...(messages || [])]
+    .filter((message) => Boolean(message?.is_pinned))
+    .sort(
+      (left, right) =>
+        new Date(right.pinned_at || right.timestamp).getTime() -
+        new Date(left.pinned_at || left.timestamp).getTime()
+    );
+}
+
+function findFirstUnreadMessageId(
+  messages: ChatMessage[],
+  unreadCount: number,
+  currentUserId?: number
+) {
+  if (!currentUserId || unreadCount <= 0) return null;
+  let remaining = unreadCount;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.sender?.id === currentUserId) continue;
+    remaining -= 1;
+    if (remaining <= 0) return message.id;
+  }
+  return null;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getDayKey(timestamp?: string | null) {
+  if (!timestamp) return "";
+  try {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  } catch {
+    return "";
+  }
+}
+
+function formatDaySeparator(timestamp?: string | null) {
+  if (!timestamp) return "";
+
+  try {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const isSameDay = (left: Date, right: Date) =>
+      left.getFullYear() === right.getFullYear() &&
+      left.getMonth() === right.getMonth() &&
+      left.getDate() === right.getDate();
+
+    if (isSameDay(date, today)) return "Today";
+    if (isSameDay(date, yesterday)) return "Yesterday";
+
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    }).format(date);
+  } catch {
+    return "";
+  }
 }
 
 export function ConversationsScreen() {
@@ -126,6 +212,13 @@ export function ConversationsScreen() {
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResultIds, setSearchResultIds] = useState<number[]>([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [showPinnedModal, setShowPinnedModal] = useState(false);
+  const [unreadAnchorMessageId, setUnreadAnchorMessageId] = useState<number | null>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [messageMenu, setMessageMenu] = useState<{
     message: ChatMessage;
     isMine: boolean;
@@ -139,6 +232,9 @@ export function ConversationsScreen() {
   const presenceSocketRef = useRef<WebSocket | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
   const messageInputRef = useRef<TextInput | null>(null);
+  const searchInputRef = useRef<TextInput | null>(null);
+  const messageHighlightOpacity = useRef(new Animated.Value(0)).current;
+  const messageHighlightScale = useRef(new Animated.Value(0.985)).current;
   const ignoreNextOutsideTapRef = useRef(false);
   const replyActivatedAtRef = useRef(0);
   const lastTapRef = useRef<{ messageId: number | null; at: number }>({
@@ -150,6 +246,7 @@ export function ConversationsScreen() {
   const remoteTypingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout> | null>>({});
   const messageListRef = useRef<FlatList<ChatMessage> | null>(null);
   const previousMessageCountRef = useRef(0);
+  const initialUnreadCountRef = useRef(0);
   const conversationsFetchMetaRef = useRef<{ inFlight: boolean; lastRunAt: number }>({
     inFlight: false,
     lastRunAt: 0,
@@ -161,6 +258,18 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     setReplyTarget(null);
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    setReactionPickerMessageId(null);
+    setHighlightedMessageId(null);
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResultIds([]);
+    setActiveSearchIndex(0);
+    setShowPinnedModal(false);
+    setShowJumpToLatest(false);
+    initialUnreadCountRef.current = selectedConversation?.unread_count || 0;
   }, [selectedConversation?.id]);
 
   useEffect(() => {
@@ -265,6 +374,16 @@ export function ConversationsScreen() {
       try {
         const response = await fetchConversation(conversationId);
         if (selectedConversationIdRef.current === conversationId) {
+          const sortedResponseMessages = [...(response.messages || [])].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          const firstUnreadMessageId = findFirstUnreadMessageId(
+            sortedResponseMessages,
+            response.unread_count || 0,
+            currentUserId
+          );
+          initialUnreadCountRef.current = response.unread_count || 0;
+          setUnreadAnchorMessageId(firstUnreadMessageId);
           setSelectedConversation(response);
           previousMessageCountRef.current = response.messages?.length || 0;
           await markConversationRead(conversationId);
@@ -275,7 +394,7 @@ export function ConversationsScreen() {
         setLoadingConversation(false);
       }
     },
-    [loadConversations]
+    [currentUserId, loadConversations]
   );
 
   useEffect(() => {
@@ -377,7 +496,9 @@ export function ConversationsScreen() {
       setSelectedConversation((prev) => {
         if (!prev || prev.id !== selectedConversation.id) return prev;
         const hasMessage = prev.messages.some((m) => m.id === savedMessage.id);
-        return hasMessage ? prev : { ...prev, messages: [...prev.messages, savedMessage] };
+        if (hasMessage) return prev;
+        const nextMessages = [...prev.messages, savedMessage];
+        return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
       });
       setMessageText("");
       setReplyTarget(null);
@@ -445,6 +566,8 @@ export function ConversationsScreen() {
     setMessageText("");
     setReactionPickerMessageId(null);
     setReplyTarget(null);
+    setUnreadAnchorMessageId(null);
+    setShowJumpToLatest(false);
   }, [emitTypingStopped]);
 
   const startConversation = useCallback(async () => {
@@ -468,14 +591,29 @@ export function ConversationsScreen() {
   const applyMessageUpdate = useCallback((updatedMessage: ChatMessage) => {
     setSelectedConversation((prev) => {
       if (!prev) return prev;
+      const nextMessages = prev.messages.map((message) =>
+        message.id === updatedMessage.id ? { ...message, ...updatedMessage } : message
+      );
       return {
         ...prev,
-        messages: prev.messages.map((message) =>
-          message.id === updatedMessage.id ? { ...message, ...updatedMessage } : message
-        ),
+        messages: nextMessages,
+        pinned_messages: buildPinnedMessages(nextMessages),
       };
     });
   }, []);
+
+  const togglePinnedMessage = useCallback(
+    async (message: ChatMessage) => {
+      try {
+        const updated = await pinConversationMessage(message.id, !message.is_pinned);
+        applyMessageUpdate(updated);
+        await loadConversations(true);
+      } catch {
+        Alert.alert("Pin failed", "Could not update this pinned message.");
+      }
+    },
+    [applyMessageUpdate, loadConversations]
+  );
 
   const handleReportUser = useCallback((username: string) => {
     if (chatActionLoading) return;
@@ -640,7 +778,9 @@ export function ConversationsScreen() {
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== conversationId) return prev;
               const exists = prev.messages.some((m) => m.id === newMessage.id);
-              return exists ? prev : { ...prev, messages: [...prev.messages, newMessage] };
+              if (exists) return prev;
+              const nextMessages = [...prev.messages, newMessage];
+              return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
             });
 
             const isIncoming = Boolean(data.senderId && data.senderId !== currentUserId);
@@ -666,7 +806,8 @@ export function ConversationsScreen() {
           if (data.type === "deleteMessage") {
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== conversationId) return prev;
-              return { ...prev, messages: prev.messages.filter((m) => m.id !== data.messageId) };
+              const nextMessages = prev.messages.filter((m) => m.id !== data.messageId);
+              return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
             });
             return;
           }
@@ -690,6 +831,11 @@ export function ConversationsScreen() {
             (data.type === "message_reaction" || data.type === "messageReaction") &&
             (data as any).message?.id
           ) {
+            applyMessageUpdate((data as any).message);
+            return;
+          }
+
+          if (data.type === "message_pinned" && (data as any).message?.id) {
             applyMessageUpdate((data as any).message);
             return;
           }
@@ -741,6 +887,30 @@ export function ConversationsScreen() {
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
   }, [selectedConversation]);
+
+  const pinnedMessages = useMemo(
+    () => buildPinnedMessages(selectedConversation?.pinned_messages || selectedConversation?.messages || []),
+    [selectedConversation?.messages, selectedConversation?.pinned_messages]
+  );
+
+  const latestPinnedMessage = pinnedMessages[0] || null;
+  const additionalPinnedCount = Math.max(0, pinnedMessages.length - 1);
+
+  const searchMatches = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return [];
+    return sortedMessages
+      .filter((message) => String(message.text || "").toLowerCase().includes(normalizedQuery))
+      .map((message) => message.id);
+  }, [searchQuery, sortedMessages]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    setSearchResultIds(searchMatches);
+    setActiveSearchIndex((current) =>
+      searchMatches.length === 0 ? 0 : Math.min(current, searchMatches.length - 1)
+    );
+  }, [searchMatches, searchOpen]);
 
   const messageIndexById = useMemo(() => {
     const indexMap: Record<number, number> = {};
@@ -795,11 +965,118 @@ export function ConversationsScreen() {
       if (index === undefined) return;
       messageListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
       setHighlightedMessageId(messageId);
-      setTimeout(() => {
+      messageHighlightOpacity.stopAnimation();
+      messageHighlightScale.stopAnimation();
+      messageHighlightOpacity.setValue(0);
+      messageHighlightScale.setValue(0.985);
+
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(messageHighlightOpacity, {
+            toValue: 1,
+            duration: 170,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(messageHighlightOpacity, {
+            toValue: 0,
+            duration: 1050,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(messageHighlightScale, {
+            toValue: 1,
+            duration: 220,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(messageHighlightScale, {
+            toValue: 1,
+            duration: 1000,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start(() => {
         setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
-      }, 1400);
+      });
     },
-    [messageIndexById]
+    [messageHighlightOpacity, messageHighlightScale, messageIndexById]
+  );
+
+  const jumpToLatest = useCallback(() => {
+    scrollToBottom(true);
+  }, [scrollToBottom]);
+
+  const handleSearchSubmit = useCallback(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return;
+
+    const nextMatches = sortedMessages
+      .filter((message) => String(message.text || "").toLowerCase().includes(normalizedQuery))
+      .map((message) => message.id);
+
+    setSearchResultIds(nextMatches);
+    setActiveSearchIndex(0);
+    const targetId = nextMatches[0];
+    if (targetId != null) {
+      jumpToMessage(targetId);
+    }
+  }, [jumpToMessage, searchQuery, sortedMessages]);
+
+  const handleSearchNext = useCallback(() => {
+    if (!searchMatches.length) return;
+    const nextIndex = (activeSearchIndex + 1) % searchMatches.length;
+    setActiveSearchIndex(nextIndex);
+    jumpToMessage(searchMatches[nextIndex]);
+  }, [activeSearchIndex, jumpToMessage, searchMatches]);
+
+  const handleSearchPrevious = useCallback(() => {
+    if (!searchMatches.length) return;
+    const nextIndex = activeSearchIndex === 0 ? searchMatches.length - 1 : activeSearchIndex - 1;
+    setActiveSearchIndex(nextIndex);
+    jumpToMessage(searchMatches[nextIndex]);
+  }, [activeSearchIndex, jumpToMessage, searchMatches]);
+
+  const handlePinnedMessagePress = useCallback(
+    (message: ChatMessage) => {
+      setShowPinnedModal(false);
+      jumpToMessage(message.id);
+    },
+    [jumpToMessage]
+  );
+
+  const renderHighlightedMessageText = useCallback(
+    (text?: string | null, messageId?: number) => {
+      const value = String(text || "");
+      const normalizedQuery = searchQuery.trim();
+      if (!normalizedQuery || !searchResultIds.includes(messageId || -1)) {
+        return value;
+      }
+
+      const pattern = new RegExp(`(${escapeRegExp(normalizedQuery)})`, "ig");
+      return value.split(pattern).map((part, index) => {
+        const isMatch = part.toLowerCase() === normalizedQuery.toLowerCase();
+        if (!isMatch) return part;
+        return (
+          <Text
+            key={`${messageId}-${index}`}
+            style={[
+              styles.inlineHighlight,
+              activeSearchIndex < searchResultIds.length &&
+              searchResultIds[activeSearchIndex] === messageId
+                ? styles.inlineHighlightActive
+                : null,
+            ]}
+          >
+            {part}
+          </Text>
+        );
+      });
+    },
+    [activeSearchIndex, searchQuery, searchResultIds, styles.inlineHighlight, styles.inlineHighlightActive]
   );
 
   const handleSingleMessageTap = useCallback(
@@ -868,9 +1145,11 @@ export function ConversationsScreen() {
         await deleteConversationMessage(message.id);
         setSelectedConversation((prev) => {
           if (!prev) return prev;
+          const nextMessages = prev.messages.filter((m) => m.id !== message.id);
           return {
             ...prev,
-            messages: prev.messages.filter((m) => m.id !== message.id),
+            messages: nextMessages,
+            pinned_messages: buildPinnedMessages(nextMessages),
           };
         });
 
@@ -924,12 +1203,14 @@ export function ConversationsScreen() {
       const actions: Array<{
         key: string;
         label: string;
+        icon: keyof typeof Ionicons.glyphMap;
         destructive?: boolean;
         onPress: () => void;
       }> = [
         {
           key: "reply",
           label: "Reply",
+          icon: "arrow-undo",
           onPress: () => {
             closeMessageMenu();
             handleSwipe(message);
@@ -938,6 +1219,7 @@ export function ConversationsScreen() {
         {
           key: "react",
           label: "React",
+          icon: "happy-outline",
           onPress: () => {
             closeMessageMenu();
             setReactionPickerMessageId(message.id);
@@ -949,16 +1231,29 @@ export function ConversationsScreen() {
         actions.push({
           key: "translate",
           label: "Translate",
+          icon: "language-outline",
           onPress: async () => {
             closeMessageMenu();
             await translateMessage(message);
           },
         });
       }
+
+      actions.push({
+        key: "pin",
+        label: message.is_pinned ? "Unpin" : "Pin",
+        icon: message.is_pinned ? "pin-outline" : "pin",
+        onPress: async () => {
+          closeMessageMenu();
+          await togglePinnedMessage(message);
+        },
+      });
+
       if (isMine) {
         actions.push({
           key: "delete",
           label: "Delete",
+          icon: "trash-outline",
           destructive: true,
           onPress: async () => {
             closeMessageMenu();
@@ -968,7 +1263,7 @@ export function ConversationsScreen() {
       }
       return actions;
     },
-    [closeMessageMenu, deleteMessage, handleSwipe, translateMessage]
+    [closeMessageMenu, deleteMessage, handleSwipe, togglePinnedMessage, translateMessage]
   );
 
   const openMessageMenu = useCallback(
@@ -995,10 +1290,15 @@ export function ConversationsScreen() {
     [buildMessageMenuActions, windowHeight]
   );
 
-  const renderMessage = ({ item }: { item: ChatMessage }) => {
+  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
     const isMine = item.sender?.id === currentUserId;
     const isReplyActive = replyTarget?.id === item.id;
     const showReactionPicker = !isMine && reactionPickerMessageId === item.id;
+    const isHighlighted = highlightedMessageId === item.id;
+    const showUnreadDivider = unreadAnchorMessageId === item.id;
+    const previousMessage = index > 0 ? sortedMessages[index - 1] : null;
+    const shouldShowDaySeparator =
+      getDayKey(item.timestamp) && getDayKey(item.timestamp) !== getDayKey(previousMessage?.timestamp);
     const groupedReactions = (item.reactions || []).reduce<Record<string, number>>((acc, reaction) => {
       acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1;
       return acc;
@@ -1006,6 +1306,12 @@ export function ConversationsScreen() {
     const reactionEntries = Object.entries(groupedReactions);
     const replyAuthor =
       item.reply_to?.sender?.id === currentUserId ? "You" : item.reply_to?.sender?.username || "User";
+    const highlightAnimatedStyle = isHighlighted
+      ? {
+          opacity: messageHighlightOpacity,
+          transform: [{ scale: messageHighlightScale }],
+        }
+      : null;
 
     let swipeableRef: Swipeable | null = null;
     const handleSwipeOpen = (direction: "left" | "right") => {
@@ -1015,7 +1321,18 @@ export function ConversationsScreen() {
     };
 
     return (
-      <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
+      <>
+        {shouldShowDaySeparator ? (
+          <View style={styles.daySeparatorRow}>
+            <Text style={styles.daySeparatorText}>{formatDaySeparator(item.timestamp)}</Text>
+          </View>
+        ) : null}
+        {showUnreadDivider ? (
+          <View style={styles.unreadDividerRow}>
+            <Text style={styles.unreadDividerText}>Unread messages</Text>
+          </View>
+        ) : null}
+        <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
         <Swipeable
           ref={(instance) => {
             swipeableRef = instance;
@@ -1059,7 +1376,7 @@ export function ConversationsScreen() {
                   ? styles.messageBubbleReplyActiveMine
                   : styles.messageBubbleReplyActiveOther
                 : null,
-              highlightedMessageId === item.id ? styles.messageBubbleHighlighted : null,
+              isHighlighted ? styles.messageBubbleHighlighted : null,
             ]}
             onLongPress={(event) => {
               event.stopPropagation();
@@ -1069,12 +1386,18 @@ export function ConversationsScreen() {
               event.stopPropagation();
               handleMessageTap(item);
             }}
-            delayLongPress={450}
+            delayLongPress={520}
           >
             {isReplyActive ? (
               <View style={[styles.replyActiveIndicator, isMine ? styles.replyActiveIndicatorMine : styles.replyActiveIndicatorOther]}>
                 <Ionicons name={isMine ? "arrow-undo" : "arrow-redo"} size={14} color={colors.primary} />
               </View>
+            ) : null}
+            {isHighlighted && highlightAnimatedStyle ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.messageBubbleHighlightOverlay, highlightAnimatedStyle]}
+              />
             ) : null}
             {item.reply_to ? (
               <View style={[styles.replySnippet, isMine ? styles.replySnippetMine : styles.replySnippetOther]}>
@@ -1093,15 +1416,26 @@ export function ConversationsScreen() {
               </View>
             ) : null}
             <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
               style={[styles.messageText, isMine ? styles.messageTextMine : styles.messageTextOther]}
             >
-              {item.text || ""}
+              {renderHighlightedMessageText(item.text || "", item.id)}
             </Text>
+            {item.is_pinned ? (
+              <View style={styles.messageFlagRow}>
+                <Ionicons name="pin" size={11} color={isMine ? "#dbeafe" : colors.mutedText} />
+                <Text style={[styles.messageFlagText, isMine ? styles.messageFlagTextMine : styles.messageFlagTextOther]}>
+                  Pinned
+                </Text>
+              </View>
+            ) : null}
+            {item.edited_at ? (
+              <Text style={[styles.messageEditedText, isMine ? styles.messageEditedTextMine : styles.messageEditedTextOther]}>
+                Edited
+              </Text>
+            ) : null}
             <View style={styles.messageMetaRow}>
               <Text style={[styles.messageTime, isMine ? styles.messageTimeMine : styles.messageTimeOther]}>
-                {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {formatMessageTime(item.timestamp)}
               </Text>
               {isMine ? (
                 <Text style={[styles.statusTick, item.status === "read" ? styles.statusTickRead : styles.statusTickDefault]}>
@@ -1131,6 +1465,7 @@ export function ConversationsScreen() {
         </View>
         </Swipeable>
       </View>
+      </>
     );
   };
 
@@ -1139,12 +1474,22 @@ export function ConversationsScreen() {
     setLoadingConversation(true);
     try {
       const updated = await fetchConversation(selectedConversation.id);
+      const sortedUpdatedMessages = [...(updated.messages || [])].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
       setSelectedConversation(updated);
+      setUnreadAnchorMessageId(
+        findFirstUnreadMessageId(
+          sortedUpdatedMessages,
+          initialUnreadCountRef.current,
+          currentUserId
+        )
+      );
       previousMessageCountRef.current = updated.messages?.length || 0;
     } finally {
       setLoadingConversation(false);
     }
-  }, [selectedConversation?.id]);
+  }, [currentUserId, selectedConversation?.id]);
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -1154,8 +1499,12 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     if (!selectedConversation?.id) return;
+    if (unreadAnchorMessageId != null) {
+      requestAnimationFrame(() => jumpToMessage(unreadAnchorMessageId));
+      return;
+    }
     scrollToBottom(false);
-  }, [selectedConversation?.id, scrollToBottom]);
+  }, [jumpToMessage, scrollToBottom, selectedConversation?.id, unreadAnchorMessageId]);
 
   useEffect(() => {
     if (!selectedConversation?.id) return;
@@ -1204,16 +1553,117 @@ export function ConversationsScreen() {
                 ) : null}
               </View>
             </View>
-            <Pressable
-              style={styles.chatHeaderAction}
-              onPress={(event) => {
-                event.stopPropagation();
-                openChatActions(otherUser.username);
-              }}
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
-            </Pressable>
+            <View style={styles.chatHeaderActions}>
+              <Pressable
+                style={styles.chatHeaderActionSoft}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  setSearchOpen((prev) => {
+                    const next = !prev;
+                    if (!next) {
+                      setSearchQuery("");
+                      setSearchResultIds([]);
+                      setActiveSearchIndex(0);
+                    } else {
+                      requestAnimationFrame(() => searchInputRef.current?.focus());
+                    }
+                    return next;
+                  });
+                }}
+              >
+                <Ionicons name="search" size={18} color={colors.text} />
+              </Pressable>
+              <Pressable
+                style={styles.chatHeaderActionSoft}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  openChatActions(otherUser.username);
+                }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
+              </Pressable>
+            </View>
           </Pressable>
+
+          {searchOpen ? (
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={16} color={colors.mutedText} />
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search in conversation"
+                placeholderTextColor={colors.mutedText}
+                returnKeyType="search"
+                onSubmitEditing={handleSearchSubmit}
+              />
+              <Text style={styles.searchCountText}>
+                {searchQuery.trim() ? `${searchResultIds.length ? activeSearchIndex + 1 : 0}/${searchResultIds.length}` : ""}
+              </Text>
+              <Pressable
+                style={styles.searchActionButton}
+                onPress={handleSearchPrevious}
+                disabled={!searchResultIds.length}
+              >
+                <Ionicons name="chevron-up" size={16} color={searchResultIds.length ? colors.text : colors.mutedText} />
+              </Pressable>
+              <Pressable
+                style={styles.searchActionButton}
+                onPress={handleSearchNext}
+                disabled={!searchResultIds.length}
+              >
+                <Ionicons name="chevron-down" size={16} color={searchResultIds.length ? colors.text : colors.mutedText} />
+              </Pressable>
+              <Pressable
+                style={styles.searchActionButton}
+                onPress={() => {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                  setSearchResultIds([]);
+                  setActiveSearchIndex(0);
+                }}
+              >
+                <Ionicons name="close" size={16} color={colors.text} />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {latestPinnedMessage ? (
+            <View style={styles.pinnedStripWrap}>
+              <Pressable
+                style={styles.pinnedStrip}
+                onPress={() => handlePinnedMessagePress(latestPinnedMessage)}
+              >
+                <View style={styles.pinnedStripIcon}>
+                  <Ionicons name="pin" size={12} color={colors.primary} />
+                </View>
+                <Text numberOfLines={1} style={styles.pinnedStripText}>
+                  {latestPinnedMessage.text?.trim() || "Pinned attachment"}
+                </Text>
+                {additionalPinnedCount > 0 ? (
+                  <Pressable
+                    style={styles.pinnedCountBadge}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setShowPinnedModal(true);
+                    }}
+                  >
+                    <Text style={styles.pinnedCountBadgeText}>+{additionalPinnedCount}</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={styles.pinnedStripClose}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    togglePinnedMessage(latestPinnedMessage);
+                  }}
+                >
+                  <Ionicons name="close" size={15} color={colors.mutedText} />
+                </Pressable>
+              </Pressable>
+            </View>
+          ) : null}
 
           {loadingConversation ? (
             <View style={styles.chatLoading}>
@@ -1225,7 +1675,11 @@ export function ConversationsScreen() {
               data={sortedMessages}
               keyExtractor={(item) => String(item.id)}
               renderItem={renderMessage}
-              onContentSizeChange={() => scrollToBottom(false)}
+              onContentSizeChange={() => {
+                if (unreadAnchorMessageId == null) {
+                  scrollToBottom(false);
+                }
+              }}
               onScrollToIndexFailed={(info) => {
                 messageListRef.current?.scrollToOffset({
                   offset: Math.max(0, info.averageItemLength * info.index - 48),
@@ -1245,8 +1699,21 @@ export function ConversationsScreen() {
               }
               contentContainerStyle={styles.messagesContent}
               onScrollBeginDrag={() => replyTarget && clearReplyTarget()}
+              onScroll={(event) => {
+                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+                const distanceFromBottom =
+                  contentSize.height - (contentOffset.y + layoutMeasurement.height);
+                setShowJumpToLatest(distanceFromBottom > 140);
+              }}
+              scrollEventThrottle={16}
             />
           )}
+
+          {showJumpToLatest ? (
+            <Pressable style={styles.jumpToLatestButton} onPress={jumpToLatest}>
+              <Text style={styles.jumpToLatestText}>Latest</Text>
+            </Pressable>
+          ) : null}
 
           <View style={styles.inputWrap}>
             {replyTarget ? (
@@ -1332,17 +1799,40 @@ export function ConversationsScreen() {
             {messageMenu ? (
               <View
                 style={[
-                  styles.messageMenu,
+                  styles.messageMenuSheet,
                   { top: messageMenu.top },
                   messageMenu.align === "left" ? styles.messageMenuLeft : styles.messageMenuRight,
                 ]}
               >
+                <View style={styles.messageMenuPreview}>
+                  <Text style={styles.messageMenuPreviewLabel}>
+                    {messageMenu.isMine ? "Your message" : messageMenu.message.sender?.username || "Message"}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.messageMenuPreviewText}>
+                    {messageMenu.message.text?.trim() || "Attachment"}
+                  </Text>
+                </View>
                 {buildMessageMenuActions(messageMenu.message, messageMenu.isMine).map((action) => (
                   <Pressable
                     key={`${messageMenu.message.id}-${action.key}`}
-                    style={styles.messageMenuItem}
+                    style={[
+                      styles.messageMenuItem,
+                      action.destructive ? styles.messageMenuItemDanger : undefined,
+                    ]}
                     onPress={action.onPress}
                   >
+                    <View
+                      style={[
+                        styles.messageMenuItemIconWrap,
+                        action.destructive ? styles.messageMenuItemIconWrapDanger : undefined,
+                      ]}
+                    >
+                      <Ionicons
+                        name={action.icon}
+                        size={16}
+                        color={action.destructive ? colors.danger : colors.text}
+                      />
+                    </View>
                     <Text
                       style={[
                         styles.messageMenuItemText,
@@ -1355,6 +1845,39 @@ export function ConversationsScreen() {
                 ))}
               </View>
             ) : null}
+          </View>
+        </Modal>
+        <Modal
+          transparent
+          visible={showPinnedModal}
+          animationType="fade"
+          onRequestClose={() => setShowPinnedModal(false)}
+        >
+          <View style={styles.menuOverlay}>
+            <Pressable style={styles.menuOverlayTouchable} onPress={() => setShowPinnedModal(false)} />
+            <View style={styles.pinnedModal}>
+              <Text style={styles.pinnedModalTitle}>Pinned messages</Text>
+              {pinnedMessages.map((message) => (
+                <Pressable
+                  key={`mobile-pinned-${message.id}`}
+                  style={styles.pinnedModalItem}
+                  onPress={() => handlePinnedMessagePress(message)}
+                >
+                  <Text numberOfLines={2} style={styles.pinnedModalItemText}>
+                    {message.text?.trim() || "Pinned attachment"}
+                  </Text>
+                  <Pressable
+                    style={styles.pinnedModalItemClose}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      togglePinnedMessage(message);
+                    }}
+                  >
+                    <Ionicons name="close" size={15} color={colors.mutedText} />
+                  </Pressable>
+                </Pressable>
+              ))}
+            </View>
           </View>
         </Modal>
       </SafeAreaView>
@@ -1637,6 +2160,11 @@ const createStyles = (colors: ThemeColors) =>
       borderBottomColor: colors.border,
       backgroundColor: colors.surface,
     },
+    chatHeaderActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
     backButton: {
       width: 34,
       height: 34,
@@ -1672,15 +2200,97 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.success,
       marginTop: 1,
     },
-    chatHeaderAction: {
+    chatHeaderActionSoft: {
       width: 34,
       height: 34,
       borderRadius: 17,
-      borderWidth: 1,
-      borderColor: colors.border,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    searchBar: {
+      marginHorizontal: 12,
+      marginTop: 10,
+      marginBottom: 4,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
       backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      paddingVertical: 0,
+    },
+    searchCountText: {
+      color: colors.mutedText,
+      fontSize: 11,
+      fontWeight: "700",
+      minWidth: 34,
+      textAlign: "center",
+    },
+    searchActionButton: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pinnedStripWrap: {
+      paddingHorizontal: 12,
+      paddingTop: 6,
+      paddingBottom: 2,
+      alignItems: "center",
+    },
+    pinnedStrip: {
+      width: "100%",
+      maxWidth: 360,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    pinnedStripIcon: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pinnedStripText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    pinnedCountBadge: {
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    pinnedCountBadgeText: {
+      color: colors.mutedText,
+      fontSize: 11,
+      fontWeight: "800",
+    },
+    pinnedStripClose: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
     },
     chatLoading: {
       flex: 1,
@@ -1700,6 +2310,42 @@ const createStyles = (colors: ThemeColors) =>
     },
     messagesFooterSpacer: {
       height: 14,
+    },
+    daySeparatorRow: {
+      alignItems: "center",
+      marginBottom: 10,
+      marginTop: 6,
+    },
+    daySeparatorText: {
+      color: colors.mutedText,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.2,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    unreadDividerRow: {
+      alignItems: "center",
+      marginBottom: 10,
+      marginTop: 2,
+    },
+    unreadDividerText: {
+      color: colors.primary,
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.4,
+      paddingHorizontal: 11,
+      paddingVertical: 5,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
     },
     messageRow: {
       flexDirection: "row",
@@ -1777,8 +2423,18 @@ const createStyles = (colors: ThemeColors) =>
       transform: [{ translateX: 18 }],
     },
     messageBubbleHighlighted: {
+      shadowColor: colors.primary,
+      shadowOpacity: 0.08,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
+    },
+    messageBubbleHighlightOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: 14,
       borderWidth: 2,
       borderColor: colors.primary,
+      backgroundColor: `${colors.primary}10`,
     },
     replyActiveIndicator: {
       position: "absolute",
@@ -1815,6 +2471,46 @@ const createStyles = (colors: ThemeColors) =>
     messageText: {
       fontSize: 15,
       flexShrink: 1,
+      lineHeight: 21,
+    },
+    inlineHighlight: {
+      backgroundColor: "#fef3c7",
+      color: colors.text,
+      borderRadius: 4,
+    },
+    inlineHighlightActive: {
+      backgroundColor: "#fde68a",
+    },
+    messageFlagRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      marginTop: 6,
+    },
+    messageFlagText: {
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    messageFlagTextMine: {
+      color: "#dbeafe",
+    },
+    messageFlagTextOther: {
+      color: colors.mutedText,
+    },
+    messageEditedText: {
+      marginTop: 4,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    messageEditedTextMine: {
+      color: "#cbd5e1",
+    },
+    messageEditedTextOther: {
+      color: colors.mutedText,
     },
     replySnippet: {
       borderLeftWidth: 3,
@@ -1919,6 +2615,28 @@ const createStyles = (colors: ThemeColors) =>
       borderTopColor: colors.border,
       backgroundColor: colors.surface,
     },
+    jumpToLatestButton: {
+      position: "absolute",
+      right: 14,
+      bottom: 82,
+      zIndex: 20,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.16,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 5,
+    },
+    jumpToLatestText: {
+      color: colors.text,
+      fontSize: 11,
+      fontWeight: "800",
+    },
     replyComposerBar: {
       flexDirection: "row",
       alignItems: "center",
@@ -1966,19 +2684,20 @@ const createStyles = (colors: ThemeColors) =>
     menuOverlayTouchable: {
       ...StyleSheet.absoluteFillObject,
     },
-    messageMenu: {
+    messageMenuSheet: {
       position: "absolute",
-      minWidth: 152,
-      borderRadius: 14,
+      minWidth: 208,
+      maxWidth: 280,
+      borderRadius: 18,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      paddingVertical: 6,
+      padding: 8,
       shadowColor: "#000",
-      shadowOpacity: 0.18,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 7,
+      shadowOpacity: 0.2,
+      shadowRadius: 22,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 9,
     },
     messageMenuLeft: {
       left: 14,
@@ -1986,18 +2705,103 @@ const createStyles = (colors: ThemeColors) =>
     messageMenuRight: {
       right: 14,
     },
+    messageMenuPreview: {
+      borderRadius: 12,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      marginBottom: 6,
+    },
+    messageMenuPreviewLabel: {
+      color: colors.primary,
+      fontSize: 11,
+      fontWeight: "800",
+      marginBottom: 3,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    messageMenuPreviewText: {
+      color: colors.text,
+      fontSize: 13,
+      lineHeight: 18,
+    },
     messageMenuItem: {
-      minHeight: 44,
-      paddingHorizontal: 14,
+      minHeight: 46,
+      paddingHorizontal: 10,
+      borderRadius: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    messageMenuItemDanger: {
+      backgroundColor: `${colors.danger}10`,
+    },
+    messageMenuItemIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
       justifyContent: "center",
+    },
+    messageMenuItemIconWrapDanger: {
+      backgroundColor: `${colors.danger}18`,
     },
     messageMenuItemText: {
       color: colors.text,
       fontSize: 15,
       fontWeight: "600",
+      flex: 1,
     },
     messageMenuItemTextDanger: {
       color: colors.danger,
+    },
+    pinnedModal: {
+      position: "absolute",
+      left: 16,
+      right: 16,
+      top: 110,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      shadowColor: "#000",
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
+    },
+    pinnedModalTitle: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "800",
+      marginBottom: 8,
+      textTransform: "uppercase",
+      letterSpacing: 0.6,
+    },
+    pinnedModalItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+      backgroundColor: colors.surfaceMuted,
+      marginBottom: 6,
+    },
+    pinnedModalItemText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 14,
+      lineHeight: 19,
+    },
+    pinnedModalItemClose: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
     },
     inputRow: {
       flexDirection: "row",
