@@ -22,6 +22,7 @@ const MESSAGE_PAGE_SIZE = 30;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
 const SOCKET_RECONNECT_DELAYS_MS = [800, 1500, 3000, 5000];
+const SCROLL_BOTTOM_THRESHOLD_PX = 72;
 
 const getIceServers = () => {
   const rawValue = process.env.REACT_APP_WEBRTC_ICE_SERVERS;
@@ -77,6 +78,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
   const [replyingMessage, setReplyingMessage] = useState(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResultIds, setSearchResultIds] = useState([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+  const [unreadAnchorMessageId, setUnreadAnchorMessageId] = useState(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
   const socket = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -104,6 +112,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const currentMessagesPageRef = useRef(1);
   const hasOlderMessagesRef = useRef(false);
   const pinnedMenuRef = useRef(null);
+  const searchRequestRef = useRef(0);
+  const initialUnreadCountRef = useRef(0);
 
   const { user, loading } = useUser();
   const { onlineUserIds } = usePresence();
@@ -133,6 +143,45 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     });
   }, []);
 
+  const mergeMessageStatusUpdate = useCallback((messageIds, nextStatus) => {
+    if (!Array.isArray(messageIds) || !messageIds.length || !nextStatus) return;
+
+    const ids = new Set(messageIds);
+    setMessages((prev) =>
+      prev.map((message) =>
+        ids.has(message.id) ? { ...message, status: nextStatus } : message
+      )
+    );
+  }, []);
+
+  const collectSearchMatches = useCallback((messageList, query) => {
+    const normalizedQuery = String(query || "").trim().toLowerCase();
+    if (!normalizedQuery) return [];
+
+    return messageList
+      .filter((message) => String(message?.text || "").toLowerCase().includes(normalizedQuery))
+      .map((message) => message.id);
+  }, []);
+
+  const findFirstUnreadMessageId = useCallback((messageList, unreadCount, currentUserId) => {
+    const normalizedUnreadCount = Number(unreadCount) || 0;
+    if (!normalizedUnreadCount || !currentUserId || !Array.isArray(messageList)) return null;
+
+    let remainingUnread = normalizedUnreadCount;
+
+    for (let index = messageList.length - 1; index >= 0; index -= 1) {
+      const message = messageList[index];
+      if (!message || message.sender?.id === currentUserId || message.isSystem) continue;
+
+      remainingUnread -= 1;
+      if (remainingUnread <= 0) {
+        return message.id;
+      }
+    }
+
+    return null;
+  }, []);
+
   useEffect(() => {
     currentUserIdRef.current = user?.user_id ?? null;
   }, [user?.user_id]);
@@ -144,6 +193,18 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   useEffect(() => {
     hasOlderMessagesRef.current = hasOlderMessages;
   }, [hasOlderMessages]);
+
+  useEffect(() => {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setSearchResultIds([]);
+    setActiveSearchIndex(0);
+    setIsSearchingMessages(false);
+    setUnreadAnchorMessageId(null);
+    setShowJumpToLatest(false);
+    searchRequestRef.current = 0;
+    initialUnreadCountRef.current = Number(conversation?.unread_count) || 0;
+  }, [conversation?.id]);
 
   useEffect(() => {
     if (!showPinnedMenu) return undefined;
@@ -164,6 +225,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       top: messagesContainerRef.current.scrollHeight,
       behavior,
     });
+  }, []);
+
+  const updateJumpToLatestVisibility = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    setShowJumpToLatest(distanceFromBottom > SCROLL_BOTTOM_THRESHOLD_PX);
   }, []);
 
   const waitForNextPaint = useCallback(
@@ -236,6 +306,47 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     [queryClient]
   );
 
+  const resolveFirstUnreadMessageId = useCallback(
+    async (messageList, unreadCount) => {
+      if (!conversation?.id || !unreadCount || !currentUserIdRef.current) return null;
+
+      let workingMessages = Array.isArray(messageList) ? [...messageList] : [];
+      let candidateId = findFirstUnreadMessageId(
+        workingMessages,
+        unreadCount,
+        currentUserIdRef.current
+      );
+      let nextPage = currentMessagesPageRef.current + 1;
+      let hasMore = hasOlderMessagesRef.current;
+
+      while (!candidateId && hasMore) {
+        const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+        const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
+
+        if (nextMessages.length) {
+          const seen = new Set(workingMessages.map((message) => message.id));
+          const uniqueOlder = nextMessages.filter((message) => !seen.has(message.id));
+          workingMessages = [...uniqueOlder, ...workingMessages];
+          setMessages(workingMessages);
+        }
+
+        setCurrentMessagesPage(payload.pagination?.page || nextPage);
+        setHasOlderMessages(Boolean(payload.pagination?.has_next));
+
+        candidateId = findFirstUnreadMessageId(
+          workingMessages,
+          unreadCount,
+          currentUserIdRef.current
+        );
+        nextPage = (payload.pagination?.page || nextPage) + 1;
+        hasMore = Boolean(payload.pagination?.has_next);
+      }
+
+      return candidateId;
+    },
+    [conversation?.id, fetchMessagesPage, findFirstUnreadMessageId]
+  );
+
   const jumpToPinnedMessage = useCallback(
     async (messageId) => {
       if (!conversation?.id || !messageId) return;
@@ -285,6 +396,57 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     [conversation?.id, fetchMessagesPage, scrollToMessage, waitForNextPaint]
   );
 
+  const jumpToMessageById = useCallback(
+    async (messageId) => {
+      if (!conversation?.id || !messageId) return false;
+
+      const foundInCurrentMessages = await scrollToMessage(messageId);
+      if (foundInCurrentMessages) return true;
+
+      let nextPage = currentMessagesPageRef.current + 1;
+      let hasMore = hasOlderMessagesRef.current;
+      if (!hasMore || isFetchingOlderRef.current) return false;
+
+      setLoadingOlderMessages(true);
+      isFetchingOlderRef.current = true;
+
+      try {
+        while (hasMore) {
+          const container = messagesContainerRef.current;
+          if (container) {
+            scrollAdjustmentHeightRef.current = container.scrollHeight;
+          }
+
+          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
+
+          setMessages((prev) => {
+            const seen = new Set(prev.map((msg) => msg.id));
+            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
+            return [...uniqueOlder, ...prev];
+          });
+          setCurrentMessagesPage(payload.pagination?.page || nextPage);
+          setHasOlderMessages(Boolean(payload.pagination?.has_next));
+
+          nextPage = (payload.pagination?.page || nextPage) + 1;
+          hasMore = Boolean(payload.pagination?.has_next);
+
+          await waitForNextPaint();
+          const foundAfterLoad = await scrollToMessage(messageId);
+          if (foundAfterLoad) return true;
+        }
+      } catch (error) {
+        console.error("Failed to load older messages while jumping to message:", error);
+      } finally {
+        isFetchingOlderRef.current = false;
+        setLoadingOlderMessages(false);
+      }
+
+      return false;
+    },
+    [conversation?.id, fetchMessagesPage, scrollToMessage, waitForNextPaint]
+  );
+
   const invalidateConversationHistoryCache = useCallback(
     (conversationId) => {
       if (!conversationId) return;
@@ -292,6 +454,104 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     },
     [queryClient]
   );
+
+  const performConversationSearch = useCallback(
+    async (rawQuery) => {
+      const normalizedQuery = String(rawQuery || "").trim().toLowerCase();
+      const requestId = Date.now();
+      searchRequestRef.current = requestId;
+
+      if (!normalizedQuery) {
+        setSearchResultIds([]);
+        setActiveSearchIndex(0);
+        setIsSearchingMessages(false);
+        return;
+      }
+
+      setIsSearchingMessages(true);
+
+      try {
+        let workingMessages = [...messages];
+        let matchedIds = collectSearchMatches(workingMessages, normalizedQuery);
+        let nextPage = currentMessagesPageRef.current + 1;
+        let hasMore = hasOlderMessagesRef.current;
+
+        while (hasMore) {
+          if (searchRequestRef.current !== requestId) {
+            return;
+          }
+
+          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
+
+          if (nextMessages.length) {
+            const seen = new Set(workingMessages.map((msg) => msg.id));
+            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
+            workingMessages = [...uniqueOlder, ...workingMessages];
+            setMessages(workingMessages);
+          }
+
+          setCurrentMessagesPage(payload.pagination?.page || nextPage);
+          setHasOlderMessages(Boolean(payload.pagination?.has_next));
+
+          matchedIds = collectSearchMatches(workingMessages, normalizedQuery);
+
+          nextPage = (payload.pagination?.page || nextPage) + 1;
+          hasMore = Boolean(payload.pagination?.has_next);
+        }
+
+        if (searchRequestRef.current !== requestId) {
+          return;
+        }
+
+        setSearchResultIds(matchedIds);
+        setActiveSearchIndex(0);
+
+        if (matchedIds.length > 0) {
+          await waitForNextPaint();
+          await jumpToMessageById(matchedIds[0]);
+        }
+      } catch (error) {
+        console.error("Failed to search conversation:", error);
+      } finally {
+        if (searchRequestRef.current === requestId) {
+          setIsSearchingMessages(false);
+        }
+      }
+    },
+    [
+      collectSearchMatches,
+      conversation?.id,
+      fetchMessagesPage,
+      jumpToMessageById,
+      messages,
+      waitForNextPaint,
+    ]
+  );
+
+  const activeSearchMessageId =
+    searchResultIds.length > 0 ? searchResultIds[activeSearchIndex] || null : null;
+
+  useEffect(() => {
+    const trimmedQuery = searchQuery.trim();
+    if (!isSearchOpen || !trimmedQuery) {
+      setSearchResultIds([]);
+      setActiveSearchIndex(0);
+      setIsSearchingMessages(false);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      performConversationSearch(trimmedQuery);
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isSearchOpen, performConversationSearch, searchQuery]);
+
+  useEffect(() => {
+    if (!activeSearchMessageId) return;
+    jumpToMessageById(activeSearchMessageId);
+  }, [activeSearchMessageId, jumpToMessageById]);
 
   const clearCallTimeout = useCallback(() => {
     if (!callTimeoutRef.current) return;
@@ -714,6 +974,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     const loadLatestMessages = async () => {
       setMessages(seedMessages);
       setPinnedMessages(seedPinnedMessages);
+      setUnreadAnchorMessageId(null);
       setLoadingHistory(true);
       setLoadingOlderMessages(false);
       isFetchingOlderRef.current = false;
@@ -724,10 +985,33 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         setPinnedMessages(payload.pinned_messages || []);
         setCurrentMessagesPage(payload.pagination?.page || 1);
         setHasOlderMessages(Boolean(payload.pagination?.has_next));
-        requestAnimationFrame(() => {
-          scrollToBottom("auto");
-          requestAnimationFrame(() => scrollToBottom("auto"));
-        });
+        currentMessagesPageRef.current = payload.pagination?.page || 1;
+        hasOlderMessagesRef.current = Boolean(payload.pagination?.has_next);
+
+        const unreadCountSnapshot = initialUnreadCountRef.current;
+        const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
+
+        if (unreadCountSnapshot > 0) {
+          const firstUnreadMessageId = await resolveFirstUnreadMessageId(
+            nextMessages,
+            unreadCountSnapshot
+          );
+
+          if (!isMounted) return;
+
+          setUnreadAnchorMessageId(firstUnreadMessageId || null);
+          await waitForNextPaint();
+          if (firstUnreadMessageId) {
+            await scrollToMessage(firstUnreadMessageId, "auto");
+          } else {
+            scrollToBottom("auto");
+          }
+        } else {
+          requestAnimationFrame(() => {
+            scrollToBottom("auto");
+            requestAnimationFrame(() => scrollToBottom("auto"));
+          });
+        }
       } catch (error) {
         if (!isMounted) return;
         console.error("Failed to load conversation history:", error);
@@ -750,7 +1034,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     conversation?.pinned_messages,
     fetchMessagesPage,
     loading,
+    resolveFirstUnreadMessageId,
+    scrollToMessage,
     scrollToBottom,
+    waitForNextPaint,
   ]);
 
   useEffect(() => {
@@ -765,6 +1052,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       container.scrollTop += Math.max(0, nextHeight - previousHeight);
     });
   }, [messages]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return undefined;
+
+    updateJumpToLatestVisibility();
+    container.addEventListener("scroll", updateJumpToLatestVisibility, { passive: true });
+    return () => container.removeEventListener("scroll", updateJumpToLatestVisibility);
+  }, [updateJumpToLatestVisibility, conversation?.id]);
 
   useEffect(() => {
     if (!conversation?.id || !user) return;
@@ -835,6 +1131,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 mergeMessageUpdate(data.message);
               }
               invalidateConversationHistoryCache(conversation.id);
+              break;
+
+            case "message_status":
+              mergeMessageStatusUpdate(data.messageIds, data.status);
+              invalidateConversationHistoryCache(conversation.id);
+              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
               break;
 
             case "message_edited":
@@ -988,6 +1290,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     flushPendingIceCandidates,
     getElapsedCallSeconds,
     mergeMessageUpdate,
+    mergeMessageStatusUpdate,
     onConversationTypingChange,
     queryClient,
     resetCallState,
@@ -1228,6 +1531,59 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const latestPinnedMessage = pinnedMessages[0] || null;
   const additionalPinnedCount = Math.max(0, pinnedMessages.length - 1);
+  const searchResultLabel = searchQuery.trim()
+    ? `${searchResultIds.length ? activeSearchIndex + 1 : 0}/${searchResultIds.length}`
+    : "";
+
+  const handleToggleSearch = () => {
+    setIsSearchOpen((current) => {
+      const next = !current;
+      if (!next) {
+        setSearchQuery("");
+        setSearchResultIds([]);
+        setActiveSearchIndex(0);
+      }
+      return next;
+    });
+  };
+
+  const handleCloseSearch = () => {
+    setIsSearchOpen(false);
+    setSearchQuery("");
+    setSearchResultIds([]);
+    setActiveSearchIndex(0);
+  };
+
+  const handleSearchSubmit = async () => {
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return;
+
+    if (!searchResultIds.length) {
+      await performConversationSearch(trimmedQuery);
+      return;
+    }
+
+    const targetMessageId = activeSearchMessageId || searchResultIds[0];
+    if (targetMessageId) {
+      await jumpToMessageById(targetMessageId);
+    }
+  };
+
+  const handleSearchNext = () => {
+    if (!searchResultIds.length) return;
+    setActiveSearchIndex((current) => (current + 1) % searchResultIds.length);
+  };
+
+  const handleSearchPrevious = () => {
+    if (!searchResultIds.length) return;
+    setActiveSearchIndex((current) =>
+      current === 0 ? searchResultIds.length - 1 : current - 1
+    );
+  };
+
+  const handleJumpToLatest = () => {
+    scrollToBottom("smooth");
+  };
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -1239,6 +1595,18 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           callState={callState}
           callDisabled={!socket.current || socket.current.readyState !== WebSocket.OPEN}
           socketStatus={socketStatus}
+          isSearchOpen={isSearchOpen}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onToggleSearch={handleToggleSearch}
+          onCloseSearch={handleCloseSearch}
+          onSearchSubmit={handleSearchSubmit}
+          onSearchNext={handleSearchNext}
+          onSearchPrevious={handleSearchPrevious}
+          searchResultLabel={searchResultLabel}
+          searchDisabled={loadingHistory}
+          searchHasResults={searchResultIds.length > 0}
+          isSearchingMessages={isSearchingMessages}
         />
       </div>
 
@@ -1356,6 +1724,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               baseTranslateLanguage={
                 user.base_translate_language || user.native_language || "english"
               }
+              searchQuery={searchQuery}
+              matchedSearchMessageIds={searchResultIds}
+              activeSearchMessageId={activeSearchMessageId}
+              unreadAnchorMessageId={unreadAnchorMessageId}
             />
           </>
         )}
@@ -1366,6 +1738,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           <TypingDots />
           <span>Typing...</span>
         </div>
+      )}
+
+      {showJumpToLatest && (
+        <button
+          type="button"
+          onClick={handleJumpToLatest}
+          className="absolute bottom-24 right-4 z-20 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-600 shadow-[0_12px_28px_-18px_rgba(15,23,42,0.45)] backdrop-blur transition hover:bg-white hover:text-slate-800"
+        >
+          Latest
+        </button>
       )}
 
       <div className="sticky bottom-0 z-20 flex-shrink-0 border-t bg-white">
