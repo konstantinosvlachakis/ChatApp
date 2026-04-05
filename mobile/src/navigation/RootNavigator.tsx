@@ -162,15 +162,15 @@ function AppTabs() {
     [dismissBanner]
   );
 
-  const loadUnreadChatsCount = React.useCallback(async () => {
+  const loadUnreadChatsCount = React.useCallback(async (force = false) => {
     const now = Date.now();
     if (unreadFetchMetaRef.current.inFlight) return;
-    if (now - unreadFetchMetaRef.current.lastRunAt < 4000) return;
+    if (!force && now - unreadFetchMetaRef.current.lastRunAt < 4000) return;
 
     unreadFetchMetaRef.current.inFlight = true;
     unreadFetchMetaRef.current.lastRunAt = now;
     try {
-      const conversations = await fetchConversations();
+      const conversations = await fetchConversations({ force: true });
       const totalUnread = conversations.reduce(
         (sum: number, conversation: { unread_count?: number }) => {
         return sum + (conversation.unread_count || 0);
@@ -220,7 +220,7 @@ function AppTabs() {
   React.useEffect(() => {
     loadUnreadChatsCount();
     const refreshListener = DeviceEventEmitter.addListener("conversations_refresh", () => {
-      loadUnreadChatsCount();
+      loadUnreadChatsCount(true);
     });
     return () => {
       refreshListener.remove();

@@ -3,7 +3,6 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
 } from "react-native";
 import { useMemo } from "react";
 import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchPeople } from "../services/api/auth";
 import { PartnerCard } from "../components/PartnerCard";
 import type { ProfileListResponse } from "../types";
@@ -78,7 +78,7 @@ export function CommunityScreen() {
   }, [people, searchText, selectedLanguage]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <FlatList
         contentContainerStyle={styles.listContent}
         data={filteredPeople}

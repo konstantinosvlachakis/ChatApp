@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { register } from "../services/api/auth";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
@@ -57,7 +57,7 @@ export function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.bgBlobOne} />
       <View style={styles.bgBlobTwo} />
       <KeyboardAvoidingView
@@ -157,7 +157,9 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     scrollContent: {
       flexGrow: 1,
       justifyContent: "center",
-      padding: 20,
+      paddingHorizontal: 20,
+      paddingTop: 28,
+      paddingBottom: 28,
     },
     card: {
       backgroundColor: colors.surface,

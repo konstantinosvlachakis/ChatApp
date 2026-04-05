@@ -13,7 +13,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,6 +22,7 @@ import {
 import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../components/CoachAvatar";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
@@ -225,6 +225,10 @@ export function ConversationsScreen() {
     top: number;
     align: "left" | "right";
   } | null>(null);
+  const [chatActionsMenu, setChatActionsMenu] = useState<{
+    username: string;
+    isBlocked: boolean;
+  } | null>(null);
   const [chatActionLoading, setChatActionLoading] = useState(false);
   const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
 
@@ -387,6 +391,8 @@ export function ConversationsScreen() {
           setSelectedConversation(response);
           previousMessageCountRef.current = response.messages?.length || 0;
           await markConversationRead(conversationId);
+          initialUnreadCountRef.current = 0;
+          setUnreadAnchorMessageId(null);
           DeviceEventEmitter.emit("conversations_refresh");
           await loadConversations(true);
         }
@@ -502,6 +508,8 @@ export function ConversationsScreen() {
       });
       setMessageText("");
       setReplyTarget(null);
+      initialUnreadCountRef.current = 0;
+      setUnreadAnchorMessageId(null);
       emitTypingStopped();
       bumpConversationToTop({
         conversationId: selectedConversation.id,
@@ -626,41 +634,10 @@ export function ConversationsScreen() {
       try {
         setChatActionLoading(true);
         const profile = await fetchPublicProfile(username);
-        const isBlocked = Boolean(profile.is_blocked_by_me);
-        Alert.alert(username, "Conversation options", [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "View profile",
-            onPress: () => navigation.navigate("PublicProfile", { username }),
-          },
-          {
-            text: isBlocked ? "Unblock user" : "Block user",
-            onPress: async () => {
-              try {
-                setChatActionLoading(true);
-                if (isBlocked) {
-                  await unblockUser(username);
-                  await loadConversations(true);
-                  Alert.alert("Unblocked", `${username} can contact you again.`);
-                } else {
-                  await blockUser(username);
-                  closeConversation();
-                  await loadConversations(true);
-                  Alert.alert("Blocked", `${username} has been blocked.`);
-                }
-              } catch {
-                Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
-              } finally {
-                setChatActionLoading(false);
-              }
-            },
-          },
-          {
-            text: "Report user",
-            style: "destructive",
-            onPress: () => handleReportUser(username),
-          },
-        ]);
+        setChatActionsMenu({
+          username,
+          isBlocked: Boolean(profile.is_blocked_by_me),
+        });
       } catch {
         Alert.alert("Unavailable", "Could not load chat options right now.");
       } finally {
@@ -669,6 +646,35 @@ export function ConversationsScreen() {
     },
     [chatActionLoading, closeConversation, handleReportUser, loadConversations, navigation]
   );
+
+  const closeChatActionsMenu = useCallback(() => {
+    if (chatActionLoading) return;
+    setChatActionsMenu(null);
+  }, [chatActionLoading]);
+
+  const handleToggleUserBlock = useCallback(async () => {
+    if (!chatActionsMenu || chatActionLoading) return;
+    const { username, isBlocked } = chatActionsMenu;
+    try {
+      setChatActionLoading(true);
+      if (isBlocked) {
+        await unblockUser(username);
+        await loadConversations(true);
+        setChatActionsMenu({ username, isBlocked: false });
+        Alert.alert("Unblocked", `${username} can contact you again.`);
+      } else {
+        await blockUser(username);
+        setChatActionsMenu(null);
+        closeConversation();
+        await loadConversations(true);
+        Alert.alert("Blocked", `${username} has been blocked.`);
+      }
+    } catch {
+      Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+    } finally {
+      setChatActionLoading(false);
+    }
+  }, [chatActionLoading, chatActionsMenu, closeConversation, loadConversations]);
 
   const handleReactionSelect = useCallback(
     async (message: ChatMessage, emoji: string) => {
@@ -796,7 +802,11 @@ export function ConversationsScreen() {
             if (data.senderId && data.senderId !== currentUserId && isFocused) {
               setRemoteTyping(conversationId, false);
               markConversationRead(conversationId)
-                .then(() => DeviceEventEmitter.emit("conversations_refresh"))
+                .then(() => {
+                  initialUnreadCountRef.current = 0;
+                  setUnreadAnchorMessageId(null);
+                  DeviceEventEmitter.emit("conversations_refresh");
+                })
                 .catch(() => {});
             }
             loadConversations(true).catch(() => {});
@@ -1478,10 +1488,11 @@ export function ConversationsScreen() {
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
       setSelectedConversation(updated);
+      initialUnreadCountRef.current = updated.unread_count || 0;
       setUnreadAnchorMessageId(
         findFirstUnreadMessageId(
           sortedUpdatedMessages,
-          initialUnreadCountRef.current,
+          updated.unread_count || 0,
           currentUserId
         )
       );
@@ -1523,7 +1534,7 @@ export function ConversationsScreen() {
         : selectedConversation.sender;
 
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -1790,6 +1801,100 @@ export function ConversationsScreen() {
         />
         <Modal
           transparent
+          visible={Boolean(chatActionsMenu)}
+          animationType="fade"
+          onRequestClose={closeChatActionsMenu}
+        >
+          <View style={styles.menuOverlay}>
+            <Pressable style={styles.menuOverlayTouchable} onPress={closeChatActionsMenu} />
+            {chatActionsMenu ? (
+              <View style={styles.chatActionsSheetWrap}>
+                <View style={styles.chatActionsSheet}>
+                  <View style={styles.chatActionsHandle} />
+                  <View style={styles.chatActionsHeader}>
+                    <View style={styles.chatActionsHeaderIcon}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.chatActionsHeaderTextWrap}>
+                      <Text style={styles.chatActionsTitle}>{chatActionsMenu.username}</Text>
+                      <Text style={styles.chatActionsSubtitle}>Conversation options</Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    style={styles.chatActionsItem}
+                    onPress={() => {
+                      setChatActionsMenu(null);
+                      navigation.navigate("PublicProfile", { username: chatActionsMenu.username });
+                    }}
+                  >
+                    <View style={styles.chatActionsItemIconWrap}>
+                      <Ionicons name="person-circle-outline" size={18} color={colors.text} />
+                    </View>
+                    <View style={styles.chatActionsItemBody}>
+                      <Text style={styles.chatActionsItemTitle}>View profile</Text>
+                      <Text style={styles.chatActionsItemSubtitle}>
+                        See photos, languages, and profile details
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.chatActionsItem, styles.chatActionsItemDestructive]}
+                    onPress={() => {
+                      setChatActionsMenu(null);
+                      handleReportUser(chatActionsMenu.username);
+                    }}
+                  >
+                    <View style={[styles.chatActionsItemIconWrap, styles.chatActionsItemIconWrapDestructive]}>
+                      <Ionicons name="flag-outline" size={18} color={colors.danger} />
+                    </View>
+                    <View style={styles.chatActionsItemBody}>
+                      <Text style={[styles.chatActionsItemTitle, styles.chatActionsItemTitleDanger]}>Report user</Text>
+                      <Text style={styles.chatActionsItemSubtitle}>
+                        Let us know if something feels unsafe
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={[styles.chatActionsItem, styles.chatActionsItemWarning]}
+                    onPress={handleToggleUserBlock}
+                    disabled={chatActionLoading}
+                  >
+                    <View style={[styles.chatActionsItemIconWrap, styles.chatActionsItemIconWrapWarning]}>
+                      {chatActionLoading ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons
+                          name={chatActionsMenu.isBlocked ? "checkmark-circle-outline" : "ban-outline"}
+                          size={18}
+                          color={colors.primary}
+                        />
+                      )}
+                    </View>
+                    <View style={styles.chatActionsItemBody}>
+                      <Text style={styles.chatActionsItemTitle}>
+                        {chatActionsMenu.isBlocked ? "Unblock user" : "Block user"}
+                      </Text>
+                      <Text style={styles.chatActionsItemSubtitle}>
+                        {chatActionsMenu.isBlocked
+                          ? "Allow this user to contact you again"
+                          : "Prevent this user from messaging you"}
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable style={styles.chatActionsCancel} onPress={closeChatActionsMenu}>
+                    <Text style={styles.chatActionsCancelText}>Close</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </Modal>
+        <Modal
+          transparent
           visible={Boolean(messageMenu)}
           animationType="fade"
           onRequestClose={closeMessageMenu}
@@ -1886,7 +1991,7 @@ export function ConversationsScreen() {
 
   if (openingFromNotification) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.chatLoading}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.openingConversationText}>Opening conversation...</Text>
@@ -1896,7 +2001,7 @@ export function ConversationsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Conversations</Text>
         <Pressable
@@ -2683,6 +2788,124 @@ const createStyles = (colors: ThemeColors) =>
     },
     menuOverlayTouchable: {
       ...StyleSheet.absoluteFillObject,
+    },
+    chatActionsSheetWrap: {
+      flex: 1,
+      justifyContent: "flex-end",
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+    },
+    chatActionsSheet: {
+      borderRadius: 24,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 14,
+      shadowColor: "#000",
+      shadowOpacity: 0.18,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 10,
+    },
+    chatActionsHandle: {
+      alignSelf: "center",
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      backgroundColor: colors.border,
+      marginBottom: 12,
+      opacity: 0.9,
+    },
+    chatActionsHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 10,
+      paddingHorizontal: 2,
+    },
+    chatActionsHeaderIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    chatActionsHeaderTextWrap: {
+      flex: 1,
+    },
+    chatActionsTitle: {
+      color: colors.text,
+      fontSize: 22,
+      fontWeight: "800",
+    },
+    chatActionsSubtitle: {
+      color: colors.mutedText,
+      fontSize: 13,
+      marginTop: 2,
+    },
+    chatActionsItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 18,
+      paddingHorizontal: 10,
+      paddingVertical: 12,
+      backgroundColor: colors.surface,
+    },
+    chatActionsItemWarning: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    chatActionsItemDestructive: {
+      backgroundColor: `${colors.danger}08`,
+    },
+    chatActionsItemIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    chatActionsItemIconWrapWarning: {
+      backgroundColor: colors.surface,
+    },
+    chatActionsItemIconWrapDestructive: {
+      backgroundColor: `${colors.danger}14`,
+    },
+    chatActionsItemBody: {
+      flex: 1,
+    },
+    chatActionsItemTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: "700",
+    },
+    chatActionsItemTitleDanger: {
+      color: colors.danger,
+    },
+    chatActionsItemSubtitle: {
+      color: colors.mutedText,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: 2,
+    },
+    chatActionsCancel: {
+      marginTop: 10,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      backgroundColor: colors.surfaceMuted,
+    },
+    chatActionsCancelText: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: "700",
     },
     messageMenuSheet: {
       position: "absolute",

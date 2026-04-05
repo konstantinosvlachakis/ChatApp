@@ -5,7 +5,6 @@ import {
   Image,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { API_BASE_URL } from "../config/api";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { useAuth } from "../context/AuthContext";
@@ -90,7 +90,7 @@ export function PublicProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -100,7 +100,7 @@ export function PublicProfileScreen() {
 
   if (error || !profile) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.center}>
           <Text style={styles.errorText}>{error || "Profile not found."}</Text>
         </View>
@@ -202,7 +202,7 @@ export function PublicProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.heroCard}>
           {!isOwnProfile ? (

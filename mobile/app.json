@@ -5,7 +5,9 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "../frontend/public/logo512.png",
     "splash": {
+      "image": "../frontend/public/logo512.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,7 +23,9 @@
       "bundleIdentifier": "com.anonymous.langvoyagemobile"
     },
     "android": {
+      "icon": "../frontend/public/logo512.png",
       "adaptiveIcon": {
+        "foregroundImage": "../frontend/public/logo512.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
