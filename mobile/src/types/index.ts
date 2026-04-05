@@ -8,6 +8,7 @@ export interface Profile {
   native_language?: string;
   base_translate_language?: string;
   languages_practicing?: string[];
+  practice_language_levels?: Record<string, string>;
   bio?: string;
   age?: number | null;
   learning_goal?: string;
@@ -84,6 +85,7 @@ export interface ProfileListResponse {
     username: string;
     native_language?: string;
     languages_practicing?: string[];
+    practice_language_levels?: Record<string, string>;
     profile_image_url?: string | null;
   }>;
   pagination: {

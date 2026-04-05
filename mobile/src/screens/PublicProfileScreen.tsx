@@ -29,6 +29,76 @@ import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 
+const LANGUAGE_FLAG_MAP: Record<string, string> = {
+  arabic: "🇸🇦",
+  chinese: "🇨🇳",
+  dutch: "🇳🇱",
+  english: "🇬🇧",
+  french: "🇫🇷",
+  german: "🇩🇪",
+  greek: "🇬🇷",
+  hindi: "🇮🇳",
+  italian: "🇮🇹",
+  japanese: "🇯🇵",
+  korean: "🇰🇷",
+  portuguese: "🇵🇹",
+  russian: "🇷🇺",
+  spanish: "🇪🇸",
+  swedish: "🇸🇪",
+  turkish: "🇹🇷",
+  ukrainian: "🇺🇦",
+};
+
+const PRACTICE_LEVELS = [
+  {
+    title: "Brave Beginner",
+    subtitle: "Warming up the vocal cords",
+  },
+  {
+    title: "Conversation Surfer",
+    subtitle: "Catching longer exchanges",
+  },
+  {
+    title: "Accent Adventurer",
+    subtitle: "Playing with rhythm and nuance",
+  },
+  {
+    title: "Fluency Chaser",
+    subtitle: "Getting smoother every week",
+  },
+];
+
+function getLanguageFlag(language?: string | null) {
+  if (!language) return "🌍";
+  return LANGUAGE_FLAG_MAP[language.trim().toLowerCase()] || "🌍";
+}
+
+function getLanguagePalette(language: string, colors: ThemeColors, index = 0) {
+  const palettes = [
+    {
+      tint: `${colors.primary}12`,
+      border: `${colors.primary}26`,
+      badge: "#F7FBFF",
+    },
+    {
+      tint: "#FFF7EC",
+      border: "#F2D5A9",
+      badge: "#FFFDF8",
+    },
+    {
+      tint: "#F2FBF8",
+      border: "#BEE5D8",
+      badge: "#FCFFFE",
+    },
+    {
+      tint: "#F7F4FF",
+      border: "#D8CCF4",
+      badge: "#FCFAFF",
+    },
+  ];
+  return palettes[index % palettes.length];
+}
+
 export function PublicProfileScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -117,6 +187,26 @@ export function PublicProfileScreen() {
   const previewImages = [profileImage, complementaryOne, complementaryTwo].filter(Boolean);
   const practicingLanguages = profile.languages_practicing || [];
   const isOwnProfile = user?.username === profile.username;
+  const ageLabel = typeof profile.age === "number" ? String(profile.age) : null;
+  const nativeLanguage = profile.native_language || "Not shared";
+  const bioText =
+    profile.bio ||
+    "Passionate about language exchange, thoughtful conversations, and meeting people with a different cultural perspective.";
+  const learningGoalText =
+    profile.learning_goal ||
+    "I want to improve fluency and become more confident in real conversations.";
+  const locationText = profile.location || "Open to global conversations";
+  const nativeLanguagePalette = getLanguagePalette(nativeLanguage, colors, 0);
+  const practiceLanguageCards = practicingLanguages.map((language, index) => {
+    const level = PRACTICE_LEVELS[index % PRACTICE_LEVELS.length];
+    return {
+      language,
+      flag: getLanguageFlag(language),
+      levelTitle: level.title,
+      levelSubtitle: level.subtitle,
+      palette: getLanguagePalette(language, colors, index + 1),
+    };
+  });
 
   const handleToggleBlock = () => {
     if (!profile.username || isOwnProfile || blocking) return;
@@ -186,80 +276,226 @@ export function PublicProfileScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.heroCard}>
+          <View style={styles.heroGlowPrimary} />
+          <View style={styles.heroGlowSecondary} />
           {!isOwnProfile ? (
             <Pressable style={styles.heroMenuButton} onPress={handleMoreActions}>
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
             </Pressable>
           ) : null}
-          <Pressable
-            onPress={() => {
-              setPreviewIndex(0);
-              setIsPreviewOpen(true);
-              requestAnimationFrame(() => {
-                previewScrollRef.current?.scrollTo({ x: 0, animated: false });
-              });
-            }}
-          >
-            <Image source={{ uri: profileImage }} style={styles.avatar} />
-          </Pressable>
-          <Text style={styles.heroTitle}>
-            {profile.username}
-            {typeof profile.age === "number" ? `, ${profile.age}` : ""}
-          </Text>
-          {!isOwnProfile ? (
-            <View style={styles.actionRow}>
-              <Pressable
-                style={styles.primaryActionButton}
-                onPress={handleStartConversation}
-                disabled={startingConversation}
-              >
-                <Text style={styles.primaryActionButtonText}>
-                  {startingConversation ? "Opening..." : "Start conversation"}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          <Text style={styles.rowText}>
-            <Text style={styles.rowLabel}>Name:</Text> {profile.username || "N/A"}
-          </Text>
-          <Text style={styles.rowText}>
-            <Text style={styles.rowLabel}>Age:</Text>{" "}
-            {typeof profile.age === "number" ? profile.age : "Not provided"}
-          </Text>
-          <Text style={styles.rowText}>
-            <Text style={styles.rowLabel}>Bio:</Text>{" "}
-            {profile.bio ||
-              "Passionate about learning new languages and connecting with people from different cultures."}
-          </Text>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Languages</Text>
-          <Text style={styles.rowText}>
-            <Text style={styles.rowLabel}>Native Language:</Text> {profile.native_language || "N/A"}
-          </Text>
-          <Text style={[styles.rowText, styles.rowLabel]}>Languages Practicing:</Text>
-          <View style={styles.chipsWrap}>
-            {(practicingLanguages.length ? practicingLanguages : ["Not provided"]).map((lang) => (
-              <View key={lang} style={styles.chip}>
-                <Text style={styles.chipText}>{lang}</Text>
+          <View style={styles.heroMediaRow}>
+            <Pressable
+              onPress={() => {
+                setPreviewIndex(0);
+                setIsPreviewOpen(true);
+                requestAnimationFrame(() => {
+                  previewScrollRef.current?.scrollTo({ x: 0, animated: false });
+                });
+              }}
+              style={styles.avatarShell}
+            >
+              <Image source={{ uri: profileImage }} style={styles.avatar} />
+            </Pressable>
+            <View style={styles.heroIdentity}>
+              <View style={styles.heroEyebrowRow}>
+                <Text style={styles.heroEyebrow}>LANGUAGE PARTNER</Text>
+                <View style={styles.heroStatusPill}>
+                  <View style={styles.heroStatusDot} />
+                  <Text style={styles.heroStatusText}>Open to chat</Text>
+                </View>
               </View>
-            ))}
+              <Text style={styles.heroTitle}>
+                {profile.username}
+                {ageLabel ? `, ${ageLabel}` : ""}
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                Native in {nativeLanguage}{"\n"}{locationText}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>{nativeLanguage}</Text>
+              <Text style={styles.heroStatLabel}>Native language</Text>
+            </View>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>
+                {practicingLanguages.length ? practicingLanguages.length : 0}
+              </Text>
+              <Text style={styles.heroStatLabel}>Practicing</Text>
+            </View>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>{ageLabel || "?"}</Text>
+              <Text style={styles.heroStatLabel}>Age</Text>
+            </View>
+          </View>
+
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.sectionSubtitle}>A quick feel for who they are</Text>
+            </View>
+          </View>
+          <Text style={styles.bioLead}>{bioText}</Text>
+          <View style={styles.aboutAccentCard}>
+            <Text style={styles.aboutAccentLabel}>Conversation vibe</Text>
+            <Text style={styles.aboutAccentText}>
+              {profile.learning_goal
+                ? "Focused on meaningful practice and steady progress."
+                : "Open to easygoing conversations, cultural exchange, and consistent speaking practice."}
+            </Text>
           </View>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Learning Goals</Text>
-          <Text style={styles.rowText}>
-            {profile.learning_goal ||
-              "I want to improve fluency and become more confident in real conversations."}
-          </Text>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="language-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle}>Languages</Text>
+              <Text style={styles.sectionSubtitle}>A tiny language passport with current vibes</Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.languageFeatureCard,
+              {
+                backgroundColor: nativeLanguagePalette.tint,
+                borderColor: nativeLanguagePalette.border,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.languageBadgeCircle,
+                { backgroundColor: nativeLanguagePalette.badge, borderColor: nativeLanguagePalette.border },
+              ]}
+            >
+              <Text style={styles.languageBadgeEmoji}>{getLanguageFlag(nativeLanguage)}</Text>
+            </View>
+            <View style={styles.languageFeatureCopy}>
+              <Text style={styles.languageFeatureLabel}>Native language</Text>
+              <Text style={styles.languageFeatureValue}>{nativeLanguage}</Text>
+              <Text style={styles.languageFeatureMeta}>Home Turf</Text>
+            </View>
+          </View>
+          <Text style={styles.miniSectionLabel}>Practicing now</Text>
+          {practiceLanguageCards.length ? (
+            <View style={styles.languageCardsColumn}>
+              {practiceLanguageCards.map((item) => (
+                <View
+                  key={item.language}
+                  style={[
+                    styles.practiceLanguageCard,
+                    {
+                      backgroundColor: item.palette.tint,
+                      borderColor: item.palette.border,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.languageBadgeCircle,
+                      {
+                        backgroundColor: item.palette.badge,
+                        borderColor: item.palette.border,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.languageBadgeEmoji}>{item.flag}</Text>
+                  </View>
+                  <View style={styles.practiceLanguageCopy}>
+                    <View style={styles.practiceLanguageTopRow}>
+                      <Text style={styles.practiceLanguageName}>{item.language}</Text>
+                      <View style={styles.levelPill}>
+                        <Text style={styles.levelPillText}>{item.levelTitle}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.practiceLanguageSubtitle}>{item.levelSubtitle}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyLanguageState}>
+              <Text style={styles.emptyLanguageTitle}>New language slot waiting</Text>
+              <Text style={styles.emptyLanguageText}>
+                They have not added a practice language yet.
+              </Text>
+            </View>
+          )}
         </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="rocket-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle}>Learning Goal</Text>
+              <Text style={styles.sectionSubtitle}>What they hope to get from the connection</Text>
+            </View>
+          </View>
+          <Text style={styles.goalQuoteMark}>“</Text>
+          <Text style={styles.goalText}>{learningGoalText}</Text>
+        </View>
+
+        {previewImages.length > 1 ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionIconWrap}>
+                <Ionicons name="images-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.sectionHeaderCopy}>
+                <Text style={styles.sectionTitle}>Photo Moments</Text>
+                <Text style={styles.sectionSubtitle}>A little more personality at a glance</Text>
+              </View>
+            </View>
+            <View style={styles.galleryRow}>
+              {previewImages.slice(0, 3).map((image, index) => (
+                <Pressable
+                  key={`${image}-${index}-thumb`}
+                  style={[styles.galleryTile, index === 0 ? styles.galleryTileLarge : styles.galleryTileSmall]}
+                  onPress={() => {
+                    setPreviewIndex(index);
+                    setIsPreviewOpen(true);
+                    requestAnimationFrame(() => {
+                      previewScrollRef.current?.scrollTo({ x: width * index, animated: false });
+                    });
+                  }}
+                >
+                  <Image source={{ uri: image }} style={styles.galleryImage} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.footerSpacer} />
       </ScrollView>
+
+      {!isOwnProfile ? (
+        <View style={styles.floatingActionWrap}>
+          <Pressable
+            style={styles.floatingActionButton}
+            onPress={handleStartConversation}
+            disabled={startingConversation}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
+            <Text style={styles.floatingActionText}>
+              {startingConversation ? "Opening..." : "Message"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Modal
         visible={isPreviewOpen}
@@ -398,15 +634,38 @@ const createStyles = (colors: ThemeColors) =>
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
     errorText: { color: colors.mutedText, fontSize: 14 },
-    content: { padding: 16, gap: 12 },
+    content: { padding: 16, gap: 14 },
     heroCard: {
       backgroundColor: colors.surface,
-      borderRadius: 18,
+      borderRadius: 26,
       borderWidth: 1,
       borderColor: colors.border,
       padding: 18,
-      alignItems: "center",
       position: "relative",
+      overflow: "hidden",
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 5,
+    },
+    heroGlowPrimary: {
+      position: "absolute",
+      width: 210,
+      height: 210,
+      borderRadius: 105,
+      backgroundColor: colors.overlayTint,
+      top: -86,
+      right: -52,
+    },
+    heroGlowSecondary: {
+      position: "absolute",
+      width: 130,
+      height: 130,
+      borderRadius: 65,
+      backgroundColor: `${colors.primary}12`,
+      bottom: -34,
+      left: -28,
     },
     heroMenuButton: {
       position: "absolute",
@@ -420,53 +679,223 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
+      zIndex: 3,
+    },
+    heroMediaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      paddingTop: 8,
+    },
+    avatarShell: {
+      padding: 4,
+      borderRadius: 999,
+      backgroundColor: colors.surface,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.1,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 4,
     },
     avatar: {
-      width: 110,
-      height: 110,
-      borderRadius: 55,
+      width: 108,
+      height: 108,
+      borderRadius: 54,
       borderWidth: 3,
       borderColor: colors.primary,
-      marginBottom: 12,
+    },
+    heroIdentity: {
+      flex: 1,
+      minWidth: 0,
+    },
+    heroEyebrowRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 8,
+    },
+    heroEyebrow: {
+      color: colors.link,
+      fontSize: 11,
+      letterSpacing: 1.4,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    heroStatusPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      backgroundColor: `${colors.success}14`,
+    },
+    heroStatusDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.success,
+    },
+    heroStatusText: {
+      color: colors.success,
+      fontSize: 11,
+      fontFamily: fontFamilies.bodyBold,
     },
     heroTitle: {
-      fontSize: 34,
+      fontSize: 31,
       fontFamily: fontFamilies.displayBold,
       color: colors.text,
       textTransform: "capitalize",
-      textAlign: "center",
+      lineHeight: 38,
     },
-    actionRow: {
-      marginTop: 12,
-      width: "100%",
-      justifyContent: "center",
+    heroSubtitle: {
+      color: colors.mutedText,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 6,
+      fontFamily: fontFamilies.bodyMedium,
     },
-    primaryActionButton: {
-      minHeight: 48,
-      borderRadius: 16,
-      backgroundColor: colors.primary,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 18,
+    heroStatsRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 18,
     },
-    primaryActionButtonText: {
-      color: "#ffffff",
-      fontSize: 15,
+    heroStatCard: {
+      flex: 1,
+      borderRadius: 18,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+    },
+    heroStatValue: {
+      color: colors.text,
+      fontSize: 17,
       fontFamily: fontFamilies.displaySemiBold,
+    },
+    heroStatLabel: {
+      color: colors.mutedText,
+      fontSize: 11,
+      marginTop: 4,
+      fontFamily: fontFamilies.bodyBold,
     },
     sectionCard: {
       backgroundColor: colors.surface,
-      borderRadius: 16,
+      borderRadius: 24,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: 16,
-      gap: 6,
+      padding: 18,
+      gap: 10,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 7 },
+      elevation: 3,
+    },
+    sectionHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    sectionIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    sectionHeaderCopy: {
+      flex: 1,
     },
     sectionTitle: {
       color: colors.text,
       fontSize: 24,
       fontFamily: fontFamilies.displayBold,
+    },
+    sectionSubtitle: {
+      color: colors.mutedText,
+      fontSize: 12,
+      marginTop: 2,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    bioLead: {
+      color: colors.text,
+      fontSize: 16,
+      lineHeight: 25,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    aboutAccentCard: {
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    aboutAccentLabel: {
+      color: colors.link,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      fontFamily: fontFamilies.bodyBold,
       marginBottom: 6,
+    },
+    aboutAccentText: {
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 23,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    languageFeatureCard: {
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      backgroundColor: `${colors.primary}10`,
+      borderWidth: 1,
+      borderColor: `${colors.primary}24`,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+    },
+    languageFeatureCopy: {
+      flex: 1,
+    },
+    languageBadgeCircle: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+    },
+    languageBadgeEmoji: {
+      fontSize: 24,
+    },
+    languageFeatureLabel: {
+      color: colors.link,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      fontFamily: fontFamilies.bodyBold,
+      marginBottom: 6,
+    },
+    languageFeatureValue: {
+      color: colors.text,
+      fontSize: 24,
+      fontFamily: fontFamilies.displayBold,
+    },
+    languageFeatureMeta: {
+      color: colors.mutedText,
+      fontSize: 13,
+      marginTop: 4,
+      fontFamily: fontFamilies.bodySemiBold,
+    },
+    miniSectionLabel: {
+      color: colors.text,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
     },
     rowText: {
       color: colors.mutedText,
@@ -482,18 +911,154 @@ const createStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 8,
+      marginTop: 2,
+    },
+    languageCardsColumn: {
+      gap: 10,
+      marginTop: 2,
+    },
+    practiceLanguageCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    practiceLanguageCopy: {
+      flex: 1,
+    },
+    practiceLanguageTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    practiceLanguageName: {
+      color: colors.text,
+      fontSize: 18,
+      fontFamily: fontFamilies.displayBold,
+      textTransform: "capitalize",
+      flexShrink: 1,
+    },
+    practiceLanguageSubtitle: {
+      color: colors.mutedText,
+      fontSize: 13,
+      lineHeight: 20,
       marginTop: 4,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    levelPill: {
+      borderRadius: 999,
+      backgroundColor: "#FFFFFFCC",
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    levelPillText: {
+      color: colors.text,
+      fontSize: 11,
+      letterSpacing: 0.2,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    emptyLanguageState: {
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    emptyLanguageTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyBold,
+      marginBottom: 4,
+    },
+    emptyLanguageText: {
+      color: colors.mutedText,
+      fontSize: 14,
+      lineHeight: 21,
+      fontFamily: fontFamilies.bodyMedium,
     },
     chip: {
       backgroundColor: colors.surfaceMuted,
       borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     chipText: {
       color: colors.text,
       fontSize: 14,
       fontFamily: fontFamilies.bodySemiBold,
+    },
+    goalQuoteMark: {
+      color: `${colors.primary}40`,
+      fontSize: 54,
+      lineHeight: 48,
+      marginTop: -4,
+      fontFamily: fontFamilies.displayBold,
+    },
+    goalText: {
+      color: colors.text,
+      fontSize: 17,
+      lineHeight: 27,
+      marginTop: -8,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    galleryRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 2,
+    },
+    galleryTile: {
+      overflow: "hidden",
+      borderRadius: 18,
+      backgroundColor: colors.surfaceMuted,
+    },
+    galleryTileLarge: {
+      flex: 1.4,
+      aspectRatio: 0.92,
+    },
+    galleryTileSmall: {
+      flex: 1,
+      aspectRatio: 0.92,
+    },
+    galleryImage: {
+      width: "100%",
+      height: "100%",
+    },
+    footerSpacer: {
+      height: 80,
+    },
+    floatingActionWrap: {
+      position: "absolute",
+      left: 16,
+      right: 16,
+      bottom: 14,
+    },
+    floatingActionButton: {
+      minHeight: 54,
+      borderRadius: 18,
+      backgroundColor: colors.navy,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.16,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 6,
+    },
+    floatingActionText: {
+      color: "#fff",
+      fontSize: 16,
+      fontFamily: fontFamilies.displaySemiBold,
     },
     previewBackdrop: {
       flex: 1,

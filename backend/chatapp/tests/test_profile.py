@@ -16,6 +16,9 @@ class ProfileEndpointTests(TestCase):
             native_language="english",
             base_translate_language="english",
             languages_practicing=["greek", "spanish"],
+            practice_language_levels={"greek": "intermediate", "spanish": "beginner"},
+            bio="Avid language learner.",
+            learning_goal="Speak Greek more naturally.",
         )
         self.client.force_authenticate(user=self.user)
 
@@ -27,12 +30,17 @@ class ProfileEndpointTests(TestCase):
         self.assertIn("location", response.json())
         self.assertIn("native_language", response.json())
         self.assertIn("languages_practicing", response.json())
+        self.assertIn("practice_language_levels", response.json())
         self.assertIn("email", response.json())
+        self.assertEqual(response.json()["bio"], "Avid language learner.")
+        self.assertEqual(response.json()["learning_goal"], "Speak Greek more naturally.")
 
     def test_public_profile_returns_200_for_existing_user(self):
         response = self.client.get(f"/api/profile/public/{self.user.username}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["username"], self.user.username)
+        self.assertEqual(response.json()["bio"], "Avid language learner.")
+        self.assertEqual(response.json()["learning_goal"], "Speak Greek more naturally.")
 
     def test_public_profile_returns_404_for_unknown_user(self):
         response = self.client.get("/api/profile/public/does-not-exist/")
@@ -67,6 +75,10 @@ class ProfileEndpointTests(TestCase):
         payload = {
             "base_translate_language": "french",
             "languages_practicing": ["french", "italian"],
+            "practice_language_levels": {
+                "french": "advanced",
+                "italian": "beginner",
+            },
         }
         response = self.client.patch(
             "/api/profile/edit/",
@@ -81,6 +93,27 @@ class ProfileEndpointTests(TestCase):
         self.assertEqual(
             response.json()["updated_profile"]["languages_practicing"],
             ["french", "italian"],
+        )
+        self.assertEqual(
+            response.json()["updated_profile"]["practice_language_levels"],
+            {"french": "advanced", "italian": "beginner"},
+        )
+
+    def test_profile_edit_with_invalid_practice_language_levels_returns_400(self):
+        payload = {
+            "languages_practicing": ["french"],
+            "practice_language_levels": {"french": "legendary"},
+        }
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.json()["error"],
+            "practice language levels must be beginner, intermediate, advanced, or fluent",
         )
 
     def test_profile_edit_supports_location_and_date_of_birth(self):
@@ -97,6 +130,31 @@ class ProfileEndpointTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["updated_profile"]["location"], "Athens, Greece")
         self.assertEqual(response.json()["updated_profile"]["date_of_birth"], "2000-01-02")
+
+    def test_profile_edit_persists_bio_and_learning_goal(self):
+        payload = {
+            "bio": "I like thoughtful, patient conversations.",
+            "learning_goal": "Reach confident daily fluency.",
+        }
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.json()["updated_profile"]["bio"],
+            "I like thoughtful, patient conversations.",
+        )
+        self.assertEqual(
+            response.json()["updated_profile"]["learning_goal"],
+            "Reach confident daily fluency.",
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.bio, "I like thoughtful, patient conversations.")
+        self.assertEqual(self.user.learning_goal, "Reach confident daily fluency.")
 
     def test_profile_location_update_returns_200_and_updates_profile(self):
         payload = {

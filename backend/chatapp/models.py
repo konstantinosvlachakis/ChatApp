@@ -32,6 +32,9 @@ class Profile(AbstractBaseUser):
     native_language = models.CharField(max_length=255, blank=False)
     base_translate_language = models.CharField(max_length=50, default="english")
     languages_practicing = models.JSONField(default=list, blank=True)
+    practice_language_levels = models.JSONField(default=dict, blank=True)
+    bio = models.TextField(blank=True, default="")
+    learning_goal = models.TextField(blank=True, default="")
     location = models.CharField(max_length=255, blank=True, default="")
     location_updated_at = models.DateTimeField(null=True, blank=True)
     profile_image_url = models.CharField(
