@@ -37,8 +37,9 @@ export function PublicProfileScreen() {
   const { width } = useWindowDimensions();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
 
-  const routeUsername = route.params?.username as string | undefined;
   const routeProfile = route.params?.profile as Profile | undefined;
+  const routeUsername =
+    (route.params?.username as string | undefined) || (routeProfile?.username as string | undefined);
 
   const [profile, setProfile] = React.useState<Profile | null>(routeProfile || null);
   const [loading, setLoading] = React.useState(!routeProfile);
@@ -49,6 +50,7 @@ export function PublicProfileScreen() {
   const [reporting, setReporting] = React.useState(false);
   const [startingConversation, setStartingConversation] = React.useState(false);
   const [reportModalOpen, setReportModalOpen] = React.useState(false);
+  const [profileActionsOpen, setProfileActionsOpen] = React.useState(false);
   const previewScrollRef = React.useRef<ScrollView | null>(null);
 
   React.useEffect(() => {
@@ -67,7 +69,8 @@ export function PublicProfileScreen() {
         setError("");
       } catch {
         if (!mounted) return;
-        setError("Could not load this profile.");
+        setProfile((prev) => prev || routeProfile || null);
+        setError(routeProfile ? "" : "Could not load this profile.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -77,7 +80,7 @@ export function PublicProfileScreen() {
     return () => {
       mounted = false;
     };
-  }, [routeUsername]);
+  }, [routeProfile, routeUsername]);
 
   const resolveMediaUrl = (path?: string | null, withDefault = true) => {
     if (!path) {
@@ -118,38 +121,27 @@ export function PublicProfileScreen() {
   const handleToggleBlock = () => {
     if (!profile.username || isOwnProfile || blocking) return;
     const isBlocked = Boolean(profile.is_blocked_by_me);
-    Alert.alert(
-      isBlocked ? "Unblock user" : "Block user",
-      isBlocked
-        ? `You will be able to see ${profile.username} again.`
-        : `You will hide ${profile.username} from people and chats.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: isBlocked ? "Unblock" : "Block",
-          onPress: async () => {
-            try {
-              setBlocking(true);
-              if (isBlocked) {
-                await unblockUser(profile.username);
-                setProfile((prev) =>
-                  prev ? { ...prev, is_blocked_by_me: false, has_blocked_me: false } : prev
-                );
-              } else {
-                await blockUser(profile.username);
-                setProfile((prev) =>
-                  prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false } : prev
-                );
-              }
-            } catch {
-              Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
-            } finally {
-              setBlocking(false);
-            }
-          },
-        },
-      ]
-    );
+    setProfileActionsOpen(false);
+    (async () => {
+      try {
+        setBlocking(true);
+        if (isBlocked) {
+          await unblockUser(profile.username);
+          setProfile((prev) =>
+            prev ? { ...prev, is_blocked_by_me: false, has_blocked_me: false } : prev
+          );
+        } else {
+          await blockUser(profile.username);
+          setProfile((prev) =>
+            prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false } : prev
+          );
+        }
+      } catch {
+        Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+      } finally {
+        setBlocking(false);
+      }
+    })();
   };
 
   const submitReport = async (reason: string, details = "") => {
@@ -168,18 +160,7 @@ export function PublicProfileScreen() {
 
   const handleMoreActions = () => {
     if (isOwnProfile) return;
-    Alert.alert(profile.username, "Profile options", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: profile.is_blocked_by_me ? "Unblock user" : "Block user",
-        onPress: handleToggleBlock,
-      },
-      {
-        text: "Report user",
-        style: "destructive",
-        onPress: () => setReportModalOpen(true),
-      },
-    ]);
+    setProfileActionsOpen(true);
   };
 
   const handleStartConversation = async () => {
@@ -334,6 +315,80 @@ export function PublicProfileScreen() {
         onClose={() => setReportModalOpen(false)}
         onSubmit={({ reason, details }) => submitReport(reason, details)}
       />
+      <Modal
+        transparent
+        visible={profileActionsOpen}
+        animationType="fade"
+        onRequestClose={() => setProfileActionsOpen(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable style={styles.menuOverlayTouchable} onPress={() => setProfileActionsOpen(false)} />
+          <View style={styles.actionsSheetWrap}>
+            <View style={styles.actionsSheet}>
+              <View style={styles.actionsHandle} />
+              <View style={styles.actionsHeader}>
+                <View style={styles.actionsHeaderIcon}>
+                  <Ionicons name="person-circle-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.actionsHeaderTextWrap}>
+                  <Text style={styles.actionsTitle}>{profile.username}</Text>
+                  <Text style={styles.actionsSubtitle}>Profile options</Text>
+                </View>
+              </View>
+
+              <Pressable
+                style={[styles.actionsItem, styles.actionsItemDestructive]}
+                onPress={() => {
+                  setProfileActionsOpen(false);
+                  setReportModalOpen(true);
+                }}
+              >
+                <View style={[styles.actionsItemIconWrap, styles.actionsItemIconWrapDestructive]}>
+                  <Ionicons name="flag-outline" size={18} color={colors.danger} />
+                </View>
+                <View style={styles.actionsItemBody}>
+                  <Text style={[styles.actionsItemTitle, styles.actionsItemTitleDanger]}>Report user</Text>
+                  <Text style={styles.actionsItemSubtitle}>
+                    Let us know if something feels unsafe
+                  </Text>
+                </View>
+              </Pressable>
+
+              <Pressable
+                style={[styles.actionsItem, styles.actionsItemWarning]}
+                onPress={handleToggleBlock}
+                disabled={blocking}
+              >
+                <View style={[styles.actionsItemIconWrap, styles.actionsItemIconWrapWarning]}>
+                  {blocking ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons
+                      name={profile.is_blocked_by_me ? "checkmark-circle-outline" : "ban-outline"}
+                      size={18}
+                      color={colors.primary}
+                    />
+                  )}
+                </View>
+                <View style={styles.actionsItemBody}>
+                  <Text style={styles.actionsItemTitle}>
+                    {profile.is_blocked_by_me ? "Unblock user" : "Block user"}
+                  </Text>
+                  <Text style={styles.actionsItemSubtitle}>
+                    {profile.is_blocked_by_me
+                      ? "Allow this user to contact you again"
+                      : "Prevent this user from contacting you"}
+                  </Text>
+                </View>
+              </Pressable>
+
+              <Pressable style={styles.actionsCancel} onPress={() => setProfileActionsOpen(false)}>
+                <Text style={styles.actionsCancelText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -512,6 +567,133 @@ const createStyles = (colors: ThemeColors) =>
     },
     previewCloseText: {
       color: "#fff",
+      fontFamily: fontFamilies.bodyBold,
+    },
+    menuOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(8, 15, 33, 0.26)",
+      justifyContent: "flex-end",
+      alignItems: "stretch",
+    },
+    menuOverlayTouchable: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    actionsSheetWrap: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+    },
+    actionsSheet: {
+      borderRadius: 24,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 14,
+      shadowColor: "#000",
+      shadowOpacity: 0.18,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 10,
+    },
+    actionsHandle: {
+      alignSelf: "center",
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      backgroundColor: colors.border,
+      marginBottom: 12,
+      opacity: 0.9,
+    },
+    actionsHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 10,
+      paddingHorizontal: 2,
+    },
+    actionsHeaderIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    actionsHeaderTextWrap: {
+      flex: 1,
+    },
+    actionsTitle: {
+      color: colors.text,
+      fontSize: 22,
+      fontFamily: fontFamilies.displayBold,
+    },
+    actionsSubtitle: {
+      color: colors.mutedText,
+      fontSize: 13,
+      marginTop: 2,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    actionsItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 18,
+      paddingHorizontal: 10,
+      paddingVertical: 12,
+      backgroundColor: colors.surface,
+    },
+    actionsItemWarning: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    actionsItemDestructive: {
+      backgroundColor: `${colors.danger}08`,
+    },
+    actionsItemIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    actionsItemIconWrapWarning: {
+      backgroundColor: colors.surface,
+    },
+    actionsItemIconWrapDestructive: {
+      backgroundColor: `${colors.danger}14`,
+    },
+    actionsItemBody: {
+      flex: 1,
+    },
+    actionsItemTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    actionsItemTitleDanger: {
+      color: colors.danger,
+    },
+    actionsItemSubtitle: {
+      color: colors.mutedText,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: 2,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    actionsCancel: {
+      marginTop: 10,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 12,
+      backgroundColor: colors.surfaceMuted,
+    },
+    actionsCancelText: {
+      color: colors.text,
+      fontSize: 15,
       fontFamily: fontFamilies.bodyBold,
     },
   });

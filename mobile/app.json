@@ -5,9 +5,9 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "../frontend/public/logo512.png",
+    "icon": "./assets/icon.png",
     "splash": {
-      "image": "../frontend/public/logo512.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -23,9 +23,9 @@
       "bundleIdentifier": "com.anonymous.langvoyagemobile"
     },
     "android": {
-      "icon": "../frontend/public/logo512.png",
+      "icon": "./assets/icon.png",
       "adaptiveIcon": {
-        "foregroundImage": "../frontend/public/logo512.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
