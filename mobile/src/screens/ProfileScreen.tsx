@@ -204,6 +204,35 @@ function getMissionBadgeOptions(level: string) {
   }
 }
 
+function formatViewedAtLabel(value?: string | null) {
+  if (!value) return "Recently";
+
+  const viewedAt = new Date(value);
+  if (Number.isNaN(viewedAt.getTime())) return "Recently";
+
+  const diffMs = Date.now() - viewedAt.getTime();
+  const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+
+  return viewedAt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function ProfileScreen() {
   const { user: authUser, refreshProfile } = useAuth();
   const navigation = useNavigation<any>();
@@ -318,6 +347,7 @@ export function ProfileScreen() {
     "My goal is to become fluent and confident in new languages for both travel and communication.";
   const locationText = user?.location?.trim() || "Add your location";
   const ageLabel = typeof user?.age === "number" ? String(user.age) : null;
+  const recentProfileViewers = user?.recent_profile_viewers || [];
   const practiceLanguageCards = practicingLanguages.map((language, index) => {
     const level = getPracticeLevelMeta(user?.practice_language_levels?.[language]);
     const tone = getPracticeLevelTone(level.value, colors);
@@ -764,6 +794,76 @@ export function ProfileScreen() {
                 : "You feel approachable, open-minded, and ready for regular conversation practice."}
             </Text>
           </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="eye-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle}>Profile Views</Text>
+              <Text style={styles.sectionSubtitle}>People who recently stopped by</Text>
+            </View>
+          </View>
+
+          {recentProfileViewers.length ? (
+            <View style={styles.recentViewerList}>
+              {recentProfileViewers.map((viewer) => {
+                const viewerIsoCode = getLanguageIsoCode(viewer.native_language);
+                const viewerAvatar = resolveMediaUrl(viewer.profile_image_url);
+                return (
+                  <Pressable
+                    key={`${viewer.user_id}-${viewer.viewed_at}`}
+                    style={({ pressed }) => [
+                      styles.recentViewerRow,
+                      pressed ? styles.recentViewerRowPressed : undefined,
+                    ]}
+                    onPress={() =>
+                      navigation.navigate("People", {
+                        screen: "PublicProfile",
+                        params: {
+                          username: viewer.username,
+                        },
+                      })
+                    }
+                  >
+                    <View style={styles.recentViewerIdentity}>
+                      <Image source={{ uri: viewerAvatar }} style={styles.recentViewerAvatar} />
+                      <View style={styles.recentViewerCopy}>
+                        <Text style={styles.recentViewerName}>{viewer.username}</Text>
+                        <View style={styles.recentViewerMetaRow}>
+                          {viewerIsoCode ? (
+                            <CountryFlag isoCode={viewerIsoCode} size={12} />
+                          ) : (
+                            <Text style={styles.recentViewerFlagFallback}>
+                              {getLanguageFlag(viewer.native_language)}
+                            </Text>
+                          )}
+                          <Text style={styles.recentViewerMetaText}>
+                            Native in {viewer.native_language || "a shared language"}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.recentViewerTrailing}>
+                      <Text style={styles.recentViewerTime}>
+                        {formatViewedAtLabel(viewer.viewed_at)}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={15} color={colors.mutedText} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.profileViewsEmptyState}>
+              <Text style={styles.profileViewsEmptyTitle}>No profile views yet</Text>
+              <Text style={styles.profileViewsEmptyText}>
+                Once people open your public profile, you&apos;ll see the most recent visitors here.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -1775,6 +1875,93 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.text,
       fontSize: 15,
       lineHeight: 23,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    recentViewerList: {
+      gap: 12,
+    },
+    recentViewerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingVertical: 4,
+      borderRadius: 18,
+      paddingHorizontal: 6,
+      marginHorizontal: -6,
+    },
+    recentViewerRowPressed: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    recentViewerIdentity: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      flex: 1,
+      minWidth: 0,
+    },
+    recentViewerAvatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recentViewerCopy: {
+      flex: 1,
+      minWidth: 0,
+      gap: 4,
+    },
+    recentViewerName: {
+      color: colors.text,
+      fontSize: 16,
+      fontFamily: fontFamilies.displaySemiBold,
+    },
+    recentViewerMetaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    recentViewerFlagFallback: {
+      fontSize: 12,
+    },
+    recentViewerMetaText: {
+      color: colors.mutedText,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodyMedium,
+      textTransform: "capitalize",
+      flexShrink: 1,
+    },
+    recentViewerTime: {
+      color: colors.link,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    recentViewerTrailing: {
+      alignItems: "flex-end",
+      justifyContent: "center",
+      gap: 6,
+      marginTop: 2,
+    },
+    profileViewsEmptyState: {
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    profileViewsEmptyTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyBold,
+      marginBottom: 4,
+    },
+    profileViewsEmptyText: {
+      color: colors.mutedText,
+      fontSize: 14,
+      lineHeight: 21,
       fontFamily: fontFamilies.bodyMedium,
     },
     missionSectionHeader: {

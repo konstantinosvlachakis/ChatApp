@@ -24,6 +24,13 @@ export interface Profile {
     rating?: number;
     comment?: string;
   }>;
+  recent_profile_viewers?: Array<{
+    user_id: number;
+    username: string;
+    native_language?: string;
+    profile_image_url?: string | null;
+    viewed_at: string;
+  }>;
 }
 
 export interface ConversationParticipant {

@@ -20,7 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { fetchConversations } from "../services/api/conversations";
-import { tokenStorage } from "../services/storage";
+import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
 import { CommunityScreen } from "../screens/CommunityScreen";
@@ -45,10 +45,10 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 type BannerState = {
   id: string;
-  username: string;
+  title: string;
   text: string;
-  conversationId: number;
   avatarUrl?: string | null;
+  onPress?: () => void;
 };
 
 type PresenceSocketPayload =
@@ -127,15 +127,15 @@ function AppTabs() {
   }, []);
 
   const showBanner = React.useCallback(
-    (username: string, text: string, conversationId: number, avatarUrl?: string | null) => {
-      const id = `${conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    (title: string, text: string, avatarUrl?: string | null, onPress?: () => void) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       bannerAnimRef.current[id] = {
         translateY: new Animated.Value(-24),
         opacity: new Animated.Value(0),
       };
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setBanners((prev) => [
-        { id, username, text: text || "Sent you a message", conversationId, avatarUrl },
+        { id, title, text: text || "Sent you a message", avatarUrl, onPress },
         ...prev,
       ]);
       bannerTimersRef.current[id] = setTimeout(() => {
@@ -193,8 +193,19 @@ function AppTabs() {
             showBanner(
               otherUser.username,
               lastMessage?.text || "Sent you a message",
-              conversation.id,
-              otherUser.profile_image_url
+              otherUser.profile_image_url,
+              () => {
+                navigation.navigate("AppTabs", {
+                  screen: "Chats",
+                  params: {
+                    screen: "ChatsHome",
+                    params: {
+                      openConversationId: conversation.id,
+                      openFromBannerAt: Date.now(),
+                    },
+                  },
+                });
+              }
             );
           }
         }
@@ -215,7 +226,7 @@ function AppTabs() {
     } finally {
       unreadFetchMetaRef.current.inFlight = false;
     }
-  }, [activeTabName, showBanner, user?.user_id]);
+  }, [activeTabName, navigation, showBanner, user?.user_id]);
 
   React.useEffect(() => {
     loadUnreadChatsCount();
@@ -288,6 +299,54 @@ function AppTabs() {
     };
   }, [loadUnreadChatsCount, user?.user_id, wsBaseUrl]);
 
+  React.useEffect(() => {
+    const latestViewer = user?.recent_profile_viewers?.[0];
+    const userId = user?.user_id;
+
+    if (!userId || !latestViewer?.username || !latestViewer.viewed_at) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const maybeShowProfileViewBanner = async () => {
+      const storedViewedAt = await profileViewNotificationStorage.getLastNotifiedAt(userId);
+      if (cancelled) return;
+
+      const latestViewedAtMs = Date.parse(latestViewer.viewed_at);
+      const storedViewedAtMs = storedViewedAt ? Date.parse(storedViewedAt) : NaN;
+      const shouldNotify =
+        Number.isFinite(latestViewedAtMs) &&
+        (!Number.isFinite(storedViewedAtMs) || latestViewedAtMs > storedViewedAtMs);
+
+      if (!shouldNotify) {
+        return;
+      }
+
+      showBanner(
+        "Someone viewed your profile",
+        `${latestViewer.username} just stopped by.`,
+        latestViewer.profile_image_url,
+        () => {
+          navigation.navigate("People", {
+            screen: "PublicProfile",
+            params: {
+              username: latestViewer.username,
+            },
+          });
+        }
+      );
+
+      await profileViewNotificationStorage.setLastNotifiedAt(userId, latestViewer.viewed_at);
+    };
+
+    maybeShowProfileViewBanner().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigation, showBanner, user?.recent_profile_viewers, user?.user_id]);
+
   const tabBarReserve = 124;
   const bannerApproxHeight = 56;
   const bannerTop = Math.min(
@@ -317,23 +376,14 @@ function AppTabs() {
               <Pressable
                 style={dynamicStyles.banner}
                 onPress={() => {
-                  navigation.navigate("AppTabs", {
-                    screen: "Chats",
-                    params: {
-                      screen: "ChatsHome",
-                      params: {
-                        openConversationId: banner.conversationId,
-                        openFromBannerAt: Date.now(),
-                      },
-                    },
-                  });
+                  banner.onPress?.();
                   dismissBanner(banner.id);
                 }}
               >
                 <Image source={{ uri: resolveMediaUrl(banner.avatarUrl) }} style={dynamicStyles.bannerAvatar} />
                 <View style={styles.bannerContent}>
                   <Text numberOfLines={1} style={dynamicStyles.bannerTitle}>
-                    {banner.username}
+                    {banner.title}
                   </Text>
                   <Text numberOfLines={1} style={dynamicStyles.bannerText}>
                     {banner.text}

@@ -15,12 +15,14 @@ from .models import (
     MessageTranslation,
     MessageReaction,
     PracticeStats,
+    ProfileView,
     UserReport,
 )
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+from django.db import DatabaseError, OperationalError
 from django.db.models import Q
 from django.db.models import Count, OuterRef, Subquery
 from django.core.files.storage import default_storage
@@ -535,6 +537,43 @@ def bump_profile_cache_version(user_id):
         pass
 
 
+def build_recent_profile_viewers(request, user, limit=12):
+    recent_views = (
+        ProfileView.objects.filter(viewed_profile=user)
+        .select_related("viewer")
+        .order_by("-updated_at")[:limit]
+    )
+
+    return [
+        {
+            "user_id": view.viewer.id,
+            "username": view.viewer.username,
+            "native_language": view.viewer.native_language,
+            "profile_image_url": build_media_url(request, view.viewer.profile_image_url),
+            "viewed_at": view.updated_at,
+        }
+        for view in recent_views
+    ]
+
+
+def record_profile_view(viewer, viewed_profile):
+    if not viewer or not viewed_profile or viewer.id == viewed_profile.id:
+        return
+
+    try:
+        _, created = ProfileView.objects.get_or_create(
+            viewer=viewer,
+            viewed_profile=viewed_profile,
+        )
+    except (OperationalError, DatabaseError):
+        # SQLite can temporarily lock under concurrent dev traffic. Recording a
+        # profile view is best-effort and should never break opening a profile.
+        return
+
+    if created:
+        bump_profile_cache_version(viewed_profile.id)
+
+
 def get_conversation_list_cache_version(user_id):
     key = CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
     version = cache.get(key)
@@ -879,6 +918,7 @@ def profile_view(request):
         "email": user.email,  # Include the email
         "bio": user.bio or "",
         "learning_goal": user.learning_goal or "",
+        "recent_profile_viewers": build_recent_profile_viewers(request, user),
         "support_email": SUPPORT_EMAIL,
     }
     if request.method == "GET":
@@ -992,10 +1032,11 @@ def profile_data_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def public_profile_view(request, username):
-    profile = get_object_or_404(Profile, username=username)
+    profile = get_object_or_404(Profile, username__iexact=username)
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
     if is_blocked_by_me or has_blocked_me:
         return JsonResponse({"error": "This user is unavailable."}, status=403)
+    record_profile_view(request.user, profile)
     cache_version = get_profile_cache_version(profile.id)
     cache_key = (
         f"public_profile:v{cache_version}:user:{profile.id}:viewer:{request.user.id}:"
@@ -1242,7 +1283,7 @@ def delete_account_view(request):
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def block_user_view(request, username):
-    target = get_object_or_404(Profile, username=username)
+    target = get_object_or_404(Profile, username__iexact=username)
 
     if target.id == request.user.id:
         return Response(
@@ -1318,7 +1359,7 @@ def moderation_summary_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def report_user_view(request, username):
-    target = get_object_or_404(Profile, username=username)
+    target = get_object_or_404(Profile, username__iexact=username)
 
     if target.id == request.user.id:
         return Response(

@@ -281,3 +281,25 @@ class UserReport(models.Model):
 
     def __str__(self):
         return f"Report({self.reporter_id}->{self.reported_user_id}:{self.reason})"
+
+
+class ProfileView(models.Model):
+    viewer = models.ForeignKey(
+        Profile, related_name="profile_views_made", on_delete=models.CASCADE
+    )
+    viewed_profile = models.ForeignKey(
+        Profile, related_name="profile_views_received", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["viewer", "viewed_profile"], name="uniq_profile_view_pair"
+            )
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"ProfileView({self.viewer_id}->{self.viewed_profile_id})"

@@ -34,6 +34,7 @@ class ProfileEndpointTests(TestCase):
         self.assertIn("email", response.json())
         self.assertEqual(response.json()["bio"], "Avid language learner.")
         self.assertEqual(response.json()["learning_goal"], "Speak Greek more naturally.")
+        self.assertIn("recent_profile_viewers", response.json())
 
     def test_public_profile_returns_200_for_existing_user(self):
         response = self.client.get(f"/api/profile/public/{self.user.username}/")
@@ -41,6 +42,45 @@ class ProfileEndpointTests(TestCase):
         self.assertEqual(response.json()["username"], self.user.username)
         self.assertEqual(response.json()["bio"], "Avid language learner.")
         self.assertEqual(response.json()["learning_goal"], "Speak Greek more naturally.")
+
+    def test_public_profile_view_records_recent_viewer(self):
+        viewer = make_user(
+            username="bob",
+            email="bob@example.com",
+            native_language="greek",
+        )
+        self.client.force_authenticate(user=viewer)
+
+        response = self.client.get(f"/api/profile/public/{self.user.username}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.user)
+        profile_response = self.client.get("/api/profile/")
+        self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+        recent_viewers = profile_response.json()["recent_profile_viewers"]
+        self.assertEqual(len(recent_viewers), 1)
+        self.assertEqual(recent_viewers[0]["username"], "bob")
+
+    def test_public_profile_view_updates_existing_viewer_instead_of_duplicating(self):
+        viewer = make_user(
+            username="bob",
+            email="bob@example.com",
+            native_language="greek",
+        )
+        self.client.force_authenticate(user=viewer)
+
+        first_response = self.client.get(f"/api/profile/public/{self.user.username}/")
+        second_response = self.client.get(f"/api/profile/public/{self.user.username}/")
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.user)
+        profile_response = self.client.get("/api/profile/")
+        recent_viewers = profile_response.json()["recent_profile_viewers"]
+        self.assertEqual(len(recent_viewers), 1)
+        self.assertEqual(recent_viewers[0]["username"], "bob")
 
     def test_public_profile_returns_404_for_unknown_user(self):
         response = self.client.get("/api/profile/public/does-not-exist/")
