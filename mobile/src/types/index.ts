@@ -8,6 +8,7 @@ export interface Profile {
   native_language?: string;
   base_translate_language?: string;
   languages_practicing?: string[];
+  practice_language_levels?: Record<string, string>;
   bio?: string;
   age?: number | null;
   learning_goal?: string;
@@ -22,6 +23,13 @@ export interface Profile {
     author?: string;
     rating?: number;
     comment?: string;
+  }>;
+  recent_profile_viewers?: Array<{
+    user_id: number;
+    username: string;
+    native_language?: string;
+    profile_image_url?: string | null;
+    viewed_at: string;
   }>;
 }
 
@@ -39,6 +47,13 @@ export interface ChatMessage {
   sender: ConversationParticipant;
   attachment_url?: string | null;
   timestamp: string;
+  edited_at?: string | null;
+  is_pinned?: boolean;
+  pinned_at?: string | null;
+  pinned_by?: {
+    id: number;
+    username: string;
+  } | null;
   translated_text?: string | null;
   translated_source_language?: string | null;
   can_translate?: boolean;
@@ -68,6 +83,7 @@ export interface Conversation {
   updated_at: string;
   last_message: ChatMessage | null;
   unread_count: number;
+  pinned_messages?: ChatMessage[];
   messages: ChatMessage[];
 }
 
@@ -76,6 +92,7 @@ export interface ProfileListResponse {
     username: string;
     native_language?: string;
     languages_practicing?: string[];
+    practice_language_levels?: Record<string, string>;
     profile_image_url?: string | null;
   }>;
   pagination: {

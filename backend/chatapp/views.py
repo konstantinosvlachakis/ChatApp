@@ -15,12 +15,14 @@ from .models import (
     MessageTranslation,
     MessageReaction,
     PracticeStats,
+    ProfileView,
     UserReport,
 )
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
+from django.db import DatabaseError, OperationalError
 from django.db.models import Q
 from django.db.models import Count, OuterRef, Subquery
 from django.core.files.storage import default_storage
@@ -535,6 +537,43 @@ def bump_profile_cache_version(user_id):
         pass
 
 
+def build_recent_profile_viewers(request, user, limit=12):
+    recent_views = (
+        ProfileView.objects.filter(viewed_profile=user)
+        .select_related("viewer")
+        .order_by("-updated_at")[:limit]
+    )
+
+    return [
+        {
+            "user_id": view.viewer.id,
+            "username": view.viewer.username,
+            "native_language": view.viewer.native_language,
+            "profile_image_url": build_media_url(request, view.viewer.profile_image_url),
+            "viewed_at": view.updated_at,
+        }
+        for view in recent_views
+    ]
+
+
+def record_profile_view(viewer, viewed_profile):
+    if not viewer or not viewed_profile or viewer.id == viewed_profile.id:
+        return
+
+    try:
+        _, created = ProfileView.objects.get_or_create(
+            viewer=viewer,
+            viewed_profile=viewed_profile,
+        )
+    except (OperationalError, DatabaseError):
+        # SQLite can temporarily lock under concurrent dev traffic. Recording a
+        # profile view is best-effort and should never break opening a profile.
+        return
+
+    if created:
+        bump_profile_cache_version(viewed_profile.id)
+
+
 def get_conversation_list_cache_version(user_id):
     key = CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
     version = cache.get(key)
@@ -866,6 +905,7 @@ def profile_view(request):
         "native_language": user.native_language,  # Include the native language
         "base_translate_language": user.base_translate_language,
         "languages_practicing": user.languages_practicing or [],
+        "practice_language_levels": user.practice_language_levels or {},
         "profile_image_url": build_media_url(request, user.profile_image_url),
         "complementary_image_1_url": build_media_url(
             request, user.complementary_image_1_url
@@ -876,6 +916,9 @@ def profile_view(request):
         "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
+        "bio": user.bio or "",
+        "learning_goal": user.learning_goal or "",
+        "recent_profile_viewers": build_recent_profile_viewers(request, user),
         "support_email": SUPPORT_EMAIL,
     }
     if request.method == "GET":
@@ -964,6 +1007,7 @@ def profile_data_view(request):
             "username": profile.username,
             "native_language": profile.native_language,
             "languages_practicing": profile.languages_practicing or [],
+            "practice_language_levels": profile.practice_language_levels or {},
             "profile_image_url": build_media_url(request, profile.profile_image_url),
         }
         for profile in page_obj
@@ -988,10 +1032,11 @@ def profile_data_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def public_profile_view(request, username):
-    profile = get_object_or_404(Profile, username=username)
+    profile = get_object_or_404(Profile, username__iexact=username)
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
     if is_blocked_by_me or has_blocked_me:
         return JsonResponse({"error": "This user is unavailable."}, status=403)
+    record_profile_view(request.user, profile)
     cache_version = get_profile_cache_version(profile.id)
     cache_key = (
         f"public_profile:v{cache_version}:user:{profile.id}:viewer:{request.user.id}:"
@@ -1007,6 +1052,7 @@ def public_profile_view(request, username):
         "age": profile.age,
         "native_language": profile.native_language,
         "languages_practicing": profile.languages_practicing or [],
+        "practice_language_levels": profile.practice_language_levels or {},
         "profile_image_url": build_media_url(request, profile.profile_image_url),
         "complementary_image_1_url": build_media_url(
             request, profile.complementary_image_1_url
@@ -1014,8 +1060,8 @@ def public_profile_view(request, username):
         "complementary_image_2_url": build_media_url(
             request, profile.complementary_image_2_url
         ),
-        "bio": "Passionate about language exchange and cultural learning.",
-        "learning_goal": "Improve fluency through daily conversations.",
+        "bio": profile.bio or "",
+        "learning_goal": profile.learning_goal or "",
         "reviews": [],
         "is_blocked_by_me": is_blocked_by_me,
         "has_blocked_me": has_blocked_me,
@@ -1037,9 +1083,12 @@ def profile_edit_view(request):
         native_language = data.get("native_language")
         base_translate_language = data.get("base_translate_language")
         languages_practicing = data.get("languages_practicing")
+        practice_language_levels = data.get("practice_language_levels")
         email = data.get("email")
         date_of_birth = data.get("date_of_birth")
         location = data.get("location")
+        bio = data.get("bio")
+        learning_goal = data.get("learning_goal")
         avatar_ring_color = data.get("avatar_ring_color")
         profile_image_url = data.get(
             "profile_image_url"
@@ -1071,6 +1120,35 @@ def profile_edit_view(request):
                         cleaned_languages.append(value)
             user.languages_practicing = cleaned_languages
             should_bump_profile_list = True
+        if practice_language_levels is not None:
+            if not isinstance(practice_language_levels, dict):
+                return JsonResponse(
+                    {"error": "practice_language_levels must be an object"},
+                    status=400,
+                )
+
+            allowed_languages = {
+                str(language).strip()
+                for language in (languages_practicing if languages_practicing is not None else user.languages_practicing or [])
+                if isinstance(language, str) and str(language).strip()
+            }
+            cleaned_levels = {}
+            for language, level in practice_language_levels.items():
+                if not isinstance(language, str):
+                    continue
+                normalized_language = language.strip()
+                normalized_level = str(level).strip().lower()
+                if not normalized_language or normalized_language not in allowed_languages:
+                    continue
+                if normalized_level not in {"beginner", "intermediate", "advanced", "fluent"}:
+                    return JsonResponse(
+                        {
+                            "error": "practice language levels must be beginner, intermediate, advanced, or fluent"
+                        },
+                        status=400,
+                    )
+                cleaned_levels[normalized_language] = normalized_level
+            user.practice_language_levels = cleaned_levels
         if email is not None:
             normalized_email = str(email).strip().lower()
             if not normalized_email:
@@ -1098,6 +1176,10 @@ def profile_edit_view(request):
             user.location = str(location).strip()[:255]
             if user.location:
                 user.location_updated_at = timezone.now()
+        if bio is not None:
+            user.bio = str(bio).strip()
+        if learning_goal is not None:
+            user.learning_goal = str(learning_goal).strip()
         if avatar_ring_color is not None:
             normalized_ring_color = str(avatar_ring_color).strip().lower()
             if not re.fullmatch(r"#[0-9a-f]{6}", normalized_ring_color):
@@ -1124,10 +1206,13 @@ def profile_edit_view(request):
                     "native_language": user.native_language,
                     "base_translate_language": user.base_translate_language,
                     "languages_practicing": user.languages_practicing or [],
+                    "practice_language_levels": user.practice_language_levels or {},
                     "email": user.email,
                     "date_of_birth": user.date_of_birth,
                     "location": user.location or "",
                     "location_updated_at": user.location_updated_at,
+                    "bio": user.bio or "",
+                    "learning_goal": user.learning_goal or "",
                     "profile_image_url": (user.profile_image_url or None),
                     "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
                 },
@@ -1198,7 +1283,7 @@ def delete_account_view(request):
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def block_user_view(request, username):
-    target = get_object_or_404(Profile, username=username)
+    target = get_object_or_404(Profile, username__iexact=username)
 
     if target.id == request.user.id:
         return Response(
@@ -1274,7 +1359,7 @@ def moderation_summary_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def report_user_view(request, username):
-    target = get_object_or_404(Profile, username=username)
+    target = get_object_or_404(Profile, username__iexact=username)
 
     if target.id == request.user.id:
         return Response(
@@ -1384,6 +1469,13 @@ class MessageListView(APIView):
         )
         payload = {
             "messages": serializer.data,
+            "pinned_messages": MessageSerializer(
+                conversation.messages.filter(pinned_at__isnull=False)
+                .select_related("sender", "pinned_by", "reply_to__sender")
+                .order_by("-pinned_at", "-id"),
+                many=True,
+                context={"request": request},
+            ).data,
             "pagination": {
                 "page": page_obj.number,
                 "page_size": page_size,
@@ -1475,6 +1567,51 @@ class MessageDeleteView(APIView):
         return Response(
             {"message": "Message deleted successfully"}, status=status.HTTP_200_OK
         )
+
+
+class MessageEditView(APIView):
+    def patch(self, request, message_id):
+        message = get_object_or_404(Message, id=message_id, sender=request.user)
+        updated_text = str(request.data.get("text", "")).strip()
+
+        if not updated_text and not message.attachment:
+            return Response(
+                {"error": "Message content is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if message.text == updated_text:
+            serializer = MessageSerializer(message, context={"request": request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        message.text = updated_text
+        message.edited_at = timezone.now()
+        message.save(update_fields=["text", "edited_at"])
+
+        conversation = message.conversation
+        bump_conversation_list_cache_version(conversation.sender_id)
+        bump_conversation_list_cache_version(conversation.receiver_id)
+        broadcast_conversation_update(
+            [conversation.sender_id, conversation.receiver_id],
+            conversation.id,
+            "message_updated",
+            actor_id=request.user.id,
+        )
+
+        serializer = MessageSerializer(message, context={"request": request})
+        serialized_message = serializer.data
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                str(message.conversation_id),
+                {
+                    "type": "message_edit_event",
+                    "message": serialized_message,
+                },
+            )
+
+        return Response(serialized_message, status=status.HTTP_200_OK)
 
 
 class ConversationDetailView(APIView):
@@ -2018,6 +2155,62 @@ def react_to_message_view(request, message_id):
             str(message.conversation_id),
             {
                 "type": "message_reaction_event",
+                "message": serialized_message,
+            },
+        )
+
+    return Response(serialized_message, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def pin_message_view(request, message_id):
+    message = get_object_or_404(Message, id=message_id)
+    conversation = message.conversation
+    participants = {conversation.sender_id, conversation.receiver_id}
+
+    if request.user.id not in participants:
+        return Response(
+            {"error": "You do not have access to this message."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    raw_is_pinned = request.data.get("is_pinned")
+    if isinstance(raw_is_pinned, str):
+        should_pin = raw_is_pinned.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        should_pin = bool(raw_is_pinned)
+    update_fields = ["pinned_at", "pinned_by"]
+
+    if should_pin:
+        message.pinned_at = timezone.now()
+        message.pinned_by = request.user
+        trigger = "message_pinned"
+    else:
+        message.pinned_at = None
+        message.pinned_by = None
+        trigger = "message_unpinned"
+
+    message.save(update_fields=update_fields)
+
+    bump_conversation_list_cache_version(conversation.sender_id)
+    bump_conversation_list_cache_version(conversation.receiver_id)
+    broadcast_conversation_update(
+        [conversation.sender_id, conversation.receiver_id],
+        conversation.id,
+        trigger,
+        actor_id=request.user.id,
+    )
+
+    serializer = MessageSerializer(message, context={"request": request})
+    serialized_message = serializer.data
+
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            str(message.conversation_id),
+            {
+                "type": "message_pin_event",
                 "message": serialized_message,
             },
         )

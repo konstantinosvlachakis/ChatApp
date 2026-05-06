@@ -1,6 +1,7 @@
 {
   "python.defaultInterpreterPath": "/Users/dinos/Desktop/Envs/chatapp311/bin/python",
   "python.terminal.activateEnvInCurrentTerminal": true,
+  "terminal.integrated.cwd": "/Users/dinos/Desktop/GitHub/ChatApp/backend",
   "terminal.integrated.profiles.osx": {
     "zsh (venv)": {
       "path": "/bin/zsh",

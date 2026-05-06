@@ -76,19 +76,6 @@ const SettingsPage = () => {
   }, [user]);
 
   useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (
-        languagesDropdownRef.current &&
-        !languagesDropdownRef.current.contains(event.target)
-      ) {
-        setIsLanguagesDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
-
-  useEffect(() => {
     const loadModeration = async () => {
       try {
         setModerationLoading(true);
@@ -136,6 +123,19 @@ const SettingsPage = () => {
         .filter(Boolean),
     [languageMap, languagesPracticing]
   );
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (
+        languagesDropdownRef.current &&
+        !languagesDropdownRef.current.contains(event.target)
+      ) {
+        setIsLanguagesDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
   const togglePracticingLanguage = (value) => {
     setLanguagesPracticing((prev) =>

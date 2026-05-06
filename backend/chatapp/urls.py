@@ -51,11 +51,21 @@ urlpatterns = [
         MessageDeleteView.as_view(),
         name="delete_message",  # Delete a specific message
     ),
+    path(
+        "messages/<int:message_id>/edit/",
+        MessageEditView.as_view(),
+        name="edit_message",
+    ),
     path("messages/translate/", translate_message_view, name="translate_message"),
     path(
         "messages/<int:message_id>/react/",
         react_to_message_view,
         name="react_to_message",
+    ),
+    path(
+        "messages/<int:message_id>/pin/",
+        pin_message_view,
+        name="pin_message",
     ),
     path("practice/state/", practice_state_view, name="practice_state"),
     path("practice/challenge/", practice_challenge_view, name="practice_challenge"),

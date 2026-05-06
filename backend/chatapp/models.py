@@ -32,6 +32,9 @@ class Profile(AbstractBaseUser):
     native_language = models.CharField(max_length=255, blank=False)
     base_translate_language = models.CharField(max_length=50, default="english")
     languages_practicing = models.JSONField(default=list, blank=True)
+    practice_language_levels = models.JSONField(default=dict, blank=True)
+    bio = models.TextField(blank=True, default="")
+    learning_goal = models.TextField(blank=True, default="")
     location = models.CharField(max_length=255, blank=True, default="")
     location_updated_at = models.DateTimeField(null=True, blank=True)
     profile_image_url = models.CharField(
@@ -178,6 +181,15 @@ class Message(models.Model):
 
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
+    pinned_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    pinned_by = models.ForeignKey(
+        Profile,
+        related_name="pinned_messages",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
 
     def save(self, *args, **kwargs):
         # Update the conversation's updated_at field when a message is created
@@ -269,3 +281,25 @@ class UserReport(models.Model):
 
     def __str__(self):
         return f"Report({self.reporter_id}->{self.reported_user_id}:{self.reason})"
+
+
+class ProfileView(models.Model):
+    viewer = models.ForeignKey(
+        Profile, related_name="profile_views_made", on_delete=models.CASCADE
+    )
+    viewed_profile = models.ForeignKey(
+        Profile, related_name="profile_views_received", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["viewer", "viewed_profile"], name="uniq_profile_view_pair"
+            )
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"ProfileView({self.viewer_id}->{self.viewed_profile_id})"

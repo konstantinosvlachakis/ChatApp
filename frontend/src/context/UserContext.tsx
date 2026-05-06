@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 import { clearLegacyTokens, isPublicPath } from "../utils/auth";
@@ -22,6 +22,7 @@ type CachedUserPayload = {
 };
 
 const readCachedUser = (): User | null => {
+  if (typeof window === "undefined") return null;
   const rawCache = localStorage.getItem(USER_PROFILE_CACHE_KEY);
   if (!rawCache) return null;
 
@@ -67,8 +68,10 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       setError((err as Error).message);
       if ((err as Error).message === "Unauthorized") {
         clearLegacyTokens();
-        localStorage.removeItem(USER_PROFILE_CACHE_KEY);
-        if (!isPublicPath(window.location.pathname)) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(USER_PROFILE_CACHE_KEY);
+        }
+        if (typeof window !== "undefined" && !isPublicPath(window.location.pathname)) {
           window.location.href = "/login";
         }
       }
@@ -78,6 +81,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   }, [setUser]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
     if (!user) {
       localStorage.removeItem(USER_PROFILE_CACHE_KEY);
       return;

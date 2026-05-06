@@ -1,6 +1,6 @@
 import { BASE_URL } from "../constants/constants";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/register"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/privacy-policy", "/terms-and-conditions"]);
 const ACCESS_TOKEN_KEY = "accessToken";
 const REFRESH_TOKEN_KEY = "refreshToken";
 

@@ -47,6 +47,7 @@ export async function fetchPeople(page = 1, pageSize = 24) {
 export async function updateSettings(payload: {
   base_translate_language?: string;
   languages_practicing?: string[];
+  practice_language_levels?: Record<string, string>;
 }) {
   const response = await api.patch("/profile/edit/", payload);
   return response.data;
@@ -63,6 +64,7 @@ export async function updateProfile(payload: {
   learning_goal?: string;
   avatar_ring_color?: string;
   languages_practicing?: string[];
+  practice_language_levels?: Record<string, string>;
 }) {
   const response = await api.patch("/profile/edit/", payload);
   return (response.data?.updated_profile || response.data) as Partial<Profile>;
