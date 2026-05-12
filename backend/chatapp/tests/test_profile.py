@@ -86,6 +86,25 @@ class ProfileEndpointTests(TestCase):
         response = self.client.get("/api/profile/public/does-not-exist/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_public_profile_returns_stable_match_when_case_variants_exist(self):
+        original = make_user(
+            username="Dinos",
+            email="dinos1@example.com",
+            native_language="greek",
+        )
+        duplicate = make_user(
+            username="dinos",
+            email="dinos2@example.com",
+            native_language="spanish",
+        )
+
+        response = self.client.get("/api/profile/public/DINOS/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["user_id"], original.id)
+        self.assertEqual(response.json()["username"], original.username)
+        self.assertNotEqual(response.json()["user_id"], duplicate.id)
+
     def test_profile_data_excludes_current_user(self):
         make_user(
             username="bob",
@@ -195,6 +214,41 @@ class ProfileEndpointTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.bio, "I like thoughtful, patient conversations.")
         self.assertEqual(self.user.learning_goal, "Reach confident daily fluency.")
+
+    def test_register_rejects_case_insensitive_duplicate_username(self):
+        response = self.client.post(
+            "/api/register/",
+            data=json.dumps(
+                {
+                    "username": "ALICE",
+                    "password": "pass1234",
+                    "nativeLanguage": "english",
+                    "email": "alice2@example.com",
+                    "dateOfBirth": "1995-01-01",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "Username already exists")
+
+    def test_profile_edit_rejects_case_insensitive_duplicate_username(self):
+        other_user = make_user(
+            username="bob",
+            email="bob@example.com",
+            native_language="greek",
+        )
+        self.client.force_authenticate(user=other_user)
+
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps({"username": "ALICE"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "Username already exists")
 
     def test_profile_location_update_returns_200_and_updates_profile(self):
         payload = {
