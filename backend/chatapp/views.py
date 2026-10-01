@@ -1,7 +1,8 @@
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
+from django.core.exceptions import MultipleObjectsReturned
 from .models import Token, Profile
 import json
 from rest_framework.views import APIView
@@ -78,6 +79,19 @@ PRACTICE_GENERATOR_TIMEOUT_SECONDS = int(
 PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT = int(
     os.environ.get("PRACTICE_GENERATOR_DAILY_REQUEST_LIMIT", "20")
 )
+
+
+def get_profile_by_username_or_404(username):
+    try:
+        return Profile.objects.get(username__iexact=username)
+    except Profile.DoesNotExist:
+        raise Http404("No Profile matches the given query.")
+    except MultipleObjectsReturned:
+        # Fall back to a stable record when legacy case-variant duplicates exist.
+        profile = Profile.objects.filter(username__iexact=username).order_by("id").first()
+        if profile is None:
+            raise Http404("No Profile matches the given query.")
+        return profile
 PRACTICE_DAILY_LIBRARY_SIZE = int(os.environ.get("PRACTICE_DAILY_LIBRARY_SIZE", "20"))
 PRACTICE_DAILY_LIBRARY_MIN_READY = int(
     os.environ.get("PRACTICE_DAILY_LIBRARY_MIN_READY", "8")
@@ -856,7 +870,7 @@ def register_view(request):
                 )
 
             # Check if the username already exists
-            if Profile.objects.filter(username=username).exists():
+            if Profile.objects.filter(username__iexact=username).exists():
                 return JsonResponse({"error": "Username already exists"}, status=400)
 
             # Check if the email already exists
@@ -1032,7 +1046,7 @@ def profile_data_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def public_profile_view(request, username):
-    profile = get_object_or_404(Profile, username__iexact=username)
+    profile = get_profile_by_username_or_404(username)
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
     if is_blocked_by_me or has_blocked_me:
         return JsonResponse({"error": "This user is unavailable."}, status=403)
@@ -1096,7 +1110,11 @@ def profile_edit_view(request):
 
         # Update only if data is provided
         if username:
-            if Profile.objects.exclude(id=user.id).filter(username=username).exists():
+            if (
+                Profile.objects.exclude(id=user.id)
+                .filter(username__iexact=username)
+                .exists()
+            ):
                 return JsonResponse({"error": "Username already exists"}, status=400)
             user.username = username
             should_bump_profile_list = True
@@ -1283,7 +1301,7 @@ def delete_account_view(request):
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 def block_user_view(request, username):
-    target = get_object_or_404(Profile, username__iexact=username)
+    target = get_profile_by_username_or_404(username)
 
     if target.id == request.user.id:
         return Response(
@@ -1359,7 +1377,7 @@ def moderation_summary_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def report_user_view(request, username):
-    target = get_object_or_404(Profile, username__iexact=username)
+    target = get_profile_by_username_or_404(username)
 
     if target.id == request.user.id:
         return Response(
