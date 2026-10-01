@@ -51,7 +51,7 @@ load_local_env_file(BASE_DIR / ".env")
 env = os.getenv("DJANGO_ENV")
 if not env:
     # Auto-detect production for Heroku/runtime DB environments.
-    env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") else "local"
+    env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") else "local"
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
@@ -231,7 +231,10 @@ TEMPLATES = [
 
 
 if env == "production":
-    DATABASES = {"default": dj_database_url.config()}
+    # Heroku owns DATABASE_URL while its Postgres add-on is attached. A separate
+    # variable lets the app switch to Neon without changing that managed value.
+    database_url = os.getenv("NEON_DATABASE_URL") or os.getenv("DATABASE_URL")
+    DATABASES = {"default": dj_database_url.parse(database_url) if database_url else dj_database_url.config()}
 else:
     DATABASES = {
         "default": {
