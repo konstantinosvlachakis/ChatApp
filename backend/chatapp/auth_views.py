@@ -77,16 +77,17 @@ class CustomObtainJWTToken(TokenObtainPairView):
         try:
             serializer.is_valid(raise_exception=True)
         except ValidationError:
+            # "message" duplicates "error" for clients built before the envelope
+            # (older mobile builds); drop it after one release.
+            message = "Email and password are required."
             return Response(
-                {"message": "Email and password are required.", "code": "invalid_request"},
+                {"error": message, "code": "invalid_request", "message": message},
                 status=400,
             )
         except AuthenticationFailed:
+            message = "No active account found with the given credentials"
             return Response(
-                {
-                    "message": "No active account found with the given credentials",
-                    "code": "no_active_account",
-                },
+                {"error": message, "code": "no_active_account", "message": message},
                 status=401,
             )
 

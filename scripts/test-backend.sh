@@ -9,5 +9,8 @@ export USE_REDIS_REALTIME=false
 export CLOUDINARY_URL=
 export GEMINI_API_KEY=
 export DATABASE_URL=
+# Quiet logs (tests deliberately trigger errors) and never report to Sentry.
+export DJANGO_LOG_LEVEL=CRITICAL
+export SENTRY_DSN=
 
 python manage.py test "${@:-chatapp}"

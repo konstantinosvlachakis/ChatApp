@@ -3,7 +3,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.static import serve
-from .views import csrf, front
+from .views import api_not_found, csrf, front, health
 from pathlib import Path
 
 
@@ -13,7 +13,10 @@ FRONTEND_BUILD_DIR = Path(settings.TEMPLATES[0]["DIRS"][0])
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/csrf/", csrf, name="csrf"),
+    path("api/health/", health, name="health"),
     path("api/", include("chatapp.urls")),
+    # Unknown API paths get a JSON 404 instead of falling through to the SPA.
+    re_path(r"^api(?:/.*)?$", api_not_found, name="api_not_found"),
     re_path(
         r"^(?P<path>(?:favicon\.ico|manifest\.json|robots\.txt|sitemap\.xml|logo192\.png|logo512\.png|coach-avatar-favicon\.svg))$",
         serve,
@@ -36,7 +39,10 @@ elif uses_local_media_storage:
         ),
     ]
 
-# Serve React frontend for all other routes (development and production)
+# Serve React frontend for all other routes (development and production).
+# Non-GET/HEAD requests to these paths get 405 (see views.front).
 urlpatterns += [
     re_path(r"^.*$", front, name="home"),
 ]
+
+handler500 = "core.views.server_error"
