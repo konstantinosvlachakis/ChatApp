@@ -853,17 +853,15 @@ def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=N
 
 
 def broadcast_presence_update(user_id, is_online):
+    """Tell the user's contacts (shared conversation, not blocked) only."""
+    from .consumers import get_presence_contact_ids, send_presence_update
+
     channel_layer = get_channel_layer()
     if not channel_layer or not user_id:
         return
 
-    async_to_sync(channel_layer.group_send)(
-        "presence_global",
-        {
-            "type": "presence_update_event",
-            "user_id": int(user_id),
-            "is_online": bool(is_online),
-        },
+    async_to_sync(send_presence_update)(
+        channel_layer, user_id, is_online, get_presence_contact_ids(int(user_id))
     )
 
 
@@ -871,18 +869,13 @@ def broadcast_presence_update(user_id, is_online):
 @permission_classes([IsAuthenticated])
 def mark_presence_offline_view(request):
     user = request.user
-    with transaction.atomic():
-        profile = Profile.objects.select_for_update().filter(id=user.id).first()
-        if not profile:
-            return Response(
-                {"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        was_online = bool(profile.is_online or profile.ws_connection_count)
-        profile.ws_connection_count = 0
-        profile.is_online = False
-        profile.last_seen = timezone.now()
-        profile.save(update_fields=["ws_connection_count", "is_online", "last_seen"])
+    # One filtered UPDATE: it only matches (and only reports a change) when the
+    # user was actually online or still had sockets counted.
+    was_online = (
+        Profile.objects.filter(id=user.id)
+        .filter(Q(is_online=True) | Q(ws_connection_count__gt=0))
+        .update(ws_connection_count=0, is_online=False, last_seen=timezone.now())
+    )
 
     if was_online:
         broadcast_presence_update(user.id, False)

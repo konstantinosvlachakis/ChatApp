@@ -1,21 +1,25 @@
 import json
 import os
+import time
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlparse
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
-from django.db import transaction
-from django.db.models import Q
+from django.db.models import Exists, F, OuterRef, Q
 from django.http.request import validate_host
 from django.utils import timezone
 
-from .models import Conversation, Profile
+from .models import BlockedUser, Conversation, Profile
 
 
-PRESENCE_GROUP_NAME = "presence_global"
 ONLINE_FRESHNESS_SECONDS = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
+# Heartbeats arrive every ~20s; last_seen only needs refreshing often enough to
+# stay inside the freshness window, so most heartbeats skip the database.
+PRESENCE_TOUCH_INTERVAL_SECONDS = int(
+    os.environ.get("PRESENCE_TOUCH_INTERVAL_SECONDS", "60")
+)
 # Generous enough for WebRTC SDP payloads, small enough to stop memory abuse.
 WS_MAX_MESSAGE_BYTES = int(os.environ.get("WS_MAX_MESSAGE_BYTES", str(64 * 1024)))
 WS_CHAT_TEXT_MAX_LENGTH = int(os.environ.get("MESSAGE_MAX_LENGTH", "5000"))
@@ -23,6 +27,43 @@ WS_CHAT_TEXT_MAX_LENGTH = int(os.environ.get("MESSAGE_MAX_LENGTH", "5000"))
 
 def user_presence_group_name(user_id):
     return f"presence_user_{user_id}"
+
+
+def get_presence_contact_ids(user_id):
+    """Ids of users who share a conversation with user_id, minus blocked pairs.
+
+    Presence (online/offline changes and the initial online list) is only ever
+    shared with these users; a block in either direction hides it. One query.
+    """
+    blocked_pair = BlockedUser.objects.filter(
+        Q(blocker_id=OuterRef("sender_id"), blocked_id=OuterRef("receiver_id"))
+        | Q(blocker_id=OuterRef("receiver_id"), blocked_id=OuterRef("sender_id"))
+    )
+    rows = (
+        Conversation.objects.filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
+        .exclude(Exists(blocked_pair))
+        .values_list("sender_id", "receiver_id")
+        .distinct()
+    )
+    contact_ids = set()
+    for sender_id, receiver_id in rows:
+        other_id = receiver_id if sender_id == user_id else sender_id
+        if other_id and other_id != user_id:
+            contact_ids.add(other_id)
+    return contact_ids
+
+
+async def send_presence_update(channel_layer, user_id, is_online, contact_ids):
+    """Send a presence change to each contact's own group, never to everyone."""
+    if not channel_layer or not user_id:
+        return
+    event = {
+        "type": "presence_update_event",
+        "user_id": int(user_id),
+        "is_online": bool(is_online),
+    }
+    for contact_id in contact_ids or ():
+        await channel_layer.group_send(user_presence_group_name(contact_id), event)
 
 
 class PresenceTrackingMixin:
@@ -96,66 +137,84 @@ class PresenceTrackingMixin:
 
     @database_sync_to_async
     def increment_presence(self, user_id):
-        with transaction.atomic():
-            profile = Profile.objects.select_for_update().filter(id=user_id).first()
-            if not profile:
-                return False
+        """Count a new socket; return True if the user just came online.
 
-            became_online = not profile.is_online
-            profile.ws_connection_count = (profile.ws_connection_count or 0) + 1
-            profile.is_online = True
-            profile.last_seen = timezone.now()
-            profile.save(update_fields=["ws_connection_count", "is_online", "last_seen"])
-            return became_online
+        Atomic UPDATEs only (no row lock). A user still flagged online but with
+        a stale last_seen (e.g. counts left behind by a crash) counts as coming
+        online, so contacts get told.
+        """
+        now = timezone.now()
+        threshold = now - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
+        if Profile.objects.filter(
+            id=user_id, is_online=True, last_seen__gte=threshold
+        ).update(ws_connection_count=F("ws_connection_count") + 1, last_seen=now):
+            return False
+        return bool(
+            Profile.objects.filter(id=user_id).update(
+                ws_connection_count=F("ws_connection_count") + 1,
+                is_online=True,
+                last_seen=now,
+            )
+        )
 
     @database_sync_to_async
     def touch_presence(self, user_id):
+        # The guard skips the write when another socket of the same user touched
+        # last_seen recently. Half the interval leaves slack for clock jitter so
+        # a skipped write can never let last_seen age past the freshness window.
         now = timezone.now()
-        Profile.objects.filter(id=user_id).update(last_seen=now)
+        stale_before = now - timezone.timedelta(
+            seconds=PRESENCE_TOUCH_INTERVAL_SECONDS / 2
+        )
+        Profile.objects.filter(id=user_id, last_seen__lt=stale_before).update(
+            last_seen=now
+        )
 
     @database_sync_to_async
     def decrement_presence(self, user_id):
-        with transaction.atomic():
-            profile = Profile.objects.select_for_update().filter(id=user_id).first()
-            if not profile:
+        """Release a socket; return True if the user just went offline.
+
+        The three filters partition the row's possible states, so one of them
+        matches unless a concurrent connect/disconnect moved the row in between,
+        in which case we retry. The count never goes below zero.
+        """
+        profiles = Profile.objects.filter(id=user_id)
+        for _ in range(3):
+            if profiles.filter(ws_connection_count__gt=1).update(
+                ws_connection_count=F("ws_connection_count") - 1
+            ):
                 return False
-
-            if profile.ws_connection_count > 0:
-                profile.ws_connection_count -= 1
-
-            update_fields = ["ws_connection_count"]
-            became_offline = False
-
-            if profile.ws_connection_count == 0:
-                if profile.is_online:
-                    became_offline = True
-                profile.is_online = False
-                profile.last_seen = timezone.now()
-                update_fields.extend(["is_online", "last_seen"])
-            elif not profile.is_online:
-                profile.is_online = True
-                update_fields.append("is_online")
-
-            profile.save(update_fields=update_fields)
-            return became_offline
+            if profiles.filter(ws_connection_count__lte=1, is_online=True).update(
+                ws_connection_count=0, is_online=False, last_seen=timezone.now()
+            ):
+                return True
+            if profiles.filter(ws_connection_count__lte=1, is_online=False).update(
+                ws_connection_count=0
+            ):
+                return False
+        return False
 
     @database_sync_to_async
-    def get_online_contact_ids(self, user_id):
-        threshold = timezone.now() - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
-        rows = (
-            Conversation.objects.filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
-            .values_list("sender_id", "receiver_id")
-            .distinct()
-        )
-        contact_ids = set()
-        for sender_id, receiver_id in rows:
-            other_id = receiver_id if sender_id == user_id else sender_id
-            if other_id and other_id != user_id:
-                contact_ids.add(other_id)
+    def load_presence_contact_ids(self, user_id):
+        return get_presence_contact_ids(user_id)
 
+    async def get_contact_ids(self):
+        """Resolve the user's contacts once per socket and reuse them."""
+        if getattr(self, "contact_ids", None) is None:
+            self.contact_ids = await self.load_presence_contact_ids(self.user_id)
+        return self.contact_ids
+
+    async def broadcast_presence(self, is_online):
+        contact_ids = await self.get_contact_ids()
+        await send_presence_update(
+            self.channel_layer, self.user_id, is_online, contact_ids
+        )
+
+    @database_sync_to_async
+    def get_online_contact_ids(self, contact_ids):
         if not contact_ids:
             return []
-
+        threshold = timezone.now() - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
         return list(
             Profile.objects.filter(
                 id__in=contact_ids,
@@ -165,49 +224,47 @@ class PresenceTrackingMixin:
         )
 
     @database_sync_to_async
-    def get_participant_username(self, conversation_id, user_id):
-        """Return the user's username if they belong to the conversation, else None."""
-        conversation = (
+    def get_participant_details(self, conversation_id, user_id):
+        """Return (username, other_participant_id) if user_id is a participant.
+
+        One query covers the membership check, the user's own username and the
+        other participant's id (used for typing notifications).
+        """
+        row = (
             Conversation.objects.filter(id=conversation_id)
             .filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
+            .values_list(
+                "sender_id", "receiver_id", "sender__username", "receiver__username"
+            )
             .first()
         )
-        if not conversation:
+        if not row:
             return None
-        return (
-            Profile.objects.filter(id=user_id).values_list("username", flat=True).first()
-        )
-
-    @database_sync_to_async
-    def get_other_participant_id(self, conversation_id, current_user_id):
-        conversation = Conversation.objects.filter(id=conversation_id).first()
-        if not conversation:
-            return None
-
-        if conversation.sender_id == current_user_id:
-            return conversation.receiver_id
-        if conversation.receiver_id == current_user_id:
-            return conversation.sender_id
-        return None
+        sender_id, receiver_id, sender_username, receiver_username = row
+        if sender_id == user_id:
+            return sender_username, receiver_id
+        return receiver_username, sender_id
 
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def connect(self):
         self.room_group_name = None
         self.username = None
+        self.other_user_id = None
+        self.contact_ids = None
         self.user_id = await self.get_user_id_from_token()
 
         # Only authenticated participants may join a conversation's group. The
         # room name must be a numeric conversation id so clients can never
-        # subscribe to internal groups such as presence_global / presence_user_<id>.
+        # subscribe to internal groups such as presence_user_<id>.
         try:
             conversation_id = int(self.scope["url_route"]["kwargs"]["room_name"])
         except (KeyError, TypeError, ValueError):
             conversation_id = None
         if self.user_id and conversation_id is not None:
-            self.username = await self.get_participant_username(
-                conversation_id, self.user_id
-            )
+            details = await self.get_participant_details(conversation_id, self.user_id)
+            if details:
+                self.username, self.other_user_id = details
         if not self.username:
             self.user_id = None
             await self.close(code=4403)
@@ -220,14 +277,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if self.user_id:
             became_online = await self.increment_presence(self.user_id)
             if became_online:
-                await self.channel_layer.group_send(
-                    PRESENCE_GROUP_NAME,
-                    {
-                        "type": "presence_update_event",
-                        "user_id": self.user_id,
-                        "is_online": True,
-                    },
-                )
+                await self.broadcast_presence(True)
 
     async def disconnect(self, close_code):
         if not getattr(self, "room_group_name", None):
@@ -251,12 +301,9 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     },
                 )
 
-                recipient_id = await self.get_other_participant_id(
-                    conversation_id, self.user_id
-                )
-                if recipient_id:
+                if self.other_user_id:
                     await self.channel_layer.group_send(
-                        user_presence_group_name(recipient_id),
+                        user_presence_group_name(self.other_user_id),
                         {
                             "type": "typing_status_event",
                             "conversation_id": conversation_id,
@@ -268,14 +315,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if self.user_id:
             became_offline = await self.decrement_presence(self.user_id)
             if became_offline:
-                await self.channel_layer.group_send(
-                    PRESENCE_GROUP_NAME,
-                    {
-                        "type": "presence_update_event",
-                        "user_id": self.user_id,
-                        "is_online": False,
-                    },
-                )
+                await self.broadcast_presence(False)
 
     async def receive(self, text_data=None, bytes_data=None):
         if not self.user_id or not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
@@ -348,20 +388,16 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 },
             )
 
-            if self.user_id:
-                recipient_id = await self.get_other_participant_id(
-                    conversation_id, self.user_id
+            if self.other_user_id:
+                await self.channel_layer.group_send(
+                    user_presence_group_name(self.other_user_id),
+                    {
+                        "type": "typing_status_event",
+                        "conversation_id": conversation_id,
+                        "sender_id": self.user_id,
+                        "is_typing": message_type == "user_typing",
+                    },
                 )
-                if recipient_id:
-                    await self.channel_layer.group_send(
-                        user_presence_group_name(recipient_id),
-                        {
-                            "type": "typing_status_event",
-                            "conversation_id": conversation_id,
-                            "sender_id": self.user_id,
-                            "is_typing": message_type == "user_typing",
-                        },
-                    )
             return
 
         if message_type in call_event_types:
@@ -481,29 +517,26 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
 class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def connect(self):
+        self.contact_ids = None
         self.user_id = await self.get_user_id_from_token()
         if not self.user_id:
             await self.close(code=4401)
             return
 
-        await self.channel_layer.group_add(PRESENCE_GROUP_NAME, self.channel_name)
+        # Only the user's own group: presence changes are delivered here by
+        # their contacts' sockets (see send_presence_update).
         await self.channel_layer.group_add(
             user_presence_group_name(self.user_id), self.channel_name
         )
         await self.accept()
 
         became_online = await self.increment_presence(self.user_id)
+        self.last_touch_monotonic = time.monotonic()
+        contact_ids = await self.get_contact_ids()
         if became_online:
-            await self.channel_layer.group_send(
-                PRESENCE_GROUP_NAME,
-                {
-                    "type": "presence_update_event",
-                    "user_id": self.user_id,
-                    "is_online": True,
-                },
-            )
+            await self.broadcast_presence(True)
 
-        online_ids = await self.get_online_contact_ids(self.user_id)
+        online_ids = await self.get_online_contact_ids(contact_ids)
         await self.send(
             text_data=json.dumps(
                 {"type": "initial_online_users", "user_ids": online_ids}
@@ -511,7 +544,6 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         )
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(PRESENCE_GROUP_NAME, self.channel_name)
         if not getattr(self, "user_id", None):
             return
         await self.channel_layer.group_discard(
@@ -520,14 +552,7 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         became_offline = await self.decrement_presence(self.user_id)
         if became_offline:
-            await self.channel_layer.group_send(
-                PRESENCE_GROUP_NAME,
-                {
-                    "type": "presence_update_event",
-                    "user_id": self.user_id,
-                    "is_online": False,
-                },
-            )
+            await self.broadcast_presence(False)
 
     async def receive(self, text_data=None, bytes_data=None):
         if not getattr(self, "user_id", None):
@@ -539,7 +564,17 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         except json.JSONDecodeError:
             payload = {}
 
+        if not isinstance(payload, dict):
+            return
+
         if payload.get("type") == "heartbeat":
+            # last_seen was written on connect; only refresh it once it is about
+            # to age out, so most heartbeats cost no database work at all.
+            now = time.monotonic()
+            last_touch = getattr(self, "last_touch_monotonic", 0)
+            if now - last_touch < PRESENCE_TOUCH_INTERVAL_SECONDS:
+                return
+            self.last_touch_monotonic = now
             await self.touch_presence(self.user_id)
 
     async def presence_update_event(self, event):
