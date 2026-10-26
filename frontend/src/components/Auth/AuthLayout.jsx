@@ -1,6 +1,7 @@
 import React from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import AuthShell from "./AuthShell";
+import { useUser } from "../../context/UserContext";
 
 const contentByPath = {
   "/login": {
@@ -61,7 +62,13 @@ const contentByPath = {
 
 const AuthLayout = () => {
   const location = useLocation();
+  const { user, loading } = useUser();
   const content = contentByPath[location.pathname] || contentByPath["/login"];
+
+  // Signed-in users have no reason to see login/register; send them into the app.
+  if (!loading && user) {
+    return <Navigate to="/profile" replace />;
+  }
 
   return (
     <AuthShell
