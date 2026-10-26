@@ -33,7 +33,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 from django.db import DatabaseError, OperationalError
 from django.db.models import Q
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import Case, Count, F, OuterRef, Subquery, Value, When
 from django.core.files.storage import default_storage
 import os
 import uuid
@@ -66,6 +66,8 @@ PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
 PROFILE_LIST_CACHE_TIMEOUT_SECONDS = 30
 PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
 PROFILE_LIST_MAX_PAGE_SIZE = 100
+PROFILE_MATCH_MODES = {"all", "reciprocal", "teaches_me"}
+PRACTICE_LEVELS = {"beginner", "intermediate", "advanced", "fluent"}
 PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
 PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
 CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = (
@@ -735,6 +737,37 @@ def get_blocked_user_ids(user_id):
     return blocked_ids
 
 
+def build_partner_match_filters(user):
+    """Return (teaches_me_q, learns_mine_q, native_language) for partner matching.
+
+    teaches_me: the other person is native in a language the user practices.
+    learns_mine: the other person practices the user's native language.
+    """
+    practicing_languages = [
+        str(language).strip().lower()
+        for language in (getattr(user, "languages_practicing", []) or [])
+        if isinstance(language, str) and str(language).strip()
+    ]
+    if not practicing_languages:
+        fallback_language = (user.base_translate_language or "").strip().lower()
+        if fallback_language:
+            practicing_languages = [fallback_language]
+
+    teaches_me_q = Q(pk__in=[])
+    for language in practicing_languages:
+        teaches_me_q |= Q(native_language__iexact=language)
+
+    native_language = (user.native_language or "").strip().lower()
+    if not re.fullmatch(r"[a-z][a-z \-]{0,49}", native_language):
+        native_language = ""
+    learns_mine_q = Q(pk__in=[])
+    if native_language:
+        # JSON text match on the quoted value so "english" doesn't match "old english".
+        learns_mine_q = Q(languages_practicing__icontains=f'"{native_language}"')
+
+    return teaches_me_q, learns_mine_q, native_language
+
+
 def users_are_blocked(user_a_id, user_b_id):
     if not user_a_id or not user_b_id:
         return False
@@ -1131,6 +1164,13 @@ def profile_data_view(request):
     )
     match_only_param = request.query_params.get("match_only", "0")
     match_only = str(match_only_param).lower() in {"1", "true", "yes"}
+    # "match_only" predates the "match" param and maps to "teaches_me".
+    match_mode = str(request.query_params.get("match", "")).strip().lower()
+    if match_mode not in PROFILE_MATCH_MODES:
+        match_mode = "teaches_me" if match_only else "all"
+    level_filter = str(request.query_params.get("level", "")).strip().lower()
+    if level_filter not in PRACTICE_LEVELS:
+        level_filter = ""
 
     try:
         page = max(int(page_param), 1)
@@ -1146,7 +1186,7 @@ def profile_data_view(request):
     cache_version = get_profile_list_cache_version()
     cache_key = (
         f"profile_data:v{cache_version}:user:{request.user.id}:"
-        f"page:{page}:size:{page_size}:match_only:{int(match_only)}"
+        f"page:{page}:size:{page_size}:match:{match_mode}:level:{level_filter or '-'}"
     )
     cached_payload = cache.get(cache_key)
     if cached_payload:
@@ -1156,25 +1196,31 @@ def profile_data_view(request):
     profiles_qs = Profile.objects.exclude(id=request.user.id)
     if blocked_user_ids:
         profiles_qs = profiles_qs.exclude(id__in=blocked_user_ids)
-    if match_only:
-        practicing_languages = getattr(request.user, "languages_practicing", []) or []
-        normalized_languages = [
-            str(language).strip()
-            for language in practicing_languages
-            if isinstance(language, str) and str(language).strip()
-        ]
-        if not normalized_languages:
-            fallback_language = (request.user.base_translate_language or "").strip()
-            if fallback_language:
-                normalized_languages = [fallback_language]
 
-        language_filter = Q()
-        for language in normalized_languages:
-            language_filter |= Q(native_language__iexact=language)
-        profiles_qs = profiles_qs.filter(language_filter)
+    teaches_me_q, learns_mine_q, my_native_language = build_partner_match_filters(
+        request.user
+    )
+    profiles_qs = profiles_qs.annotate(
+        teaches_me=Case(When(teaches_me_q, then=Value(1)), default=Value(0)),
+        learns_mine=Case(When(learns_mine_q, then=Value(1)), default=Value(0)),
+    ).annotate(match_score=F("teaches_me") + F("learns_mine"))
 
-    profiles_qs = profiles_qs.order_by("username").only(
-        "username", "native_language", "languages_practicing", "profile_image_url"
+    if match_mode == "teaches_me":
+        profiles_qs = profiles_qs.filter(teaches_me=1)
+    elif match_mode == "reciprocal":
+        profiles_qs = profiles_qs.filter(teaches_me=1, learns_mine=1)
+    if level_filter and my_native_language:
+        profiles_qs = profiles_qs.filter(
+            **{f"practice_language_levels__{my_native_language}": level_filter}
+        )
+
+    profiles_qs = profiles_qs.order_by("-match_score", "-teaches_me", "username").only(
+        "username",
+        "native_language",
+        "languages_practicing",
+        "practice_language_levels",
+        "learning_goal",
+        "profile_image_url",
     )
     paginator = Paginator(profiles_qs, page_size)
 
@@ -1204,7 +1250,14 @@ def profile_data_view(request):
             "native_language": profile.native_language,
             "languages_practicing": profile.languages_practicing or [],
             "practice_language_levels": profile.practice_language_levels or {},
+            "learning_goal": profile.learning_goal or "",
             "profile_image_url": build_media_url(request, profile.profile_image_url),
+            "match": {
+                "teaches_me": bool(profile.teaches_me),
+                "learns_mine": bool(profile.learns_mine),
+                "reciprocal": bool(profile.teaches_me and profile.learns_mine),
+                "score": profile.match_score,
+            },
         }
         for profile in page_obj
     ]

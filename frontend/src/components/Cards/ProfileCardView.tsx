@@ -3,6 +3,12 @@ import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRou
 import ArrowOutwardRoundedIcon from "@mui/icons-material/ArrowOutwardRounded";
 import { BASE_URL_IMG } from "../../constants/constants";
 
+interface PartnerMatch {
+  teachesMe: boolean;
+  learnsMine: boolean;
+  reciprocal: boolean;
+}
+
 interface ProfileCardProps {
   username: string;
   bio?: string;
@@ -11,8 +17,16 @@ interface ProfileCardProps {
   profileImage?: string;
   score?: number;
   isPremium?: boolean;
+  match?: PartnerMatch;
   onClick?: () => void;
 }
+
+const getMatchSummary = (match?: PartnerMatch) => {
+  if (match?.reciprocal) return "Perfect exchange: you can teach each other";
+  if (match?.teachesMe) return "Native in a language you're learning";
+  if (match?.learnsMine) return "Learning your native language";
+  return null;
+};
 
 const getFlagIcon = (language: string) => {
   const map: Record<string, string> = {
@@ -42,8 +56,10 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
   profileImage,
   score,
   isPremium = false,
+  match,
   onClick,
 }) => {
+  const matchSummary = getMatchSummary(match);
   const defaultImage = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
   const profileSrc = profileImage?.startsWith("http")
     ? profileImage
@@ -125,6 +141,12 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
               </span>
             ) : null}
 
+            {match?.reciprocal ? (
+              <span className="inline-flex items-center rounded-full bg-[rgba(27,127,121,0.12)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--lv-primary)]">
+                Perfect match
+              </span>
+            ) : null}
+
             {typeof score === "number" && (
               <span className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold shadow-[0_12px_24px_rgba(20,49,74,0.08)] ${cardTone.stat}`}>
                 {score}
@@ -180,10 +202,11 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
           <div className={`flex items-center justify-between rounded-[24px] border px-4 py-3.5 backdrop-blur ${cardTone.panel}`}>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-[var(--lv-muted-text)]">
-                Match Mood
+                {matchSummary ? "Why you match" : "Match Mood"}
               </p>
               <p className="mt-1 text-sm text-[var(--lv-text)]">
-                {isPremium ? "High-intent practice partner" : "Easygoing conversation starter"}
+                {matchSummary ||
+                  (isPremium ? "High-intent practice partner" : "Easygoing conversation starter")}
               </p>
             </div>
             <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--lv-navy)] text-white transition duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5">
@@ -196,5 +219,5 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
   );
 };
 
-export type { ProfileCardProps };
+export type { ProfileCardProps, PartnerMatch };
 export default ProfileCardView;
