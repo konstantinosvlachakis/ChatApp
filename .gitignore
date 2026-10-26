@@ -76,3 +76,6 @@ frontend/build/
 # Ignore Redis dumps and user-uploaded media
 *.rdb
 backend/media/
+
+# Ignore Claude Code agent worktrees
+.claude/worktrees/
