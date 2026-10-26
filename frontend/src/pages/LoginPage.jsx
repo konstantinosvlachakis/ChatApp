@@ -76,7 +76,10 @@ const LoginPage = () => {
 
       navigate("/profile");
     } catch (error) {
-      setError(error.response?.data?.detail || "Invalid credentials.");
+      // The token endpoint answers {message, code}; throttling and other DRF errors use {detail}.
+      setError(
+        error.response?.data?.message || error.response?.data?.detail || "Invalid credentials."
+      );
     } finally {
       setLoading(false);
     }

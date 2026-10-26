@@ -235,7 +235,7 @@ const RegisterPage = () => {
         navigate("/login");
       } else {
         const errorData = await response.json().catch(() => ({}));
-        setSubmitError(errorData.error || "Could not create account.");
+        setSubmitError(errorData.error || errorData.detail || "Could not create account.");
       }
     } catch (error) {
       setSubmitError("Network error. Please try again.");

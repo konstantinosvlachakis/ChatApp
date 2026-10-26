@@ -22,15 +22,43 @@ import {
   applyNewMessageToConversationList,
   markConversationReadInList,
 } from "../api/conversationListCache";
-import { getLegacyAccessToken } from "../../../utils/auth";
+import {
+  SESSION_REFRESHED_EVENT,
+  getLegacyAccessToken,
+  refreshSessionOnce,
+} from "../../../utils/auth";
+import {
+  SOCKET_AUTH_CLOSE_CODES,
+  getReconnectDelayMs,
+  isDocumentHidden,
+} from "../../../utils/reconnect";
 
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-const SOCKET_RECONNECT_DELAYS_MS = [800, 1500, 3000, 5000];
 const SCROLL_BOTTOM_THRESHOLD_PX = 72;
-// Close codes the backend uses to reject unauthenticated/unauthorised sockets.
-const SOCKET_AUTH_CLOSE_CODES = new Set([1008, 4401, 4403]);
+
+// Server broadcasts (message_created/edited/reaction/pinned) omit per-user fields
+// (current_user_reaction, can_translate, translated_*). Derive the reaction from
+// `reactions`; leave the rest absent so a merge keeps this user's own values.
+const withCurrentUserReaction = (message, currentUserId) => {
+  if (!message || "current_user_reaction" in message || !Array.isArray(message.reactions)) {
+    return message;
+  }
+  const ownReaction = message.reactions.find(
+    (reaction) => currentUserId != null && reaction.user_id === currentUserId
+  );
+  return { ...message, current_user_reaction: ownReaction?.emoji ?? null };
+};
+
+// Defaults for a broadcast message that isn't in the list yet.
+const toNewMessageFromBroadcast = (message, currentUserId) => ({
+  translated_text: null,
+  translated_source_language: null,
+  can_translate:
+    message.sender?.id !== currentUserId && Boolean(String(message.text || "").trim()),
+  ...withCurrentUserReaction(message, currentUserId),
+});
 
 const getIceServers = () => {
   const rawValue = process.env.REACT_APP_WEBRTC_ICE_SERVERS;
@@ -132,17 +160,19 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       : conversation?.sender;
   const otherUserAvatarUrl = resolveAvatarUrl(otherUser?.profile_image_url);
 
-  const mergeMessageUpdate = useCallback((updatedMessage) => {
-    if (!updatedMessage?.id) return;
+  const mergeMessageUpdate = useCallback((incomingMessage) => {
+    if (!incomingMessage?.id) return;
+    const updatedMessage = withCurrentUserReaction(incomingMessage, currentUserIdRef.current);
     setMessages((prev) =>
       prev.map((msg) => (msg.id === updatedMessage.id ? { ...msg, ...updatedMessage } : msg))
     );
     setPinnedMessages((prev) => {
+      const existing = prev.find((msg) => msg.id === updatedMessage.id);
       const remaining = prev.filter((msg) => msg.id !== updatedMessage.id);
       if (!updatedMessage.is_pinned) {
         return remaining;
       }
-      return [...remaining, updatedMessage].sort((a, b) => {
+      return [...remaining, { ...existing, ...updatedMessage }].sort((a, b) => {
         const left = new Date(b.pinned_at || b.timestamp || 0).getTime();
         const right = new Date(a.pinned_at || a.timestamp || 0).getTime();
         return left - right;
@@ -1072,6 +1102,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     // Per-effect flag: the shared ref above is reset by the next effect run before the
     // previous socket's async onclose fires, which used to reconnect to the old room.
     let isDisposed = false;
+    // Auth rejections (4401/4403) stop reconnecting; one session refresh is attempted per
+    // successful connection, and any later refresh (SESSION_REFRESHED_EVENT) retries once.
+    let stoppedForAuth = false;
+    let authRefreshUsed = false;
+    let waitingForVisibleTab = false;
 
     const connectSocket = () => {
       if (isDisposed || isSocketUnmountingRef.current) return;
@@ -1082,6 +1117,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       nextSocket.onopen = () => {
         reconnectAttemptRef.current = 0;
+        stoppedForAuth = false;
+        authRefreshUsed = false;
         setSocketStatus("connected");
       };
 
@@ -1090,32 +1127,24 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           const data = JSON.parse(e.data);
 
           switch (data.type) {
-            case "chat": {
-              const receivedAt = new Date().toISOString();
+            case "message_created": {
+              // Server broadcast of a saved message, sent to every socket in the room
+              // (including ours): dedupe by id against the POST response.
+              const savedMessage = data.message;
+              if (!savedMessage?.id) break;
+              const currentUserId = currentUserIdRef.current;
               setMessages((prev) => {
-                if (data.id && prev.some((message) => message.id === data.id)) {
-                  return prev;
+                if (prev.some((message) => message.id === savedMessage.id)) {
+                  return prev.map((message) =>
+                    message.id === savedMessage.id
+                      ? { ...message, ...withCurrentUserReaction(savedMessage, currentUserId) }
+                      : message
+                  );
                 }
-
-                return [
-                  ...prev,
-                  {
-                    id: data.id,
-                    text: data.message,
-                    sender: { id: data.senderId, username: data.sender },
-                    attachmentUrl: data.attachmentUrl || null,
-                    reply_to: data.replyTo || null,
-                    timestamp: receivedAt,
-                    translated_text: null,
-                    translated_source_language: null,
-                    can_translate: Boolean((data.message || "").trim()),
-                    reactions: [],
-                    current_user_reaction: null,
-                  },
-                ];
+                return [...prev, toNewMessageFromBroadcast(savedMessage, currentUserId)];
               });
               requestAnimationFrame(() => scrollToBottom("smooth"));
-              const isIncomingMessage = data.senderId !== currentUserIdRef.current;
+              const isIncomingMessage = savedMessage.sender?.id !== currentUserId;
               if (isIncomingMessage) {
                 markConversationRead(conversation.id).catch(() => {});
               }
@@ -1125,14 +1154,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               const patchedList = applyNewMessageToConversationList(
                 queryClient,
                 conversation.id,
-                {
-                  id: data.id,
-                  text: data.message,
-                  sender: { id: data.senderId, username: data.sender },
-                  attachment_url: data.attachmentUrl || null,
-                  status: "sent",
-                  timestamp: receivedAt,
-                },
+                savedMessage,
                 { markRead: isIncomingMessage }
               );
               if (!patchedList) {
@@ -1141,9 +1163,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               break;
             }
 
-            case "deleteMessage":
+            case "message_deleted":
               setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+              setPinnedMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+              setEditingMessage((current) => (current?.id === data.messageId ? null : current));
               invalidateConversationHistoryCache(conversation.id);
+              queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
               break;
 
             case "message_reaction":
@@ -1274,28 +1299,60 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         if (isDisposed || socket.current !== nextSocket) {
           return;
         }
-        if (isSocketUnmountingRef.current || SOCKET_AUTH_CLOSE_CODES.has(event.code)) {
+        if (isSocketUnmountingRef.current) {
           setSocketStatus("offline");
+          return;
+        }
+        if (SOCKET_AUTH_CLOSE_CODES.has(event.code)) {
+          setSocketStatus("offline");
+          stoppedForAuth = true;
+          if (!authRefreshUsed) {
+            authRefreshUsed = true;
+            // Success dispatches SESSION_REFRESHED_EVENT, which reconnects below.
+            refreshSessionOnce();
+          }
           return;
         }
 
         setSocketStatus("reconnecting");
-        const delay =
-          SOCKET_RECONNECT_DELAYS_MS[
-            Math.min(reconnectAttemptRef.current, SOCKET_RECONNECT_DELAYS_MS.length - 1)
-          ];
-        reconnectAttemptRef.current += 1;
-        clearReconnectTimer();
-        reconnectTimeoutRef.current = window.setTimeout(() => {
-          connectSocket();
-        }, delay);
+        scheduleReconnect();
       };
     };
 
+    const scheduleReconnect = () => {
+      clearReconnectTimer();
+      if (isDocumentHidden()) {
+        // Don't poll a down backend from background tabs; reconnect when shown again.
+        waitingForVisibleTab = true;
+        return;
+      }
+      const delay = getReconnectDelayMs(reconnectAttemptRef.current);
+      reconnectAttemptRef.current += 1;
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        connectSocket();
+      }, delay);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!waitingForVisibleTab || isDocumentHidden() || isDisposed) return;
+      waitingForVisibleTab = false;
+      connectSocket();
+    };
+
+    const handleSessionRefreshed = () => {
+      if (isDisposed || !stoppedForAuth) return;
+      stoppedForAuth = false;
+      connectSocket();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
     connectSocket();
 
     return () => {
       isDisposed = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
       isSocketUnmountingRef.current = true;
       clearReconnectTimer();
       stopRinging();
@@ -1410,13 +1467,17 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       }
       invalidateConversationHistoryCache(conversation.id);
 
-      setMessages((prev) =>
-        prev.map((message) =>
+      // The server's message_created broadcast may have arrived first: then the saved
+      // message is already listed and the optimistic copy is dropped instead.
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === savedMessage.id)) {
+          return prev.filter((message) => message.id !== tempMessageId);
+        }
+        return prev.map((message) =>
           message.id === tempMessageId
             ? {
                 ...message,
-                id: savedMessage.id,
-                text: savedMessage.text,
+                ...savedMessage,
                 attachmentUrl:
                   savedMessage.attachment_url || savedMessage.attachmentUrl || null,
                 attachment_url:
@@ -1427,40 +1488,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 reply_to: savedMessage.reply_to || message.reply_to || null,
               }
             : message
-        )
-      );
+        );
+      });
 
       if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
       }
-
-      const sent = sendSocketEvent({
-        type: "chat",
-        id: savedMessage.id,
-        message: savedMessage.text,
-        sender: user.username,
-        senderId: user.user_id,
-        attachmentUrl:
-          savedMessage.attachment_url || savedMessage.attachmentUrl || null,
-        replyTo: savedMessage.reply_to || null,
-      });
-      if (!sent) {
-        setTimeout(() => {
-          const retrySent = sendSocketEvent({
-            type: "chat",
-            id: savedMessage.id,
-            message: savedMessage.text,
-            sender: user.username,
-            senderId: user.user_id,
-            attachmentUrl:
-              savedMessage.attachment_url || savedMessage.attachmentUrl || null,
-            replyTo: savedMessage.reply_to || null,
-          });
-          if (!retrySent) {
-            console.error("WebSocket is not open. Unable to send message.");
-          }
-        }, 250);
-      }
+      // No socket relay: the server broadcasts message_created to the room itself.
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
@@ -1501,13 +1535,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
     try {
+      // The server broadcasts message_deleted to the room after the DELETE.
       await deleteMessage(messageId);
-      sendSocketEvent({ type: "deleteMessage", messageId });
       invalidateConversationHistoryCache(conversation.id);
     } catch (error) {
       console.error("Failed to delete message:", error);
     }
-  }, [conversation.id, invalidateConversationHistoryCache, sendSocketEvent]);
+  }, [conversation.id, invalidateConversationHistoryCache]);
 
   const handleMessageReactionChange = useCallback((updatedMessage) => {
     mergeMessageUpdate(updatedMessage);
