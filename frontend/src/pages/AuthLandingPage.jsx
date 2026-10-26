@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import CoachAvatar from "../components/CoachAvatar";
 
 const AuthLandingPage = () => {
@@ -12,11 +11,13 @@ const AuthLandingPage = () => {
       <div className="absolute bottom-[-6rem] left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-[rgba(20,49,74,0.45)] blur-3xl" />
 
       <div className="relative z-10 flex min-h-[100dvh] flex-col items-center justify-center px-5 py-12 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 22, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.75, ease: "easeOut" }}
-          className="mx-auto max-w-3xl"
+        <div
+          style={{
+            "--lv-rise-y": "22px",
+            "--lv-rise-scale": "0.97",
+            "--lv-rise-duration": "0.75s",
+          }}
+          className="lv-rise mx-auto max-w-3xl"
         >
           <div className="mx-auto flex h-36 w-36 items-center justify-center rounded-[2.25rem] border border-white/10 bg-white/5 shadow-[0_22px_80px_rgba(2,8,15,0.34)] backdrop-blur">
             <CoachAvatar size={96} hideBadge />
@@ -65,7 +66,7 @@ const AuthLandingPage = () => {
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
