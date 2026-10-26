@@ -1,5 +1,5 @@
 import axios, { AxiosHeaders } from "axios";
-import { ensureCsrfToken, getStoredCsrfToken } from "./csrf";
+import { ensureCsrfToken, getStoredCsrfToken, installSessionRefreshInterceptor } from "./csrf";
 import { getLegacyAccessToken } from "./auth";
 
 const instance = axios.create({
@@ -26,5 +26,7 @@ instance.interceptors.request.use(async (config) => {
   config.headers = headers;
   return config;
 });
+
+installSessionRefreshInterceptor(instance);
 
 export default instance;

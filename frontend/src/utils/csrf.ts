@@ -1,6 +1,15 @@
-import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosHeaders,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
+} from "axios";
 import { BASE_URL } from "../constants/constants";
-import { getLegacyAccessToken } from "./auth";
+import {
+  getLegacyAccessToken,
+  handleSessionExpired,
+  isAuthEndpoint,
+  refreshSessionOnce,
+} from "./auth";
 
 const CSRF_STORAGE_KEY = "csrfToken";
 
@@ -120,6 +129,35 @@ const attachCsrfToAxiosConfig = async (config: InternalAxiosRequestConfig) => {
   return config;
 };
 
+type SessionRetryConfig = InternalAxiosRequestConfig & { _sessionRetry?: boolean };
+
+/**
+ * On a 401 from the backend, refresh the session once (single-flight) and replay the
+ * request; if the refresh fails, clear session data and leave protected pages.
+ */
+export const installSessionRefreshInterceptor = (instance: AxiosInstance) => {
+  instance.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const config = error?.config as SessionRetryConfig | undefined;
+      if (!config || error?.response?.status !== 401 || config._sessionRetry) {
+        throw error;
+      }
+      const baseURL = config.baseURL || BASE_URL;
+      const url = toUrl(config.url || "", baseURL);
+      if (!url || !isBackendRequest(url, baseURL) || isAuthEndpoint(url.pathname)) {
+        throw error;
+      }
+      config._sessionRetry = true;
+      if (!(await refreshSessionOnce())) {
+        handleSessionExpired();
+        throw error;
+      }
+      return instance(config);
+    }
+  );
+};
+
 export const initCsrfProtection = async () => {
   if (!isBrowser) return;
   if (!nativeFetchRef) nativeFetchRef = window.fetch.bind(window);
@@ -127,6 +165,7 @@ export const initCsrfProtection = async () => {
   if (!initialized) {
     axios.defaults.withCredentials = true;
     axios.interceptors.request.use(attachCsrfToAxiosConfig);
+    installSessionRefreshInterceptor(axios);
 
     window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
       const request = input instanceof Request ? input : null;
@@ -137,17 +176,34 @@ export const initCsrfProtection = async () => {
       }
 
       const method = init.method || request?.method || "GET";
-      const headers = await attachCsrfHeader(init.headers || request?.headers, method);
-      const legacyAccessToken = getLegacyAccessToken();
-      if (legacyAccessToken) {
-        headers.set("Authorization", `Bearer ${legacyAccessToken}`);
+      const send = async (target: RequestInfo | URL) => {
+        const headers = await attachCsrfHeader(init.headers || request?.headers, method);
+        const legacyAccessToken = getLegacyAccessToken();
+        if (legacyAccessToken) {
+          headers.set("Authorization", `Bearer ${legacyAccessToken}`);
+        }
+        return nativeFetchRef!(target, {
+          ...init,
+          credentials: init.credentials || "include",
+          headers,
+        });
+      };
+
+      const pathname = toUrl(requestUrl, BASE_URL)?.pathname || "";
+      if (isAuthEndpoint(pathname)) {
+        return send(input);
       }
 
-      return nativeFetchRef!(input, {
-        ...init,
-        credentials: init.credentials || "include",
-        headers,
-      });
+      // A Request body can only be read once; keep the original for the retry.
+      const response = await send(request ? request.clone() : input);
+      if (response.status !== 401) {
+        return response;
+      }
+      if (!(await refreshSessionOnce())) {
+        handleSessionExpired();
+        return response;
+      }
+      return send(input);
     };
 
     initialized = true;

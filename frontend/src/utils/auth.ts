@@ -103,3 +103,47 @@ export const refreshSession = async () => {
   }
   return response.ok;
 };
+
+/** Dispatched on `window` after a successful refresh so stopped sockets can reconnect. */
+export const SESSION_REFRESHED_EVENT = "session-refreshed";
+
+// Endpoints whose 401s mean "bad credentials"/"no session", not "access token expired".
+const AUTH_ENDPOINT_PATHS = new Set([
+  "/api/token/",
+  "/api/token/refresh/",
+  "/api/login/",
+  "/api/logout/",
+  "/api/register/",
+  "/api/csrf/",
+]);
+
+export const isAuthEndpoint = (pathname: string) => AUTH_ENDPOINT_PATHS.has(pathname);
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/** Single-flight session refresh shared by fetch, axios and the websockets. */
+export const refreshSessionOnce = (): Promise<boolean> => {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession()
+      .catch(() => false)
+      .then((refreshed) => {
+        if (refreshed && typeof window !== "undefined") {
+          window.dispatchEvent(new Event(SESSION_REFRESHED_EVENT));
+        }
+        return refreshed;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+};
+
+/** The refresh token is gone too: drop client state and leave protected pages. */
+export const handleSessionExpired = () => {
+  if (typeof window === "undefined") return;
+  clearClientSessionData();
+  if (!isPublicPath(window.location.pathname) && window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+};

@@ -7,7 +7,17 @@ import { useGetConversations } from "../pages/Conversations/api/getConversations
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../constants/avatar";
 import CoachAvatar from "../components/CoachAvatar";
-import { clearClientSessionData, getLegacyAccessToken } from "../utils/auth";
+import {
+  SESSION_REFRESHED_EVENT,
+  clearClientSessionData,
+  getLegacyAccessToken,
+  refreshSessionOnce,
+} from "../utils/auth";
+import {
+  SOCKET_AUTH_CLOSE_CODES,
+  getReconnectDelayMs,
+  isDocumentHidden,
+} from "../utils/reconnect";
 
 const DEFAULT_PROFILE_AVATAR = DEFAULT_AVATAR_URL;
 
@@ -109,6 +119,12 @@ const Layout = () => {
 
     const wsBaseUrl = getWebSocketBaseUrl();
     let isUnmounted = false;
+    let reconnectAttempt = 0;
+    // Auth rejections (4401/4403) stop reconnecting; one session refresh is attempted per
+    // successful connection, and any later refresh (SESSION_REFRESHED_EVENT) retries once.
+    let stoppedForAuth = false;
+    let authRefreshUsed = false;
+    let waitingForVisibleTab = false;
 
     const clearPresenceTimers = () => {
       if (presenceHeartbeatRef.current) {
@@ -134,6 +150,9 @@ const Layout = () => {
 
       socket.onopen = () => {
         clearPresenceTimers();
+        reconnectAttempt = 0;
+        stoppedForAuth = false;
+        authRefreshUsed = false;
         presenceHeartbeatRef.current = window.setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: "heartbeat" }));
@@ -170,20 +189,53 @@ const Layout = () => {
       socket.onclose = (event) => {
         clearPresenceTimers();
         if (isUnmounted || presenceSocketRef.current !== socket) return;
-        const isAuthClose = event.code === 1008 || event.code === 4401 || event.code === 4403;
-        if (isAuthClose) {
+        if (SOCKET_AUTH_CLOSE_CODES.has(event.code)) {
+          stoppedForAuth = true;
+          if (!authRefreshUsed) {
+            authRefreshUsed = true;
+            // Success dispatches SESSION_REFRESHED_EVENT, which reconnects below.
+            refreshSessionOnce();
+          }
           return;
         }
-        presenceReconnectRef.current = window.setTimeout(() => {
-          connectPresenceSocket();
-        }, 3000);
+        scheduleReconnect();
       };
     };
 
+    const scheduleReconnect = () => {
+      if (isUnmounted) return;
+      if (isDocumentHidden()) {
+        // Don't poll a down backend from background tabs; reconnect when shown again.
+        waitingForVisibleTab = true;
+        return;
+      }
+      const delay = getReconnectDelayMs(reconnectAttempt);
+      reconnectAttempt += 1;
+      presenceReconnectRef.current = window.setTimeout(() => {
+        connectPresenceSocket();
+      }, delay);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!waitingForVisibleTab || isDocumentHidden()) return;
+      waitingForVisibleTab = false;
+      connectPresenceSocket();
+    };
+
+    const handleSessionRefreshed = () => {
+      if (isUnmounted || !stoppedForAuth) return;
+      stoppedForAuth = false;
+      connectPresenceSocket();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
     connectPresenceSocket();
 
     return () => {
       isUnmounted = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
       clearPresenceTimers();
       presenceSocketRef.current?.close();
       presenceSocketRef.current = null;

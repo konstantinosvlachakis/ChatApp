@@ -1,24 +1,17 @@
 // api/userApi.ts
 import { User } from "../../Profile/types";
 import { BASE_URL } from "../../../constants/constants";
-import { clearLegacyTokens, refreshSession } from "../../../utils/auth";
+import { clearLegacyTokens } from "../../../utils/auth";
 
 export const fetchUserProfile = async (): Promise<User> => {
-  const makeRequest = () => fetch(BASE_URL + "/api/profile/", {
+  // A 401 is refreshed and retried once by the global fetch patch (utils/csrf.ts).
+  const response = await fetch(BASE_URL + "/api/profile/", {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
     },
     credentials: "include",
   });
-
-  let response = await makeRequest();
-  if (response.status === 401) {
-    const refreshed = await refreshSession().catch(() => false);
-    if (refreshed) {
-      response = await makeRequest();
-    }
-  }
 
   if (response.ok) {
     return response.json();
