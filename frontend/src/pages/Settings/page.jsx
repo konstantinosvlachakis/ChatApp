@@ -282,6 +282,8 @@ const SettingsPage = () => {
                         <span className="flex items-center gap-2">
                           <img
                             src={`https://flagcdn.com/w20/${language.flag}.png`}
+                            loading="lazy"
+                            decoding="async"
                             alt={language.label}
                             className="h-5 w-5 rounded-full object-cover"
                           />
@@ -304,6 +306,8 @@ const SettingsPage = () => {
                 >
                   <img
                     src={`https://flagcdn.com/w20/${language.flag}.png`}
+                    loading="lazy"
+                    decoding="async"
                     alt={language.label}
                     className="h-4 w-4 rounded-full object-cover"
                   />
@@ -356,6 +360,8 @@ const SettingsPage = () => {
                         {resolveProfileImage(entry.profile_image_url) ? (
                           <img
                             src={resolveProfileImage(entry.profile_image_url)}
+                            loading="lazy"
+                            decoding="async"
                             alt={entry.username}
                             className="h-11 w-11 rounded-full border border-gray-200 object-cover"
                           />
@@ -405,6 +411,8 @@ const SettingsPage = () => {
                           {resolveProfileImage(entry.profile_image_url) ? (
                             <img
                               src={resolveProfileImage(entry.profile_image_url)}
+                              loading="lazy"
+                              decoding="async"
                               alt={entry.username}
                               className="h-11 w-11 rounded-full border border-gray-200 object-cover"
                             />

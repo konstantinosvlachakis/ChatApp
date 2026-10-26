@@ -4,7 +4,6 @@ import axios from "../../../utils/axios";
 import ChatRoom from "./ChatRoom";
 import CoachChatRoom from "./CoachChatRoom";
 import { BASE_URL } from "../../../constants/constants";
-import { markConversationRead } from "../api/markConversationRead";
 import { COACH_CONVERSATION_ID } from "./coachConversation";
 
 const ChatRoomWrapper = ({ onConversationTypingChange }) => {
@@ -34,10 +33,7 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
     fetchConversation();
   }, [id, isCoachConversation]);
 
-  useEffect(() => {
-    if (!id || isCoachConversation) return;
-    markConversationRead(id).catch(() => {});
-  }, [id, isCoachConversation]);
+  // The read receipt is sent once by ChatRoom after the conversation has loaded.
 
   if (isCoachConversation) {
     return (
@@ -60,4 +56,4 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   );
 };
 
-export default ChatRoomWrapper;
+export default React.memo(ChatRoomWrapper);

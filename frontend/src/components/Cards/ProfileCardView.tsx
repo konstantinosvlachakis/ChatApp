@@ -108,6 +108,8 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
             <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[28px] border border-white/60 shadow-[0_16px_30px_rgba(8,19,32,0.14)]">
               <img
                 src={profileSrc}
+                loading="lazy"
+                decoding="async"
                 alt={username}
                 onError={handleAvatarError}
                 className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
@@ -166,6 +168,8 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
                 {nativeLanguage}
                 <img
                   src={`https://flagcdn.com/w20/${getFlagIcon(nativeLanguage)}.png`}
+                  loading="lazy"
+                  decoding="async"
                   alt={nativeLanguage}
                   className="h-4 w-4 rounded-full"
                 />
@@ -183,6 +187,8 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
                   {learningLanguage}
                   <img
                     src={`https://flagcdn.com/w20/${getFlagIcon(learningLanguage)}.png`}
+                    loading="lazy"
+                    decoding="async"
                     alt={learningLanguage}
                     className="h-4 w-4 rounded-full"
                   />

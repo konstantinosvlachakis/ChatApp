@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 const formatDuration = (seconds) => {
   const safeSeconds = Math.max(0, Number.isFinite(seconds) ? Math.floor(seconds) : 0);
@@ -10,6 +10,26 @@ const formatDuration = (seconds) => {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }
   return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+};
+
+const getElapsedSeconds = (startedAt) =>
+  startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+
+// Owns the 1 Hz call timer so only this label re-renders every second
+// (previously ChatRoom held the counter and re-rendered the whole message list).
+const CallDuration = ({ startedAt }) => {
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => getElapsedSeconds(startedAt));
+
+  useEffect(() => {
+    setElapsedSeconds(getElapsedSeconds(startedAt));
+    if (!startedAt) return undefined;
+    const intervalId = window.setInterval(() => {
+      setElapsedSeconds(getElapsedSeconds(startedAt));
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [startedAt]);
+
+  return formatDuration(elapsedSeconds);
 };
 
 const AvatarBadge = ({ src, name, showPulse = false }) => (
@@ -35,7 +55,7 @@ const CallPanel = ({
   visible,
   callState,
   callMode,
-  callDurationSeconds = 0,
+  callStartedAt = null,
   otherUsername,
   otherAvatarUrl,
   remoteVideoRef,
@@ -56,7 +76,6 @@ const CallPanel = ({
   const isConnecting = callState === "calling" || callState === "connecting";
   const isRinging = callState === "incoming" || callState === "calling";
   const callLabel = callMode === "video" ? "Video" : "Audio";
-  const durationLabel = formatDuration(callDurationSeconds);
   const showAvatarStage = !isConnected && (isRinging || callState === "connecting");
 
   return (
@@ -68,7 +87,11 @@ const CallPanel = ({
         <p className="text-xs text-slate-300">
           {isIncoming && "Incoming call"}
           {isConnecting && "Connecting..."}
-          {isConnected && `Connected · ${durationLabel}`}
+          {isConnected && (
+            <>
+              Connected · <CallDuration startedAt={callStartedAt} />
+            </>
+          )}
         </p>
       </div>
 
@@ -103,7 +126,11 @@ const CallPanel = ({
             <audio ref={remoteVideoRef} autoPlay playsInline />
             <AvatarBadge src={otherAvatarUrl} name={otherUsername} showPulse={isRinging} />
             <p className="text-sm text-slate-300">
-              {isConnected && `In call · ${durationLabel}`}
+              {isConnected && (
+                <>
+                  In call · <CallDuration startedAt={callStartedAt} />
+                </>
+              )}
             </p>
           </div>
         )}

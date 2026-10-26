@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import Sidebar from "./features/Sidebar";
 import ChatRoomWrapper from "./features/ChatRoomWrapper";
 
+const noop = () => {};
+
 const ConversationsPage = () => {
   const { id } = useParams();
   const [typingByConversation, setTypingByConversation] = useState({});
@@ -10,10 +12,16 @@ const ConversationsPage = () => {
   const hasSelectedConversation = Boolean(activeConversationId);
 
   const handleConversationTypingChange = useCallback((conversationId, isTyping) => {
-    setTypingByConversation((prev) => ({
-      ...prev,
-      [conversationId]: isTyping,
-    }));
+    // Typing events arrive often; skip the state update (and the page re-render) when the
+    // flag for this conversation hasn't actually changed.
+    setTypingByConversation((prev) =>
+      Boolean(prev[conversationId]) === Boolean(isTyping)
+        ? prev
+        : {
+            ...prev,
+            [conversationId]: isTyping,
+          }
+    );
   }, []);
 
   return (
@@ -24,7 +32,7 @@ const ConversationsPage = () => {
         }`}
       >
         <Sidebar
-          onSelectConversation={() => {}}
+          onSelectConversation={noop}
           activeConversationId={hasSelectedConversation ? activeConversationId : null}
           typingByConversation={typingByConversation}
         />
