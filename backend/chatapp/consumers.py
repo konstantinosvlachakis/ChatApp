@@ -205,7 +205,13 @@ class PresenceTrackingMixin:
         return self.contact_ids
 
     async def broadcast_presence(self, is_online):
-        contact_ids = await self.get_contact_ids()
+        # Contacts loaded at connect are fresh for the online event; re-read on
+        # going offline so blocks and conversations made mid-session apply.
+        if is_online:
+            contact_ids = await self.get_contact_ids()
+        else:
+            contact_ids = await self.load_presence_contact_ids(self.user_id)
+            self.contact_ids = contact_ids
         await send_presence_update(
             self.channel_layer, self.user_id, is_online, contact_ids
         )
