@@ -206,6 +206,8 @@ const PublicProfilePage = () => {
                   {card.image ? (
                     <img
                       src={card.image}
+                      loading="lazy"
+                      decoding="async"
                       alt={card.label}
                       className="w-full h-full object-cover"
                     />

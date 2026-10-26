@@ -92,6 +92,11 @@ const Layout = () => {
     };
   }, []);
 
+  const presenceContextValue = useMemo(
+    () => ({ onlineUserIds, subscribeToPresenceEvents }),
+    [onlineUserIds, subscribeToPresenceEvents]
+  );
+
   useEffect(() => {
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
@@ -267,7 +272,7 @@ const Layout = () => {
   }
 
   return (
-    <PresenceProvider value={{ onlineUserIds, subscribeToPresenceEvents }}>
+    <PresenceProvider value={presenceContextValue}>
       <div
         className={`flex flex-col bg-gray-50 ${
           isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
@@ -567,6 +572,8 @@ const Layout = () => {
                   <div className="flex min-w-0 items-center gap-2.5">
                     <img
                       src={avatarUrl}
+                      loading="lazy"
+                      decoding="async"
                       alt="Profile avatar"
                       className="h-10 w-10 rounded-full border border-white/25 object-cover"
                     />

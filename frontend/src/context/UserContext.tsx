@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 import { clearClientSessionData, isPublicPath } from "../utils/auth";
@@ -95,10 +95,13 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     refreshUserProfile();
   }, [refreshUserProfile]);
 
+  const contextValue = useMemo(
+    () => ({ user, setUser, loading, error, refreshUserProfile }),
+    [user, setUser, loading, error, refreshUserProfile]
+  );
+
   return (
-    <UserContext.Provider
-      value={{ user, setUser, loading, error, refreshUserProfile }}
-    >
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );

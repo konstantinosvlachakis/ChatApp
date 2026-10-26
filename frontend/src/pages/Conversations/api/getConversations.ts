@@ -29,7 +29,7 @@ export const useGetConversations = ({ config }: UseGetConversationsData = {}) =>
     queryFn: getConversations,
     staleTime: 15 * 1000,
     cacheTime: 5 * 60 * 1000,
-    refetchOnMount: "always",
+    refetchOnMount: true,
     refetchOnReconnect: true,
     refetchOnWindowFocus: false,
     ...config,

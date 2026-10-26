@@ -16,6 +16,12 @@ import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
 import { markConversationRead } from "../api/markConversationRead";
 import { useQueryClient } from "react-query";
+import {
+  CONVERSATIONS_LIST_QUERY_KEY,
+  applyMessageStatusToConversationList,
+  applyNewMessageToConversationList,
+  markConversationReadInList,
+} from "../api/conversationListCache";
 import { getLegacyAccessToken } from "../../../utils/auth";
 
 const CALL_TIMEOUT_MS = 30000;
@@ -73,7 +79,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [callError, setCallError] = useState("");
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
-  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [callStartedAt, setCallStartedAt] = useState(null);
   const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -102,7 +108,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const callStateRef = useRef("idle");
   const callModeRef = useRef("audio");
   const callStartedAtRef = useRef(null);
-  const callTimerIntervalRef = useRef(null);
   const ringAudioContextRef = useRef(null);
   const ringIntervalRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -589,13 +594,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     return Math.max(0, Math.floor((Date.now() - callStartedAtRef.current) / 1000));
   }, []);
 
-  const stopCallTimer = useCallback(() => {
-    if (callTimerIntervalRef.current) {
-      window.clearInterval(callTimerIntervalRef.current);
-      callTimerIntervalRef.current = null;
-    }
-  }, []);
-
   const stopRinging = useCallback(() => {
     if (ringIntervalRef.current) {
       window.clearInterval(ringIntervalRef.current);
@@ -650,14 +648,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     stopRinging();
   }, [callState, startRinging, stopRinging]);
 
+  // The visible 1 Hz ticker lives in CallPanel; ChatRoom only records the start time.
   const startCallTimer = useCallback(() => {
-    stopCallTimer();
-    callStartedAtRef.current = Date.now();
-    setCallDurationSeconds(0);
-    callTimerIntervalRef.current = window.setInterval(() => {
-      setCallDurationSeconds(getElapsedCallSeconds());
-    }, 1000);
-  }, [getElapsedCallSeconds, stopCallTimer]);
+    const startedAt = Date.now();
+    callStartedAtRef.current = startedAt;
+    setCallStartedAt(startedAt);
+  }, []);
 
   const appendCallSummary = useCallback((durationSeconds, mode = "audio") => {
     const label = mode === "video" ? "Video call ended" : "Audio call ended";
@@ -709,11 +705,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
     setIsMuted(false);
     setIsCameraOn(true);
-    setCallDurationSeconds(0);
+    setCallStartedAt(null);
     callStartedAtRef.current = null;
-    stopCallTimer();
     clearCallTimeout();
-  }, [clearCallTimeout, stopCallTimer]);
+  }, [clearCallTimeout]);
 
   const resetCallState = useCallback(() => {
     setCallState("idle");
@@ -1095,7 +1090,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           const data = JSON.parse(e.data);
 
           switch (data.type) {
-            case "chat":
+            case "chat": {
+              const receivedAt = new Date().toISOString();
               setMessages((prev) => {
                 if (data.id && prev.some((message) => message.id === data.id)) {
                   return prev;
@@ -1109,7 +1105,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                     sender: { id: data.senderId, username: data.sender },
                     attachmentUrl: data.attachmentUrl || null,
                     reply_to: data.replyTo || null,
-                    timestamp: new Date().toISOString(),
+                    timestamp: receivedAt,
                     translated_text: null,
                     translated_source_language: null,
                     can_translate: Boolean((data.message || "").trim()),
@@ -1119,12 +1115,31 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                 ];
               });
               requestAnimationFrame(() => scrollToBottom("smooth"));
-              if (data.senderId !== currentUserIdRef.current) {
+              const isIncomingMessage = data.senderId !== currentUserIdRef.current;
+              if (isIncomingMessage) {
                 markConversationRead(conversation.id).catch(() => {});
               }
               invalidateConversationHistoryCache(conversation.id);
-              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+              // Patch the sidebar list from the payload instead of refetching it; the
+              // server's conversation_update push still triggers an authoritative refetch.
+              const patchedList = applyNewMessageToConversationList(
+                queryClient,
+                conversation.id,
+                {
+                  id: data.id,
+                  text: data.message,
+                  sender: { id: data.senderId, username: data.sender },
+                  attachment_url: data.attachmentUrl || null,
+                  status: "sent",
+                  timestamp: receivedAt,
+                },
+                { markRead: isIncomingMessage }
+              );
+              if (!patchedList) {
+                queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+              }
               break;
+            }
 
             case "deleteMessage":
               setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
@@ -1141,7 +1156,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             case "message_status":
               mergeMessageStatusUpdate(data.messageIds, data.status);
               invalidateConversationHistoryCache(conversation.id);
-              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+              if (
+                !applyMessageStatusToConversationList(
+                  queryClient,
+                  conversation.id,
+                  data.messageIds,
+                  data.status
+                )
+              ) {
+                queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+              }
               break;
 
             case "message_edited":
@@ -1311,10 +1335,22 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     user?.username,
   ]);
 
+  // The single read receipt for opening a chat (ChatRoomWrapper used to send a second one).
+  // It runs after the conversation detail loaded, so conversation.unread_count (used for the
+  // "Unread messages" divider) is captured before the server marks everything read.
   useEffect(() => {
     if (!conversation?.id) return;
-    markConversationRead(conversation.id).catch(() => {});
-    queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+    const conversationId = conversation.id;
+    const patchedList = markConversationReadInList(queryClient, conversationId);
+    markConversationRead(conversationId)
+      .then(() => {
+        if (!patchedList) {
+          queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+        }
+      })
+      .catch(() => {
+        queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+      });
   }, [conversation?.id, queryClient]);
 
   useEffect(() => {
@@ -1323,13 +1359,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     setIsOtherUserTyping(false);
     onConversationTypingChange?.(conversation.id, false);
   }, [conversation?.id, onConversationTypingChange, onlineUserIds, otherUser?.id]);
-
-  if (loading) {
-    return <div className="p-4 text-gray-500">Loading user info...</div>;
-  }
-  if (!user) {
-    return <div className="p-4 text-red-500">Failed to load user.</div>;
-  }
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
@@ -1376,7 +1405,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       );
 
       const savedMessage = response.data;
-      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      if (!applyNewMessageToConversationList(queryClient, conversation.id, savedMessage)) {
+        queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+      }
       invalidateConversationHistoryCache(conversation.id);
 
       setMessages((prev) =>
@@ -1462,10 +1493,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     }
   };
 
-  const handleDeleteMessage = async (messageId) => {
-    if (editingMessage?.id === messageId) {
-      setEditingMessage(null);
-    }
+  // Handlers passed to the memoised <Conversation> are stable callbacks so typing, socket
+  // status or search changes in ChatRoom don't re-render the message list.
+  const handleDeleteMessage = useCallback(async (messageId) => {
+    setEditingMessage((current) => (current?.id === messageId ? null : current));
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
     setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
 
@@ -1476,31 +1507,31 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     } catch (error) {
       console.error("Failed to delete message:", error);
     }
-  };
+  }, [conversation.id, invalidateConversationHistoryCache, sendSocketEvent]);
 
-  const handleMessageReactionChange = (updatedMessage) => {
+  const handleMessageReactionChange = useCallback((updatedMessage) => {
     mergeMessageUpdate(updatedMessage);
     invalidateConversationHistoryCache(conversation.id);
-  };
+  }, [conversation.id, invalidateConversationHistoryCache, mergeMessageUpdate]);
 
-  const handleStartEditMessage = (message) => {
+  const handleStartEditMessage = useCallback((message) => {
     if (!message?.id) return;
     setReplyingMessage(null);
     setEditingMessage({
       id: message.id,
       text: message.text || "",
     });
-  };
+  }, []);
 
   const handleCancelEditMessage = () => {
     setEditingMessage(null);
   };
 
-  const handleStartCommentMessage = (message) => {
+  const handleStartCommentMessage = useCallback((message) => {
     if (!message?.id) return;
     setEditingMessage(null);
     setReplyingMessage(message);
-  };
+  }, []);
 
   const handleCancelCommentMessage = () => {
     setReplyingMessage(null);
@@ -1514,7 +1545,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       mergeMessageUpdate(updatedMessage);
       setEditingMessage(null);
       invalidateConversationHistoryCache(conversation.id);
-      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
       return true;
     } catch (error) {
       console.error("Failed to edit message:", error);
@@ -1522,21 +1553,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     }
   };
 
-  const handleTogglePinMessage = async (message) => {
+  const handleTogglePinMessage = useCallback(async (message) => {
     if (!message?.id) return;
 
     try {
       const updatedMessage = await pinMessage(message.id, !message.is_pinned);
       mergeMessageUpdate(updatedMessage);
-      if (message.id === latestPinnedMessage?.id && pinnedMessages.length <= 1) {
+      if (message.id === pinnedMessages[0]?.id && pinnedMessages.length <= 1) {
         setShowPinnedMenu(false);
       }
       invalidateConversationHistoryCache(conversation.id);
-      queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
     } catch (error) {
       console.error("Failed to update pinned message:", error);
     }
-  };
+  }, [
+    conversation.id,
+    invalidateConversationHistoryCache,
+    mergeMessageUpdate,
+    pinnedMessages,
+    queryClient,
+  ]);
 
   const latestPinnedMessage = pinnedMessages[0] || null;
   const additionalPinnedCount = Math.max(0, pinnedMessages.length - 1);
@@ -1593,6 +1630,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const handleJumpToLatest = () => {
     scrollToBottom("smooth");
   };
+
+  if (loading) {
+    return <div className="p-4 text-gray-500">Loading user info...</div>;
+  }
+  if (!user) {
+    return <div className="p-4 text-red-500">Failed to load user.</div>;
+  }
 
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
@@ -1778,7 +1822,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         visible={callState !== "idle"}
         callState={callState}
         callMode={callMode}
-        callDurationSeconds={callDurationSeconds}
+        callStartedAt={callStartedAt}
         otherUsername={otherUser?.username || "Unknown user"}
         otherAvatarUrl={otherUserAvatarUrl}
         localVideoRef={localVideoRef}
@@ -1796,4 +1840,4 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   );
 };
 
-export default ChatRoom;
+export default React.memo(ChatRoom);

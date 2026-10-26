@@ -241,11 +241,8 @@ function ConversationList({
       }
 
       if (data?.type === "conversation_update") {
+        // invalidateQueries already refetches active queries; no extra refetch needed.
         queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
-        queryClient.refetchQueries({
-          queryKey: ["conversationsList"],
-          type: "active",
-        });
       }
     });
   }, [queryClient, subscribeToPresenceEvents, user?.user_id, user?.username]);
@@ -377,6 +374,8 @@ function ConversationList({
               <div className="relative mr-3">
                 <img
                   src={imageSrc}
+                  loading="lazy"
+                  decoding="async"
                   alt={otherUser?.username || "Participant"}
                   className="h-10 w-10 rounded-full object-cover sm:h-12 sm:w-12"
                   onError={handleAvatarError}

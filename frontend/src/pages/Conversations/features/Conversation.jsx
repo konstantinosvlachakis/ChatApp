@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BASE_URL } from "../../../constants/constants";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -33,15 +33,27 @@ const LANGUAGE_SPEECH_SETTINGS = {
   russian: { rate: 0.9, pitch: 0.97 },
 };
 
+// Intl.DateTimeFormat construction is expensive; build the formatters once per module.
+const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+});
+const DAY_SEPARATOR_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+const DAY_SEPARATOR_WITH_YEAR_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 const formatMessageTime = (timestamp) => {
   if (!timestamp) return "";
 
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    })
+    return MESSAGE_TIME_FORMATTER
       .format(new Date(timestamp))
       .replace(/\b(am|pm)\b/i, (match) => match.toUpperCase());
   } catch {
@@ -77,11 +89,11 @@ const formatDaySeparator = (timestamp) => {
     if (sameDay(date, today)) return "Today";
     if (sameDay(date, yesterday)) return "Yesterday";
 
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
-    }).format(date);
+    return (
+      date.getFullYear() === today.getFullYear()
+        ? DAY_SEPARATOR_FORMATTER
+        : DAY_SEPARATOR_WITH_YEAR_FORMATTER
+    ).format(date);
   } catch {
     return "";
   }
@@ -164,6 +176,283 @@ const renderHighlightedText = (text, query, isActiveMatch = false) => {
   });
 };
 
+// Attachment URLs can arrive from other clients over the websocket, so only allow
+// safe schemes (never javascript:/data:text/html etc.) before using them in src/href.
+const normalizeUrl = (url) => {
+  if (!url || typeof url !== "string") return null;
+  if (url.startsWith("blob:")) return url;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
+  } catch {
+    return null;
+  }
+};
+
+const isLikelyAudio = (url) =>
+  /\.(mp3|wav|ogg|webm)$/i.test(url) ||
+  url.includes("/media/attachments/blob_") ||
+  url.includes("/media/audio/");
+
+const groupedReactions = (reactions = []) => {
+  const counts = {};
+  reactions.forEach((reaction) => {
+    counts[reaction.emoji] = (counts[reaction.emoji] || 0) + 1;
+  });
+  return Object.entries(counts);
+};
+
+// One chat bubble. Memoised so typing, search input or a new message only re-renders the
+// rows whose props actually changed instead of the whole history.
+const MessageRow = React.memo(function MessageRow({
+  msg,
+  isSentByUser,
+  isGroupedWithPrevious,
+  isGroupedWithNext,
+  hasLargeGapToNextMessage,
+  shouldShowDaySeparator,
+  shouldShowUnreadDivider,
+  translatedText,
+  isTranslating,
+  highlightQuery,
+  isActiveSearchMatch,
+  onOpenActionsMenu,
+  onTouchStart,
+  onClearLongPress,
+}) {
+  const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
+  const attachmentUrl = normalizeUrl(rawUrl);
+  const messageReactions = groupedReactions(msg.reactions || []);
+  const isSystemMessage = Boolean(msg.isSystem);
+  const hasText = Boolean(msg.text?.trim());
+  const timeLabel = formatMessageTime(msg.timestamp);
+  const hasTranslation = Boolean(translatedText);
+  const inlineBubbleMeta = shouldInlineBubbleMeta(msg, {
+    attachmentUrl,
+    hasTranslation,
+    isSentByUser,
+  });
+  const isImageAttachment = attachmentUrl
+    ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl)
+    : false;
+  const isVideoAttachment = attachmentUrl
+    ? /\.(mp4|webm)$/i.test(attachmentUrl)
+    : false;
+  const isAudioAttachment = attachmentUrl ? isLikelyAudio(attachmentUrl) : false;
+  const shouldShowBubbleMeta = !isGroupedWithNext || hasLargeGapToNextMessage;
+  const bubbleClassName = isSentByUser
+    ? "bg-[linear-gradient(180deg,#dce9ff_0%,#d4e4ff_100%)] text-slate-900 border border-[#c7dbfb] shadow-[0_14px_30px_-22px_rgba(76,115,176,0.45)]"
+    : "bg-white text-slate-800 border border-slate-200/90 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.18)]";
+  const groupedBubbleRadiusClassName = isSentByUser
+    ? `${isGroupedWithPrevious ? "rounded-tr-[0.95rem]" : "rounded-tr-[1.55rem]"} ${
+        isGroupedWithNext ? "rounded-br-[0.95rem]" : "rounded-br-[0.7rem]"
+      } rounded-tl-[1.55rem] rounded-bl-[1.55rem]`
+    : `${isGroupedWithPrevious ? "rounded-tl-[0.95rem]" : "rounded-tl-[1.55rem]"} ${
+        isGroupedWithNext ? "rounded-bl-[0.95rem]" : "rounded-bl-[0.7rem]"
+      } rounded-tr-[1.55rem] rounded-br-[1.55rem]`;
+  const messageTextClassName = isSentByUser
+    ? "text-[15px] font-medium leading-[1.45] text-slate-900"
+    : "text-[15px] leading-[1.5] text-slate-800";
+  const bubbleMetaClassName = isSentByUser
+    ? "text-[10px] font-medium tracking-[0.01em] text-slate-500/90"
+    : "text-[10px] font-medium tracking-[0.01em] text-slate-400";
+
+  if (isSystemMessage) {
+    return (
+      <div className="mb-3 flex justify-center">
+        <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
+          {msg.text}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {shouldShowDaySeparator && (
+        <div className="mb-3 flex justify-center pt-1">
+          <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-semibold text-slate-400 shadow-[0_8px_18px_-18px_rgba(15,23,42,0.22)]">
+            {formatDaySeparator(msg.timestamp)}
+          </span>
+        </div>
+      )}
+      {shouldShowUnreadDivider && (
+        <div className="mb-3 flex items-center gap-3 px-1 pt-1">
+          <div className="h-px flex-1 bg-sky-200/80" />
+          <span className="rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600">
+            Unread messages
+          </span>
+          <div className="h-px flex-1 bg-sky-200/80" />
+        </div>
+      )}
+      <div
+        data-message-id={msg.id}
+        className={`group flex flex-col ${
+          isGroupedWithNext && !hasLargeGapToNextMessage ? "mb-1" : "mb-3"
+        } ${
+          isSentByUser ? "items-end" : "items-start"
+        }`}
+      >
+        <div
+          data-message-bubble="true"
+          className={`relative max-w-[calc(100%-2rem)] break-words px-3.5 py-2.5 sm:max-w-md sm:px-4 ${bubbleClassName} ${groupedBubbleRadiusClassName}`}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onOpenActionsMenu(msg.id, {
+              top: e.clientY + 12,
+              anchorTop: e.clientY,
+              right: Math.max(12, window.innerWidth - e.clientX - 12),
+            });
+          }}
+          onTouchStart={(e) => onTouchStart(e, msg.id)}
+          onTouchEnd={onClearLongPress}
+          onTouchCancel={onClearLongPress}
+          onTouchMove={onClearLongPress}
+        >
+          <div
+            className={`absolute top-1/2 z-20 -translate-y-1/2 ${
+              isSentByUser ? "-left-5" : "-right-5"
+            }`}
+          >
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/92 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600 hover:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+              onClick={(event) => {
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                onOpenActionsMenu(msg.id, {
+                  top: rect.bottom + 10,
+                  anchorTop: rect.top,
+                  right: Math.max(12, window.innerWidth - rect.right),
+                });
+              }}
+              aria-label="Open message actions"
+            >
+              <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
+              <span className="mx-[3px] inline-block h-1 w-1 rounded-full bg-current"></span>
+              <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {msg.reply_to && (
+              <div className="rounded-2xl border border-slate-300/70 bg-white/45 px-3 py-2 text-xs text-slate-600">
+                <p className="font-semibold text-slate-700">
+                  Replying to {msg.reply_to.sender?.username || "message"}
+                </p>
+                <p className="mt-1 line-clamp-2">{msg.reply_to.text || "Attachment"}</p>
+              </div>
+            )}
+
+            {attachmentUrl && (
+              isImageAttachment ? (
+                <img
+                  src={attachmentUrl}
+                  loading="lazy"
+                  decoding="async"
+                  alt="Attachment"
+                  className="h-auto max-w-full rounded-lg"
+                />
+              ) : isVideoAttachment ? (
+                <video
+                  src={attachmentUrl}
+                  controls
+                  preload="metadata"
+                  className="h-48 max-w-full rounded-lg sm:h-60"
+                />
+              ) : isAudioAttachment ? (
+                <audio controls preload="metadata" src={attachmentUrl} className="w-52 sm:w-60" />
+              ) : (
+                <a
+                  href={attachmentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-1 text-blue-500 underline"
+                >
+                  <span role="img" aria-label="attachment">
+                    📎
+                  </span>
+                  <span>View Attachment</span>
+                </a>
+              )
+            )}
+
+            {hasText && (
+              <div>
+              {inlineBubbleMeta && shouldShowBubbleMeta ? (
+                <div className="flex items-end gap-3">
+                  <p className={`min-w-0 flex-1 break-words ${messageTextClassName}`}>
+                    {renderHighlightedText(msg.text, highlightQuery, isActiveSearchMatch)}
+                  </p>
+                  <div className={`shrink-0 pb-0.5 tabular-nums ${bubbleMetaClassName}`}>
+                      <div className="flex items-center gap-2">
+                        {timeLabel && <span>{timeLabel}</span>}
+                        <MessageStatusMeta status={msg.status || "sent"} />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={messageTextClassName}>
+                    {renderHighlightedText(msg.text, highlightQuery, isActiveSearchMatch)}
+                  </p>
+                )}
+                {msg.is_pinned && (
+                  <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    <PushPinRoundedIcon sx={{ fontSize: 12 }} />
+                    Pinned
+                  </p>
+                )}
+                {msg.edited_at && (
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                    Edited
+                  </p>
+                )}
+                {hasTranslation && (
+                  <>
+                    <hr className="my-2 border-slate-300/70" />
+                    <p className="text-[14px] leading-[1.45] text-slate-700">
+                      {renderHighlightedText(
+                        translatedText,
+                        highlightQuery,
+                        isActiveSearchMatch
+                      )}
+                    </p>
+                  </>
+                )}
+                {isTranslating && (
+                  <p className="mt-2 text-xs text-gray-600">Translating...</p>
+                )}
+                {shouldShowBubbleMeta && !inlineBubbleMeta && (isSentByUser || timeLabel) && (
+                  <div className={`mt-2 flex items-center gap-2 tabular-nums ${bubbleMetaClassName} justify-end`}>
+                    {timeLabel && <span>{timeLabel}</span>}
+                    {isSentByUser && <MessageStatusMeta status={msg.status || "sent"} />}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {!attachmentUrl && !hasText && (
+            <p className="italic text-gray-500">Audio message</p>
+          )}
+        </div>
+
+        {messageReactions.length > 0 && (
+          <div className="mt-1 flex max-w-[calc(100%-2rem)] flex-wrap gap-1 px-1">
+            {messageReactions.map(([emoji, count]) => (
+              <span
+                key={`${msg.id}-${emoji}`}
+                className="rounded-full border border-gray-300 bg-white px-2 py-1 text-xs leading-none text-gray-700"
+              >
+                {emoji} {count}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+});
+
 const Conversation = ({
   messages,
   userId,
@@ -186,31 +475,18 @@ const Conversation = ({
   const [translatingMessageId, setTranslatingMessageId] = useState(null);
   const longPressTimerRef = useRef(null);
 
-  // Attachment URLs can arrive from other clients over the websocket, so only allow
-  // safe schemes (never javascript:/data:text/html etc.) before using them in src/href.
-  const normalizeUrl = (url) => {
-    if (!url || typeof url !== "string") return null;
-    if (url.startsWith("blob:")) return url;
-    try {
-      const parsed = new URL(url, window.location.origin);
-      return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
-    } catch {
-      return null;
-    }
-  };
+  const matchedSearchMessageIdSet = useMemo(
+    () => new Set(matchedSearchMessageIds),
+    [matchedSearchMessageIds]
+  );
 
-  const isLikelyAudio = (url) =>
-    /\.(mp3|wav|ogg|webm)$/i.test(url) ||
-    url.includes("/media/attachments/blob_") ||
-    url.includes("/media/audio/");
-
-  const closeMessageActionsMenu = () => setMessageActionsMenu(null);
+  const closeMessageActionsMenu = useCallback(() => setMessageActionsMenu(null), []);
   const canEditMessage = (msg) => msg?.sender?.id === userId;
 
   useEffect(() => {
     window.addEventListener("click", closeMessageActionsMenu);
     return () => window.removeEventListener("click", closeMessageActionsMenu);
-  }, []);
+  }, [closeMessageActionsMenu]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -218,7 +494,7 @@ const Conversation = ({
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [closeMessageActionsMenu]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return undefined;
@@ -235,15 +511,8 @@ const Conversation = ({
     };
   }, []);
 
-  useEffect(() => {
-    const initialTranslations = {};
-    messages.forEach((msg) => {
-      if (msg.translated_text) {
-        initialTranslations[msg.id] = msg.translated_text;
-      }
-    });
-    setTranslationsByMessageId((prev) => ({ ...initialTranslations, ...prev }));
-  }, [messages]);
+  // translationsByMessageId only holds translations fetched in this session; server-provided
+  // ones are read straight from msg.translated_text (fetched ones win), so no state sync needed.
 
   const canShowTranslate = (msg, isSentByUser) =>
     !isSentByUser &&
@@ -311,7 +580,7 @@ const Conversation = ({
     }
   };
 
-  const openMessageActionsMenu = (messageId, position = null) => {
+  const openMessageActionsMenu = useCallback((messageId, position = null) => {
     const padding = 12;
     const defaultTop = Math.max(padding, window.innerHeight / 2 - 120);
     const defaultRight = padding;
@@ -327,16 +596,16 @@ const Conversation = ({
       top: adjustedTop,
       right: position?.right ?? defaultRight,
     });
-  };
+  }, []);
 
-  const clearLongPressTimer = () => {
+  const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const handleTouchStart = (event, messageId) => {
+  const handleTouchStart = useCallback((event, messageId) => {
     const touch = event.touches?.[0];
     if (!touch) return;
 
@@ -349,7 +618,7 @@ const Conversation = ({
       });
       clearLongPressTimer();
     }, LONG_PRESS_MS);
-  };
+  }, [clearLongPressTimer, openMessageActionsMenu]);
 
   const handleTranslate = async (msg) => {
     if (!msg?.text?.trim()) return;
@@ -410,14 +679,6 @@ const Conversation = ({
     } finally {
       closeMessageActionsMenu();
     }
-  };
-
-  const groupedReactions = (reactions = []) => {
-    const counts = {};
-    reactions.forEach((reaction) => {
-      counts[reaction.emoji] = (counts[reaction.emoji] || 0) + 1;
-    });
-    return Object.entries(counts);
   };
 
   const normalizeLanguageName = (language) => {
@@ -541,250 +802,38 @@ const Conversation = ({
     <div className="flex w-full flex-col overflow-x-hidden px-1 py-2 sm:px-2 sm:py-3">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
-          const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
-          const attachmentUrl = normalizeUrl(rawUrl);
-          const isSentByUser = msg.sender?.id === userId;
           const previousMessage = index > 0 ? messages[index - 1] : null;
           const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
-          const messageReactions = groupedReactions(msg.reactions || []);
-          const isSystemMessage = Boolean(msg.isSystem);
-          const hasText = Boolean(msg.text?.trim());
-          const timeLabel = formatMessageTime(msg.timestamp);
-          const translatedText = translationsByMessageId[msg.id] || msg.translated_text;
-          const hasTranslation = Boolean(translatedText);
-          const inlineBubbleMeta = shouldInlineBubbleMeta(msg, {
-            attachmentUrl,
-            hasTranslation,
-            isSentByUser,
-          });
-          const isImageAttachment = attachmentUrl
-            ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl)
-            : false;
-          const isVideoAttachment = attachmentUrl
-            ? /\.(mp4|webm)$/i.test(attachmentUrl)
-            : false;
-          const isAudioAttachment = attachmentUrl ? isLikelyAudio(attachmentUrl) : false;
-          const isSearchMatch = matchedSearchMessageIds.includes(msg.id);
-          const isActiveSearchMatch = activeSearchMessageId === msg.id;
-          const isGroupedWithPrevious =
-            !previousMessage?.isSystem && previousMessage?.sender?.id === msg.sender?.id;
-          const isGroupedWithNext =
-            !nextMessage?.isSystem && nextMessage?.sender?.id === msg.sender?.id;
           const dayKey = getDayKey(msg.timestamp);
-          const previousDayKey = getDayKey(previousMessage?.timestamp);
-          const shouldShowDaySeparator = dayKey && dayKey !== previousDayKey;
-          const shouldShowUnreadDivider =
-            unreadAnchorMessageId != null && msg.id === unreadAnchorMessageId;
-          const minutesToNextMessage = getMinutesBetween(msg.timestamp, nextMessage?.timestamp);
-          const hasLargeGapToNextMessage = minutesToNextMessage >= 15;
-          const shouldShowBubbleMeta = !isGroupedWithNext || hasLargeGapToNextMessage;
-          const bubbleClassName = isSentByUser
-            ? "bg-[linear-gradient(180deg,#dce9ff_0%,#d4e4ff_100%)] text-slate-900 border border-[#c7dbfb] shadow-[0_14px_30px_-22px_rgba(76,115,176,0.45)]"
-            : "bg-white text-slate-800 border border-slate-200/90 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.18)]";
-          const groupedBubbleRadiusClassName = isSentByUser
-            ? `${isGroupedWithPrevious ? "rounded-tr-[0.95rem]" : "rounded-tr-[1.55rem]"} ${
-                isGroupedWithNext ? "rounded-br-[0.95rem]" : "rounded-br-[0.7rem]"
-              } rounded-tl-[1.55rem] rounded-bl-[1.55rem]`
-            : `${isGroupedWithPrevious ? "rounded-tl-[0.95rem]" : "rounded-tl-[1.55rem]"} ${
-                isGroupedWithNext ? "rounded-bl-[0.95rem]" : "rounded-bl-[0.7rem]"
-              } rounded-tr-[1.55rem] rounded-br-[1.55rem]`;
-          const messageTextClassName = isSentByUser
-            ? "text-[15px] font-medium leading-[1.45] text-slate-900"
-            : "text-[15px] leading-[1.5] text-slate-800";
-          const bubbleMetaClassName = isSentByUser
-            ? "text-[10px] font-medium tracking-[0.01em] text-slate-500/90"
-            : "text-[10px] font-medium tracking-[0.01em] text-slate-400";
-
-          if (isSystemMessage) {
-            return (
-              <div key={msg.id || index} className="mb-3 flex justify-center">
-                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
-                  {msg.text}
-                </span>
-              </div>
-            );
-          }
 
           return (
-            <React.Fragment key={msg.id || index}>
-              {shouldShowDaySeparator && (
-                <div className="mb-3 flex justify-center pt-1">
-                  <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-semibold text-slate-400 shadow-[0_8px_18px_-18px_rgba(15,23,42,0.22)]">
-                    {formatDaySeparator(msg.timestamp)}
-                  </span>
-                </div>
-              )}
-              {shouldShowUnreadDivider && (
-                <div className="mb-3 flex items-center gap-3 px-1 pt-1">
-                  <div className="h-px flex-1 bg-sky-200/80" />
-                  <span className="rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600">
-                    Unread messages
-                  </span>
-                  <div className="h-px flex-1 bg-sky-200/80" />
-                </div>
-              )}
-              <div
-                data-message-id={msg.id}
-                className={`group flex flex-col ${
-                  isGroupedWithNext && !hasLargeGapToNextMessage ? "mb-1" : "mb-3"
-                } ${
-                  isSentByUser ? "items-end" : "items-start"
-                }`}
-              >
-                <div
-                  data-message-bubble="true"
-                  className={`relative max-w-[calc(100%-2rem)] break-words px-3.5 py-2.5 sm:max-w-md sm:px-4 ${bubbleClassName} ${groupedBubbleRadiusClassName}`}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    openMessageActionsMenu(msg.id, {
-                      top: e.clientY + 12,
-                      anchorTop: e.clientY,
-                      right: Math.max(12, window.innerWidth - e.clientX - 12),
-                    });
-                  }}
-                  onTouchStart={(e) => handleTouchStart(e, msg.id)}
-                  onTouchEnd={clearLongPressTimer}
-                  onTouchCancel={clearLongPressTimer}
-                  onTouchMove={clearLongPressTimer}
-                >
-                  <div
-                    className={`absolute top-1/2 z-20 -translate-y-1/2 ${
-                      isSentByUser ? "-left-5" : "-right-5"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-white/92 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600 hover:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        openMessageActionsMenu(msg.id, {
-                          top: rect.bottom + 10,
-                          anchorTop: rect.top,
-                          right: Math.max(12, window.innerWidth - rect.right),
-                        });
-                      }}
-                      aria-label="Open message actions"
-                    >
-                      <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
-                      <span className="mx-[3px] inline-block h-1 w-1 rounded-full bg-current"></span>
-                      <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {msg.reply_to && (
-                      <div className="rounded-2xl border border-slate-300/70 bg-white/45 px-3 py-2 text-xs text-slate-600">
-                        <p className="font-semibold text-slate-700">
-                          Replying to {msg.reply_to.sender?.username || "message"}
-                        </p>
-                        <p className="mt-1 line-clamp-2">{msg.reply_to.text || "Attachment"}</p>
-                      </div>
-                    )}
-
-                    {attachmentUrl && (
-                      isImageAttachment ? (
-                        <img
-                          src={attachmentUrl}
-                          alt="Attachment"
-                          className="h-auto max-w-full rounded-lg"
-                        />
-                      ) : isVideoAttachment ? (
-                        <video
-                          src={attachmentUrl}
-                          controls
-                          className="h-48 max-w-full rounded-lg sm:h-60"
-                        />
-                      ) : isAudioAttachment ? (
-                        <audio controls src={attachmentUrl} className="w-52 sm:w-60" />
-                      ) : (
-                        <a
-                          href={attachmentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center space-x-1 text-blue-500 underline"
-                        >
-                          <span role="img" aria-label="attachment">
-                            📎
-                          </span>
-                          <span>View Attachment</span>
-                        </a>
-                      )
-                    )}
-
-                    {hasText && (
-                      <div>
-                      {inlineBubbleMeta && shouldShowBubbleMeta ? (
-                        <div className="flex items-end gap-3">
-                          <p className={`min-w-0 flex-1 break-words ${messageTextClassName}`}>
-                            {renderHighlightedText(msg.text, isSearchMatch ? searchQuery : "", isActiveSearchMatch)}
-                          </p>
-                          <div className={`shrink-0 pb-0.5 tabular-nums ${bubbleMetaClassName}`}>
-                              <div className="flex items-center gap-2">
-                                {timeLabel && <span>{timeLabel}</span>}
-                                <MessageStatusMeta status={msg.status || "sent"} />
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className={messageTextClassName}>
-                            {renderHighlightedText(msg.text, isSearchMatch ? searchQuery : "", isActiveSearchMatch)}
-                          </p>
-                        )}
-                        {msg.is_pinned && (
-                          <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            <PushPinRoundedIcon sx={{ fontSize: 12 }} />
-                            Pinned
-                          </p>
-                        )}
-                        {msg.edited_at && (
-                          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            Edited
-                          </p>
-                        )}
-                        {hasTranslation && (
-                          <>
-                            <hr className="my-2 border-slate-300/70" />
-                            <p className="text-[14px] leading-[1.45] text-slate-700">
-                              {renderHighlightedText(
-                                translatedText,
-                                isSearchMatch ? searchQuery : "",
-                                isActiveSearchMatch
-                              )}
-                            </p>
-                          </>
-                        )}
-                        {translatingMessageId === msg.id && (
-                          <p className="mt-2 text-xs text-gray-600">Translating...</p>
-                        )}
-                        {shouldShowBubbleMeta && !inlineBubbleMeta && (isSentByUser || timeLabel) && (
-                          <div className={`mt-2 flex items-center gap-2 tabular-nums ${bubbleMetaClassName} justify-end`}>
-                            {timeLabel && <span>{timeLabel}</span>}
-                            {isSentByUser && <MessageStatusMeta status={msg.status || "sent"} />}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {!attachmentUrl && !hasText && (
-                    <p className="italic text-gray-500">Audio message</p>
-                  )}
-                </div>
-
-                {messageReactions.length > 0 && (
-                  <div className="mt-1 flex max-w-[calc(100%-2rem)] flex-wrap gap-1 px-1">
-                    {messageReactions.map(([emoji, count]) => (
-                      <span
-                        key={`${msg.id}-${emoji}`}
-                        className="rounded-full border border-gray-300 bg-white px-2 py-1 text-xs leading-none text-gray-700"
-                      >
-                        {emoji} {count}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </React.Fragment>
+            <MessageRow
+              key={msg.id || index}
+              msg={msg}
+              isSentByUser={msg.sender?.id === userId}
+              isGroupedWithPrevious={
+                !previousMessage?.isSystem && previousMessage?.sender?.id === msg.sender?.id
+              }
+              isGroupedWithNext={
+                !nextMessage?.isSystem && nextMessage?.sender?.id === msg.sender?.id
+              }
+              hasLargeGapToNextMessage={
+                getMinutesBetween(msg.timestamp, nextMessage?.timestamp) >= 15
+              }
+              shouldShowDaySeparator={
+                Boolean(dayKey) && dayKey !== getDayKey(previousMessage?.timestamp)
+              }
+              shouldShowUnreadDivider={
+                unreadAnchorMessageId != null && msg.id === unreadAnchorMessageId
+              }
+              translatedText={translationsByMessageId[msg.id] || msg.translated_text}
+              isTranslating={translatingMessageId === msg.id}
+              highlightQuery={matchedSearchMessageIdSet.has(msg.id) ? searchQuery : ""}
+              isActiveSearchMatch={activeSearchMessageId === msg.id}
+              onOpenActionsMenu={openMessageActionsMenu}
+              onTouchStart={handleTouchStart}
+              onClearLongPress={clearLongPressTimer}
+            />
           );
         })
       ) : (
@@ -942,4 +991,4 @@ const Conversation = ({
   );
 };
 
-export default Conversation;
+export default React.memo(Conversation);
