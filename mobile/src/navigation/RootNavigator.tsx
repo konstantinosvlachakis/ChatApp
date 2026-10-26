@@ -2,6 +2,7 @@ import React from "react";
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   DeviceEventEmitter,
   Image,
   LayoutAnimation,
@@ -19,7 +20,13 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
+import { refreshAccessToken } from "../services/api/client";
 import { fetchConversations } from "../services/api/conversations";
+import {
+  SOCKET_AUTH_CLOSE_CODES,
+  getReconnectDelayMs,
+  startPresenceHeartbeat,
+} from "../services/realtime";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
@@ -244,6 +251,10 @@ function AppTabs() {
 
   React.useEffect(() => {
     let cancelled = false;
+    let reconnectAttempt = 0;
+    // One token refresh per successful connection when the server rejects the socket.
+    let authRefreshUsed = false;
+    let stopHeartbeat: (() => void) | null = null;
 
     const clearReconnectTimeout = () => {
       if (!reconnectTimeoutRef.current) return;
@@ -252,13 +263,28 @@ function AppTabs() {
     };
 
     const closeSocket = () => {
+      stopHeartbeat?.();
+      stopHeartbeat = null;
       if (!presenceUpdatesSocketRef.current) return;
-      presenceUpdatesSocketRef.current.close();
+      const socket = presenceUpdatesSocketRef.current;
       presenceUpdatesSocketRef.current = null;
+      socket.close();
+    };
+
+    const scheduleReconnect = () => {
+      clearReconnectTimeout();
+      // Backgrounded: don't retry; the AppState listener reconnects on resume.
+      if (cancelled || AppState.currentState !== "active") return;
+      const delay = getReconnectDelayMs(reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connect().catch(() => {});
+      }, delay);
     };
 
     const connect = async () => {
       if (!user?.user_id || cancelled) return;
+      clearReconnectTimeout();
 
       const token = await tokenStorage.getAccessToken();
       if (!token || cancelled) return;
@@ -269,6 +295,13 @@ function AppTabs() {
         },
       });
       presenceUpdatesSocketRef.current = socket;
+
+      socket.onopen = () => {
+        reconnectAttempt = 0;
+        authRefreshUsed = false;
+        stopHeartbeat?.();
+        stopHeartbeat = startPresenceHeartbeat(socket);
+      };
 
       socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
@@ -281,19 +314,38 @@ function AppTabs() {
         }
       };
 
-      socket.onclose = () => {
-        if (cancelled) return;
-        clearReconnectTimeout();
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect().catch(() => {});
-        }, 1500);
+      socket.onclose = (event: WebSocketCloseEvent) => {
+        if (cancelled || presenceUpdatesSocketRef.current !== socket) return;
+        stopHeartbeat?.();
+        stopHeartbeat = null;
+        presenceUpdatesSocketRef.current = null;
+        if (SOCKET_AUTH_CLOSE_CODES.has(event?.code ?? 0)) {
+          // Usually an expired access token: refresh once and retry, else stop.
+          if (authRefreshUsed) return;
+          authRefreshUsed = true;
+          refreshAccessToken()
+            .then((nextToken) => {
+              if (nextToken && !cancelled) connect().catch(() => {});
+            })
+            .catch(() => {});
+          return;
+        }
+        scheduleReconnect();
       };
     };
+
+    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (cancelled || nextState !== "active") return;
+      if (presenceUpdatesSocketRef.current || reconnectTimeoutRef.current) return;
+      reconnectAttempt = 0;
+      connect().catch(() => {});
+    });
 
     connect().catch(() => {});
 
     return () => {
       cancelled = true;
+      appStateSubscription.remove();
       clearReconnectTimeout();
       closeSocket();
     };

@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { Conversation } from "../../types";
+import type { ChatMessage, Conversation } from "../../types";
 
 const CONVERSATIONS_CACHE_TTL_MS = 15_000;
 
@@ -55,6 +55,34 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
 
 export async function fetchConversation(conversationId: number) {
   const response = await api.get<Conversation>(`/conversations/${conversationId}/`);
+  return response.data;
+}
+
+export interface ConversationMessagesPage {
+  // Chronological within the page; page 1 holds the newest messages.
+  messages: ChatMessage[];
+  pinned_messages?: ChatMessage[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total_pages: number;
+    total_count: number;
+    // True when older messages exist (a higher page number).
+    has_next: boolean;
+    has_previous: boolean;
+  };
+}
+
+/** Older history beyond the messages embedded in the conversation detail. */
+export async function fetchConversationMessagesPage(
+  conversationId: number,
+  page: number,
+  pageSize: number
+) {
+  const response = await api.get<ConversationMessagesPage>(
+    `/conversations/${conversationId}/messages/`,
+    { params: { page, page_size: pageSize } }
+  );
   return response.data;
 }
 

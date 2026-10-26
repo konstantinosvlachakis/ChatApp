@@ -39,6 +39,7 @@ import {
 import {
   createOrGetConversation,
   fetchConversation,
+  fetchConversationMessagesPage,
   fetchConversations,
   getCachedConversations,
   markConversationRead,
@@ -48,6 +49,7 @@ import {
   sendConversationMessage,
   translateConversationMessage,
 } from "../services/api/conversations";
+import { startPresenceHeartbeat } from "../services/realtime";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
 
@@ -57,23 +59,35 @@ type PresencePayload =
   | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
   | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
 
+// Message events are broadcast by the server after REST writes (to every socket in the
+// room, including the sender's). Their `message` omits per-user fields
+// (current_user_reaction, can_translate, translated_*).
 type ChatPayload =
-  | {
-      type: "chat";
-      id?: number;
-      message?: string;
-      sender?: string;
-      senderId?: number;
-      attachmentUrl?: string | null;
-      replyTo?: ChatMessage["reply_to"];
-    }
-  | { type: "deleteMessage"; messageId: number }
+  | { type: "message_created"; message?: ChatMessage }
+  | { type: "message_deleted"; messageId: number }
   | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
-  | { type: "message_pinned"; message?: ChatMessage }
+  | { type: "message_edited" | "message_pinned"; message?: ChatMessage }
   | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
   | { type: "user_typing" | "user_stopped_typing" };
 
 const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+// Older history page size for GET /conversations/<id>/messages/ (max 100 server-side).
+const OLDER_MESSAGES_PAGE_SIZE = 50;
+// Must match CONVERSATION_DETAIL_MESSAGE_LIMIT (backend serializers.py): a detail response
+// with fewer embedded messages means there is no older history.
+const DETAIL_MESSAGE_LIMIT = 200;
+
+// Broadcast payloads carry no current_user_reaction; derive it from `reactions`.
+function withCurrentUserReaction(message: ChatMessage, currentUserId?: number): ChatMessage {
+  if ("current_user_reaction" in message || !Array.isArray(message.reactions)) return message;
+  const own = message.reactions.find((reaction) => reaction.user_id === currentUserId);
+  return { ...message, current_user_reaction: own?.emoji ?? null };
+}
+
+function mergeMessagesById(older: ChatMessage[], current: ChatMessage[]) {
+  const knownIds = new Set(current.map((message) => message.id));
+  return [...older.filter((message) => !knownIds.has(message.id)), ...current];
+}
 
 function resolveMediaUrl(path?: string | null) {
   if (!path) return "https://placehold.co/100x100";
@@ -251,6 +265,13 @@ export function ConversationsScreen() {
   const messageListRef = useRef<FlatList<ChatMessage> | null>(null);
   const previousMessageCountRef = useRef(0);
   const initialUnreadCountRef = useRef(0);
+  // Older-history paging: the detail embeds the newest messages (first "page"); the next
+  // /messages/ page to request, or null when there is nothing older.
+  const nextOlderPageRef = useRef<number | null>(null);
+  const loadingOlderRef = useRef(false);
+  // Set while prepending older messages so the list doesn't jump to the bottom.
+  const skipAutoScrollRef = useRef(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const conversationsFetchMetaRef = useRef<{ inFlight: boolean; lastRunAt: number }>({
     inFlight: false,
     lastRunAt: 0,
@@ -371,6 +392,18 @@ export function ConversationsScreen() {
     []
   );
 
+  const resetOlderPaging = useCallback((embeddedMessageCount: number) => {
+    loadingOlderRef.current = false;
+    setLoadingOlderMessages(false);
+    // Fewer than the detail limit embedded means the whole history is already loaded.
+    // Otherwise start at the first page past the embedded messages; overlap with what we
+    // already have is deduped by id.
+    nextOlderPageRef.current =
+      embeddedMessageCount >= DETAIL_MESSAGE_LIMIT
+        ? Math.floor(embeddedMessageCount / OLDER_MESSAGES_PAGE_SIZE) + 1
+        : null;
+  }, []);
+
   const openConversation = useCallback(
     async (conversationId: number) => {
       setLoadingConversation(true);
@@ -390,6 +423,7 @@ export function ConversationsScreen() {
           setUnreadAnchorMessageId(firstUnreadMessageId);
           setSelectedConversation(response);
           previousMessageCountRef.current = response.messages?.length || 0;
+          resetOlderPaging(response.messages?.length || 0);
           await markConversationRead(conversationId);
           initialUnreadCountRef.current = 0;
           setUnreadAnchorMessageId(null);
@@ -400,7 +434,7 @@ export function ConversationsScreen() {
         setLoadingConversation(false);
       }
     },
-    [currentUserId, loadConversations]
+    [currentUserId, loadConversations, resetOlderPaging]
   );
 
   useEffect(() => {
@@ -490,12 +524,8 @@ export function ConversationsScreen() {
     try {
       const saved = await sendConversationMessage(selectedConversation.id, trimmed, replyTarget?.id);
       const savedMessage: ChatMessage = {
-        id: saved.id,
-        text: saved.text,
-        status: saved.status,
-        sender: saved.sender,
+        ...saved,
         attachment_url: saved.attachment_url || null,
-        timestamp: saved.timestamp,
         reply_to: saved.reply_to || null,
       };
 
@@ -518,35 +548,7 @@ export function ConversationsScreen() {
         updatedAt: savedMessage.timestamp || new Date().toISOString(),
       });
 
-      if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
-        chatSocketRef.current.send(
-          JSON.stringify({
-            type: "chat",
-            id: savedMessage.id,
-            message: savedMessage.text || "",
-            sender: currentUsername,
-            senderId: currentUserId,
-            attachmentUrl: savedMessage.attachment_url || null,
-            replyTo: savedMessage.reply_to || null,
-          })
-        );
-      } else {
-        setTimeout(() => {
-          if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
-            chatSocketRef.current.send(
-              JSON.stringify({
-                type: "chat",
-                id: savedMessage.id,
-                message: savedMessage.text || "",
-                sender: currentUsername,
-                senderId: currentUserId,
-                attachmentUrl: savedMessage.attachment_url || null,
-                replyTo: savedMessage.reply_to || null,
-              })
-            );
-          }
-        }, 220);
-      }
+      // No socket relay: the server broadcasts message_created to the chat room.
       await loadConversations(true);
     } finally {
       setSending(false);
@@ -596,7 +598,9 @@ export function ConversationsScreen() {
     }
   }, [creatingConversation, openConversation, participantUsername]);
 
-  const applyMessageUpdate = useCallback((updatedMessage: ChatMessage) => {
+  const applyMessageUpdate = useCallback((incomingMessage: ChatMessage) => {
+    // Socket payloads omit per-user fields; spreading keeps this user's own values.
+    const updatedMessage = withCurrentUserReaction(incomingMessage, currentUserId);
     setSelectedConversation((prev) => {
       if (!prev) return prev;
       const nextMessages = prev.messages.map((message) =>
@@ -608,7 +612,7 @@ export function ConversationsScreen() {
         pinned_messages: buildPinnedMessages(nextMessages),
       };
     });
-  }, []);
+  }, [currentUserId]);
 
   const togglePinnedMessage = useCallback(
     async (message: ChatMessage) => {
@@ -693,6 +697,7 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     let mounted = true;
+    let stopHeartbeat: (() => void) | null = null;
     const connectPresence = async () => {
       if (!currentUserId) return;
 
@@ -705,6 +710,14 @@ export function ConversationsScreen() {
         },
       });
       presenceSocketRef.current = socket;
+      socket.onopen = () => {
+        stopHeartbeat?.();
+        stopHeartbeat = startPresenceHeartbeat(socket);
+      };
+      socket.onclose = () => {
+        stopHeartbeat?.();
+        stopHeartbeat = null;
+      };
 
       socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
@@ -743,6 +756,8 @@ export function ConversationsScreen() {
     connectPresence();
     return () => {
       mounted = false;
+      stopHeartbeat?.();
+      stopHeartbeat = null;
       if (presenceSocketRef.current) {
         presenceSocketRef.current.close();
         presenceSocketRef.current = null;
@@ -769,27 +784,36 @@ export function ConversationsScreen() {
       socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
           const data = JSON.parse(event.data) as ChatPayload;
-          if (data.type === "chat") {
+          if (data.type === "message_created") {
+            if (!data.message?.id) return;
+            const broadcast = withCurrentUserReaction(data.message, currentUserId);
+            const senderId = broadcast.sender?.id;
             const newMessage: ChatMessage = {
-              id: data.id || Date.now(),
-              text: data.message || "",
-              sender: {
-                id: data.senderId || 0,
-                username: data.sender || "Unknown",
-              },
-              timestamp: new Date().toISOString(),
-              reply_to: data.replyTo || null,
+              translated_text: null,
+              translated_source_language: null,
+              can_translate: senderId !== currentUserId && Boolean((broadcast.text || "").trim()),
+              ...broadcast,
             };
 
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== conversationId) return prev;
-              const exists = prev.messages.some((m) => m.id === newMessage.id);
-              if (exists) return prev;
+              // Our own sends are already appended from the POST response: dedupe by id.
+              const alreadyListed = prev.messages.some((m) => m.id === newMessage.id);
+              if (alreadyListed) {
+                const merged = prev.messages.map((m) =>
+                  m.id === newMessage.id ? { ...m, ...broadcast } : m
+                );
+                return { ...prev, messages: merged, pinned_messages: buildPinnedMessages(merged) };
+              }
               const nextMessages = [...prev.messages, newMessage];
               return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
             });
 
-            const isIncoming = Boolean(data.senderId && data.senderId !== currentUserId);
+            const isIncoming = Boolean(senderId && senderId !== currentUserId);
+            if (!isIncoming) {
+              // sendMessage already updated the list for our own message.
+              return;
+            }
             const shouldResetUnread = isIncoming && isFocused;
             bumpConversationToTop({
               conversationId,
@@ -799,7 +823,7 @@ export function ConversationsScreen() {
               updatedAt: new Date().toISOString(),
             });
 
-            if (data.senderId && data.senderId !== currentUserId && isFocused) {
+            if (isFocused) {
               setRemoteTyping(conversationId, false);
               markConversationRead(conversationId)
                 .then(() => {
@@ -813,7 +837,7 @@ export function ConversationsScreen() {
             return;
           }
 
-          if (data.type === "deleteMessage") {
+          if (data.type === "message_deleted") {
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== conversationId) return prev;
               const nextMessages = prev.messages.filter((m) => m.id !== data.messageId);
@@ -845,7 +869,10 @@ export function ConversationsScreen() {
             return;
           }
 
-          if (data.type === "message_pinned" && (data as any).message?.id) {
+          if (
+            (data.type === "message_pinned" || data.type === "message_edited") &&
+            (data as any).message?.id
+          ) {
             applyMessageUpdate((data as any).message);
             return;
           }
@@ -1168,15 +1195,7 @@ export function ConversationsScreen() {
             pinned_messages: buildPinnedMessages(nextMessages),
           };
         });
-
-        if (chatSocketRef.current && chatSocketRef.current.readyState === WebSocket.OPEN) {
-          chatSocketRef.current.send(
-            JSON.stringify({
-              type: "deleteMessage",
-              messageId: message.id,
-            })
-          );
-        }
+        // The server broadcasts message_deleted to the chat room after the DELETE.
         loadConversations(true).catch(() => {});
       } catch {
         Alert.alert("Delete failed", "Could not delete this message.");
@@ -1503,10 +1522,49 @@ export function ConversationsScreen() {
         )
       );
       previousMessageCountRef.current = updated.messages?.length || 0;
+      resetOlderPaging(updated.messages?.length || 0);
     } finally {
       setLoadingConversation(false);
     }
-  }, [currentUserId, selectedConversation?.id]);
+  }, [currentUserId, resetOlderPaging, selectedConversation?.id]);
+
+  const loadOlderMessages = useCallback(async () => {
+    const conversationId = selectedConversation?.id;
+    const page = nextOlderPageRef.current;
+    if (!conversationId || page == null || loadingOlderRef.current) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    try {
+      const response = await fetchConversationMessagesPage(
+        conversationId,
+        page,
+        OLDER_MESSAGES_PAGE_SIZE
+      );
+      if (selectedConversationIdRef.current !== conversationId) return;
+      const knownIds = new Set((selectedConversation?.messages || []).map((m) => m.id));
+      const hasNewMessages = (response.messages || []).some((m) => !knownIds.has(m.id));
+      if (hasNewMessages) {
+        skipAutoScrollRef.current = true;
+        setTimeout(() => {
+          skipAutoScrollRef.current = false;
+        }, 600);
+      }
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== conversationId) return prev;
+        const nextMessages = mergeMessagesById(response.messages || [], prev.messages);
+        return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
+      });
+      nextOlderPageRef.current = response.pagination?.has_next ? page + 1 : null;
+    } catch {
+      // Keep the page so the next scroll to the top retries.
+    } finally {
+      if (selectedConversationIdRef.current === conversationId) {
+        loadingOlderRef.current = false;
+        setLoadingOlderMessages(false);
+      }
+    }
+  }, [selectedConversation?.id, selectedConversation?.messages]);
 
   useEffect(() => {
     if (!selectedConversation?.id) return;
@@ -1521,7 +1579,7 @@ export function ConversationsScreen() {
     if (!selectedConversation?.id) return;
     const messageCount = selectedConversation.messages?.length || 0;
     const previousCount = previousMessageCountRef.current;
-    if (messageCount > previousCount) {
+    if (messageCount > previousCount && !skipAutoScrollRef.current) {
       scrollToBottom(true);
     }
     previousMessageCountRef.current = messageCount;
@@ -1687,10 +1745,18 @@ export function ConversationsScreen() {
               keyExtractor={(item) => String(item.id)}
               renderItem={renderMessage}
               onContentSizeChange={() => {
+                if (skipAutoScrollRef.current) return;
                 if (unreadAnchorMessageId == null) {
                   scrollToBottom(false);
                 }
               }}
+              // Keeps the visible message in place when older messages are prepended.
+              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+              ListHeaderComponent={
+                loadingOlderMessages ? (
+                  <ActivityIndicator style={styles.olderMessagesLoader} color={colors.primary} />
+                ) : null
+              }
               onScrollToIndexFailed={(info) => {
                 messageListRef.current?.scrollToOffset({
                   offset: Math.max(0, info.averageItemLength * info.index - 48),
@@ -1715,6 +1781,9 @@ export function ConversationsScreen() {
                 const distanceFromBottom =
                   contentSize.height - (contentOffset.y + layoutMeasurement.height);
                 setShowJumpToLatest(distanceFromBottom > 140);
+                if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
+                  loadOlderMessages();
+                }
               }}
               scrollEventThrottle={16}
             />
@@ -2415,6 +2484,9 @@ const createStyles = (colors: ThemeColors) =>
     },
     messagesFooterSpacer: {
       height: 14,
+    },
+    olderMessagesLoader: {
+      paddingVertical: 10,
     },
     daySeparatorRow: {
       alignItems: "center",
