@@ -12,5 +12,7 @@
     "moduleResolution": "node", // or "nodenext"
     "resolveJsonModule": true,
     // Disable emitting files, useful in React apps
-  }
+  },
+  // App code only; Playwright e2e specs are type-checked by Playwright itself.
+  "include": ["src"]
 }
