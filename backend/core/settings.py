@@ -64,15 +64,25 @@ redis_url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
 use_redis_realtime = os.environ.get("USE_REDIS_REALTIME", "false").lower() == "true"
 use_cloudinary_media = bool(os.environ.get("CLOUDINARY_URL"))
 
-ALLOWED_HOSTS = [
-    "langvoyage-d3781c6fad54.herokuapp.com",
-    "langvoyage.com",
-    "www.langvoyage.com",
-    "localhost",
-    "127.0.0.1",
-    "192.168.1.165",
-    "192.168.1.62",
-]
+def env_list(name, default):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return list(default)
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+# Extra hosts (e.g. LAN IPs for device testing) can be added via DJANGO_ALLOWED_HOSTS
+# instead of being hardcoded here.
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    [
+        "langvoyage-d3781c6fad54.herokuapp.com",
+        "langvoyage.com",
+        "www.langvoyage.com",
+        "localhost",
+        "127.0.0.1",
+    ],
+)
 
 
 # Ensure app binds to Heroku's port
@@ -187,6 +197,12 @@ else:
     ]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # HSTS: subdomains/preload are opt-in so a non-HTTPS subdomain is never locked out.
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", str(60 * 60 * 24 * 365)))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+        os.environ.get("SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
+    )
+    SECURE_HSTS_PRELOAD = os.environ.get("SECURE_HSTS_PRELOAD", "false").lower() == "true"
 
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
@@ -197,6 +213,8 @@ X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
 AUTH_COOKIE_ACCESS = "lv_access"
 AUTH_COOKIE_REFRESH = "lv_refresh"
+# Requests authenticated via the JWT cookie must carry a valid X-CSRFToken header.
+AUTH_COOKIE_ENFORCE_CSRF = os.environ.get("AUTH_COOKIE_ENFORCE_CSRF", "true").lower() == "true"
 
 INSTALLED_APPS.append("chatapp")
 if use_cloudinary_media:
@@ -314,6 +332,26 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.environ.get("DRF_THROTTLE_ANON", "300/hour"),
+        "user": os.environ.get("DRF_THROTTLE_USER", "3000/hour"),
+        # Login / register / token refresh (per client IP) - brute-force protection.
+        "auth": os.environ.get("DRF_THROTTLE_AUTH", "20/minute"),
+        # Endpoints that call paid / third-party APIs.
+        "translate": os.environ.get("DRF_THROTTLE_TRANSLATE", "60/minute"),
+        "report": os.environ.get("DRF_THROTTLE_REPORT", "20/hour"),
+    },
+    # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets
+    # clients spoof their IP and bypass per-IP throttles.
+    "NUM_PROXIES": (
+        int(os.environ["DRF_NUM_PROXIES"])
+        if os.environ.get("DRF_NUM_PROXIES")
+        else (None if env == "local" else 1)
+    ),
 }
 
 # Static files (CSS, JavaScript, Images)

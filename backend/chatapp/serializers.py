@@ -37,13 +37,13 @@ class ProfileSerializer(serializers.ModelSerializer):
     profile_image_url = serializers.SerializerMethodField()
     is_online = serializers.SerializerMethodField()
 
+    # Used for *other* users (message senders, conversation participants), so it
+    # must not expose private fields such as email or date_of_birth.
     class Meta:
         model = Profile
         fields = [
             "id",
             "username",
-            "email",
-            "date_of_birth",
             "native_language",
             "profile_image_url",
             "is_online",

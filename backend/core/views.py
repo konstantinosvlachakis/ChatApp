@@ -14,7 +14,10 @@ def resolve_frontend_template(request_path):
     if not normalized:
         return "index.html"
 
-    candidate = FRONTEND_BUILD_DIR / normalized / "index.html"
+    candidate = (FRONTEND_BUILD_DIR / normalized / "index.html").resolve()
+    # Reject path traversal (e.g. /..%2F..%2F) outside the frontend build dir.
+    if not candidate.is_relative_to(FRONTEND_BUILD_DIR.resolve()):
+        return "index.html"
     if candidate.is_file():
         return f"{normalized}/index.html"
 

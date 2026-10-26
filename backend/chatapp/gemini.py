@@ -4,7 +4,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+# The API key is sent in the x-goog-api-key header rather than the query string so
+# it never ends up in URLs (proxy logs, exception messages, tracebacks).
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_FALLBACK_MODELS = [
     model.strip()
@@ -42,19 +44,23 @@ def _build_system_prompt(target_language, native_language):
     )
 
 
-def _get_mode_instruction(mode):
+MODE_INSTRUCTIONS = {
+    "casual_chat": "Keep the exchange natural and flowing, with light corrections only when useful.",
+    "correct_me": "Always give a short natural response first, then clearly correct the learner's sentence.",
+    "roleplay": "Treat the exchange as a scenario-based roleplay and stay in character unless the learner asks to stop.",
+    "quiz_me": "Ask concise questions one at a time and wait for the learner's answer before continuing.",
+    "vocabulary_drill": "Focus on vocabulary recall, examples, and short exercises around useful words and phrases.",
+}
+COACH_MODES = frozenset(MODE_INSTRUCTIONS)
+
+
+def _normalize_mode(mode):
     normalized_mode = _normalize_language(mode, "casual_chat")
-    mode_instructions = {
-        "casual_chat": "Keep the exchange natural and flowing, with light corrections only when useful.",
-        "correct_me": "Always give a short natural response first, then clearly correct the learner's sentence.",
-        "roleplay": "Treat the exchange as a scenario-based roleplay and stay in character unless the learner asks to stop.",
-        "quiz_me": "Ask concise questions one at a time and wait for the learner's answer before continuing.",
-        "vocabulary_drill": "Focus on vocabulary recall, examples, and short exercises around useful words and phrases.",
-    }
-    return mode_instructions.get(
-        normalized_mode,
-        mode_instructions["casual_chat"],
-    )
+    return normalized_mode if normalized_mode in MODE_INSTRUCTIONS else "casual_chat"
+
+
+def _get_mode_instruction(mode):
+    return MODE_INSTRUCTIONS[_normalize_mode(mode)]
 
 
 def _build_payload(message, target_language, native_language, mode="casual_chat"):
@@ -65,7 +71,7 @@ def _build_payload(message, target_language, native_language, mode="casual_chat"
             "parts": [{
                 "text": (
                     f"{_build_system_prompt(normalized_target, normalized_native)} "
-                    f"Current tutoring mode: {mode}. {_get_mode_instruction(mode)}"
+                    f"Current tutoring mode: {_normalize_mode(mode)}. {_get_mode_instruction(mode)}"
                 )
             }]
         },
@@ -137,9 +143,9 @@ def _parse_reply(body):
 
 def _request_model(api_key, model, payload):
     request = Request(
-        GEMINI_API_URL.format(model=model, api_key=api_key),
+        GEMINI_API_URL.format(model=model),
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         method="POST",
     )
 
@@ -156,7 +162,8 @@ def _request_model(api_key, model, payload):
         raise CoachAIError(
             "The AI coach is unavailable right now. Please try again shortly."
         ) from error
-    except URLError as error:
+    except (URLError, OSError, ValueError) as error:
+        # OSError covers read timeouts; ValueError covers malformed JSON bodies.
         raise CoachAIError(
             "The AI coach is unavailable right now. Please try again shortly."
         ) from error

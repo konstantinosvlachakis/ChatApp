@@ -1,13 +1,14 @@
 import json
 import os
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.http.request import validate_host
 from django.utils import timezone
 
 from .models import Conversation, Profile
@@ -15,6 +16,9 @@ from .models import Conversation, Profile
 
 PRESENCE_GROUP_NAME = "presence_global"
 ONLINE_FRESHNESS_SECONDS = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
+# Generous enough for WebRTC SDP payloads, small enough to stop memory abuse.
+WS_MAX_MESSAGE_BYTES = int(os.environ.get("WS_MAX_MESSAGE_BYTES", str(64 * 1024)))
+WS_CHAT_TEXT_MAX_LENGTH = int(os.environ.get("MESSAGE_MAX_LENGTH", "5000"))
 
 
 def user_presence_group_name(user_id):
@@ -26,6 +30,11 @@ class PresenceTrackingMixin:
         token = self._get_token_from_authorization_header()
         if not token:
             token = self._get_token_from_cookies()
+            # Browsers attach cookies to cross-site WebSocket handshakes, so a
+            # cookie-authenticated socket must come from one of our origins
+            # (prevents cross-site WebSocket hijacking).
+            if token and not self._origin_is_allowed():
+                return None
         if not token:
             query_string = self.scope.get("query_string", b"").decode()
             token = parse_qs(query_string).get("token", [None])[0]
@@ -41,6 +50,25 @@ class PresenceTrackingMixin:
             return int(user_id)
         except Exception:
             return None
+
+    def _origin_is_allowed(self):
+        raw_headers = dict(self.scope.get("headers", []))
+        origin = raw_headers.get(b"origin", b"").decode("latin1").strip()
+        if not origin:
+            # Non-browser clients (mobile) do not need to send an Origin.
+            return True
+        if origin in getattr(settings, "CORS_ALLOWED_ORIGINS", []):
+            return True
+        hostname = urlparse(origin).hostname
+        if not hostname:
+            return False
+        # Same host as the handshake itself (covers LAN-IP dev setups).
+        request_host = raw_headers.get(b"host", b"").decode("latin1")
+        if hostname == urlparse(f"//{request_host}").hostname:
+            return True
+        # The "*" wildcard used in local dev must not allow every origin.
+        explicit_hosts = [host for host in settings.ALLOWED_HOSTS if host != "*"]
+        return validate_host(hostname, explicit_hosts)
 
     def _get_token_from_cookies(self):
         try:
@@ -137,6 +165,20 @@ class PresenceTrackingMixin:
         )
 
     @database_sync_to_async
+    def get_participant_username(self, conversation_id, user_id):
+        """Return the user's username if they belong to the conversation, else None."""
+        conversation = (
+            Conversation.objects.filter(id=conversation_id)
+            .filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
+            .first()
+        )
+        if not conversation:
+            return None
+        return (
+            Profile.objects.filter(id=user_id).values_list("username", flat=True).first()
+        )
+
+    @database_sync_to_async
     def get_other_participant_id(self, conversation_id, current_user_id):
         conversation = Conversation.objects.filter(id=conversation_id).first()
         if not conversation:
@@ -151,8 +193,27 @@ class PresenceTrackingMixin:
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def connect(self):
-        self.room_group_name = self.scope["url_route"]["kwargs"]["room_name"]
+        self.room_group_name = None
+        self.username = None
         self.user_id = await self.get_user_id_from_token()
+
+        # Only authenticated participants may join a conversation's group. The
+        # room name must be a numeric conversation id so clients can never
+        # subscribe to internal groups such as presence_global / presence_user_<id>.
+        try:
+            conversation_id = int(self.scope["url_route"]["kwargs"]["room_name"])
+        except (KeyError, TypeError, ValueError):
+            conversation_id = None
+        if self.user_id and conversation_id is not None:
+            self.username = await self.get_participant_username(
+                conversation_id, self.user_id
+            )
+        if not self.username:
+            self.user_id = None
+            await self.close(code=4403)
+            return
+
+        self.room_group_name = str(conversation_id)
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
 
@@ -169,6 +230,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 )
 
     async def disconnect(self, close_code):
+        if not getattr(self, "room_group_name", None):
+            return
         await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
         if self.user_id:
             try:
@@ -214,8 +277,15 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     },
                 )
 
-    async def receive(self, text_data):
-        data = json.loads(text_data)
+    async def receive(self, text_data=None, bytes_data=None):
+        if not self.user_id or not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
+            return
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict):
+            return
         message_type = data.get("type", "chat")
         call_event_types = {
             "call_invite",
@@ -229,7 +299,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         if message_type == "chat":
             message = data.get("message")
-            if message is None:
+            if not isinstance(message, str) or len(message) > WS_CHAT_TEXT_MAX_LENGTH:
                 return
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -237,8 +307,10 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "type": "chat_message",
                     "id": data.get("id"),
                     "message": message,
-                    "sender": data.get("sender"),
-                    "sender_id": data.get("senderId"),
+                    # Sender identity comes from the authenticated socket, never
+                    # from the client payload (prevents impersonation).
+                    "sender": self.username,
+                    "sender_id": self.user_id,
                     "attachment_url": data.get("attachmentUrl"),
                     "reply_to": data.get("replyTo"),
                     "sender_channel_name": self.channel_name,
@@ -248,7 +320,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         if message_type == "deleteMessage":
             message_id = data.get("messageId")
-            if message_id is None:
+            if not isinstance(message_id, int):
                 return
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -457,8 +529,10 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 },
             )
 
-    async def receive(self, text_data):
+    async def receive(self, text_data=None, bytes_data=None):
         if not getattr(self, "user_id", None):
+            return
+        if not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
             return
         try:
             payload = json.loads(text_data or "{}")

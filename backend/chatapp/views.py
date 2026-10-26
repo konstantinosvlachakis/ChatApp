@@ -1,8 +1,16 @@
 from django.http import Http404, JsonResponse
-from django.views.decorators.csrf import csrf_exempt, csrf_protect
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, permission_classes
-from django.core.exceptions import MultipleObjectsReturned
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import MultipleObjectsReturned, ValidationError
+from django.core.validators import validate_email
+import logging
+from urllib.parse import urlparse
 from .models import Token, Profile
 import json
 from rest_framework.views import APIView
@@ -43,11 +51,15 @@ from asgiref.sync import async_to_sync
 from django.utils import timezone
 from django.db import transaction
 from .gemini import (
+    COACH_MODES,
     CoachAIError,
     CoachAIQuotaError,
     generate_coach_reply,
     generate_practice_challenge,
 )
+from .throttles import AuthRateThrottle, ReportRateThrottle, TranslateRateThrottle
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
@@ -102,7 +114,84 @@ COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS = int(
 COACH_CHAT_RATE_LIMIT_REQUESTS = int(
     os.environ.get("COACH_CHAT_RATE_LIMIT_REQUESTS", "12")
 )
+COACH_CHAT_DAILY_LIMIT = int(os.environ.get("COACH_CHAT_DAILY_LIMIT", "200"))
+COACH_CHAT_MAX_MESSAGE_LENGTH = int(
+    os.environ.get("COACH_CHAT_MAX_MESSAGE_LENGTH", "2000")
+)
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@langvoyage.app")
+
+# Input size limits (abuse / DoS protection).
+MESSAGE_MAX_LENGTH = int(os.environ.get("MESSAGE_MAX_LENGTH", "5000"))
+TRANSLATION_MAX_LENGTH = int(os.environ.get("TRANSLATION_MAX_LENGTH", "5000"))
+PROFILE_TEXT_MAX_LENGTH = 2000
+PROFILE_LANGUAGE_MAX_LENGTH = 50
+PROFILE_MAX_PRACTICE_LANGUAGES = 20
+USERNAME_PATTERN = re.compile(r"^[\w.@+-]{1,30}$")
+MESSAGE_ATTACHMENT_MAX_BYTES = int(
+    os.environ.get("MESSAGE_ATTACHMENT_MAX_BYTES", str(25 * 1024 * 1024))
+)
+PROFILE_IMAGE_MAX_BYTES = int(
+    os.environ.get("PROFILE_IMAGE_MAX_BYTES", str(10 * 1024 * 1024))
+)
+# Uploads are served from our own origin, so only allow inert media types and
+# always pick the stored extension ourselves (never e.g. .html or .svg).
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+}
+ALLOWED_ATTACHMENT_TYPES = {
+    **ALLOWED_IMAGE_TYPES,
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/aac": ".aac",
+}
+
+
+def validate_uploaded_file(uploaded_file, allowed_types, max_bytes):
+    """Return (safe_extension, error_message)."""
+    content_type = (getattr(uploaded_file, "content_type", "") or "").split(";")[0]
+    content_type = content_type.strip().lower()
+    if content_type not in allowed_types:
+        return None, "Unsupported file type."
+    if uploaded_file.size is None or uploaded_file.size > max_bytes:
+        return None, f"File is too large (max {max_bytes // (1024 * 1024)} MB)."
+    return allowed_types[content_type], None
+
+
+def is_allowed_profile_image_reference(request, value):
+    """Only accept image references that point at our own media or Cloudinary."""
+    normalized = str(value or "").strip()
+    if not normalized or len(normalized) > 255 or ".." in normalized:
+        return False
+    parsed = urlparse(normalized)
+    if not parsed.scheme and not parsed.netloc:
+        return not normalized.startswith("//")
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    hostname = parsed.hostname.lower()
+    request_hostname = request.get_host().split(":")[0].lower()
+    return (
+        hostname == request_hostname
+        or hostname == "res.cloudinary.com"
+        or hostname in {"langvoyage.com", "www.langvoyage.com"}
+        or hostname.endswith(".herokuapp.com")
+    )
 
 PRACTICE_LIBRARY = {
     "english": {
@@ -763,6 +852,38 @@ def consume_coach_chat_rate_limit(user_id):
     return int(next_value) <= COACH_CHAT_RATE_LIMIT_REQUESTS
 
 
+def consume_coach_chat_daily_limit(user_id):
+    if COACH_CHAT_DAILY_LIMIT <= 0:
+        return True
+
+    cache_key = (
+        f"coach_chat:daily_limit:user:{user_id}:date:{timezone.now():%Y%m%d}"
+    )
+    if cache.add(cache_key, 1, timeout=60 * 60 * 25):
+        return True
+
+    try:
+        next_value = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=60 * 60 * 25)
+        return True
+
+    return int(next_value) <= COACH_CHAT_DAILY_LIMIT
+
+
+def sanitize_language_name(value, fallback="english"):
+    # Language names are interpolated into the model's system prompt, so only
+    # accept short plain names (letters, spaces, hyphens).
+    normalized = str(value or "").strip()
+    if (
+        not normalized
+        or len(normalized) > 40
+        or not re.fullmatch(r"[^\W\d_]+(?:[ \-][^\W\d_]+)*", normalized)
+    ):
+        return fallback
+    return normalized
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def coach_chat_view(request):
@@ -770,6 +891,13 @@ def coach_chat_view(request):
     if not message:
         return Response(
             {"detail": "Message is required."}, status=status.HTTP_400_BAD_REQUEST
+        )
+    if len(message) > COACH_CHAT_MAX_MESSAGE_LENGTH:
+        return Response(
+            {
+                "detail": f"Message is too long (max {COACH_CHAT_MAX_MESSAGE_LENGTH} characters)."
+            },
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     if not consume_coach_chat_rate_limit(request.user.id):
@@ -779,15 +907,25 @@ def coach_chat_view(request):
             },
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
+    if not consume_coach_chat_daily_limit(request.user.id):
+        return Response(
+            {
+                "detail": "You have reached today's coach message limit. Please come back tomorrow."
+            },
+            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
-    target_language = (
+    native_language = sanitize_language_name(
+        getattr(request.user, "native_language", None)
+    )
+    target_language = sanitize_language_name(
         str(request.data.get("target_language") or "").strip()
         or getattr(request.user, "base_translate_language", None)
-        or getattr(request.user, "native_language", None)
-        or "english"
+        or getattr(request.user, "native_language", None),
     )
-    native_language = getattr(request.user, "native_language", None) or "english"
-    mode = str(request.data.get("mode") or "casual_chat").strip() or "casual_chat"
+    mode = str(request.data.get("mode") or "casual_chat").strip()
+    if mode not in COACH_MODES:
+        mode = "casual_chat"
 
     try:
         reply = generate_coach_reply(
@@ -818,12 +956,17 @@ def coach_chat_view(request):
     )
 
 
-@csrf_exempt
+# Legacy token login. No authentication runs here (so no CSRF is needed), but the
+# endpoint is throttled per IP to stop password brute-forcing.
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def login_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            email = data.get("email")
+            email = str(data.get("email") or "").strip().lower()
             password = data.get("password")
 
             if not email or not password:
@@ -832,7 +975,7 @@ def login_view(request):
                 )
 
             # Retrieve the user from the Profile model
-            user = Profile.objects.filter(email=email).first()
+            user = Profile.objects.filter(email__iexact=email).first()
 
             # Check if the user exists and if the password is correct
             if user and user.check_password(password):
@@ -842,22 +985,25 @@ def login_view(request):
             else:
                 return JsonResponse({"error": "Invalid credentials"}, status=400)
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, AttributeError):
             return JsonResponse({"error": "Invalid JSON format"}, status=400)
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@csrf_exempt
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def register_view(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
             # Extract data from request
-            username = data.get("username")
+            username = str(data.get("username") or "").strip()
             password = data.get("password")
-            native_language = data.get("nativeLanguage")
-            email = data.get("email")
+            native_language = str(data.get("nativeLanguage") or "").strip()
+            email = str(data.get("email") or "").strip().lower()
             date_of_birth = data.get("dateOfBirth")
 
             # Validate required fields
@@ -869,30 +1015,66 @@ def register_view(request):
                     status=400,
                 )
 
+            if not USERNAME_PATTERN.fullmatch(username):
+                return JsonResponse(
+                    {
+                        "error": "Username must be at most 30 characters and contain only letters, numbers, and . @ + - _"
+                    },
+                    status=400,
+                )
+            if len(native_language) > PROFILE_LANGUAGE_MAX_LENGTH:
+                return JsonResponse({"error": "Invalid native language"}, status=400)
+            try:
+                validate_email(email)
+            except ValidationError:
+                return JsonResponse({"error": "Invalid email address"}, status=400)
+
+            parsed_date_of_birth = None
+            if date_of_birth:
+                try:
+                    parsed_date_of_birth = datetime.strptime(
+                        str(date_of_birth).strip(), "%Y-%m-%d"
+                    ).date()
+                except ValueError:
+                    return JsonResponse(
+                        {"error": "dateOfBirth must be in YYYY-MM-DD format"},
+                        status=400,
+                    )
+
             # Check if the username already exists
             if Profile.objects.filter(username__iexact=username).exists():
                 return JsonResponse({"error": "Username already exists"}, status=400)
 
             # Check if the email already exists
-            if Profile.objects.filter(email=email).exists():
+            if Profile.objects.filter(email__iexact=email).exists():
                 return JsonResponse({"error": "Email already exists"}, status=400)
 
+            # Enforce settings.AUTH_PASSWORD_VALIDATORS.
+            try:
+                validate_password(
+                    str(password),
+                    user=Profile(username=username, email=email),
+                )
+            except ValidationError as error:
+                return JsonResponse({"error": " ".join(error.messages)}, status=400)
+
             # Create the new user
-            user = Profile.objects.create_user(
+            Profile.objects.create_user(
                 username=username,
-                password=password,
+                password=str(password),
                 native_language=native_language,
                 email=email,
-                date_of_birth=date_of_birth,
+                date_of_birth=parsed_date_of_birth,
             )
             bump_profile_list_cache_version()
 
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, AttributeError):
             return JsonResponse({"error": "Invalid JSON format"}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+        except Exception:
+            logger.exception("Registration failed")
+            return JsonResponse({"error": "Registration failed. Please try again."}, status=500)
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
@@ -1085,7 +1267,7 @@ def public_profile_view(request, username):
 
 
 @api_view(["PATCH"])
-# @permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
@@ -1110,6 +1292,14 @@ def profile_edit_view(request):
 
         # Update only if data is provided
         if username:
+            username = str(username).strip()
+            if not USERNAME_PATTERN.fullmatch(username):
+                return JsonResponse(
+                    {
+                        "error": "Username must be at most 30 characters and contain only letters, numbers, and . @ + - _"
+                    },
+                    status=400,
+                )
             if (
                 Profile.objects.exclude(id=user.id)
                 .filter(username__iexact=username)
@@ -1118,13 +1308,22 @@ def profile_edit_view(request):
                 return JsonResponse({"error": "Username already exists"}, status=400)
             user.username = username
             should_bump_profile_list = True
+        for language_value in (native_language, base_translate_language):
+            if language_value and (
+                not isinstance(language_value, str)
+                or len(language_value.strip()) > PROFILE_LANGUAGE_MAX_LENGTH
+            ):
+                return JsonResponse({"error": "Invalid language value"}, status=400)
         if native_language:
-            user.native_language = native_language
+            user.native_language = native_language.strip()
             should_bump_profile_list = True
         if base_translate_language:
-            user.base_translate_language = base_translate_language
+            user.base_translate_language = base_translate_language.strip()
         if languages_practicing is not None:
-            if not isinstance(languages_practicing, list):
+            if (
+                not isinstance(languages_practicing, list)
+                or len(languages_practicing) > PROFILE_MAX_PRACTICE_LANGUAGES
+            ):
                 return JsonResponse(
                     {"error": "languages_practicing must be a list of strings"},
                     status=400,
@@ -1133,7 +1332,7 @@ def profile_edit_view(request):
             cleaned_languages = []
             for language in languages_practicing:
                 if isinstance(language, str):
-                    value = language.strip()
+                    value = language.strip()[:PROFILE_LANGUAGE_MAX_LENGTH]
                     if value:
                         cleaned_languages.append(value)
             user.languages_practicing = cleaned_languages
@@ -1171,9 +1370,13 @@ def profile_edit_view(request):
             normalized_email = str(email).strip().lower()
             if not normalized_email:
                 return JsonResponse({"error": "Email cannot be empty"}, status=400)
+            try:
+                validate_email(normalized_email)
+            except ValidationError:
+                return JsonResponse({"error": "Invalid email address"}, status=400)
             if (
                 Profile.objects.exclude(id=user.id)
-                .filter(email=normalized_email)
+                .filter(email__iexact=normalized_email)
                 .exists()
             ):
                 return JsonResponse({"error": "Email already exists"}, status=400)
@@ -1195,9 +1398,9 @@ def profile_edit_view(request):
             if user.location:
                 user.location_updated_at = timezone.now()
         if bio is not None:
-            user.bio = str(bio).strip()
+            user.bio = str(bio).strip()[:PROFILE_TEXT_MAX_LENGTH]
         if learning_goal is not None:
-            user.learning_goal = str(learning_goal).strip()
+            user.learning_goal = str(learning_goal).strip()[:PROFILE_TEXT_MAX_LENGTH]
         if avatar_ring_color is not None:
             normalized_ring_color = str(avatar_ring_color).strip().lower()
             if not re.fullmatch(r"#[0-9a-f]{6}", normalized_ring_color):
@@ -1207,7 +1410,11 @@ def profile_edit_view(request):
                 )
             user.avatar_ring_color = normalized_ring_color
         if profile_image_url:
-            user.profile_image_url = profile_image_url  # Update profile image URL
+            # Only allow references to our own media / Cloudinary, never arbitrary
+            # third-party URLs (tracking pixels) or path tricks.
+            if not is_allowed_profile_image_reference(request, profile_image_url):
+                return JsonResponse({"error": "Invalid profile image URL"}, status=400)
+            user.profile_image_url = str(profile_image_url).strip()  # Update profile image URL
 
         # Save the updated user object
         user.save()
@@ -1238,10 +1445,11 @@ def profile_edit_view(request):
             status=200,
         )
 
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, AttributeError):
         return JsonResponse({"error": "Invalid JSON format"}, status=400)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    except Exception:
+        logger.exception("Profile update failed for user %s", request.user.id)
+        return JsonResponse({"error": "Profile update failed. Please try again."}, status=500)
 
 
 @api_view(["PATCH"])
@@ -1376,6 +1584,7 @@ def moderation_summary_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ReportRateThrottle])
 def report_user_view(request, username):
     target = get_profile_by_username_or_404(username)
 
@@ -1524,7 +1733,7 @@ class MessageListView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         # Extract text and file from the request
-        text = request.data.get("text", "").strip()
+        text = str(request.data.get("text", "") or "").strip()
         attachment = request.FILES.get("attachment")
         reply_to_id = request.data.get("reply_to")
         reply_to_message = None
@@ -1535,6 +1744,22 @@ class MessageListView(APIView):
                 {"error": "Message content or attachment is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if len(text) > MESSAGE_MAX_LENGTH:
+            return Response(
+                {"error": f"Message is too long (max {MESSAGE_MAX_LENGTH} characters)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if attachment:
+            safe_extension, attachment_error = validate_uploaded_file(
+                attachment, ALLOWED_ATTACHMENT_TYPES, MESSAGE_ATTACHMENT_MAX_BYTES
+            )
+            if attachment_error:
+                return Response(
+                    {"error": attachment_error},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Never trust the client filename: it controls the served content type.
+            attachment.name = f"{uuid.uuid4().hex}{safe_extension}"
 
         if reply_to_id not in (None, ""):
             try:
@@ -1595,6 +1820,11 @@ class MessageEditView(APIView):
         if not updated_text and not message.attachment:
             return Response(
                 {"error": "Message content is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(updated_text) > MESSAGE_MAX_LENGTH:
+            return Response(
+                {"error": f"Message is too long (max {MESSAGE_MAX_LENGTH} characters)."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1666,6 +1896,11 @@ class ConversationDetailView(APIView):
     def delete(self, request, conversation_id):
         conversation = get_object_or_404(Conversation, id=conversation_id)
         participant_ids = [conversation.sender_id, conversation.receiver_id]
+        if request.user.id not in participant_ids:
+            return Response(
+                {"error": "You are not a participant in this conversation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         conversation.delete()
         for user_id in participant_ids:
             bump_conversation_list_cache_version(user_id)
@@ -1846,6 +2081,16 @@ def update_profile_image(request, user_id):
     if "profile_image" in request.FILES:
         image_file = request.FILES["profile_image"]
         slot = request.data.get("slot", "profile")
+        if slot not in {"profile", "complementary_1", "complementary_2"}:
+            slot = "profile"
+
+        safe_extension, image_error = validate_uploaded_file(
+            image_file, ALLOWED_IMAGE_TYPES, PROFILE_IMAGE_MAX_BYTES
+        )
+        if image_error:
+            return Response(
+                {"error": image_error}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         stored_url = ""
         using_cloudinary_storage = (
@@ -1872,8 +2117,7 @@ def update_profile_image(request, user_id):
                 stored_url = ""
 
         if not stored_url:
-            ext = os.path.splitext(image_file.name)[1] or ".jpg"
-            filename = f"{uuid.uuid4().hex}{ext}"
+            filename = f"{uuid.uuid4().hex}{safe_extension}"
             path = default_storage.save(f"profile_images/{filename}", image_file)
             try:
                 stored_url = default_storage.url(path)
@@ -1961,9 +2205,10 @@ def languages_match(source_language, target_language):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([TranslateRateThrottle])
 def translate_message_view(request):
     message_id = request.data.get("message_id")
-    text = (request.data.get("text") or "").strip()
+    text = str(request.data.get("text") or "").strip()
     target_language = resolve_language_code(request.data.get("target_language"))
     message = None
 
@@ -2000,6 +2245,11 @@ def translate_message_view(request):
     if not text:
         return Response(
             {"error": "Text is required."}, status=status.HTTP_400_BAD_REQUEST
+        )
+    if len(text) > TRANSLATION_MAX_LENGTH:
+        return Response(
+            {"error": f"Text is too long (max {TRANSLATION_MAX_LENGTH} characters)."},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     normalized_text = normalize_translation_text(text)

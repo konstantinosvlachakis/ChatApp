@@ -1,12 +1,14 @@
 from django.conf import settings
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from datetime import timedelta
+
+from .throttles import AuthRateThrottle
 
 import logging
 
@@ -57,14 +59,15 @@ def _clear_auth_cookies(response):
 
 # Custom JWT Token Obtain Pair View
 class CustomObtainJWTToken(TokenObtainPairView):
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request, *args, **kwargs):
         data = request.data
-        data["email"] = data["email"].lower()  # Assuming you are using email
         remember_me = str(data.get("remember_me", "")).lower() in ("1", "true", "yes", "on")
         serializer_data = {
-            "email": data.get("email"),
+            "email": str(data.get("email") or "").strip().lower(),
             "password": data.get("password"),
         }
         logger.info("Login attempt")
@@ -73,6 +76,11 @@ class CustomObtainJWTToken(TokenObtainPairView):
 
         try:
             serializer.is_valid(raise_exception=True)
+        except ValidationError:
+            return Response(
+                {"message": "Email and password are required.", "code": "invalid_request"},
+                status=400,
+            )
         except AuthenticationFailed:
             return Response(
                 {
@@ -99,7 +107,9 @@ class CustomObtainJWTToken(TokenObtainPairView):
 
 # Custom JWT Token Refresh View
 class CustomRefreshJWTToken(TokenRefreshView):
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request, *args, **kwargs):
         request_data = request.data.copy()
@@ -119,6 +129,7 @@ class CustomRefreshJWTToken(TokenRefreshView):
 
 
 @api_view(("POST",))
+@authentication_classes([])
 @permission_classes([AllowAny])
 def logout_view(_request):
     response = Response({"detail": "Logged out."})
