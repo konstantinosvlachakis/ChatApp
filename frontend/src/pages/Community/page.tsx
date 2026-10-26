@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ProfileCard } from "../../components/Cards";
+import type { PartnerMatch } from "../../components/Cards";
 import { BASE_URL } from "../../constants/constants";
 
 interface RawProfile {
@@ -11,14 +12,16 @@ interface RawProfile {
   bio?: string;
   profileImage?: string;
   isPremium?: boolean;
+  match?: PartnerMatch;
 }
 
 const PAGE_SIZE = 24;
 
+// Keys map 1:1 to the backend's /api/profile/data?match= modes.
 const segmentOptions = [
-  { key: "all", label: "All members" },
-  { key: "nearby", label: "Nearby", icon: true },
-  { key: "travel", label: "Travel", icon: true },
+  { key: "all", label: "Best matches" },
+  { key: "reciprocal", label: "Perfect exchange", icon: true },
+  { key: "teaches_me", label: "Native in my languages", icon: true },
 ];
 
 const CommunityPage: React.FC = () => {
@@ -44,7 +47,7 @@ const CommunityPage: React.FC = () => {
 
       try {
         const response = await fetch(
-          `${BASE_URL}/api/profile/data?page=${page}&page_size=${PAGE_SIZE}`,
+          `${BASE_URL}/api/profile/data?page=${page}&page_size=${PAGE_SIZE}&match=${activeSegment}`,
           {
             method: "GET",
             headers: {
@@ -77,6 +80,13 @@ const CommunityPage: React.FC = () => {
                 : `${BASE_URL}/media/${p.profile_image_url}`
             : undefined,
           isPremium: Boolean(p.is_premium || p.premium || p.isPremium),
+          match: p.match
+            ? {
+                teachesMe: Boolean(p.match.teaches_me),
+                learnsMine: Boolean(p.match.learns_mine),
+                reciprocal: Boolean(p.match.reciprocal),
+              }
+            : undefined,
         }));
 
         if (isMounted) {
@@ -103,7 +113,15 @@ const CommunityPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [page]);
+  }, [page, activeSegment]);
+
+  const handleSegmentChange = (segmentKey: string) => {
+    if (segmentKey === activeSegment) return;
+    setRegisteredProfiles([]);
+    setHasNextPage(false);
+    setPage(1);
+    setActiveSegment(segmentKey);
+  };
 
   const profiles = useMemo(() => {
     const mergedByUsername = new Map<string, RawProfile>();
@@ -201,7 +219,7 @@ const CommunityPage: React.FC = () => {
               <button
                 key={segment.key}
                 type="button"
-                onClick={() => setActiveSegment(segment.key)}
+                onClick={() => handleSegmentChange(segment.key)}
                 className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-sm font-semibold transition ${
                   activeSegment === segment.key
                     ? "border border-[var(--lv-navy)] bg-[var(--lv-navy)] text-white"
@@ -234,7 +252,7 @@ const CommunityPage: React.FC = () => {
           ) : filteredProfiles.length > 0 ? (
             <>
               <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {filteredProfiles.map((profile, index) => (
+                {filteredProfiles.map((profile) => (
                   <ProfileCard
                     key={profile.username}
                     username={profile.username}
@@ -242,7 +260,7 @@ const CommunityPage: React.FC = () => {
                     nativeLanguage={profile.nativeLanguage}
                     learningLanguage={profile.learningLanguage}
                     profileImage={profile.profileImage}
-                    score={Math.max(1, 14 - (index % 14))}
+                    match={profile.match}
                     isPremium={profile.isPremium}
                     onClick={() => handleCardClick(profile)}
                   />
@@ -265,7 +283,9 @@ const CommunityPage: React.FC = () => {
             <div className="mt-10 rounded-[28px] border border-[var(--lv-border)] bg-[var(--lv-surface)] px-6 py-12 text-center">
               <p className="text-lg font-semibold text-[var(--lv-text)]">No matches yet.</p>
               <p className="mt-2 text-sm text-[var(--lv-muted-text)]">
-                Try adjusting your search or choosing a different language filter.
+                {activeSegment === "all"
+                  ? "Try adjusting your search or choosing a different language filter."
+                  : "Add more languages you're practicing in your profile to widen your matches."}
               </p>
             </div>
           )}
