@@ -3,13 +3,15 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { initCsrfProtection } from './utils/csrf';
+import { logger } from './lib/logger';
+import { scheduleSentryInit } from './lib/sentry';
 import './index.css';  // Ensure this line is present to import Tailwind CSS
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
 initCsrfProtection()
   .catch((error) => {
-    console.error("Failed to initialise CSRF protection", error);
+    logger.error("Failed to initialise CSRF protection", error);
   })
   .finally(() => {
     root.render(
@@ -17,6 +19,9 @@ initCsrfProtection()
         <App />
       </React.StrictMode>
     );
+    // Error reporting (only with REACT_APP_SENTRY_DSN) loads after first paint so the
+    // SDK never sits on the critical path.
+    scheduleSentryInit();
   });
 
 // If you want to start measuring performance in your app, pass a function

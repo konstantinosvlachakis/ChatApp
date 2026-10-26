@@ -4,8 +4,8 @@ import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
 import { BASE_URL_IMG } from "../../../constants/constants";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
-import axios from "../../../utils/axios";
-import { BASE_URL } from "../../../constants/constants";
+import api from "../../../lib/api";
+import { toastApiError } from "../../../components/Toast";
 import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
@@ -79,12 +79,13 @@ function ConversationList({
   
   const deleteConversationMutation = useMutation({
     mutationFn: async (conversationId) => {
-      return axios.delete(`${BASE_URL}/api/conversations/${conversationId}/`, {
-        withCredentials: true,
-      });
+      return api.delete(`/api/conversations/${conversationId}/`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+    },
+    onError: (error) => {
+      toastApiError(error, "Couldn't delete the conversation");
     },
   });
 

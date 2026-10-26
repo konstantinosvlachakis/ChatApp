@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BASE_URL } from "../constants/constants";
+import api, { getErrorMessage } from "../lib/api";
 
 const languageOptions = [
   {
@@ -217,28 +217,16 @@ const RegisterPage = () => {
 
     try {
       setSubmitting(true);
-      const response = await fetch(BASE_URL + "/api/register/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: username.trim(),
-          email: email.trim().toLowerCase(),
-          dateOfBirth,
-          password,
-          nativeLanguage,
-        }),
+      await api.post("/api/register/", {
+        username: username.trim(),
+        email: email.trim().toLowerCase(),
+        dateOfBirth,
+        password,
+        nativeLanguage,
       });
-
-      if (response.ok) {
-        navigate("/login");
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setSubmitError(errorData.error || errorData.detail || "Could not create account.");
-      }
+      navigate("/login");
     } catch (error) {
-      setSubmitError("Network error. Please try again.");
+      setSubmitError(getErrorMessage(error, "Could not create account."));
     } finally {
       setSubmitting(false);
     }

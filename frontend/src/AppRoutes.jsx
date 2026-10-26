@@ -1,6 +1,7 @@
-import React, { Suspense } from "react";
+import React from "react";
 import { Route, Routes } from "react-router-dom";
 import Layout from "./layout/Layout";
+import { LazyRoute } from "./components/ErrorBoundary";
 import AuthLandingPage from "./pages/AuthLandingPage";
 import AuthLayout from "./components/Auth/AuthLayout";
 import LoginPage from "./pages/LoginPage";
@@ -39,17 +40,17 @@ const AppRoutes = () => (
     <Route
       path="/privacy-policy"
       element={
-        <Suspense fallback={null}>
+        <LazyRoute fallback={null}>
           <PrivacyPolicyPage />
-        </Suspense>
+        </LazyRoute>
       }
     />
     <Route
       path="/terms-and-conditions"
       element={
-        <Suspense fallback={null}>
+        <LazyRoute fallback={null}>
           <TermsAndConditionsPage />
-        </Suspense>
+        </LazyRoute>
       }
     />
 
@@ -62,81 +63,81 @@ const AppRoutes = () => (
       <Route
         path="/profile"
         element={
-          <Suspense fallback={<div>Loading Profile...</div>}>
+          <LazyRoute fallback={<div>Loading Profile...</div>}>
             <ProfilePage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/profile/edit"
         element={
-          <Suspense fallback={<div>Loading Profile Editor...</div>}>
+          <LazyRoute fallback={<div>Loading Profile Editor...</div>}>
             <EditProfilePage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/settings"
         element={
-          <Suspense fallback={<div>Loading Settings...</div>}>
+          <LazyRoute fallback={<div>Loading Settings...</div>}>
             <SettingsPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/community"
         element={
-          <Suspense fallback={<div>Loading Community...</div>}>
+          <LazyRoute fallback={<div>Loading Community...</div>}>
             <CommunityPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/people/:username"
         element={
-          <Suspense fallback={<div>Loading Profile...</div>}>
+          <LazyRoute fallback={<div>Loading Profile...</div>}>
             <PublicProfilePage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/conversations"
         element={
-          <Suspense fallback={<div>Loading Conversations...</div>}>
+          <LazyRoute fallback={<div>Loading Conversations...</div>}>
             <ConversationsPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/conversations/:id"
         element={
-          <Suspense fallback={<div>Loading Conversations...</div>}>
+          <LazyRoute fallback={<div>Loading Conversations...</div>}>
             <ConversationsPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/practice"
         element={
-          <Suspense fallback={<div>Loading Practice...</div>}>
+          <LazyRoute fallback={<div>Loading Practice...</div>}>
             <PracticePage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/premium"
         element={
-          <Suspense fallback={<div>Loading Premium...</div>}>
+          <LazyRoute fallback={<div>Loading Premium...</div>}>
             <PremiumPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
       <Route
         path="/premium/compare"
         element={
-          <Suspense fallback={<div>Loading Compare Plans...</div>}>
+          <LazyRoute fallback={<div>Loading Compare Plans...</div>}>
             <ComparePlansPage />
-          </Suspense>
+          </LazyRoute>
         }
       />
     </Route>

@@ -8,6 +8,9 @@ import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
 import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import api, { getErrorMessage, isApiError } from "../../lib/api";
+import { logger } from "../../lib/logger";
+import { toast, toastApiError } from "../../components/Toast";
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
@@ -21,20 +24,15 @@ const ProfilePage = () => {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await fetch(`${BASE_URL_IMG}/api/profile/`, {
-          credentials: "include",
-        });
-
-        if (res.status === 401) {
+        const data = await api.get("/api/profile/");
+        setUser(data);
+      } catch (err) {
+        if (isApiError(err) && err.status === 401) {
           navigate("/login");
           return;
         }
-
-        const data = await res.json();
-        setUser(data);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load profile.");
+        logger.warn("Failed to load profile:", err);
+        setError(getErrorMessage(err, "Failed to load profile."));
       } finally {
         setLoading(false);
       }
@@ -57,24 +55,7 @@ const ProfilePage = () => {
         const { city, country } = await getUserLocation();
         const locationString = `${city}, ${country}`;
 
-        const response = await fetch(`${BASE_URL_IMG}/api/profile/location/`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            city,
-            country,
-          }),
-        });
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.error || "Failed to update location.");
-        }
-
-        const payload = await response.json();
+        const payload = await api.patch("/api/profile/location/", { city, country });
         setUser((prev) =>
           prev
             ? {
@@ -85,7 +66,7 @@ const ProfilePage = () => {
             : prev
         );
       } catch (err) {
-        console.warn("Could not get location:", err);
+        logger.warn("Could not get location:", err);
       } finally {
         isDetectingLocationRef.current = false;
       }
@@ -107,7 +88,7 @@ const ProfilePage = () => {
 
   const uploadPhoto = async (slot, file) => {
     if (!file || !file.type.startsWith("image/")) {
-      setError("Please select a valid image.");
+      toast.error("Please select a valid image.");
       return;
     }
 
@@ -117,21 +98,9 @@ const ProfilePage = () => {
       formData.append("profile_image", file);
       formData.append("slot", slot);
 
-      const res = await fetch(
-        `${BASE_URL_IMG}/api/profile/${user.user_id}/update-image/`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          body: formData,
-        }
-      );
-
-      if (!res.ok) {
-        const payload = await res.json();
-        throw new Error(payload.error || "Failed to upload image.");
-      }
-
-      const payload = await res.json();
+      const payload = await api.upload(`/api/profile/${user.user_id}/update-image/`, formData, {
+        method: "PATCH",
+      });
       setUser((prev) => ({
         ...prev,
         profile_image_url: payload.profile_image_url || prev.profile_image_url,
@@ -141,8 +110,10 @@ const ProfilePage = () => {
           payload.complementary_image_2_url || prev.complementary_image_2_url,
       }));
       setError(null);
+      toast.success("Photo updated.");
     } catch (err) {
-      setError(err.message || "Failed to upload image.");
+      // A toast instead of the page-level error, which would replace the whole profile.
+      toastApiError(err, "Couldn't upload the photo");
     } finally {
       setUploadingSlot("");
     }

@@ -13,6 +13,8 @@ import { BASE_URL } from "../../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
 import { getUserLocation } from "./utils/getUserLocation";
+import api, { getErrorMessage } from "../../lib/api";
+import { toastApiError } from "../../components/Toast";
 
 const LANGUAGE_OPTIONS = [
   "english",
@@ -159,13 +161,7 @@ const EditProfilePage = () => {
     setError("");
     setSuccess("");
     try {
-      const response = await fetch(`${BASE_URL}/api/profile/edit/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
+      await api.patch("/api/profile/edit/", {
           username: form.username.trim(),
           email: form.email.trim().toLowerCase(),
           date_of_birth: form.date_of_birth || null,
@@ -176,18 +172,14 @@ const EditProfilePage = () => {
             toTitleCase(lang)
           ),
           avatar_ring_color: form.avatar_ring_color,
-        }),
       });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Failed to save profile.");
-      }
 
       await refreshUserProfile();
       setSuccess("Profile updated.");
     } catch (err) {
-      setError(String(err.message || "Failed to save profile."));
+      const message = getErrorMessage(err, "Failed to save profile.");
+      setError(message);
+      toastApiError(err, "Couldn't save your profile");
     } finally {
       setSaving(false);
     }

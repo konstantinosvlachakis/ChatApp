@@ -7,6 +7,9 @@ import { useGetConversations } from "../pages/Conversations/api/getConversations
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../constants/avatar";
 import CoachAvatar from "../components/CoachAvatar";
+import { RouteErrorBoundary } from "../components/ErrorBoundary";
+import api from "../lib/api";
+import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
 import {
   SESSION_REFRESHED_EVENT,
   clearClientSessionData,
@@ -56,15 +59,9 @@ const Layout = () => {
   const profileMenuRef = useRef(null);
 
   const handleLogout = async () => {
-    await fetch(`${BASE_URL}/api/presence/offline/`, {
-      method: "POST",
-      credentials: "include",
-      keepalive: true,
-    }).catch(() => {});
-    await fetch(`${BASE_URL}/api/logout/`, {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => {});
+    // Best effort: logout must complete locally even if the server is unreachable.
+    await api.post("/api/presence/offline/", undefined, { timeoutMs: 5000 }).catch(() => {});
+    await api.post("/api/logout/", undefined, { timeoutMs: 5000 }).catch(() => {});
 
     presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
     presenceHeartbeatRef.current = null;
@@ -73,6 +70,7 @@ const Layout = () => {
     presenceSocketRef.current?.close();
     presenceSocketRef.current = null;
     setOnlineUserIds(new Set());
+    resetConnectivity();
     clearClientSessionData();
     queryClient.clear();
     setUser(null);
@@ -150,6 +148,7 @@ const Layout = () => {
 
       socket.onopen = () => {
         clearPresenceTimers();
+        setSocketReconnecting(false);
         reconnectAttempt = 0;
         stoppedForAuth = false;
         authRefreshUsed = false;
@@ -190,6 +189,7 @@ const Layout = () => {
         clearPresenceTimers();
         if (isUnmounted || presenceSocketRef.current !== socket) return;
         if (SOCKET_AUTH_CLOSE_CODES.has(event.code)) {
+          setSocketReconnecting(false);
           stoppedForAuth = true;
           if (!authRefreshUsed) {
             authRefreshUsed = true;
@@ -210,6 +210,8 @@ const Layout = () => {
         return;
       }
       const delay = getReconnectDelayMs(reconnectAttempt);
+      // The first retry is quick; only show "Reconnecting…" once a retry has failed too.
+      if (reconnectAttempt > 0) setSocketReconnecting(true);
       reconnectAttempt += 1;
       presenceReconnectRef.current = window.setTimeout(() => {
         connectPresenceSocket();
@@ -237,6 +239,7 @@ const Layout = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
       clearPresenceTimers();
+      setSocketReconnecting(false);
       presenceSocketRef.current?.close();
       presenceSocketRef.current = null;
       setOnlineUserIds(new Set());
@@ -848,7 +851,9 @@ const Layout = () => {
               isChatRoute ? "h-full" : "min-h-full"
             }`}
           >
-            <Outlet />
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
           </div>
         </div>
       </main>

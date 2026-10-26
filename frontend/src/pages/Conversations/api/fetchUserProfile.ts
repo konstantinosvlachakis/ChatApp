@@ -1,25 +1,24 @@
 // api/userApi.ts
 import { User } from "../../Profile/types";
-import { BASE_URL } from "../../../constants/constants";
+import api, { ApiError, isApiError } from "../../../lib/api";
 import { clearLegacyTokens } from "../../../utils/auth";
 
 export const fetchUserProfile = async (): Promise<User> => {
-  // A 401 is refreshed and retried once by the global fetch patch (utils/csrf.ts).
-  const response = await fetch(BASE_URL + "/api/profile/", {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
-  });
-
-  if (response.ok) {
-    return response.json();
-  } else if (response.status === 401) {
-    clearLegacyTokens();
-    throw new Error("Unauthorized");
-  } else {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "Failed to fetch profile");
+  // A 401 is refreshed and retried once by the axios instance (utils/csrf.ts).
+  try {
+    return await api.get<User>("/api/profile/");
+  } catch (error) {
+    if (isApiError(error) && error.status === 401) {
+      clearLegacyTokens();
+      // UserContext keys its "logged out" handling on this message.
+      throw new ApiError({
+        status: 401,
+        code: error.code,
+        message: "Unauthorized",
+        requestId: error.requestId,
+        data: error.data,
+      });
+    }
+    throw error;
   }
 };

@@ -3,6 +3,7 @@ import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
+import { logger } from "../../../lib/logger";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -300,7 +301,7 @@ const MessageInput = ({
       setIsRecording(true);
     } catch (err) {
       stopRecordingStream();
-      console.error("Microphone access error:", err);
+      logger.error("Microphone access error:", err);
       setComposerError("Unable to access the microphone.");
     }
   };

@@ -1,17 +1,4 @@
-import axios from "axios";
-import { BASE_URL } from "../../../constants/constants";
+import api from "../../../lib/api";
 
-export const editMessage = async (messageId: number, text: string) => {
-  const response = await axios.patch(
-    `${BASE_URL}/api/messages/${messageId}/edit/`,
-    { text },
-    {
-      withCredentials: true,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-  return response.data;
-};
+export const editMessage = async (messageId: number, text: string) =>
+  api.patch(`/api/messages/${messageId}/edit/`, { text });

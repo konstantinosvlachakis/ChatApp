@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BASE_URL } from "../constants/constants";
+import api, { getErrorMessage, isApiError } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import MonetizationOnRoundedIcon from "@mui/icons-material/MonetizationOnRounded";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
@@ -143,36 +143,13 @@ const PracticePage = () => {
     return [...set];
   }, [user?.languages_practicing, user?.base_translate_language, user?.native_language]);
 
-  const authHeaders = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-    }),
-    []
-  );
+  const languageParams = (nextLanguage) => (nextLanguage ? { language: nextLanguage } : undefined);
 
-  const fetchState = async (nextLanguage = "") => {
-    const suffix = nextLanguage ? `?language=${encodeURIComponent(nextLanguage)}` : "";
-    const response = await fetch(`${BASE_URL}/api/practice/state/${suffix}`, {
-      headers: authHeaders,
-      credentials: "include",
-    });
-    if (!response.ok) {
-      throw new Error("Failed to fetch practice state.");
-    }
-    return response.json();
-  };
+  const fetchState = (nextLanguage = "") =>
+    api.get("/api/practice/state/", { params: languageParams(nextLanguage) });
 
-  const fetchChallenge = async (nextLanguage = "") => {
-    const suffix = nextLanguage ? `?language=${encodeURIComponent(nextLanguage)}` : "";
-    const response = await fetch(`${BASE_URL}/api/practice/challenge/${suffix}`, {
-      headers: authHeaders,
-      credentials: "include",
-    });
-    if (!response.ok) {
-      throw new Error("Failed to fetch a challenge.");
-    }
-    return response.json();
-  };
+  const fetchChallenge = (nextLanguage = "") =>
+    api.get("/api/practice/challenge/", { params: languageParams(nextLanguage) });
 
   const bootstrapPractice = async (preferredLanguage = "") => {
     setLoading(true);
@@ -193,7 +170,7 @@ const PracticePage = () => {
       setSubmitted(false);
       setSuccessfulMilestones(0);
     } catch (err) {
-      setError(err.message || "Could not load practice.");
+      setError(getErrorMessage(err, "Could not load practice."));
     } finally {
       setLoading(false);
     }
@@ -446,7 +423,7 @@ const PracticePage = () => {
       setSubmitted(false);
       setShowTreasureAnimation(false);
     } catch (err) {
-      setError(err.message || "Could not load next challenge.");
+      setError(getErrorMessage(err, "Could not load next challenge."));
     }
   };
 
@@ -458,20 +435,11 @@ const PracticePage = () => {
       autoNextTimerRef.current = null;
     }
     try {
-      const response = await fetch(`${BASE_URL}/api/practice/submit/`, {
-        method: "POST",
-        headers: authHeaders,
-        credentials: "include",
-        body: JSON.stringify({
-          challenge_id: challenge.id,
-          selected_word: droppedWord,
-          language,
-        }),
+      const payload = await api.post("/api/practice/submit/", {
+        challenge_id: challenge.id,
+        selected_word: droppedWord,
+        language,
       });
-      if (!response.ok) {
-        throw new Error("Could not submit answer.");
-      }
-      const payload = await response.json();
       setStats(payload.stats || null);
       setLeaderboard(payload.leaderboard || []);
       setCurrentRank(payload.current_rank ?? null);
@@ -502,7 +470,7 @@ const PracticePage = () => {
       }, 2000);
       return true;
     } catch (err) {
-      setError(err.message || "Could not submit answer.");
+      setError(getErrorMessage(err, "Could not submit answer."));
       return false;
     }
   };
@@ -561,21 +529,16 @@ const PracticePage = () => {
         let translatedTarget = "";
 
         for (const targetLanguage of targetCandidates) {
-          const response = await fetch(`${BASE_URL}/api/messages/translate/`, {
-            method: "POST",
-            headers: authHeaders,
-            credentials: "include",
-            body: JSON.stringify({
+          let payload;
+          try {
+            payload = await api.post("/api/messages/translate/", {
               text: voiceSentence,
               target_language: targetLanguage,
-            }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            if (payload?.same_language) {
-              continue;
-            }
-            continue;
+            });
+          } catch (error) {
+            // same_language (400) or another failure: try the next target language.
+            if (isApiError(error) && error.code !== "network_error") continue;
+            throw error;
           }
           translated = payload?.translated_text || "";
           translatedTarget = targetLanguage;
@@ -593,7 +556,7 @@ const PracticePage = () => {
     };
 
     translateVoiceSentence();
-  }, [voiceSentence, language, user?.base_translate_language, user?.native_language, authHeaders]);
+  }, [voiceSentence, language, user?.base_translate_language, user?.native_language]);
 
   const progress = levelProgressPercent(stats?.xp || 0);
   const mapProgress = Math.min(100, Math.round((successfulMilestones / DAILY_SET_STEPS) * 100));

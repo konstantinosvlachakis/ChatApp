@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
-import { BASE_URL } from "../../../constants/constants";
+import api, { API_TIMEOUTS, getErrorMessage, isApiError } from "../../../lib/api";
 import { useUser } from "../../../context/UserContext";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
@@ -292,8 +291,8 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     onConversationTypingChange?.(COACH_CONVERSATION_ID, true);
 
     try {
-      const { data } = await axios.post(
-        `${BASE_URL}/api/coach/chat/`,
+      const data = await api.post(
+        "/api/coach/chat/",
         {
           message: attachedFile
             ? `${trimmed}\n\n[The user attached a file. Ask them to describe it or use it for language practice.]`.trim()
@@ -301,12 +300,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
           target_language: selectedLanguage,
           mode: selectedMode,
         },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          withCredentials: true,
-        }
+        { timeoutMs: API_TIMEOUTS.coach }
       );
 
       const replyMessage = {
@@ -324,9 +318,11 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
 
       syncMessages([...nextMessages, replyMessage]);
     } catch (error) {
-      const fallbackMessage =
-        error?.response?.data?.detail ||
-        "The coach is unavailable right now. Check the Gemini configuration and try again.";
+      // The envelope's `error` (legacy `detail`) is user-facing; transport failures get
+      // ApiError's friendly text.
+      const fallbackMessage = isApiError(error)
+        ? getErrorMessage(error)
+        : "The coach is unavailable right now. Please try again.";
       syncMessages([
         ...nextMessages,
         {

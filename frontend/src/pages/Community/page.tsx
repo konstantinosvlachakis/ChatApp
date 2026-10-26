@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { ProfileCard } from "../../components/Cards";
 import type { PartnerMatch } from "../../components/Cards";
 import { BASE_URL } from "../../constants/constants";
+import api, { isAbortError } from "../../lib/api";
+import { logger } from "../../lib/logger";
+import { toastApiError } from "../../components/Toast";
 
 interface RawProfile {
   username: string;
@@ -37,6 +40,7 @@ const CommunityPage: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
 
     const loadRegisteredProfilesPage = async () => {
       if (page === 1) {
@@ -46,23 +50,11 @@ const CommunityPage: React.FC = () => {
       }
 
       try {
-        const response = await fetch(
-          `${BASE_URL}/api/profile/data?page=${page}&page_size=${PAGE_SIZE}&match=${activeSegment}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-          }
-        );
-
-        if (!response.ok) {
-          console.error("Failed to fetch registered profiles:", response.status);
-          return;
-        }
-
-        const payload = await response.json();
+        // No trailing slash: profile/data is the one API path without it.
+        const payload = await api.get<any>("/api/profile/data", {
+          params: { page, page_size: PAGE_SIZE, match: activeSegment },
+          signal: controller.signal,
+        });
         const nextProfiles: RawProfile[] = (payload?.profiles || []).map((p: any) => ({
           username: p.username,
           nativeLanguage: p.native_language || "Unknown",
@@ -100,7 +92,9 @@ const CommunityPage: React.FC = () => {
           setHasNextPage(Boolean(payload?.pagination?.has_next));
         }
       } catch (err) {
-        console.error("Error loading profiles:", err);
+        if (isAbortError(err)) return;
+        logger.warn("Error loading profiles:", err);
+        toastApiError(err, "Couldn't load people");
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -112,6 +106,7 @@ const CommunityPage: React.FC = () => {
     loadRegisteredProfilesPage();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, [page, activeSegment]);
 

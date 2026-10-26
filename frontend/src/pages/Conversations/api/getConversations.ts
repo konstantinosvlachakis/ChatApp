@@ -1,16 +1,10 @@
-import axios from "axios";
+import api from "../../../lib/api";
 import { Conversation } from "../types";
-import { BASE_URL } from "../../../constants/constants";
 import { ExtractFnReturnType, QueryConfig } from "../../../libs/react-query";
 import { useQuery } from 'react-query';
 
-export const getConversations = async (): Promise<Conversation[]> => {
-  const response = await axios.get(BASE_URL + "/api/conversations/", {
-    withCredentials: true,
-  });
-
-  return response.data;
-};
+export const getConversations = async (): Promise<Conversation[]> =>
+  api.get<Conversation[]>("/api/conversations/");
 
 
 type QueryFnType = typeof getConversations;

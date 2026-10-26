@@ -4,7 +4,7 @@ import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
-import axios from "../../../utils/axios";
+import api from "../../../lib/api";
 import { deleteMessage } from "../api/deleteMessage";
 import { editMessage } from "../api/editMessage";
 import { pinMessage } from "../api/pinMessage";
@@ -32,6 +32,8 @@ import {
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../../../utils/reconnect";
+import { logger } from "../../../lib/logger";
+import { toastApiError } from "../../../components/Toast";
 
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
@@ -71,7 +73,7 @@ const getIceServers = () => {
     }
     return parsed;
   } catch (error) {
-    console.warn("Invalid REACT_APP_WEBRTC_ICE_SERVERS, using default STUN server.");
+    logger.warn("Invalid REACT_APP_WEBRTC_ICE_SERVERS, using default STUN server.");
     return DEFAULT_ICE_SERVERS;
   }
 };
@@ -315,21 +317,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         if (cached) return cached;
       }
 
-      const response = await axios.get(
-        `${BASE_URL}/api/conversations/${conversationId}/messages/`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          withCredentials: true,
+      const payload =
+        (await api.get(`/api/conversations/${conversationId}/messages/`, {
           params: {
             page,
             page_size: MESSAGE_PAGE_SIZE,
           },
-        }
-      );
-
-      const payload = response.data || {};
+        })) || {};
       const normalized = {
         messages: Array.isArray(payload.messages) ? payload.messages : [],
         pinned_messages: Array.isArray(payload.pinned_messages)
@@ -424,7 +418,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           if (foundAfterLoad) return;
         }
       } catch (error) {
-        console.error("Failed to load older messages while jumping to pinned message:", error);
+        logger.error("Failed to load older messages while jumping to pinned message:", error);
       } finally {
         isFetchingOlderRef.current = false;
         setLoadingOlderMessages(false);
@@ -473,7 +467,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           if (foundAfterLoad) return true;
         }
       } catch (error) {
-        console.error("Failed to load older messages while jumping to message:", error);
+        logger.error("Failed to load older messages while jumping to message:", error);
       } finally {
         isFetchingOlderRef.current = false;
         setLoadingOlderMessages(false);
@@ -549,7 +543,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           await jumpToMessageById(matchedIds[0]);
         }
       } catch (error) {
-        console.error("Failed to search conversation:", error);
+        logger.error("Failed to search conversation:", error);
       } finally {
         if (searchRequestRef.current === requestId) {
           setIsSearchingMessages(false);
@@ -821,7 +815,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       try {
         await peerConnectionRef.current.addIceCandidate(candidate);
       } catch (error) {
-        console.error("Failed to flush ICE candidate:", error);
+        logger.error("Failed to flush ICE candidate:", error);
       }
     }
 
@@ -894,7 +888,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           endCall({ notifyRemote: true, reason: "Call timed out." });
         }, CALL_TIMEOUT_MS);
       } catch (error) {
-        console.error("Failed to start call:", error);
+        logger.error("Failed to start call:", error);
         setCallError("Could not access microphone/camera.");
         resetCallState();
       }
@@ -944,7 +938,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         endCall({ notifyRemote: true, reason: "Call timed out." });
       }, CALL_TIMEOUT_MS);
     } catch (error) {
-      console.error("Failed to accept incoming call:", error);
+      logger.error("Failed to accept incoming call:", error);
       sendSocketEvent({ type: "call_reject", reason: "Could not join call." });
       setCallError("Could not join the call.");
       resetCallState();
@@ -1041,7 +1035,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         }
       } catch (error) {
         if (!isMounted) return;
-        console.error("Failed to load conversation history:", error);
+        logger.error("Failed to load conversation history:", error);
         setCurrentMessagesPage(1);
         setHasOlderMessages(false);
       } finally {
@@ -1288,10 +1282,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               break;
 
             default:
-              console.warn("Unknown message type:", data.type);
+              logger.warn("Unknown message type:", data.type);
           }
         } catch (err) {
-          console.error("Invalid WebSocket message:", err);
+          logger.error("Invalid WebSocket message:", err);
         }
       };
 
@@ -1419,7 +1413,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
-      console.error("Cannot send message: user is undefined.");
+      logger.error("Cannot send message: user is undefined.");
       return;
     }
 
@@ -1450,18 +1444,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     requestAnimationFrame(() => scrollToBottom("smooth"));
 
     try {
-      const response = await axios.post(
-        `${BASE_URL}/api/conversations/${conversation.id}/messages/`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          withCredentials: true,
-        }
+      const savedMessage = await api.upload(
+        `/api/conversations/${conversation.id}/messages/`,
+        formData
       );
-
-      const savedMessage = response.data;
       if (!applyNewMessageToConversationList(queryClient, conversation.id, savedMessage)) {
         queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
       }
@@ -1496,7 +1482,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       }
       // No socket relay: the server broadcasts message_created to the room itself.
     } catch (error) {
-      console.error("Error sending message:", error);
+      logger.warn("Error sending message:", error);
+      toastApiError(error, "Message not sent");
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
       if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
@@ -1539,7 +1526,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       await deleteMessage(messageId);
       invalidateConversationHistoryCache(conversation.id);
     } catch (error) {
-      console.error("Failed to delete message:", error);
+      logger.warn("Failed to delete message:", error);
+      toastApiError(error, "Couldn't delete the message");
+      invalidateConversationHistoryCache(conversation.id);
     }
   }, [conversation.id, invalidateConversationHistoryCache]);
 
@@ -1582,7 +1571,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
       return true;
     } catch (error) {
-      console.error("Failed to edit message:", error);
+      logger.warn("Failed to edit message:", error);
+      toastApiError(error, "Couldn't save your edit");
       return false;
     }
   };
@@ -1599,7 +1589,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       invalidateConversationHistoryCache(conversation.id);
       queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
     } catch (error) {
-      console.error("Failed to update pinned message:", error);
+      logger.warn("Failed to update pinned message:", error);
+      toastApiError(error, "Couldn't update the pin");
     }
   }, [
     conversation.id,
