@@ -13,7 +13,8 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
 
 let refreshPromise: Promise<string | null> | null = null;
 
-const refreshAccessToken = async () => {
+// Single-flight; also used by sockets closed with 4401/4403 (expired access token).
+export const refreshAccessToken = async () => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       const refresh = await tokenStorage.getRefreshToken();
