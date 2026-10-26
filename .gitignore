@@ -5,6 +5,7 @@ __pycache__/
 
 # Ignore environment variables file
 .env
+.env.local
 
 # Ignore virtual environment directories
 venv/
@@ -36,7 +37,7 @@ htmlcov/
 # Ignore package build files
 *.egg-info/
 dist/
-build/
+# build/
 
 # Ignore pytest cache
 .pytest_cache/
@@ -57,3 +58,21 @@ Thumbs.db
 Pipfile.lock
 docs/_build/
 node_modules
+frontend/build/
+
+# Ignore image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.svg
+*.heic
+*.heif
+
+# Ignore Redis dumps and user-uploaded media
+*.rdb
+backend/media/

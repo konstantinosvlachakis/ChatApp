@@ -1,0 +1,62 @@
+---
+name: project-status
+description: Current state of the LangVoyage ChatApp monorepo (backend, web, mobile) — architecture overview, security backlog, feature roadmap and repo conventions. Load at the start of any task in this repo before exploring code, then load backend-status / web-status / mobile-status for the area you touch.
+---
+
+# LangVoyage — project status
+
+Last verified: 2026-10-26 at commit `79ec3a9` (branch `chat-v1.1`).
+
+## Refresh before trusting this
+Run `git log --oneline 79ec3a9..HEAD -- backend frontend mobile` and
+`git diff --stat 79ec3a9..HEAD`. Only re-read the areas that changed; then update
+the "Last verified" line and any stale section in the matching skill(s).
+
+## What the product is
+Language-exchange chat app: users list native + practicing languages (with levels),
+find partners in Community, chat 1:1 (text, attachments, voice notes, WebRTC calls),
+translate messages, react/reply/pin/edit, practice challenges with XP, and an AI
+"LangVoyage Coach" backed by Gemini.
+
+## Layout
+| Area | Path | Stack | Skill |
+|---|---|---|---|
+| Backend | `backend/` (`core/` project, `chatapp/` app) | Django 5 + DRF + Channels, SimpleJWT, Postgres, Redis, Cloudinary, Gemini | `backend-status` |
+| Web | `frontend/` | React (CRA / react-scripts 5), Tailwind, React Query, axios | `web-status` |
+| Mobile | `mobile/` | Expo / React Native, React Navigation, axios, expo-secure-store | `mobile-status` |
+| Deploy | `Procfile` | Heroku: `release` = migrate + collectstatic; `web` = daphne ASGI | — |
+| Docs | `docs/architecture.mmd`, `PROGRESS.md` | | |
+
+The web build is served by Django in production (same origin as the API).
+
+## Security audit (2026-10-26) — fixed
+Commits `0c2d908` (mobile), `f7b0fda` (backend), `c7b792e` (web), `79ec3a9` (untracked `.env`, `frontend/dump.rdb`, `backend/media/`).
+Headlines: websocket authz + server-side sender, participant checks on all
+conversation/message actions, upload type/size validation, no email/DOB leakage,
+CSRF on cookie auth, DRF throttling, coach input caps + daily limit, HSTS,
+web socket room-leak fix, route guard, logout cleanup, mobile https-only release URL.
+
+## Security backlog (open)
+- **User action:** rotate every credential that was in the committed `.env` — it is still in git history (history rewrite needs a force-push; ask first).
+- Refresh tokens not rotated/blacklisted → logout doesn't revoke (backend + web + mobile change).
+- Legacy `/api/login/` + `Token` model issue non-expiring tokens; unused → delete.
+- Backend still accepts `?token=` on websockets; web has a localhost-only legacy token fallback. Remove both together.
+- Websocket chat relay still trusts client `attachmentUrl` (web scheme-checks it); should re-read from DB.
+- `/media/` served without auth (filenames now random) → signed/private delivery.
+- Practice points farmable by replaying answers; presence broadcast ignores blocks.
+- Web profile page requests geolocation automatically and sends coords to a third-party geocoder → make opt-in.
+- `requirements.txt` is UTF-16; CRA is unmaintained; `postinstall` runs a build; unused deps.
+
+## Feature roadmap (language-exchange focus) — chosen 2026-10-26
+| Feature | Status |
+|---|---|
+| Reciprocal partner matching (their native = my target AND vice versa, level/goal filters, "perfect match" badge) | Not started |
+| Inline corrections (suggest correction on a partner's message, shown as diff) | Not started |
+| Phrasebook (save message/translation/correction) + daily streaks from real chat activity | Not started |
+| Topic prompts (level-appropriate, Gemini with fallback list) + per-conversation language balance indicator | Not started |
+Update this table as features land.
+
+## Conventions
+- Commits: author as `konstantinosvlachakis` (per-command `git -c user.name/user.email`), never a Claude co-author line. Short `type(scope): summary` + bullets. Ask before committing/pushing.
+- Never open or print `.env` files or secret values; refer to env vars by name only.
+- Don't install packages or run cloud/Heroku commands without explicit approval.

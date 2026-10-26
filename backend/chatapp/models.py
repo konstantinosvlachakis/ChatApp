@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.conf import settings
 
 
 class ProfileManager(BaseUserManager):
@@ -29,17 +30,72 @@ class Profile(AbstractBaseUser):
     email = models.EmailField(max_length=255, unique=True, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     native_language = models.CharField(max_length=255, blank=False)
-    profile_image_url = models.ImageField(upload_to='profile_images/', null=True, blank=True)
+    base_translate_language = models.CharField(max_length=50, default="english")
+    languages_practicing = models.JSONField(default=list, blank=True)
+    practice_language_levels = models.JSONField(default=dict, blank=True)
+    bio = models.TextField(blank=True, default="")
+    learning_goal = models.TextField(blank=True, default="")
+    location = models.CharField(max_length=255, blank=True, default="")
+    location_updated_at = models.DateTimeField(null=True, blank=True)
+    profile_image_url = models.CharField(
+        max_length=255, blank=False, default="profile_images/MainAfter.jpg"
+    )
+    complementary_image_1_url = models.CharField(max_length=255, blank=True, default="")
+    complementary_image_2_url = models.CharField(max_length=255, blank=True, default="")
+    avatar_ring_palette = models.CharField(
+        max_length=20,
+        choices=[
+            ("teal", "Teal"),
+            ("blush", "Blush"),
+            ("gold", "Gold"),
+            ("lavender", "Lavender"),
+            ("slate", "Slate"),
+        ],
+        null=True,
+        blank=True,
+        default=None,
+    )
+    avatar_ring_color = models.CharField(max_length=7, default="#1b7f79")
     password = models.CharField(max_length=128, blank=True, null=True)
+    is_online = models.BooleanField(default=False, db_index=True)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    ws_connection_count = models.PositiveIntegerField(default=0)
 
-    # Manager for the Profile model
     objects = ProfileManager()
 
-    USERNAME_FIELD = "username"
-    REQUIRED_FIELDS = ["email"]
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
+
+    @property
+    def age(self):
+        """Dynamically compute age from date_of_birth."""
+        today = timezone.now().date()
+        if self.date_of_birth:
+            return (
+                today.year
+                - self.date_of_birth.year
+                - (
+                    (today.month, today.day)
+                    < (self.date_of_birth.month, self.date_of_birth.day)
+                )
+            )
+        return None
+
+
+class PracticeStats(models.Model):
+    user = models.OneToOneField(
+        Profile, related_name="practice_stats", on_delete=models.CASCADE
+    )
+    points = models.PositiveIntegerField(default=0)
+    xp = models.PositiveIntegerField(default=0)
+    level = models.PositiveIntegerField(default=1)
+    correct_answers = models.PositiveIntegerField(default=0)
+    total_answers = models.PositiveIntegerField(default=0)
+    preferred_language = models.CharField(max_length=50, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.username
+        return f"PracticeStats(user={self.user_id}, points={self.points}, level={self.level})"
 
 
 class Token(models.Model):
@@ -89,11 +145,13 @@ class Conversation(models.Model):
     def save(self, *args, **kwargs):
         # Set the receiver to Alma by default
         if not self.receiver:
-            self.receiver = Profile.objects.get(username="Alma")
+            self.receiver = Profile.objects.get(username="alma")
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Conversation between {self.sender.username} and {self.receiver.username}"
+        return (
+            f"Conversation between {self.sender.username} and {self.receiver.username}"
+        )
 
 
 class Message(models.Model):
@@ -109,11 +167,29 @@ class Message(models.Model):
     sender = models.ForeignKey(
         Profile, related_name="sent_messages", on_delete=models.CASCADE
     )
+    reply_to = models.ForeignKey(
+        "self",
+        related_name="replies",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     text = models.TextField()
-    attachment = models.FileField(upload_to='attachments/', blank=True, null=True)  # File uploads
+    attachment = models.FileField(
+        upload_to="attachments/", blank=True, null=True
+    )  # File uploads
 
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    edited_at = models.DateTimeField(blank=True, null=True)
+    pinned_at = models.DateTimeField(blank=True, null=True, db_index=True)
+    pinned_by = models.ForeignKey(
+        Profile,
+        related_name="pinned_messages",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
 
     def save(self, *args, **kwargs):
         # Update the conversation's updated_at field when a message is created
@@ -123,3 +199,107 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message by {self.sender.username} in {self.conversation.id}"
+
+
+class MessageTranslation(models.Model):
+    message = models.ForeignKey(
+        Message, related_name="translations", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        Profile, related_name="message_translations", on_delete=models.CASCADE
+    )
+    target_language = models.CharField(max_length=16)
+    source_language = models.CharField(max_length=16, blank=True, default="auto")
+    translated_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user", "target_language"],
+                name="uniq_message_user_target_translation",
+            )
+        ]
+
+    def __str__(self):
+        return f"Translation of message {self.message_id} for user {self.user_id}"
+
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(
+        Message, related_name="reactions", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        Profile, related_name="message_reactions", on_delete=models.CASCADE
+    )
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"], name="uniq_message_user_reaction"
+            )
+        ]
+
+    def __str__(self):
+        return f"Reaction on message {self.message_id} by user {self.user_id}"
+
+
+class BlockedUser(models.Model):
+    blocker = models.ForeignKey(
+        Profile, related_name="blocked_users", on_delete=models.CASCADE
+    )
+    blocked = models.ForeignKey(
+        Profile, related_name="blocked_by_users", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["blocker", "blocked"], name="uniq_blocker_blocked_pair"
+            )
+        ]
+
+    def __str__(self):
+        return f"Block({self.blocker_id}->{self.blocked_id})"
+
+
+class UserReport(models.Model):
+    reporter = models.ForeignKey(
+        Profile, related_name="submitted_reports", on_delete=models.CASCADE
+    )
+    reported_user = models.ForeignKey(
+        Profile, related_name="received_reports", on_delete=models.CASCADE
+    )
+    reason = models.CharField(max_length=64)
+    details = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report({self.reporter_id}->{self.reported_user_id}:{self.reason})"
+
+
+class ProfileView(models.Model):
+    viewer = models.ForeignKey(
+        Profile, related_name="profile_views_made", on_delete=models.CASCADE
+    )
+    viewed_profile = models.ForeignKey(
+        Profile, related_name="profile_views_received", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["viewer", "viewed_profile"], name="uniq_profile_view_pair"
+            )
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"ProfileView({self.viewer_id}->{self.viewed_profile_id})"

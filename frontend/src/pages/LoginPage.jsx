@@ -1,103 +1,186 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import TextField from "@mui/material/TextField";
-import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
 import { BASE_URL } from "../constants/constants";
+import { useUser } from "../context/UserContext";
+import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LoginPage = () => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const navigate = useNavigate();
+  const { refreshUserProfile } = useUser();
 
+  const validate = () => {
+    const nextErrors = {};
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail) {
+      nextErrors.email = "Email is required.";
+    } else if (!EMAIL_REGEX.test(trimmedEmail)) {
+      nextErrors.email = "Enter a valid email address.";
+    }
+
+    if (!password) {
+      nextErrors.password = "Password is required.";
+    } else if (password.length < 8) {
+      nextErrors.password = "Password must be at least 8 characters.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+  
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setFieldErrors({});
+
+    if (!validate()) {
+      setLoading(false);
+      return;
+    }
 
     try {
-      const response = await axios.post(BASE_URL + "/api/token/", {
-        username,
-        password,
-      });
+      const response = await axios.post(
+        BASE_URL + "/api/token/",
+        {
+          email: email.trim().toLowerCase(),
+          password,
+          remember_me: rememberMe,
+        },
+        {
+          withCredentials: true,
+        }
+      );
 
-      const { access, refresh } = response.data;
+      // Drop any state left by a previous session (tokens, cached CSRF token, drafts).
+      clearClientSessionData();
+      if (shouldUseLegacyAuthFallback()) {
+        setLegacyTokens({
+          access: response.data?.access,
+          refresh: response.data?.refresh,
+          rememberMe,
+        });
+      }
 
-      // Store tokens in sessionStorage to maintain separate sessions per tab
-      sessionStorage.setItem("accessToken", access);
-      sessionStorage.setItem("refreshToken", refresh);
+      await refreshUserProfile();
 
-      console.log("Login successful. Access token:", access);
       navigate("/profile");
     } catch (error) {
-      setError(error.response?.data?.detail || "Login failed.");
-      console.error("Login error:", error);
+      setError(error.response?.data?.detail || "Invalid credentials.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignUpClick = () => {
-    navigate("/register");
-  };
+  const inputClassName =
+    "w-full rounded-2xl border border-[#d6e0e8] bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#1b7f79] focus:ring-4 focus:ring-[rgba(27,127,121,0.12)]";
+  const passwordFieldClassName =
+    "flex items-center gap-2 rounded-2xl border border-[#d6e0e8] bg-white px-3 shadow-sm transition focus-within:border-[#1b7f79] focus-within:ring-4 focus-within:ring-[rgba(27,127,121,0.12)]";
+  const passwordInputClassName =
+    "min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
 
   return (
-    <div className="min-h-screen bg-cover bg-center bg-slate-100 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-96">
-        <h2 className="text-2xl font-bold mb-4 text-center">Sign in</h2>
-        <form onSubmit={handleLogin}>
-          <TextField
-            id="username"
-            label="Username"
-            fullWidth
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            variant="outlined"
-            margin="normal"
-            required // Ensures the field is required
+      <form onSubmit={handleLogin} className="space-y-3.5 lg:space-y-3">
+        <div>
+          <label htmlFor="email" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            className={inputClassName}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
           />
-          <TextField
-            id="password"
-            label="Password"
-            fullWidth
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            variant="outlined"
-            margin="normal"
-            required // Ensures the field is required
-          />
-          {error && (
-            <div className="text-red-500 text-center mt-2">{error}</div>
-          )}{" "}
-          {/* Display error message */}
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            style={{ marginTop: "1rem" }}
-            disabled={loading} // Disable button when loading
-          >
-            {loading ? <CircularProgress size={24} color="inherit" /> : "Login"}{" "}
-            {/* Loading indicator */}
-          </Button>
-        </form>
+          {fieldErrors.email && (
+            <p className="mt-1 text-xs text-rose-600">{fieldErrors.email}</p>
+          )}
+        </div>
 
-        <p className="text-center mt-4">
-          Don't have an account?{" "}
-          <span
-            className="text-blue-500 cursor-pointer hover:underline"
-            onClick={handleSignUpClick}
-          >
-            Sign Up
+        <div>
+          <label htmlFor="password" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
+            Password
+          </label>
+          <div className={passwordFieldClassName}>
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              className={passwordInputClassName}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-200"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+          {fieldErrors.password && (
+            <p className="mt-1 text-xs text-rose-600">{fieldErrors.password}</p>
+          )}
+        </div>
+
+        {error && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 rounded-2xl bg-[#eef4f8] px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:py-2.5">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="accent-[#1b7f79]"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+            />
+            Remember me
+          </label>
+          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400 sm:text-xs sm:tracking-[0.2em]">
+            Secure sign in
           </span>
-        </p>
-      </div>
-    </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-full bg-[#14314a] py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(20,49,74,0.22)] transition hover:bg-[#10263a] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? <CircularProgress size={20} color="inherit" /> : "Log in"}
+        </button>
+
+        <div className="hidden gap-3 rounded-[1.6rem] border border-[#d6e0e8] bg-[#f7fafc] px-4 py-3.5 sm:grid sm:grid-cols-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#1b7f79]">Coach</p>
+            <p className="mt-1 text-sm text-slate-600">Resume guided speaking practice instantly.</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#1b7f79]">Chats</p>
+            <p className="mt-1 text-sm text-slate-600">Jump back into active conversations without friction.</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-[#1b7f79]">Practice</p>
+            <p className="mt-1 text-sm text-slate-600">Keep streaks, progress, and focus in one place.</p>
+          </div>
+        </div>
+      </form>
   );
 };
 

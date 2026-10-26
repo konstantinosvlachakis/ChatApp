@@ -1,13 +1,25 @@
 // api/types.ts
 export interface User {
-    id: number; // Replace with actual field names and types from your API response
-    name: string;
+    id?: number;
+    user_id?: number;
+    username?: string;
+    name?: string;
     dateOfBirth?: string;
-    newDate: string;
-    location?: string; // Optional field
-    about_me?: string; // Optional field
+    date_of_birth?: string;
+    newDate?: string;
+    location?: string;
+    location_updated_at?: string | null;
+    about_me?: string;
     languages?: string[];
+    languages_practicing?: string[];
     native_language?: string;
+    base_translate_language?: string;
+    email?: string;
+    profile_image_url?: string;
+    complementary_image_1_url?: string;
+    complementary_image_2_url?: string;
+    avatar_ring_color?: string;
+    age?: number | null;
   }
   
 

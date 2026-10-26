@@ -2,6 +2,85 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --lv-background: #f5f7fb;
+  --lv-surface: #ffffff;
+  --lv-surface-muted: #edf3f7;
+  --lv-text: #14314a;
+  --lv-muted-text: #6b7a90;
+  --lv-primary: #1b7f79;
+  --lv-danger: #d95b70;
+  --lv-border: #d7e2ea;
+  --lv-navy: #14314a;
+  --lv-shadow: #081320;
+  --lv-link: #177f8d;
+  --lv-blush: #ecb1d0;
+}
+
 .scroll-container {
   scroll-behavior: smooth;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+html {
+  scrollbar-gutter: stable;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+
+
+@keyframes bounceDots {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.animate-bounce {
+  animation: bounceDots 1.5s infinite ease-in-out;
+}
+
+.delay-100 { animation-delay: 0s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.4s; }
+
+
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+
+/* in your index.css or tailwind.css */
+.will-change-transform {
+  will-change: transform;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* Prevent iOS Safari auto-zoom when focusing small form inputs. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
