@@ -10,6 +10,7 @@ import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import ArrowBackIosNewOutlinedIcon from "@mui/icons-material/ArrowBackIosNewOutlined";
 import MyLocationOutlinedIcon from "@mui/icons-material/MyLocationOutlined";
 import { BASE_URL } from "../../constants/constants";
+import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
 import { getUserLocation } from "./utils/getUserLocation";
 
@@ -117,7 +118,7 @@ const EditProfilePage = () => {
 
   const previewImageUrl = useMemo(() => {
     const raw = user?.profile_image_url || "";
-    if (!raw) return `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+    if (!raw) return DEFAULT_AVATAR_URL;
     if (raw.startsWith("http")) return raw;
     if (raw.startsWith("/media/")) return `${BASE_URL}${raw}`;
     return `${BASE_URL}/media/${raw}`;

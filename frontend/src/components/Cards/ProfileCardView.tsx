@@ -2,6 +2,7 @@ import React from "react";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import ArrowOutwardRoundedIcon from "@mui/icons-material/ArrowOutwardRounded";
 import { BASE_URL_IMG } from "../../constants/constants";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 
 interface PartnerMatch {
   teachesMe: boolean;
@@ -60,10 +61,11 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
   onClick,
 }) => {
   const matchSummary = getMatchSummary(match);
-  const defaultImage = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
   const profileSrc = profileImage?.startsWith("http")
     ? profileImage
-    : `${BASE_URL_IMG}/media/${profileImage || "media/profile_images/MainAfter.jpg"}`;
+    : profileImage
+      ? `${BASE_URL_IMG}/media/${profileImage}`
+      : DEFAULT_AVATAR_URL;
 
   const cardTone = isPremium
     ? {
@@ -107,11 +109,7 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
               <img
                 src={profileSrc}
                 alt={username}
-                onError={(e) => {
-                  const img = e.currentTarget;
-                  img.onerror = null;
-                  img.src = defaultImage;
-                }}
+                onError={handleAvatarError}
                 className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
               />
               <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_45%,rgba(8,19,32,0.16)_100%)]" />
