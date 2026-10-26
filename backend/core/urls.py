@@ -21,10 +21,13 @@ urlpatterns = [
     ),
 ]
 
-# Serve media files.
+# Serve media files from local disk only when they are stored there. With Cloudinary
+# as the default storage, media URLs point straight at Cloudinary (storage.url()),
+# so the app never streams uploads through the ASGI workers.
+uses_local_media_storage = "cloudinary" not in settings.STORAGES["default"]["BACKEND"].lower()
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-else:
+elif uses_local_media_storage:
     urlpatterns += [
         re_path(
             r"^media/(?P<path>.*)$",

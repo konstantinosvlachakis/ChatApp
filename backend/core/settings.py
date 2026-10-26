@@ -362,7 +362,6 @@ STATIC_ROOT = os.path.join(
     "staticfiles",
 )  # Define the static files directory
 STATICFILES_CONTENT_TYPES = {"text/css": ["css"]}
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATICFILES_DIRS = [
     os.path.join(Path(BASE_DIR).parent, "frontend/build/static")
 ]  # Define the static files directory
@@ -370,5 +369,28 @@ STATICFILES_DIRS = [
 MEDIA_URL = "/media/"  # URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")  # Directory where media files are stored
 
-if use_cloudinary_media:
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+# Django 5.1 removed DEFAULT_FILE_STORAGE / STATICFILES_STORAGE (silently ignored),
+# so storage backends must be configured through STORAGES.
+STORAGES = {
+    # Uploaded media (message attachments, profile images): Cloudinary when
+    # CLOUDINARY_URL is set (dyno disks are ephemeral), local disk otherwise.
+    "default": {
+        "BACKEND": (
+            "chatapp.storage.CloudinaryMediaStorage"
+            if use_cloudinary_media
+            else "django.core.files.storage.FileSystemStorage"
+        ),
+    },
+    # Hashed + compressed static files need `collectstatic` (run on deploy), so
+    # local dev and tests keep the plain storage.
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if env == "local"
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
+    },
+}
+# Fall back to the unhashed name instead of raising (500) if a file is missing
+# from the manifest, e.g. when collectstatic output is absent on a dyno.
+WHITENOISE_MANIFEST_STRICT = False

@@ -699,6 +699,12 @@ def bump_conversation_list_cache_version(user_id):
         pass
 
 
+def uses_cloudinary_media_storage():
+    storages = getattr(settings, "STORAGES", None) or {}
+    backend = (storages.get("default") or {}).get("BACKEND", "")
+    return "cloudinary" in str(backend).lower()
+
+
 def build_media_url(request, path):
     if not path:
         return None
@@ -2146,12 +2152,7 @@ def update_profile_image(request, user_id):
             )
 
         stored_url = ""
-        using_cloudinary_storage = (
-            getattr(settings, "DEFAULT_FILE_STORAGE", "")
-            == "cloudinary_storage.storage.MediaCloudinaryStorage"
-        )
-
-        if using_cloudinary_storage:
+        if uses_cloudinary_media_storage():
             try:
                 from cloudinary.uploader import upload as cloudinary_upload
 

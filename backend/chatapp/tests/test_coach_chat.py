@@ -225,3 +225,33 @@ class GeminiFallbackTests(TestCase):
                     target_language="English",
                     native_language="Greek",
                 )
+
+    @patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}, clear=False)
+    def test_model_chain_stops_within_total_deadline(self):
+        clock = {"now": 1000.0}
+        attempts = []
+
+        def fake_urlopen(request, timeout):
+            # Every model hangs until its socket timeout fires.
+            attempts.append((request.full_url, timeout))
+            clock["now"] += timeout
+            raise TimeoutError("timed out")
+
+        with patch("chatapp.gemini.GEMINI_MODEL", "gemini-primary"), patch(
+            "chatapp.gemini.GEMINI_FALLBACK_MODELS",
+            ["gemini-secondary", "gemini-tertiary"],
+        ), patch("chatapp.gemini.GEMINI_TIMEOUT_SECONDS", 20), patch(
+            "chatapp.gemini.GEMINI_TOTAL_DEADLINE_SECONDS", 25
+        ), patch(
+            "chatapp.gemini.time.monotonic", side_effect=lambda: clock["now"]
+        ), patch("chatapp.gemini.urlopen", side_effect=fake_urlopen):
+            with self.assertRaises(CoachAIError) as raised:
+                generate_coach_reply("Hello")
+
+        self.assertIn("unavailable", str(raised.exception))
+        # 20s for the primary, the remaining 5s for the first fallback, and the
+        # third model is never tried.
+        self.assertEqual([timeout for _, timeout in attempts], [20, 5])
+        self.assertIn("gemini-primary", attempts[0][0])
+        self.assertIn("gemini-secondary", attempts[1][0])
+        self.assertLessEqual(clock["now"] - 1000.0, 25)
