@@ -42,7 +42,7 @@ const DragDropImage = ({ initialImage }) => {
     formData.append("profile_image", file);
 
     try {
-      const response = await axios.patch(
+      await axios.patch(
         `${BASE_URL}/api/profile/${user.user_id}/update-image`,
         formData,
         {
@@ -52,7 +52,6 @@ const DragDropImage = ({ initialImage }) => {
           withCredentials: true,
         }
       );
-      console.log("Server response:", response.data);
     } catch (error) {
       console.error(
         "Error updating the profile image:",

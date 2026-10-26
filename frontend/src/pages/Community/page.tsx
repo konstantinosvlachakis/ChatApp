@@ -137,7 +137,7 @@ const CommunityPage: React.FC = () => {
   );
 
   const handleCardClick = (profile: RawProfile) => {
-    navigate(`/people/${profile.username}`, { state: { profile } });
+    navigate(`/people/${encodeURIComponent(profile.username)}`, { state: { profile } });
   };
 
   return (

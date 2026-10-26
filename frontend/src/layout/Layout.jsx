@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
-import { BASE_URL } from "../constants/constants";
+import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
 import CoachAvatar from "../components/CoachAvatar";
-import { clearLegacyTokens, getLegacyAccessToken } from "../utils/auth";
+import { clearClientSessionData, getLegacyAccessToken } from "../utils/auth";
 
 const DEFAULT_PROFILE_AVATAR = `${BASE_URL}/media/profile_images/MainAfter.jpg`;
 
@@ -22,7 +23,8 @@ const Layout = () => {
   const isChatRoute = location.pathname.startsWith("/conversations");
   const routeContainerClass = "w-full md:w-[90vw] max-w-[1500px]";
   const navigate = useNavigate();
-  const { user, setUser } = useUser();
+  const { user, setUser, loading: userLoading } = useUser();
+  const queryClient = useQueryClient();
   const { data: conversations = [] } = useGetConversations({
     config: {
       refetchInterval: false,
@@ -60,7 +62,8 @@ const Layout = () => {
     presenceSocketRef.current?.close();
     presenceSocketRef.current = null;
     setOnlineUserIds(new Set());
-    clearLegacyTokens();
+    clearClientSessionData();
+    queryClient.clear();
     setUser(null);
     navigate("/login");
   };
@@ -98,7 +101,7 @@ const Layout = () => {
   useEffect(() => {
     if (!user?.user_id) return undefined;
 
-    const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
+    const wsBaseUrl = getWebSocketBaseUrl();
     let isUnmounted = false;
 
     const clearPresenceTimers = () => {
@@ -158,10 +161,10 @@ const Layout = () => {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         clearPresenceTimers();
-        if (isUnmounted) return;
-        const isAuthClose = socket.code === 1008 || socket.code === 4401 || socket.code === 4403;
+        if (isUnmounted || presenceSocketRef.current !== socket) return;
+        const isAuthClose = event.code === 1008 || event.code === 4401 || event.code === 4403;
         if (isAuthClose) {
           return;
         }
@@ -256,6 +259,11 @@ const Layout = () => {
       document.removeEventListener("keydown", onEscape);
     };
   }, []);
+
+  // Client-side guard only (the API enforces auth): don't render app pages without a session.
+  if (!userLoading && !user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <PresenceProvider value={{ onlineUserIds, subscribeToPresenceEvents }}>

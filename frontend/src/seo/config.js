@@ -156,9 +156,10 @@ const buildHeadTags = (pathname, params = {}) => {
     `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
     `<meta name="twitter:image" content="${escapeHtml(DEFAULT_OG_IMAGE)}" />`,
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`,
+    // Escape "<" so JSON content can never close the <script> element early.
     `<script type="application/ld+json" data-seo="structured-data">${JSON.stringify(
       resolvedStructuredData
-    )}</script>`,
+    ).replace(/</g, "\\u003c")}</script>`,
   ];
 
   if (keywords) {

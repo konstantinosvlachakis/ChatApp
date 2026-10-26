@@ -23,7 +23,7 @@ const PublicProfilePage = () => {
     const loadPublicProfile = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${BASE_URL}/api/profile/public/${username}/`, {
+        const response = await fetch(`${BASE_URL}/api/profile/public/${encodeURIComponent(username || "")}/`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",

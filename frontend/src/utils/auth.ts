@@ -3,6 +3,8 @@ import { BASE_URL } from "../constants/constants";
 const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/privacy-policy", "/terms-and-conditions"]);
 const ACCESS_TOKEN_KEY = "accessToken";
 const REFRESH_TOKEN_KEY = "refreshToken";
+// Must match CSRF_STORAGE_KEY in ./csrf (not imported to avoid a circular dependency).
+const CSRF_STORAGE_KEY = "csrfToken";
 
 export const shouldUseLegacyAuthFallback = () => {
   if (typeof window === "undefined") return false;
@@ -51,6 +53,29 @@ export const clearLegacyTokens = () => {
   sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+};
+
+// Per-user data cached in browser storage that must not survive a logout
+// (shared/public devices). Keep in sync with UserContext / MessageInput.
+const SESSION_STORAGE_PREFIXES_TO_CLEAR = ["chat:draft:"];
+const SESSION_STORAGE_KEYS_TO_CLEAR = ["user_profile_cache:v1"];
+
+/**
+ * Clears every piece of client-side session state: legacy tokens, the cached CSRF
+ * token (Django rotates it on login/logout), the cached profile and message drafts.
+ */
+export const clearClientSessionData = () => {
+  if (typeof window === "undefined") return;
+  clearLegacyTokens();
+  sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  try {
+    SESSION_STORAGE_KEYS_TO_CLEAR.forEach((key) => localStorage.removeItem(key));
+    Object.keys(localStorage)
+      .filter((key) => SESSION_STORAGE_PREFIXES_TO_CLEAR.some((prefix) => key.startsWith(prefix)))
+      .forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Storage may be unavailable (private mode); nothing to clear.
+  }
 };
 
 export const isPublicPath = (pathname: string) => PUBLIC_PATHS.has(pathname);

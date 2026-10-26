@@ -186,10 +186,17 @@ const Conversation = ({
   const [translatingMessageId, setTranslatingMessageId] = useState(null);
   const longPressTimerRef = useRef(null);
 
+  // Attachment URLs can arrive from other clients over the websocket, so only allow
+  // safe schemes (never javascript:/data:text/html etc.) before using them in src/href.
   const normalizeUrl = (url) => {
-    if (!url) return null;
-    if (url.startsWith("http")) return url;
-    return `${window.location.origin}${url}`;
+    if (!url || typeof url !== "string") return null;
+    if (url.startsWith("blob:")) return url;
+    try {
+      const parsed = new URL(url, window.location.origin);
+      return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : null;
+    } catch {
+      return null;
+    }
   };
 
   const isLikelyAudio = (url) =>

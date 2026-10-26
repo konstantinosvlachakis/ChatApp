@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
 import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
@@ -36,6 +36,7 @@ const MessageInput = ({
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const recordingStreamRef = useRef(null);
   const isTypingRef = useRef(false);
   const hasInitializedTypingRef = useRef(false);
   const previousConnectionStatusRef = useRef(connectionStatus);
@@ -159,6 +160,36 @@ const MessageInput = ({
     setAttachmentSource(source);
   };
 
+  // One object URL per recorded/attached audio blob, revoked when it changes or unmounts
+  // (creating it inline in render leaked a new blob URL on every re-render).
+  const audioPreviewUrl = useMemo(
+    () => (audioBlob ? URL.createObjectURL(audioBlob) : null),
+    [audioBlob]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+    };
+  }, [audioPreviewUrl]);
+
+  const stopRecordingStream = () => {
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+  };
+
+  // Release the microphone if the composer unmounts mid-recording.
+  useEffect(() => {
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      stopRecordingStream();
+    };
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -242,12 +273,17 @@ const MessageInput = ({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stopRecordingStream();
+      recordingStreamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       const chunks = [];
 
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
       mediaRecorder.onstop = () => {
+        // Stop the tracks so the browser's microphone indicator turns off.
+        stream.getTracks().forEach((track) => track.stop());
+        if (recordingStreamRef.current === stream) recordingStreamRef.current = null;
         const blob = new Blob(chunks, { type: "audio/webm" });
         revokePreviewUrl(previewImage);
         setAudioBlob(blob);
@@ -259,6 +295,7 @@ const MessageInput = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
+      stopRecordingStream();
       console.error("Microphone access error:", err);
       setComposerError("Unable to access the microphone.");
     }
@@ -413,7 +450,7 @@ const MessageInput = ({
                   <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-slate-900 text-xs font-medium text-white">
                     Mic
                   </div>
-                  <audio controls src={URL.createObjectURL(audioBlob)} className="h-9 max-w-[180px] flex-1" />
+                  <audio controls src={audioPreviewUrl} className="h-9 max-w-[180px] flex-1" />
                   <button
                     type="button"
                     onClick={clearCurrentAttachment}

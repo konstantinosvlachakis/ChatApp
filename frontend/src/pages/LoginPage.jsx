@@ -4,7 +4,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
 import { BASE_URL } from "../constants/constants";
 import { useUser } from "../context/UserContext";
-import { clearLegacyTokens, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
+import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,7 +63,8 @@ const LoginPage = () => {
         }
       );
 
-      clearLegacyTokens();
+      // Drop any state left by a previous session (tokens, cached CSRF token, drafts).
+      clearClientSessionData();
       if (shouldUseLegacyAuthFallback()) {
         setLegacyTokens({
           access: response.data?.access,

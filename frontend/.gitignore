@@ -13,21 +13,30 @@
 
 # production
 /build
-/dist/       # Distribution folder for compiled files
+# Distribution folder for compiled files
+/dist/
 
 # logs
-/logs/       # Any application logs
+# Any application logs
+/logs/
 
 # misc
 .DS_Store
+.env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
 # IDEs
-.idea/        # JetBrains IDEs
-.vscode/      # Visual Studio Code
+# JetBrains IDEs / Visual Studio Code
+.idea/
+.vscode/
+
+# local data dumps (e.g. Redis)
+*.rdb
 
 # temporary files
 *.tmp

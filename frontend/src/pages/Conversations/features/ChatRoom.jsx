@@ -10,7 +10,7 @@ import { editMessage } from "../api/editMessage";
 import { pinMessage } from "../api/pinMessage";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import { BASE_URL } from "../../../constants/constants";
+import { BASE_URL, getWebSocketBaseUrl } from "../../../constants/constants";
 import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
 import { markConversationRead } from "../api/markConversationRead";
@@ -23,6 +23,8 @@ const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
 const SOCKET_RECONNECT_DELAYS_MS = [800, 1500, 3000, 5000];
 const SCROLL_BOTTOM_THRESHOLD_PX = 72;
+// Close codes the backend uses to reject unauthenticated/unauthorised sockets.
+const SOCKET_AUTH_CLOSE_CODES = new Set([1008, 4401, 4403]);
 
 const getIceServers = () => {
   const rawValue = process.env.REACT_APP_WEBRTC_ICE_SERVERS;
@@ -1065,16 +1067,19 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   useEffect(() => {
     if (!conversation?.id || !user) return;
 
-    const wsBaseUrl = BASE_URL.replace(/^http/, "ws");
+    const wsBaseUrl = getWebSocketBaseUrl();
     const legacyAccessToken = getLegacyAccessToken();
     const url = legacyAccessToken
       ? `${wsBaseUrl}/ws/socket-server/${conversation.id}/?token=${encodeURIComponent(legacyAccessToken)}`
       : `${wsBaseUrl}/ws/socket-server/${conversation.id}/`;
     isSocketUnmountingRef.current = false;
     clearReconnectTimer();
+    // Per-effect flag: the shared ref above is reset by the next effect run before the
+    // previous socket's async onclose fires, which used to reconnect to the old room.
+    let isDisposed = false;
 
     const connectSocket = () => {
-      if (isSocketUnmountingRef.current) return;
+      if (isDisposed || isSocketUnmountingRef.current) return;
       setSocketStatus(reconnectAttemptRef.current > 0 ? "reconnecting" : "connecting");
 
       const nextSocket = new WebSocket(url);
@@ -1237,12 +1242,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               console.warn("Unknown message type:", data.type);
           }
         } catch (err) {
-          console.error("Invalid WebSocket message:", e.data, err);
+          console.error("Invalid WebSocket message:", err);
         }
       };
 
-      nextSocket.onclose = () => {
-        if (isSocketUnmountingRef.current) {
+      nextSocket.onclose = (event) => {
+        if (isDisposed || socket.current !== nextSocket) {
+          return;
+        }
+        if (isSocketUnmountingRef.current || SOCKET_AUTH_CLOSE_CODES.has(event.code)) {
           setSocketStatus("offline");
           return;
         }
@@ -1263,6 +1271,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     connectSocket();
 
     return () => {
+      isDisposed = true;
       isSocketUnmountingRef.current = true;
       clearReconnectTimer();
       stopRinging();

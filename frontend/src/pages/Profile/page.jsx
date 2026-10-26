@@ -55,7 +55,6 @@ const ProfilePage = () => {
       try {
         const { city, country } = await getUserLocation();
         const locationString = `${city}, ${country}`;
-        console.log(`Detected location: ${locationString}`);
 
         const response = await fetch(`${BASE_URL_IMG}/api/profile/location/`, {
           method: "PATCH",

@@ -23,7 +23,6 @@ export const getProfileData = async (
 
     if (response.ok) {
       const userData: ProfileResponse = await response.json();
-      console.log("User profile fetched successfully:", userData);
       return userData;
     } else if (response.status === 401) {
       // If unauthorized, clear the token and navigate to login

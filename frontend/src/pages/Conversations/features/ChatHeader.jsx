@@ -71,12 +71,12 @@ const ChatHeader = ({
           e.currentTarget.onerror = null;
           e.currentTarget.src = DEFAULT_AVATAR;
         }}
-        onClick={() => navigate(`/people/${otherUser.username}`)}
+        onClick={() => navigate(`/people/${encodeURIComponent(otherUser.username)}`)}
       />
       <div className="min-w-0 flex-1">
         <h2
           className="flex items-center gap-2 truncate cursor-pointer text-[0.98rem] font-semibold leading-none text-slate-800 sm:text-[1.15rem]"
-          onClick={() => navigate(`/people/${otherUser.username}`)}
+          onClick={() => navigate(`/people/${encodeURIComponent(otherUser.username)}`)}
         >
           {isOtherUserOnline && (
             <span

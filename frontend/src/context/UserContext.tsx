@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
-import { clearLegacyTokens, isPublicPath } from "../utils/auth";
+import { clearClientSessionData, isPublicPath } from "../utils/auth";
 
 interface UserContextType {
   user: User | null;
@@ -67,10 +67,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setError((err as Error).message);
       if ((err as Error).message === "Unauthorized") {
-        clearLegacyTokens();
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(USER_PROFILE_CACHE_KEY);
-        }
+        clearClientSessionData();
         if (typeof window !== "undefined" && !isPublicPath(window.location.pathname)) {
           window.location.href = "/login";
         }
