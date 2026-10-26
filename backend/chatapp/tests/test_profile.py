@@ -1,8 +1,14 @@
 import json
+from datetime import timedelta
+from unittest import mock
 
+from django.core.cache import cache
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
+
+from chatapp.views import get_profile_cache_version
 
 from .factory import make_user
 
@@ -81,6 +87,44 @@ class ProfileEndpointTests(TestCase):
         recent_viewers = profile_response.json()["recent_profile_viewers"]
         self.assertEqual(len(recent_viewers), 1)
         self.assertEqual(recent_viewers[0]["username"], "bob")
+
+    def test_profile_cache_version_bumps_only_when_top_viewer_changes(self):
+        cache.clear()
+        bob = make_user(username="bob", email="bob@example.com")
+        carol = make_user(username="carol", email="carol@example.com")
+        url = f"/api/profile/public/{self.user.username}/"
+        start = timezone.now()
+        ticks = iter(range(1, 10_000))
+
+        def view_as(viewer):
+            self.client.force_authenticate(user=viewer)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            return get_profile_cache_version(self.user.id)
+
+        # Coarse clocks (Windows) can repeat timestamps; tick explicitly.
+        with mock.patch(
+            "django.utils.timezone.now",
+            side_effect=lambda: start + timedelta(seconds=next(ticks)),
+        ):
+            initial = get_profile_cache_version(self.user.id)
+            self.assertEqual(view_as(bob), initial + 1)  # new viewer row
+            self.assertEqual(view_as(bob), initial + 1)  # already on top
+            self.assertEqual(view_as(bob), initial + 1)
+            self.assertEqual(view_as(carol), initial + 2)  # new top viewer
+            self.assertEqual(view_as(bob), initial + 3)  # order changed
+
+    def test_repeat_public_profile_view_is_served_from_cache(self):
+        cache.clear()
+        bob = make_user(username="bob", email="bob@example.com")
+        url = f"/api/profile/public/{self.user.username}/"
+        self.client.force_authenticate(user=bob)
+        self.client.get(url)
+        with mock.patch("chatapp.views.build_media_url") as build_media_url:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["username"], self.user.username)
+        build_media_url.assert_not_called()
 
     def test_public_profile_returns_404_for_unknown_user(self):
         response = self.client.get("/api/profile/public/does-not-exist/")
