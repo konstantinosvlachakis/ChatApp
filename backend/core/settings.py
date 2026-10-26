@@ -253,6 +253,18 @@ if env == "production":
     # variable lets the app switch to Neon without changing that managed value.
     database_url = os.getenv("NEON_DATABASE_URL") or os.getenv("DATABASE_URL")
     DATABASES = {"default": dj_database_url.parse(database_url) if database_url else dj_database_url.config()}
+    # psycopg3 connection pool: websocket DB calls otherwise open a new Postgres
+    # connection per frame. The pool requires CONN_MAX_AGE = 0 (the dj_database_url default).
+    if (
+        DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql"
+        and os.environ.get("DB_POOL_ENABLED", "true").lower() == "true"
+    ):
+        DATABASES["default"]["CONN_MAX_AGE"] = 0
+        DATABASES["default"].setdefault("OPTIONS", {})["pool"] = {
+            "min_size": int(os.getenv("DB_POOL_MIN_SIZE", "1")),
+            "max_size": int(os.getenv("DB_POOL_MAX_SIZE", "8")),
+            "timeout": int(os.getenv("DB_POOL_TIMEOUT_SECONDS", "10")),
+        }
 else:
     DATABASES = {
         "default": {
