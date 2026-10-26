@@ -72,3 +72,7 @@ frontend/build/
 *.svg
 *.heic
 *.heif
+
+# Ignore Redis dumps and user-uploaded media
+*.rdb
+backend/media/
