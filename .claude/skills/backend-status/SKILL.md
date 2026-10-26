@@ -14,7 +14,13 @@ Last verified: 2026-10-26 at commit `79ec3a9`. Refresh: `git log --oneline 79ec3
 - `chatapp/consumers.py` — `ChatConsumer` (`ws/socket-server/<conversation_id>/`), `PresenceConsumer` (`ws/presence/`). `routing.py`.
 - `chatapp/gemini.py` — coach client (key in `x-goog-api-key` header, timeouts → "coach unavailable").
 - `chatapp/serializers.py` — public `ProfileSerializer` must NOT include email/date_of_birth.
-- Management commands: `load_dummy_data`, `prewarm_daily_practice`. Latest migration: `0030_profileview`.
+- Management commands: `load_dummy_data`, `prewarm_daily_practice`. Latest migration: `0031_query_perf_indexes`.
+
+## Query performance (keep these true; tests in `tests/test_query_counts.py`)
+- Any queryset serialized with `MessageSerializer` goes through `serializers.with_message_relations(qs, request.user)` (select_related sender/pinned_by/reply_to__sender + prefetch reactions and the caller's translations). Single messages re-serialized after a write use `reload_message_for_serializer`. The serializer falls back to per-row queries when not prefetched.
+- `GET /conversations/<id>/` embeds only the latest `CONVERSATION_DETAIL_MESSAGE_LIMIT` (200) messages, oldest→newest; older history is `GET /conversations/<id>/messages/?page=N`. Web re-fetches page 1 right away; mobile currently relies on the embedded list only.
+- Conversation list: unread count is a correlated subquery; delivery marking (`mark_messages_delivered`) bumps both participants' list cache versions.
+- `Message.save()` touches `Conversation.updated_at` only on create (pin/edit/status must not reorder the list).
 
 URL names: token_obtain_pair, token_refresh, logout, login (legacy), register, profile, delete_account, moderation_summary, presence_offline, coach_chat, profile_data, public_profile, block_user, report_user, profile_edit, profile_location_update, update_profile_image, conversation_list, conversation_messages, mark_conversation_read, delete_message, edit_message, translate_message, react_to_message, pin_message, practice_state, practice_challenge, practice_submit.
 
@@ -36,7 +42,7 @@ Hardening (all optional, safe defaults): `SECURE_HSTS_*`, `DRF_THROTTLE_{AUTH,US
 ```bash
 cd backend && DJANGO_ENV=local USE_REDIS_REALTIME=false CLOUDINARY_URL= GEMINI_API_KEY= DATABASE_URL= python manage.py test chatapp
 ```
-Baseline: **65 tests, all passing** (2026-10-26). Test helpers in `tests/factory.py`.
+Baseline: **80 tests, all passing** (2026-10-26). Test helpers in `tests/factory.py`.
 
 ## Open issues
 Refresh-token rotation/blacklist missing; legacy `/api/login/` + `Token` to delete; `?token=` ws auth to remove; relay trusts client `attachmentUrl`; `/media/` unauthenticated; practice replay farming; presence ignores blocks; non-numeric `message_id` in translate → 500; throttles per-process without Redis; `requirements.txt` UTF-16 and local Django 5.1.6 vs pinned 5.2.5; admin unusable (no `is_staff`).

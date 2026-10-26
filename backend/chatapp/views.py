@@ -29,11 +29,17 @@ from .models import (
 )
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
+from .serializers import (
+    PROFILE_SUMMARY_FIELDS,
+    reload_message_for_serializer,
+    with_message_relations,
+)
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
-from django.db import DatabaseError, OperationalError
-from django.db.models import Q
+from django.db import DatabaseError, IntegrityError, OperationalError
+from django.db.models import IntegerField, Q
 from django.db.models import Case, Count, F, OuterRef, Subquery, Value, When
+from django.db.models.functions import Coalesce
 from django.core.files.storage import default_storage
 import os
 import uuid
@@ -666,17 +672,30 @@ def record_profile_view(viewer, viewed_profile):
         return
 
     try:
-        _, created = ProfileView.objects.get_or_create(
-            viewer=viewer,
-            viewed_profile=viewed_profile,
-        )
+        # Update-then-create so repeat views refresh updated_at and the viewer
+        # moves back to the top of "recent viewers".
+        now = timezone.now()
+        updated = ProfileView.objects.filter(
+            viewer=viewer, viewed_profile=viewed_profile
+        ).update(updated_at=now)
+        if not updated:
+            try:
+                with transaction.atomic():
+                    ProfileView.objects.create(
+                        viewer=viewer, viewed_profile=viewed_profile
+                    )
+            except IntegrityError:
+                # A concurrent request created the row first.
+                ProfileView.objects.filter(
+                    viewer=viewer, viewed_profile=viewed_profile
+                ).update(updated_at=now)
     except (OperationalError, DatabaseError):
         # SQLite can temporarily lock under concurrent dev traffic. Recording a
         # profile view is best-effort and should never break opening a profile.
         return
 
-    if created:
-        bump_profile_cache_version(viewed_profile.id)
+    # The viewed user's cached profile payload lists recent viewers.
+    bump_profile_cache_version(viewed_profile.id)
 
 
 def get_conversation_list_cache_version(user_id):
@@ -786,13 +805,13 @@ def users_are_blocked(user_a_id, user_b_id):
 def get_block_state(viewer_id, profile_id):
     if not viewer_id or not profile_id or viewer_id == profile_id:
         return False, False
-    is_blocked_by_me = BlockedUser.objects.filter(
-        blocker_id=viewer_id, blocked_id=profile_id
-    ).exists()
-    has_blocked_me = BlockedUser.objects.filter(
-        blocker_id=profile_id, blocked_id=viewer_id
-    ).exists()
-    return is_blocked_by_me, has_blocked_me
+    blocker_ids = set(
+        BlockedUser.objects.filter(
+            Q(blocker_id=viewer_id, blocked_id=profile_id)
+            | Q(blocker_id=profile_id, blocked_id=viewer_id)
+        ).values_list("blocker_id", flat=True)
+    )
+    return viewer_id in blocker_ids, profile_id in blocker_ids
 
 
 def broadcast_message_status_update(
@@ -1691,6 +1710,36 @@ def report_user_view(request, username):
     )
 
 
+def mark_messages_delivered(messages_qs, user):
+    """
+    Mark the user's incoming "sent" messages in messages_qs as delivered,
+    broadcast the status change per conversation and invalidate both
+    participants' conversation list caches so ticks are not stale.
+    """
+    messages_to_deliver = messages_qs.filter(status="sent").exclude(sender=user)
+    rows = list(
+        messages_to_deliver.values_list(
+            "id",
+            "conversation_id",
+            "conversation__sender_id",
+            "conversation__receiver_id",
+        )
+    )
+    if not rows:
+        return
+
+    messages_to_deliver.update(status="delivered")
+    ids_by_conversation = {}
+    participant_ids = set()
+    for message_id, conv_id, sender_id, receiver_id in rows:
+        ids_by_conversation.setdefault(conv_id, []).append(message_id)
+        participant_ids.update((sender_id, receiver_id))
+    for user_id in participant_ids:
+        bump_conversation_list_cache_version(user_id)
+    for conv_id, message_ids in ids_by_conversation.items():
+        broadcast_message_status_update(conv_id, message_ids, "delivered", user.id)
+
+
 class MessageListView(APIView):
     def get(self, request, conversation_id):
         conversation = get_object_or_404(
@@ -1702,17 +1751,9 @@ class MessageListView(APIView):
                 {"error": "You are not a participant in this conversation."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        messages_to_deliver = (
-            Message.objects.filter(conversation=conversation)
-            .exclude(sender=request.user)
-            .filter(status="sent")
+        mark_messages_delivered(
+            Message.objects.filter(conversation=conversation), request.user
         )
-        delivered_ids = list(messages_to_deliver.values_list("id", flat=True))
-        if delivered_ids:
-            messages_to_deliver.update(status="delivered")
-            broadcast_message_status_update(
-                conversation.id, delivered_ids, "delivered", request.user.id
-            )
 
         page_param = request.query_params.get("page", "1")
         page_size_param = request.query_params.get("page_size", "30")
@@ -1726,7 +1767,9 @@ class MessageListView(APIView):
             page_size = 30
         page_size = max(1, min(page_size, 100))
 
-        messages_qs = conversation.messages.all().order_by("-timestamp", "-id")
+        messages_qs = with_message_relations(
+            conversation.messages.all().order_by("-timestamp", "-id"), request.user
+        )
         paginator = Paginator(messages_qs, page_size)
         if paginator.num_pages == 0 or page > paginator.num_pages:
             payload = {
@@ -1756,9 +1799,12 @@ class MessageListView(APIView):
         payload = {
             "messages": serializer.data,
             "pinned_messages": MessageSerializer(
-                conversation.messages.filter(pinned_at__isnull=False)
-                .select_related("sender", "pinned_by", "reply_to__sender")
-                .order_by("-pinned_at", "-id"),
+                with_message_relations(
+                    conversation.messages.filter(pinned_at__isnull=False).order_by(
+                        "-pinned_at", "-id"
+                    ),
+                    request.user,
+                ),
                 many=True,
                 context={"request": request},
             ).data,
@@ -1855,6 +1901,7 @@ class MessageListView(APIView):
         )
 
         # Serialize and return the new message
+        message = reload_message_for_serializer(message, request.user)
         serializer = MessageSerializer(message, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -1873,7 +1920,11 @@ class MessageDeleteView(APIView):
 
 class MessageEditView(APIView):
     def patch(self, request, message_id):
-        message = get_object_or_404(Message, id=message_id, sender=request.user)
+        message = get_object_or_404(
+            Message.objects.select_related("conversation"),
+            id=message_id,
+            sender=request.user,
+        )
         updated_text = str(request.data.get("text", "")).strip()
 
         if not updated_text and not message.attachment:
@@ -1888,6 +1939,7 @@ class MessageEditView(APIView):
             )
 
         if message.text == updated_text:
+            message = reload_message_for_serializer(message, request.user)
             serializer = MessageSerializer(message, context={"request": request})
             return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -1905,6 +1957,7 @@ class MessageEditView(APIView):
             actor_id=request.user.id,
         )
 
+        message = reload_message_for_serializer(message, request.user)
         serializer = MessageSerializer(message, context={"request": request})
         serialized_message = serializer.data
 
@@ -1928,24 +1981,21 @@ class ConversationDetailView(APIView):
         """
         Retrieve a specific conversation by ID.
         """
-        conversation = get_object_or_404(Conversation, id=conversation_id)
+        conversation = get_object_or_404(
+            Conversation.objects.select_related("sender", "receiver"),
+            id=conversation_id,
+        )
         if request.user.id not in (conversation.sender_id, conversation.receiver_id):
             return Response(
                 {"error": "You are not a participant in this conversation."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        messages_to_deliver = (
-            Message.objects.filter(conversation=conversation)
-            .exclude(sender=request.user)
-            .filter(status="sent")
+        mark_messages_delivered(
+            Message.objects.filter(conversation=conversation), request.user
         )
-        delivered_ids = list(messages_to_deliver.values_list("id", flat=True))
-        if delivered_ids:
-            messages_to_deliver.update(status="delivered")
-            broadcast_message_status_update(
-                conversation.id, delivered_ids, "delivered", request.user.id
-            )
 
+        # `messages` embeds only the latest CONVERSATION_DETAIL_MESSAGE_LIMIT
+        # messages (see ConversationSerializer.get_messages).
         serializer = ConversationSerializer(
             conversation,
             context={"request": request, "include_messages": True},
@@ -1972,43 +2022,15 @@ class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        last_message_id_subquery = Subquery(
-            Message.objects.filter(conversation_id=OuterRef("pk"))
-            .order_by("-timestamp", "-id")
-            .values("id")[:1]
+        user = request.user
+        # Runs on every request (before the cache check), so keep it a plain
+        # filter on the user's conversations rather than the annotated list.
+        mark_messages_delivered(
+            Message.objects.filter(
+                Q(conversation__sender=user) | Q(conversation__receiver=user)
+            ),
+            user,
         )
-        conversations = (
-            Conversation.objects.filter(
-                Q(sender=request.user) | Q(receiver=request.user)
-            )
-            .select_related("sender", "receiver")
-            .annotate(
-                unread_count_for_request=Count(
-                    "messages",
-                    filter=~Q(messages__sender=request.user)
-                    & ~Q(messages__status="read"),
-                ),
-                last_message_id=last_message_id_subquery,
-            )
-            .order_by("-updated_at", "-id")
-        )
-        messages_to_deliver = (
-            Message.objects.filter(conversation__in=conversations)
-            .exclude(sender=request.user)
-            .filter(status="sent")
-        )
-        updates_by_conversation = {}
-        for message_id, conv_id in messages_to_deliver.values_list(
-            "id", "conversation_id"
-        ):
-            updates_by_conversation.setdefault(conv_id, []).append(message_id)
-
-        if updates_by_conversation:
-            messages_to_deliver.update(status="delivered")
-            for conv_id, message_ids in updates_by_conversation.items():
-                broadcast_message_status_update(
-                    conv_id, message_ids, "delivered", request.user.id
-                )
 
         cache_version = get_conversation_list_cache_version(request.user.id)
         cache_key = (
@@ -2019,13 +2041,49 @@ class ConversationListView(APIView):
         if cached_payload is not None:
             return Response(cached_payload)
 
+        last_message_id_subquery = Subquery(
+            Message.objects.filter(conversation_id=OuterRef("pk"))
+            .order_by("-timestamp", "-id")
+            .values("id")[:1]
+        )
+        # Correlated per-conversation count instead of a LEFT JOIN over every
+        # message plus a GROUP BY on all selected columns.
+        unread_count_subquery = Subquery(
+            Message.objects.filter(conversation_id=OuterRef("pk"))
+            .exclude(sender=user)
+            .exclude(status="read")
+            .order_by()
+            .values("conversation_id")
+            .annotate(total=Count("id"))
+            .values("total")[:1],
+            output_field=IntegerField(),
+        )
+        conversations = list(
+            Conversation.objects.filter(Q(sender=user) | Q(receiver=user))
+            .select_related("sender", "receiver")
+            .only(
+                "id",
+                "created_at",
+                "updated_at",
+                "sender",
+                "receiver",
+                *(f"sender__{field}" for field in PROFILE_SUMMARY_FIELDS),
+                *(f"receiver__{field}" for field in PROFILE_SUMMARY_FIELDS),
+            )
+            .annotate(
+                unread_count_for_request=Coalesce(unread_count_subquery, Value(0)),
+                last_message_id=last_message_id_subquery,
+            )
+            .order_by("-updated_at", "-id")
+        )
+
         last_message_ids = [
             conversation.last_message_id
             for conversation in conversations
             if getattr(conversation, "last_message_id", None)
         ]
-        last_messages = Message.objects.filter(id__in=last_message_ids).select_related(
-            "sender"
+        last_messages = with_message_relations(
+            Message.objects.filter(id__in=last_message_ids), user
         )
         last_message_map = {
             message.conversation_id: message for message in last_messages
@@ -2267,7 +2325,9 @@ def translate_message_view(request):
     message = None
 
     if message_id:
-        message = get_object_or_404(Message, id=message_id)
+        message = get_object_or_404(
+            Message.objects.select_related("conversation"), id=message_id
+        )
         participants = {
             message.conversation.sender_id,
             message.conversation.receiver_id,
@@ -2444,7 +2504,9 @@ def translate_message_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def react_to_message_view(request, message_id):
-    message = get_object_or_404(Message, id=message_id)
+    message = get_object_or_404(
+        Message.objects.select_related("conversation"), id=message_id
+    )
     participants = {message.conversation.sender_id, message.conversation.receiver_id}
     if request.user.id not in participants:
         return Response(
@@ -2468,6 +2530,7 @@ def react_to_message_view(request, message_id):
             defaults={"emoji": emoji},
         )
 
+    message = reload_message_for_serializer(message, request.user)
     serializer = MessageSerializer(message, context={"request": request})
     serialized_message = serializer.data
 
@@ -2487,7 +2550,9 @@ def react_to_message_view(request, message_id):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def pin_message_view(request, message_id):
-    message = get_object_or_404(Message, id=message_id)
+    message = get_object_or_404(
+        Message.objects.select_related("conversation"), id=message_id
+    )
     conversation = message.conversation
     participants = {conversation.sender_id, conversation.receiver_id}
 
@@ -2524,6 +2589,7 @@ def pin_message_view(request, message_id):
         actor_id=request.user.id,
     )
 
+    message = reload_message_for_serializer(message, request.user)
     serializer = MessageSerializer(message, context={"request": request})
     serialized_message = serializer.data
 
@@ -3140,13 +3206,16 @@ def serialize_practice_stats(stats):
     }
 
 
-def get_leaderboard(language, current_user_id, limit=10):
+def get_leaderboard(language, current_user_id, current_stats=None, limit=10):
     qs = PracticeStats.objects.select_related("user")
+    ordering = ("-points", "-xp", "updated_at")
     filtered_qs = qs.filter(preferred_language__iexact=language)
-    if not filtered_qs.exists():
+    top_entries = list(filtered_qs.order_by(*ordering)[:limit])
+    if not top_entries:
+        # Nobody practises this language yet: fall back to the global board.
         filtered_qs = qs
+        top_entries = list(filtered_qs.order_by(*ordering)[:limit])
 
-    top_entries = list(filtered_qs.order_by("-points", "-xp", "updated_at")[:limit])
     leaderboard = []
     for idx, entry in enumerate(top_entries, start=1):
         leaderboard.append(
@@ -3160,7 +3229,8 @@ def get_leaderboard(language, current_user_id, limit=10):
             }
         )
 
-    current_stats = PracticeStats.objects.filter(user_id=current_user_id).first()
+    if current_stats is None:
+        current_stats = PracticeStats.objects.filter(user_id=current_user_id).first()
     current_rank = None
     if current_stats:
         current_rank = filtered_qs.filter(points__gt=current_stats.points).count() + 1
@@ -3183,7 +3253,9 @@ def practice_state_view(request):
         stats.preferred_language = language
         stats.save(update_fields=["preferred_language", "updated_at"])
 
-    leaderboard, current_rank = get_leaderboard(language, request.user.id)
+    leaderboard, current_rank = get_leaderboard(
+        language, request.user.id, current_stats=stats
+    )
     return Response(
         {
             "language": language,
@@ -3259,29 +3331,30 @@ def practice_submit_view(request):
         user=request.user,
         defaults={"preferred_language": language},
     )
-    stats.preferred_language = language
-    stats.total_answers += 1
+    awarded_xp = PRACTICE_XP_CORRECT if is_correct else PRACTICE_XP_WRONG
+    awarded_points = PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG
+    # Atomic increments so concurrent submits don't lose updates. The level
+    # mirrors practice_level_from_xp(): (xp // 100) + 1 on the new xp value.
+    PracticeStats.objects.filter(pk=stats.pk).update(
+        preferred_language=language,
+        total_answers=F("total_answers") + 1,
+        correct_answers=F("correct_answers") + (1 if is_correct else 0),
+        points=F("points") + awarded_points,
+        xp=F("xp") + awarded_xp,
+        level=(F("xp") + awarded_xp) / 100 + 1,
+        updated_at=timezone.now(),
+    )
+    stats.refresh_from_db()
 
-    if is_correct:
-        stats.correct_answers += 1
-        stats.points += PRACTICE_POINTS_CORRECT
-        stats.xp += PRACTICE_XP_CORRECT
-    else:
-        stats.points += PRACTICE_POINTS_WRONG
-        stats.xp += PRACTICE_XP_WRONG
-
-    stats.level = practice_level_from_xp(stats.xp)
-    stats.save()
-
-    leaderboard, current_rank = get_leaderboard(language, request.user.id)
+    leaderboard, current_rank = get_leaderboard(
+        language, request.user.id, current_stats=stats
+    )
     return Response(
         {
             "correct": is_correct,
             "correct_answer": answer,
-            "awarded_xp": PRACTICE_XP_CORRECT if is_correct else PRACTICE_XP_WRONG,
-            "awarded_points": (
-                PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG
-            ),
+            "awarded_xp": awarded_xp,
+            "awarded_points": awarded_points,
             "language": language,
             "stats": serialize_practice_stats(stats),
             "leaderboard": leaderboard,

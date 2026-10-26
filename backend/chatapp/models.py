@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import Q
+from django.db.models.functions import Upper
 import uuid
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
@@ -66,6 +68,12 @@ class Profile(AbstractBaseUser):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
 
+    class Meta:
+        indexes = [
+            # Case-insensitive username lookups (username__iexact).
+            models.Index(Upper("username"), name="profile_username_upper_idx"),
+        ]
+
     @property
     def age(self):
         """Dynamically compute age from date_of_birth."""
@@ -93,6 +101,11 @@ class PracticeStats(models.Model):
     total_answers = models.PositiveIntegerField(default=0)
     preferred_language = models.CharField(max_length=50, blank=True, default="")
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["-points"], name="pstats_points_idx"),
+        ]
 
     def __str__(self):
         return f"PracticeStats(user={self.user_id}, points={self.points}, level={self.level})"
@@ -148,6 +161,15 @@ class Conversation(models.Model):
             self.receiver = Profile.objects.get(username="alma")
         super().save(*args, **kwargs)
 
+    class Meta:
+        indexes = [
+            # Conversation list: WHERE sender = u OR receiver = u ORDER BY -updated_at
+            models.Index(fields=["sender", "-updated_at"], name="conv_sender_upd_idx"),
+            models.Index(
+                fields=["receiver", "-updated_at"], name="conv_receiver_upd_idx"
+            ),
+        ]
+
     def __str__(self):
         return (
             f"Conversation between {self.sender.username} and {self.receiver.username}"
@@ -192,10 +214,37 @@ class Message(models.Model):
     )
 
     def save(self, *args, **kwargs):
-        # Update the conversation's updated_at field when a message is created
-        self.conversation.updated_at = timezone.now()
-        self.conversation.save()
+        is_new = self._state.adding
         super().save(*args, **kwargs)
+        if is_new:
+            # Only a new message moves the conversation to the top of the list;
+            # edits, pins and status changes must not reorder it.
+            now = timezone.now()
+            Conversation.objects.filter(pk=self.conversation_id).update(
+                updated_at=now
+            )
+            if Message.conversation.is_cached(self):
+                self.conversation.updated_at = now
+
+    class Meta:
+        indexes = [
+            # Message pages and last-message lookups per conversation.
+            models.Index(
+                fields=["conversation", "-timestamp", "-id"], name="msg_conv_ts_idx"
+            ),
+            # Unread counts / delivery: only rows not yet read.
+            models.Index(
+                fields=["conversation", "sender"],
+                condition=~Q(status="read"),
+                name="msg_conv_unread_idx",
+            ),
+            # Pinned messages per conversation.
+            models.Index(
+                fields=["conversation", "-pinned_at"],
+                condition=Q(pinned_at__isnull=False),
+                name="msg_conv_pinned_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"Message by {self.sender.username} in {self.conversation.id}"
@@ -298,6 +347,12 @@ class ProfileView(models.Model):
             models.UniqueConstraint(
                 fields=["viewer", "viewed_profile"], name="uniq_profile_view_pair"
             )
+        ]
+        indexes = [
+            # Recent viewers of a profile.
+            models.Index(
+                fields=["viewed_profile", "-updated_at"], name="pview_viewed_upd_idx"
+            ),
         ]
         ordering = ["-updated_at"]
 
