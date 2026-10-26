@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import LegalBackLink from "../components/Auth/LegalBackLink";
 
 const TermsAndConditionsPage = () => {
   return (
@@ -72,9 +72,7 @@ const TermsAndConditionsPage = () => {
         </div>
 
         <div className="mt-8 text-sm">
-          <Link to="/login" className="font-semibold text-cyan-700 hover:text-cyan-800">
-            Back to login
-          </Link>
+          <LegalBackLink />
         </div>
       </div>
     </div>
