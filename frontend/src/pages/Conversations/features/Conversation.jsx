@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BASE_URL } from "../../../constants/constants";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -8,6 +7,9 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
+import api, { getErrorMessage, isApiError } from "../../../lib/api";
+import { logger } from "../../../lib/logger";
+import { toast, toastApiError } from "../../../components/Toast";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
@@ -533,7 +535,7 @@ const Conversation = ({
         setCopyFeedback((current) => (current === "Copied to clipboard" ? "" : current));
       }, 1800);
     } catch (error) {
-      console.error("Copy error:", error);
+      logger.error("Copy error:", error);
       setCopyFeedback("Copy failed");
       window.setTimeout(() => {
         setCopyFeedback((current) => (current === "Copy failed" ? "" : current));
@@ -574,7 +576,7 @@ const Conversation = ({
     try {
       speakWithBrowserVoice(msg, text);
     } catch (error) {
-      console.error("Speak error:", error);
+      logger.error("Speak error:", error);
     } finally {
       closeMessageActionsMenu();
     }
@@ -626,32 +628,26 @@ const Conversation = ({
     try {
       setTranslatingMessageId(msg.id);
 
-      const res = await fetch(`${BASE_URL}/api/messages/translate/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          message_id: msg.id,
-          target_language: baseTranslateLanguage,
-        }),
+      const payload = await api.post("/api/messages/translate/", {
+        message_id: msg.id,
+        target_language: baseTranslateLanguage,
       });
-
-      const payload = await res.json();
-      if (!res.ok) {
-        if (payload.same_language || payload.already_translated) {
-          setBlockedTranslateByMessageId((prev) => ({ ...prev, [msg.id]: true }));
-        }
-        throw new Error(payload.error || "Failed to translate message.");
-      }
 
       setTranslationsByMessageId((prev) => ({
         ...prev,
         [msg.id]: payload.translated_text,
       }));
     } catch (error) {
-      console.error("Translate error:", error);
+      // 400 bodies flag messages that can't be translated (contract: already_translated /
+      // same_language); those are informational, not failures.
+      const body = isApiError(error) ? error.data || {} : {};
+      if (body.same_language || body.already_translated) {
+        setBlockedTranslateByMessageId((prev) => ({ ...prev, [msg.id]: true }));
+        toast.info(getErrorMessage(error));
+      } else {
+        logger.warn("Translate error:", error);
+        toastApiError(error, "Couldn't translate the message");
+      }
     } finally {
       setTranslatingMessageId(null);
       closeMessageActionsMenu();
@@ -660,22 +656,11 @@ const Conversation = ({
 
   const handleReact = async (messageId, emoji) => {
     try {
-      const response = await fetch(`${BASE_URL}/api/messages/${messageId}/react/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ emoji }),
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Failed to react to message.");
-      }
+      const payload = await api.post(`/api/messages/${messageId}/react/`, { emoji });
       onMessageReactionChange?.(payload);
     } catch (error) {
-      console.error("Reaction error:", error);
+      logger.warn("Reaction error:", error);
+      toastApiError(error, "Couldn't add the reaction");
     } finally {
       closeMessageActionsMenu();
     }

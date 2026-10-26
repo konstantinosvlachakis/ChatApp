@@ -1,4 +1,4 @@
-import { AxiosError } from 'axios';
+import type { ApiError } from '../lib/apiError';
 import { QueryClient, UseQueryOptions, UseMutationOptions, DefaultOptions } from 'react-query';
 import { PromiseValue } from 'type-fest';
 
@@ -29,6 +29,6 @@ export type QueryConfig<QueryFnType extends (...args: any) => any> = Omit<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type MutationConfig<MutationFnType extends (...args: any) => any> = UseMutationOptions<
   ExtractFnReturnType<MutationFnType>,
-  AxiosError,
+  ApiError,
   Parameters<MutationFnType>[0]
 >;

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { BASE_URL } from "../constants/constants";
+import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
 
@@ -50,24 +49,18 @@ const LoginPage = () => {
     }
 
     try {
-      const response = await axios.post(
-        BASE_URL + "/api/token/",
-        {
-          email: email.trim().toLowerCase(),
-          password,
-          remember_me: rememberMe,
-        },
-        {
-          withCredentials: true,
-        }
-      );
+      const tokens = await api.post("/api/token/", {
+        email: email.trim().toLowerCase(),
+        password,
+        remember_me: rememberMe,
+      });
 
       // Drop any state left by a previous session (tokens, cached CSRF token, drafts).
       clearClientSessionData();
       if (shouldUseLegacyAuthFallback()) {
         setLegacyTokens({
-          access: response.data?.access,
-          refresh: response.data?.refresh,
+          access: tokens?.access,
+          refresh: tokens?.refresh,
           rememberMe,
         });
       }
@@ -76,10 +69,8 @@ const LoginPage = () => {
 
       navigate("/profile");
     } catch (error) {
-      // The token endpoint answers {message, code}; throttling and other DRF errors use {detail}.
-      setError(
-        error.response?.data?.message || error.response?.data?.detail || "Invalid credentials."
-      );
+      // ApiError.message is the envelope's `error` (or a friendly network/status text).
+      setError(getErrorMessage(error, "Invalid credentials."));
     } finally {
       setLoading(false);
     }

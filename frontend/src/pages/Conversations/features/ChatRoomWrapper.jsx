@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import axios from "../../../utils/axios";
+import api, { getErrorMessage, isAbortError } from "../../../lib/api";
+import { logger } from "../../../lib/logger";
 import ChatRoom from "./ChatRoom";
 import CoachChatRoom from "./CoachChatRoom";
-import { BASE_URL } from "../../../constants/constants";
 import { COACH_CONVERSATION_ID } from "./coachConversation";
 
 const ChatRoomWrapper = ({ onConversationTypingChange }) => {
@@ -13,24 +13,22 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   const isCoachConversation = id === COACH_CONVERSATION_ID;
 
   useEffect(() => {
-    if (isCoachConversation) return;
+    if (isCoachConversation) return undefined;
+    const controller = new AbortController();
     const fetchConversation = async () => {
       try {
-        const response = await axios.get(`${BASE_URL}/api/conversations/${id}/`, {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        setConversation(response.data);
+        const data = await api.get(`/api/conversations/${id}/`, { signal: controller.signal });
+        setError(null);
+        setConversation(data);
       } catch (err) {
-        console.error("Error fetching conversation:", err);
-        setError("Failed to load the conversation.");
+        if (isAbortError(err)) return;
+        logger.warn("Error fetching conversation:", err);
+        setError(getErrorMessage(err, "Failed to load the conversation."));
       }
     };
 
     fetchConversation();
+    return () => controller.abort();
   }, [id, isCoachConversation]);
 
   // The read receipt is sent once by ChatRoom after the conversation has loaded.

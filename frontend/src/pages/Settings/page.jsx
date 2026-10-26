@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BASE_URL } from "../../constants/constants";
 import { useUser } from "../../context/UserContext";
+import api, { getErrorMessage } from "../../lib/api";
+import { toastApiError } from "../../components/Toast";
 
 const LANGUAGE_OPTIONS = [
   { value: "english", label: "English", flag: "gb" },
@@ -79,13 +81,7 @@ const SettingsPage = () => {
     const loadModeration = async () => {
       try {
         setModerationLoading(true);
-        const response = await fetch(`${BASE_URL}/api/profile/moderation/`, {
-          credentials: "include",
-        });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || "Failed to load moderation history.");
-        }
+        const payload = await api.get("/api/profile/moderation/");
         setModeration({
           blocked_profiles: Array.isArray(payload.blocked_profiles) ? payload.blocked_profiles : [],
           reported_profiles: Array.isArray(payload.reported_profiles) ? payload.reported_profiles : [],
@@ -159,17 +155,7 @@ const SettingsPage = () => {
   const handleUnblock = async (username) => {
     try {
       setUnblockingUsername(username);
-      const response = await fetch(
-        `${BASE_URL}/api/profile/public/${encodeURIComponent(username)}/block/`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || "Failed to unblock user.");
-      }
+      await api.delete(`/api/profile/public/${encodeURIComponent(username)}/block/`);
       setModeration((prev) => ({
         ...prev,
         blocked_profiles: prev.blocked_profiles.filter((entry) => entry.username !== username),
@@ -177,7 +163,8 @@ const SettingsPage = () => {
       setSuccess(`${username} has been unblocked.`);
       await refreshUserProfile().catch(() => {});
     } catch (err) {
-      setError(err.message || "Failed to unblock user.");
+      setError(getErrorMessage(err, "Failed to unblock user."));
+      toastApiError(err, "Couldn't unblock " + username);
     } finally {
       setUnblockingUsername("");
     }
@@ -188,29 +175,18 @@ const SettingsPage = () => {
       setSaving(true);
       setError("");
       setSuccess("");
-      const response = await fetch(`${BASE_URL}/api/profile/edit/`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          base_translate_language: baseTranslateLanguage,
-          languages_practicing: languagesPracticing.map(
-            (value) => languageMap[value]?.label || value
-          ),
-        }),
+      await api.patch("/api/profile/edit/", {
+        base_translate_language: baseTranslateLanguage,
+        languages_practicing: languagesPracticing.map(
+          (value) => languageMap[value]?.label || value
+        ),
       });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Failed to save settings.");
-      }
 
       await refreshUserProfile();
       setSuccess("Settings saved.");
     } catch (err) {
-      setError(err.message || "Failed to save settings.");
+      setError(getErrorMessage(err, "Failed to save settings."));
+      toastApiError(err, "Couldn't save your settings");
     } finally {
       setSaving(false);
     }

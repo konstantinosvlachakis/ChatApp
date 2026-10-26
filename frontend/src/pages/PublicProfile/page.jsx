@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BASE_URL } from "../../constants/constants";
 import { BASE_URL_IMG } from "../../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
 import { createOrGetConversation } from "../Community/api/conversation";
@@ -8,6 +7,8 @@ import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
 import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
+import api, { getErrorMessage, isAbortError } from "../../lib/api";
+import { toastApiError } from "../../components/Toast";
 
 const PublicProfilePage = () => {
   const { username } = useParams();
@@ -21,29 +22,20 @@ const PublicProfilePage = () => {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     const loadPublicProfile = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${BASE_URL}/api/profile/public/${encodeURIComponent(username || "")}/`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
+        const data = await api.get(`/api/profile/public/${encodeURIComponent(username || "")}/`, {
+          signal: controller.signal,
         });
-
-        if (!response.ok) {
-          throw new Error("Could not load this profile.");
-        }
-
-        const data = await response.json();
         if (isMounted) {
           setProfile((prev) => ({ ...prev, ...data }));
           setError("");
         }
       } catch (err) {
-        if (isMounted && !stateProfile) {
-          setError(err.message || "Could not load this profile.");
+        if (isMounted && !stateProfile && !isAbortError(err)) {
+          setError(getErrorMessage(err, "Could not load this profile."));
         }
       } finally {
         if (isMounted) {
@@ -55,6 +47,7 @@ const PublicProfilePage = () => {
     loadPublicProfile();
     return () => {
       isMounted = false;
+      controller.abort();
     };
   }, [stateProfile, username]);
 
@@ -97,7 +90,8 @@ const PublicProfilePage = () => {
       const conv = await createOrGetConversation(profile.username);
       if (conv?.id) navigate(`/conversations/${conv.id}`);
     } catch (err) {
-      setError("Could not start conversation.");
+      // A toast keeps the profile on screen (the page-level error would replace it).
+      toastApiError(err, "Couldn't start the conversation");
     }
   };
 

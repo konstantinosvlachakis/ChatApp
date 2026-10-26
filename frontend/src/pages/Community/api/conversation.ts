@@ -1,22 +1,5 @@
-import axios from "axios";
-import { BASE_URL } from "../../../constants/constants";
+import api from "../../../lib/api";
 
-export const createOrGetConversation = async (username: string) => {
-    try {
-      const response = await axios.post(
-        `${BASE_URL}/api/conversations/`,
-        { participant: username },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          withCredentials: true,
-        }
-      );
-  
-      return response.data;
-    } catch (error) {
-      console.error("Error creating/getting conversation:", error);
-      throw error;
-    }
-  };
+/** POST /api/conversations/ -> {id} (existing or new). Throws ApiError on failure. */
+export const createOrGetConversation = async (username: string) =>
+  api.post<{ id: number }>("/api/conversations/", { participant: username });
