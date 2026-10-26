@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -17,6 +18,12 @@ GEMINI_FALLBACK_MODELS = [
     if model.strip()
 ]
 GEMINI_TIMEOUT_SECONDS = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "20"))
+# Overall budget for the whole fallback chain, kept under Heroku's 30s router limit.
+GEMINI_TOTAL_DEADLINE_SECONDS = float(
+    os.environ.get("GEMINI_TOTAL_DEADLINE_SECONDS", "25")
+)
+# Don't start another model attempt with less time than this left.
+GEMINI_MIN_ATTEMPT_SECONDS = 2.0
 
 
 class CoachAIError(Exception):
@@ -141,7 +148,7 @@ def _parse_reply(body):
     return reply
 
 
-def _request_model(api_key, model, payload):
+def _request_model(api_key, model, payload, timeout=GEMINI_TIMEOUT_SECONDS):
     request = Request(
         GEMINI_API_URL.format(model=model),
         data=json.dumps(payload).encode("utf-8"),
@@ -150,7 +157,7 @@ def _request_model(api_key, model, payload):
     )
 
     try:
-        with urlopen(request, timeout=GEMINI_TIMEOUT_SECONDS) as response:
+        with urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         detail = error.read().decode("utf-8", errors="ignore")
@@ -183,6 +190,32 @@ def get_gemini_model_chain():
     return deduplicated_models
 
 
+def _request_model_chain(api_key, payload):
+    """Try each model in turn within one overall deadline.
+
+    Each attempt's timeout is capped by the remaining budget, and no further model
+    is tried once too little time is left, so the request finishes before the
+    router gives up on it.
+    """
+    deadline = time.monotonic() + GEMINI_TOTAL_DEADLINE_SECONDS
+    last_error = None
+
+    for model in get_gemini_model_chain():
+        remaining = deadline - time.monotonic()
+        if remaining < GEMINI_MIN_ATTEMPT_SECONDS:
+            break
+        try:
+            return _request_model(
+                api_key, model, payload, timeout=min(GEMINI_TIMEOUT_SECONDS, remaining)
+            )
+        except CoachAIError as error:
+            last_error = error
+
+    raise last_error or CoachAIError(
+        "The AI coach is unavailable right now. Please try again shortly."
+    )
+
+
 def generate_coach_reply(
     message,
     target_language="English",
@@ -198,24 +231,7 @@ def generate_coach_reply(
         raise CoachAIError("Message is required.")
 
     payload = _build_payload(prompt, target_language, native_language, mode=mode)
-    model_chain = get_gemini_model_chain()
-    last_error = None
-
-    for index, model in enumerate(model_chain):
-        try:
-            return _request_model(api_key, model, payload)
-        except CoachAIQuotaError as error:
-            last_error = error
-            if index == len(model_chain) - 1:
-                raise
-        except CoachAIError as error:
-            last_error = error
-            if index == len(model_chain) - 1:
-                raise
-
-    raise last_error or CoachAIError(
-        "The AI coach is unavailable right now. Please try again shortly."
-    )
+    return _request_model_chain(api_key, payload)
 
 
 def generate_practice_challenge(language="English", cefr_level="A1"):
@@ -224,21 +240,4 @@ def generate_practice_challenge(language="English", cefr_level="A1"):
         raise CoachAIError("Missing GEMINI_API_KEY.")
 
     payload = _build_practice_generation_payload(language, cefr_level)
-    model_chain = get_gemini_model_chain()
-    last_error = None
-
-    for index, model in enumerate(model_chain):
-        try:
-            return _request_model(api_key, model, payload)
-        except CoachAIQuotaError as error:
-            last_error = error
-            if index == len(model_chain) - 1:
-                raise
-        except CoachAIError as error:
-            last_error = error
-            if index == len(model_chain) - 1:
-                raise
-
-    raise last_error or CoachAIError(
-        "The AI coach is unavailable right now. Please try again shortly."
-    )
+    return _request_model_chain(api_key, payload)
