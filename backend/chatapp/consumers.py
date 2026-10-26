@@ -22,7 +22,6 @@ PRESENCE_TOUCH_INTERVAL_SECONDS = int(
 )
 # Generous enough for WebRTC SDP payloads, small enough to stop memory abuse.
 WS_MAX_MESSAGE_BYTES = int(os.environ.get("WS_MAX_MESSAGE_BYTES", str(64 * 1024)))
-WS_CHAT_TEXT_MAX_LENGTH = int(os.environ.get("MESSAGE_MAX_LENGTH", "5000"))
 
 
 def user_presence_group_name(user_id):
@@ -273,6 +272,9 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 self.username, self.other_user_id = details
         if not self.username:
             self.user_id = None
+            # Accept first so the client receives the 4403 close code; closing
+            # during the handshake shows up in browsers as a bare 1006.
+            await self.accept()
             await self.close(code=4403)
             return
 
@@ -332,7 +334,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             return
         if not isinstance(data, dict):
             return
-        message_type = data.get("type", "chat")
+        message_type = data.get("type")
         call_event_types = {
             "call_invite",
             "call_accept",
@@ -343,41 +345,9 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             "webrtc_ice_candidate",
         }
 
-        if message_type == "chat":
-            message = data.get("message")
-            if not isinstance(message, str) or len(message) > WS_CHAT_TEXT_MAX_LENGTH:
-                return
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "chat_message",
-                    "id": data.get("id"),
-                    "message": message,
-                    # Sender identity comes from the authenticated socket, never
-                    # from the client payload (prevents impersonation).
-                    "sender": self.username,
-                    "sender_id": self.user_id,
-                    "attachment_url": data.get("attachmentUrl"),
-                    "reply_to": data.get("replyTo"),
-                    "sender_channel_name": self.channel_name,
-                },
-            )
-            return
-
-        if message_type == "deleteMessage":
-            message_id = data.get("messageId")
-            if not isinstance(message_id, int):
-                return
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "delete_message",
-                    "messageId": message_id,
-                    "sender_channel_name": self.channel_name,
-                },
-            )
-            return
-
+        # Messages and deletions are broadcast by the REST views from the
+        # database (message_created / message_deleted); client-originated
+        # "chat" and "deleteMessage" frames are no longer relayed.
         if message_type in {"user_typing", "user_stopped_typing"}:
             try:
                 conversation_id = int(self.room_group_name)
@@ -422,31 +392,23 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
             return
 
-    async def chat_message(self, event):
-        if self.channel_name == event["sender_channel_name"]:
-            return
-
+    async def message_created_event(self, event):
         await self.send(
             text_data=json.dumps(
                 {
-                    "type": "chat",
-                    "id": event.get("id"),
-                    "message": event["message"],
-                    "sender": event.get("sender"),
-                    "senderId": event.get("sender_id"),
-                    "attachmentUrl": event.get("attachment_url"),
-                    "replyTo": event.get("reply_to"),
+                    "type": "message_created",
+                    "message": event.get("message"),
                 }
             )
         )
 
-    async def delete_message(self, event):
-        if self.channel_name == event["sender_channel_name"]:
-            return
-
+    async def message_deleted_event(self, event):
         await self.send(
             text_data=json.dumps(
-                {"type": "deleteMessage", "messageId": event["messageId"]}
+                {
+                    "type": "message_deleted",
+                    "messageId": event.get("message_id"),
+                }
             )
         )
 
@@ -526,6 +488,8 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         self.contact_ids = None
         self.user_id = await self.get_user_id_from_token()
         if not self.user_id:
+            # Accept first so the client receives 4401 instead of a bare 1006.
+            await self.accept()
             await self.close(code=4401)
             return
 

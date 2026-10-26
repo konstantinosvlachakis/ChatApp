@@ -90,6 +90,27 @@ def with_message_relations(queryset, user=None):
     return queryset
 
 
+# MessageSerializer fields computed for the requesting user. Websocket
+# broadcasts reach every participant, so they omit these instead of sending
+# the actor's view; clients keep their own values (or derive
+# current_user_reaction from `reactions`).
+PER_USER_MESSAGE_FIELDS = (
+    "translated_text",
+    "translated_source_language",
+    "can_translate",
+    "current_user_reaction",
+)
+
+
+def message_broadcast_payload(serialized_message):
+    """Strip per-user fields from a serialized Message before broadcasting it."""
+    return {
+        key: value
+        for key, value in serialized_message.items()
+        if key not in PER_USER_MESSAGE_FIELDS
+    }
+
+
 def reload_message_for_serializer(message, user=None):
     """Re-fetch one message with everything MessageSerializer needs."""
     return with_message_relations(Message.objects.filter(pk=message.pk), user).get()

@@ -31,6 +31,7 @@ from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from .serializers import (
     PROFILE_SUMMARY_FIELDS,
+    message_broadcast_payload,
     reload_message_for_serializer,
     with_message_relations,
 )
@@ -672,6 +673,16 @@ def record_profile_view(viewer, viewed_profile):
         return
 
     try:
+        # The viewed user's cached profile lists recent viewers, so it only
+        # needs invalidating when this view changes who is on top. Repeat
+        # views by the current top viewer must not bump the version (that
+        # also defeated the public_profile cache, which shares it).
+        latest_viewer_id = (
+            ProfileView.objects.filter(viewed_profile=viewed_profile)
+            .order_by("-updated_at")
+            .values_list("viewer_id", flat=True)
+            .first()
+        )
         # Update-then-create so repeat views refresh updated_at and the viewer
         # moves back to the top of "recent viewers".
         now = timezone.now()
@@ -694,8 +705,8 @@ def record_profile_view(viewer, viewed_profile):
         # profile view is best-effort and should never break opening a profile.
         return
 
-    # The viewed user's cached profile payload lists recent viewers.
-    bump_profile_cache_version(viewed_profile.id)
+    if latest_viewer_id != viewer.id:
+        bump_profile_cache_version(viewed_profile.id)
 
 
 def get_conversation_list_cache_version(user_id):
@@ -830,6 +841,16 @@ def broadcast_message_status_update(
             "status": status_value,
             "actor_id": actor_id,
         },
+    )
+
+
+def broadcast_chat_room_event(conversation_id, event_type, **fields):
+    """Send a server-originated event to every socket in the conversation's room."""
+    channel_layer = get_channel_layer()
+    if not channel_layer:
+        return
+    async_to_sync(channel_layer.group_send)(
+        str(conversation_id), {"type": event_type, **fields}
     )
 
 
@@ -1896,6 +1917,13 @@ class MessageListView(APIView):
         # Serialize and return the new message
         message = reload_message_for_serializer(message, request.user)
         serializer = MessageSerializer(message, context={"request": request})
+        # Open chats (including the sender's other tabs/devices) render the
+        # saved message from this event; clients dedupe by id.
+        broadcast_chat_room_event(
+            conversation.id,
+            "message_created_event",
+            message=message_broadcast_payload(serializer.data),
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -1903,9 +1931,19 @@ class MessageDeleteView(APIView):
     def delete(self, request, message_id):
         message = get_object_or_404(Message, id=message_id, sender=request.user)
         conversation = message.conversation
+        deleted_message_id = message.id
         message.delete()
         bump_conversation_list_cache_version(conversation.sender_id)
         bump_conversation_list_cache_version(conversation.receiver_id)
+        broadcast_chat_room_event(
+            conversation.id, "message_deleted_event", message_id=deleted_message_id
+        )
+        broadcast_conversation_update(
+            [conversation.sender_id, conversation.receiver_id],
+            conversation.id,
+            "message_deleted",
+            actor_id=request.user.id,
+        )
         return Response(
             {"message": "Message deleted successfully"}, status=status.HTTP_200_OK
         )
@@ -1954,15 +1992,11 @@ class MessageEditView(APIView):
         serializer = MessageSerializer(message, context={"request": request})
         serialized_message = serializer.data
 
-        channel_layer = get_channel_layer()
-        if channel_layer:
-            async_to_sync(channel_layer.group_send)(
-                str(message.conversation_id),
-                {
-                    "type": "message_edit_event",
-                    "message": serialized_message,
-                },
-            )
+        broadcast_chat_room_event(
+            message.conversation_id,
+            "message_edit_event",
+            message=message_broadcast_payload(serialized_message),
+        )
 
         return Response(serialized_message, status=status.HTTP_200_OK)
 
@@ -2108,8 +2142,8 @@ class ConversationListView(APIView):
             return Response({"error": "Missing participant username"}, status=400)
 
         try:
-            participant = Profile.objects.get(username=participant_username)
-        except Profile.DoesNotExist:
+            participant = get_profile_by_username_or_404(participant_username)
+        except Http404:
             return Response({"error": "User not found"}, status=404)
         if participant.id == user.id:
             return Response({"error": "You cannot message yourself."}, status=400)
@@ -2119,16 +2153,32 @@ class ConversationListView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Check if a conversation already exists between the two users
-        conversation = Conversation.objects.filter(
-            Q(sender=user, receiver=participant) | Q(sender=participant, receiver=user)
-        ).first()
-
-        if not conversation:
-            # Create a new conversation
-            conversation = Conversation.objects.create(
-                sender=user, receiver=participant
+        # Get-or-create for the unordered pair. Locking the lower-id profile row
+        # serialises concurrent creates for the same pair (Postgres), so two
+        # requests can't both miss the lookup and insert duplicates. If legacy
+        # duplicates exist, the oldest conversation always wins.
+        created = False
+        with transaction.atomic():
+            list(
+                Profile.objects.select_for_update()
+                .filter(id=min(user.id, participant.id))
+                .values_list("id", flat=True)
             )
+            conversation = (
+                Conversation.objects.filter(
+                    Q(sender=user, receiver=participant)
+                    | Q(sender=participant, receiver=user)
+                )
+                .order_by("id")
+                .first()
+            )
+            if not conversation:
+                conversation = Conversation.objects.create(
+                    sender=user, receiver=participant
+                )
+                created = True
+
+        if created:
             bump_conversation_list_cache_version(user.id)
             bump_conversation_list_cache_version(participant.id)
 
@@ -2527,15 +2577,11 @@ def react_to_message_view(request, message_id):
     serializer = MessageSerializer(message, context={"request": request})
     serialized_message = serializer.data
 
-    channel_layer = get_channel_layer()
-    if channel_layer:
-        async_to_sync(channel_layer.group_send)(
-            str(message.conversation_id),
-            {
-                "type": "message_reaction_event",
-                "message": serialized_message,
-            },
-        )
+    broadcast_chat_room_event(
+        message.conversation_id,
+        "message_reaction_event",
+        message=message_broadcast_payload(serialized_message),
+    )
 
     return Response(serialized_message, status=status.HTTP_200_OK)
 
@@ -2586,15 +2632,11 @@ def pin_message_view(request, message_id):
     serializer = MessageSerializer(message, context={"request": request})
     serialized_message = serializer.data
 
-    channel_layer = get_channel_layer()
-    if channel_layer:
-        async_to_sync(channel_layer.group_send)(
-            str(message.conversation_id),
-            {
-                "type": "message_pin_event",
-                "message": serialized_message,
-            },
-        )
+    broadcast_chat_room_event(
+        message.conversation_id,
+        "message_pin_event",
+        message=message_broadcast_payload(serialized_message),
+    )
 
     return Response(serialized_message, status=status.HTTP_200_OK)
 

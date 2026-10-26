@@ -20,10 +20,14 @@ class ProfileManager(BaseUserManager):
         return user
 
     def create_superuser(self, username, password=None, **extra_fields):
-        """Creates and returns a superuser with an encrypted password."""
-        extra_fields.setdefault("is_staff", True)
-        extra_fields.setdefault("is_superuser", True)
+        """Used by `manage.py createsuperuser`.
 
+        Profile has no is_staff / is_superuser fields, so this creates a regular
+        account (the Django admin is not supported). It used to pass those
+        flags to the model and crash.
+        """
+        if extra_fields.get("email"):
+            extra_fields["email"] = extra_fields["email"].strip().lower()
         return self.create_user(username, password, **extra_fields)
 
 

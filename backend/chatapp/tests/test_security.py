@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+from channels.db import database_sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.core.cache import cache
@@ -369,52 +370,111 @@ class ChatWebsocketAuthorizationTests(TransactionTestCase):
         connected, _ = await communicator.connect()
         return communicator, connected
 
+    async def _assert_rejected(self, path, user=None, headers=None, code=4403):
+        # Rejections accept the handshake and then close with an application
+        # code, so browsers see 4401/4403 (not 1006) and stop reconnecting.
+        communicator, connected = await self._connect(path, user=user, headers=headers)
+        self.assertTrue(connected)
+        closed = await communicator.receive_output(timeout=2)
+        self.assertEqual(closed, {"type": "websocket.close", "code": code})
+        await communicator.wait()
+
     async def test_anonymous_cannot_join_conversation(self):
-        _, connected = await self._connect(self.chat_path)
-        self.assertFalse(connected)
+        await self._assert_rejected(self.chat_path)
 
     async def test_non_participant_cannot_join_conversation(self):
-        _, connected = await self._connect(self.chat_path, user=self.mallory)
-        self.assertFalse(connected)
+        await self._assert_rejected(self.chat_path, user=self.mallory)
 
     async def test_cannot_join_internal_presence_group(self):
-        _, connected = await self._connect(
+        await self._assert_rejected(
             f"/ws/socket-server/presence_user_{self.alice.id}/", user=self.mallory
         )
-        self.assertFalse(connected)
 
     async def test_cookie_auth_from_foreign_origin_is_rejected(self):
         token = str(AccessToken.for_user(self.alice))
-        _, connected = await self._connect(
+        await self._assert_rejected(
             self.chat_path,
             headers=[
                 (b"cookie", f"lv_access={token}".encode()),
                 (b"origin", b"https://evil.example.org"),
             ],
         )
-        self.assertFalse(connected)
 
-    async def test_participant_messages_carry_server_side_sender_identity(self):
+    async def test_anonymous_presence_socket_is_closed_with_4401(self):
+        await self._assert_rejected("/ws/presence/", code=4401)
+
+    async def test_client_chat_and_delete_frames_are_not_relayed(self):
+        message = await database_sync_to_async(make_message)(
+            conversation=self.conversation, sender=self.bob
+        )
         alice_ws, alice_connected = await self._connect(self.chat_path, user=self.alice)
         bob_ws, bob_connected = await self._connect(self.chat_path, user=self.bob)
         self.assertTrue(alice_connected)
         self.assertTrue(bob_connected)
 
         try:
+            # A never-saved message, an untyped frame (used to default to
+            # "chat") and a delete for someone else's message.
             await alice_ws.send_json_to(
-                {
-                    "type": "chat",
-                    "id": 1,
-                    "message": "hello",
-                    "sender": "bob",
-                    "senderId": self.bob.id,
-                }
+                {"type": "chat", "id": 999999, "message": "forged"}
             )
-            received = await bob_ws.receive_json_from(timeout=2)
+            await alice_ws.send_json_to({"id": 999998, "message": "untyped"})
+            await alice_ws.send_json_to(
+                {"type": "deleteMessage", "messageId": message.id}
+            )
+            self.assertTrue(await bob_ws.receive_nothing(timeout=0.3))
+            # Typing relays still work over the same socket.
+            await alice_ws.send_json_to({"type": "user_typing"})
+            typing = await bob_ws.receive_json_from(timeout=2)
         finally:
             await alice_ws.disconnect()
             await bob_ws.disconnect()
 
-        self.assertEqual(received["message"], "hello")
-        self.assertEqual(received["sender"], "alice")
-        self.assertEqual(received["senderId"], self.alice.id)
+        self.assertEqual(typing, {"type": "user_typing", "senderId": self.alice.id})
+        message_still_exists = await database_sync_to_async(
+            Message.objects.filter(id=message.id).exists
+        )()
+        self.assertTrue(message_still_exists)
+
+    async def test_rest_message_post_and_delete_are_broadcast_from_server(self):
+        alice_ws, _ = await self._connect(self.chat_path, user=self.alice)
+        bob_ws, _ = await self._connect(self.chat_path, user=self.bob)
+        client = APIClient()
+        client.force_authenticate(user=self.alice)
+
+        try:
+            response = await database_sync_to_async(client.post)(
+                f"/api/conversations/{self.conversation.id}/messages/",
+                {"text": "hello bob"},
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            created_for_bob = await bob_ws.receive_json_from(timeout=2)
+            # The sender's own socket gets it too (clients dedupe by id).
+            created_for_alice = await alice_ws.receive_json_from(timeout=2)
+
+            response = await database_sync_to_async(client.delete)(
+                f"/api/messages/{response.data['id']}/delete/"
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            deleted_for_bob = await bob_ws.receive_json_from(timeout=2)
+        finally:
+            await alice_ws.disconnect()
+            await bob_ws.disconnect()
+
+        self.assertEqual(created_for_bob["type"], "message_created")
+        self.assertEqual(created_for_bob, created_for_alice)
+        broadcast = created_for_bob["message"]
+        self.assertEqual(broadcast["text"], "hello bob")
+        self.assertEqual(broadcast["sender"]["id"], self.alice.id)
+        self.assertEqual(broadcast["status"], "sent")
+        # Per-user fields are omitted so receivers don't get the sender's view.
+        for field in (
+            "current_user_reaction",
+            "can_translate",
+            "translated_text",
+            "translated_source_language",
+        ):
+            self.assertNotIn(field, broadcast)
+        self.assertEqual(
+            deleted_for_bob, {"type": "message_deleted", "messageId": broadcast["id"]}
+        )
