@@ -26,7 +26,7 @@ URL names: token_obtain_pair, token_refresh, logout, login (legacy), register, p
 
 ## Security invariants (keep these true; tests in `tests/test_security.py`)
 - Every conversation/message endpoint checks the user is a participant (403 otherwise). Blocking is respected.
-- Chat websocket: requires auth (cookie with Origin check, Bearer header, or legacy `?token=`), numeric room id, participant only; closes 4401 (unauthenticated) / 4403 (forbidden). Sender name/id set server-side. 64 KB frame cap.
+- Chat websocket: requires auth (cookie with Origin check, Bearer header, or legacy `?token=`), numeric room id, participant only; chat socket closes 4403 for any rejection (presence socket uses 4401 when unauthenticated). Sender name/id set server-side. 64 KB frame cap.
 - Uploads: image/video/audio only (no SVG), 25 MB attachments / 10 MB profile images, server-generated filenames.
 - Cookie-authenticated unsafe requests require `X-CSRFToken` (`AUTH_COOKIE_ENFORCE_CSRF`, keep true).
 - Throttles: `auth` 20/min per IP, translate 60/min, reports 20/hour, plus global user/anon. `DRF_NUM_PROXIES=1` in prod.
@@ -42,7 +42,7 @@ Hardening (all optional, safe defaults): `SECURE_HSTS_*`, `DRF_THROTTLE_{AUTH,US
 ```bash
 cd backend && DJANGO_ENV=local USE_REDIS_REALTIME=false CLOUDINARY_URL= GEMINI_API_KEY= DATABASE_URL= python manage.py test chatapp
 ```
-Baseline: **80 tests, all passing** (2026-10-26). Test helpers in `tests/factory.py`.
+Baseline: **95 tests, all passing** (2026-10-26, master `c1d44c5`). Shortcut: `scripts/test-backend.sh`. Test helpers in `tests/factory.py`.
 
 ## Open issues
 Refresh-token rotation/blacklist missing; legacy `/api/login/` + `Token` to delete; `?token=` ws auth to remove; relay trusts client `attachmentUrl`; `/media/` unauthenticated; practice replay farming; presence ignores blocks; non-numeric `message_id` in translate → 500; throttles per-process without Redis; `requirements.txt` UTF-16 and local Django 5.1.6 vs pinned 5.2.5; admin unusable (no `is_staff`).
