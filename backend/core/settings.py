@@ -168,6 +168,10 @@ INSTALLED_APPS = [
 
 
 MIDDLEWARE = [
+    # First, so every response (errors and redirects included) gets X-Request-ID.
+    "core.observability.RequestIdMiddleware",
+    # Adds error/code to any /api/ JSON error a view returned without them.
+    "core.exceptions.ApiErrorEnvelopeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # Add this
@@ -370,6 +374,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # Every API error uses {"error", "code", ...} (core/exceptions.py).
+    "EXCEPTION_HANDLER": "core.exceptions.api_exception_handler",
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -432,3 +438,40 @@ STORAGES = {
 # Fall back to the unhashed name instead of raising (500) if a file is missing
 # from the manifest, e.g. when collectstatic output is absent on a dyno.
 WHITENOISE_MANIFEST_STRICT = False
+
+
+# Logging: one console handler; every record carries the request id
+# (core.observability.RequestIdLogFilter; "-" outside a request).
+LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper()
+# 4xx responses are expected traffic: django.request logs at ERROR (5xx) at most.
+_REQUEST_LOG_LEVEL = LOG_LEVEL if LOG_LEVEL in ("ERROR", "CRITICAL") else "ERROR"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "core.observability.RequestIdLogFilter"},
+    },
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "standard",
+        },
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
+        "django.request": {"handlers": ["console"], "level": _REQUEST_LOG_LEVEL, "propagate": False},
+    },
+}
+
+
+# Error reporting: only when SENTRY_DSN is set (never in tests by default).
+from core.observability import init_sentry  # noqa: E402
+
+SENTRY_ENABLED = init_sentry(environment=env)

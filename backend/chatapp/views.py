@@ -65,6 +65,7 @@ from .gemini import (
     generate_practice_challenge,
 )
 from .throttles import AuthRateThrottle, ReportRateThrottle, TranslateRateThrottle
+from core.exceptions import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -956,35 +957,43 @@ def sanitize_language_name(value, fallback="english"):
     return normalized
 
 
+def coach_error(message, code, status_code, retry_after=None):
+    """Coach errors use the API envelope plus the legacy ``detail`` key that
+    clients built before the envelope read (drop after one release)."""
+    extra = {"detail": message}
+    if retry_after:
+        extra["retry_after"] = int(retry_after)
+    response = error_response(message, code, status_code, **extra)
+    if retry_after:
+        response["Retry-After"] = str(int(retry_after))
+    return response
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def coach_chat_view(request):
     message = str(request.data.get("message") or "").strip()
     if not message:
-        return Response(
-            {"detail": "Message is required."}, status=status.HTTP_400_BAD_REQUEST
-        )
+        return coach_error("Message is required.", "invalid", status.HTTP_400_BAD_REQUEST)
     if len(message) > COACH_CHAT_MAX_MESSAGE_LENGTH:
-        return Response(
-            {
-                "detail": f"Message is too long (max {COACH_CHAT_MAX_MESSAGE_LENGTH} characters)."
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return coach_error(
+            f"Message is too long (max {COACH_CHAT_MAX_MESSAGE_LENGTH} characters).",
+            "message_too_long",
+            status.HTTP_400_BAD_REQUEST,
         )
 
     if not consume_coach_chat_rate_limit(request.user.id):
-        return Response(
-            {
-                "detail": "You are sending messages too quickly. Please wait a moment before asking the coach again."
-            },
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        return coach_error(
+            "You are sending messages too quickly. Please wait a moment before asking the coach again.",
+            "coach_rate_limited",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            retry_after=COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS,
         )
     if not consume_coach_chat_daily_limit(request.user.id):
-        return Response(
-            {
-                "detail": "You have reached today's coach message limit. Please come back tomorrow."
-            },
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
+        return coach_error(
+            "You have reached today's coach message limit. Please come back tomorrow.",
+            "coach_daily_limit",
+            status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
     native_language = sanitize_language_name(
@@ -1007,15 +1016,9 @@ def coach_chat_view(request):
             mode=mode,
         )
     except CoachAIQuotaError as error:
-        return Response(
-            {"detail": str(error)},
-            status=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
+        return coach_error(str(error), "coach_quota", status.HTTP_429_TOO_MANY_REQUESTS)
     except CoachAIError as error:
-        return Response(
-            {"detail": str(error)},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+        return coach_error(str(error), "coach_unavailable", status.HTTP_503_SERVICE_UNAVAILABLE)
 
     return Response(
         {
@@ -1058,7 +1061,7 @@ def login_view(request):
                 return JsonResponse({"error": "Invalid credentials"}, status=400)
 
         except (json.JSONDecodeError, AttributeError):
-            return JsonResponse({"error": "Invalid JSON format"}, status=400)
+            return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
@@ -1115,11 +1118,11 @@ def register_view(request):
 
             # Check if the username already exists
             if Profile.objects.filter(username__iexact=username).exists():
-                return JsonResponse({"error": "Username already exists"}, status=400)
+                return JsonResponse({"error": "Username already exists", "code": "username_taken"}, status=400)
 
             # Check if the email already exists
             if Profile.objects.filter(email__iexact=email).exists():
-                return JsonResponse({"error": "Email already exists"}, status=400)
+                return JsonResponse({"error": "Email already exists", "code": "email_taken"}, status=400)
 
             # Enforce settings.AUTH_PASSWORD_VALIDATORS.
             try:
@@ -1143,7 +1146,7 @@ def register_view(request):
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
         except (json.JSONDecodeError, AttributeError):
-            return JsonResponse({"error": "Invalid JSON format"}, status=400)
+            return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
         except Exception:
             logger.exception("Registration failed")
             return JsonResponse({"error": "Registration failed. Please try again."}, status=500)
@@ -1323,7 +1326,7 @@ def public_profile_view(request, username):
     profile = get_profile_by_username_or_404(username)
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
     if is_blocked_by_me or has_blocked_me:
-        return JsonResponse({"error": "This user is unavailable."}, status=403)
+        return JsonResponse({"error": "This user is unavailable.", "code": "blocked"}, status=403)
     record_profile_view(request.user, profile)
     cache_version = get_profile_cache_version(profile.id)
     cache_key = (
@@ -1397,7 +1400,7 @@ def profile_edit_view(request):
                 .filter(username__iexact=username)
                 .exists()
             ):
-                return JsonResponse({"error": "Username already exists"}, status=400)
+                return JsonResponse({"error": "Username already exists", "code": "username_taken"}, status=400)
             user.username = username
             should_bump_profile_list = True
         for language_value in (native_language, base_translate_language):
@@ -1471,7 +1474,7 @@ def profile_edit_view(request):
                 .filter(email__iexact=normalized_email)
                 .exists()
             ):
-                return JsonResponse({"error": "Email already exists"}, status=400)
+                return JsonResponse({"error": "Email already exists", "code": "email_taken"}, status=400)
             user.email = normalized_email
         if date_of_birth is not None:
             date_raw = str(date_of_birth).strip()
@@ -1538,7 +1541,7 @@ def profile_edit_view(request):
         )
 
     except (json.JSONDecodeError, AttributeError):
-        return JsonResponse({"error": "Invalid JSON format"}, status=400)
+        return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
     except Exception:
         logger.exception("Profile update failed for user %s", request.user.id)
         return JsonResponse({"error": "Profile update failed. Please try again."}, status=500)
@@ -1762,7 +1765,7 @@ class MessageListView(APIView):
         )
         if request.user.id not in (conversation.sender_id, conversation.receiver_id):
             return Response(
-                {"error": "You are not a participant in this conversation."},
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         mark_messages_delivered(
@@ -1843,12 +1846,12 @@ class MessageListView(APIView):
         )
         if request.user.id not in (conversation.sender_id, conversation.receiver_id):
             return Response(
-                {"error": "You are not a participant in this conversation."},
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if users_are_blocked(conversation.sender_id, conversation.receiver_id):
             return Response(
-                {"error": "You cannot message a blocked user."},
+                {"error": "You cannot message a blocked user.", "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         # Extract text and file from the request
@@ -2014,7 +2017,7 @@ class ConversationDetailView(APIView):
         )
         if request.user.id not in (conversation.sender_id, conversation.receiver_id):
             return Response(
-                {"error": "You are not a participant in this conversation."},
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         mark_messages_delivered(
@@ -2034,7 +2037,7 @@ class ConversationDetailView(APIView):
         participant_ids = [conversation.sender_id, conversation.receiver_id]
         if request.user.id not in participant_ids:
             return Response(
-                {"error": "You are not a participant in this conversation."},
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         conversation.delete()
@@ -2149,7 +2152,7 @@ class ConversationListView(APIView):
             return Response({"error": "You cannot message yourself."}, status=400)
         if users_are_blocked(user.id, participant.id):
             return Response(
-                {"error": "You cannot start a conversation with this user."},
+                {"error": "You cannot start a conversation with this user.", "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -2195,7 +2198,7 @@ def mark_conversation_read_view(request, conversation_id):
 
     if request.user.id not in (conversation.sender_id, conversation.receiver_id):
         return Response(
-            {"error": "You are not a participant in this conversation."},
+            {"error": "You are not a participant in this conversation.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
         )
 
@@ -2377,7 +2380,7 @@ def translate_message_view(request):
         }
         if request.user.id not in participants:
             return Response(
-                {"error": "You do not have access to this message."},
+                {"error": "You do not have access to this message.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         text = (message.text or "").strip()
@@ -2390,7 +2393,7 @@ def translate_message_view(request):
         if existing_translation:
             return Response(
                 {
-                    "error": "Message already translated for this language.",
+                    "error": "Message already translated for this language.", "code": "already_translated",
                     "already_translated": True,
                     "translated_text": existing_translation.translated_text,
                     "source_language": existing_translation.source_language,
@@ -2430,7 +2433,7 @@ def translate_message_view(request):
                     )
                 return Response(
                     {
-                        "error": "Message is already in the selected base language.",
+                        "error": "Message is already in the selected base language.", "code": "same_language",
                         "same_language": True,
                         "source_language": cached_result.get("source_language"),
                         "target_language": target_language,
@@ -2484,7 +2487,7 @@ def translate_message_view(request):
 
         if not translated_text:
             return Response(
-                {"error": "Translation service returned an empty response."},
+                {"error": "Translation service returned an empty response.", "code": "translation_unavailable"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -2501,7 +2504,7 @@ def translate_message_view(request):
                 )
             return Response(
                 {
-                    "error": "Message is already in the selected base language.",
+                    "error": "Message is already in the selected base language.", "code": "same_language",
                     "same_language": True,
                     "source_language": source_language,
                     "target_language": target_language,
@@ -2539,7 +2542,7 @@ def translate_message_view(request):
         )
     except urllib.error.URLError:
         return Response(
-            {"error": "Translation service is currently unavailable."},
+            {"error": "Translation service is currently unavailable.", "code": "translation_unavailable"},
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
@@ -2553,7 +2556,7 @@ def react_to_message_view(request, message_id):
     participants = {message.conversation.sender_id, message.conversation.receiver_id}
     if request.user.id not in participants:
         return Response(
-            {"error": "You do not have access to this message."},
+            {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
         )
 
@@ -2597,7 +2600,7 @@ def pin_message_view(request, message_id):
 
     if request.user.id not in participants:
         return Response(
-            {"error": "You do not have access to this message."},
+            {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
         )
 

@@ -1,17 +1,24 @@
 import json
+import logging
 import os
 import time
+import uuid
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlparse
 
 from channels.db import database_sync_to_async
+from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.db.models import Exists, F, OuterRef, Q
 from django.http.request import validate_host
 from django.utils import timezone
 
+from core.observability import reset_request_id, set_request_id
+
 from .models import BlockedUser, Conversation, Profile
+
+logger = logging.getLogger(__name__)
 
 
 ONLINE_FRESHNESS_SECONDS = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
@@ -66,6 +73,33 @@ async def send_presence_update(channel_layer, user_id, is_online, contact_ids):
 
 
 class PresenceTrackingMixin:
+    @property
+    def connection_id(self):
+        """Per-connection id used as the log "request id" for this socket."""
+        value = getattr(self, "_connection_id", None)
+        if value is None:
+            value = self._connection_id = f"ws-{uuid.uuid4().hex}"
+        return value
+
+    async def dispatch(self, message):
+        # Bind the connection id to every log line written while handling this
+        # frame, and log unexpected errors with it before Channels closes the socket.
+        token = set_request_id(self.connection_id)
+        try:
+            await super().dispatch(message)
+        except StopConsumer:
+            raise
+        except Exception:
+            logger.exception(
+                "%s error handling %s (connection %s)",
+                self.__class__.__name__,
+                message.get("type"),
+                self.connection_id,
+            )
+            raise
+        finally:
+            reset_request_id(token)
+
     async def get_user_id_from_token(self):
         token = self._get_token_from_authorization_header()
         if not token:
