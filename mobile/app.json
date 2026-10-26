@@ -41,7 +41,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow LangVoyage to access your photos so you can upload profile pictures."
+          "photosPermission": "Allow LangVoyage to access your photos so you can upload profile pictures.",
+          "cameraPermission": false
         }
       ],
       "expo-speech-recognition",

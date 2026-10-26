@@ -92,10 +92,7 @@ api.interceptors.response.use(
       throw error;
     }
 
-    originalRequest.headers = {
-      ...(originalRequest.headers || {}),
-      Authorization: `Bearer ${nextAccessToken}`,
-    };
+    originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
 
     return api(originalRequest);
   }

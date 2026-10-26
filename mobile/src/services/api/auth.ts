@@ -1,5 +1,6 @@
 import { api } from "./client";
 import { tokenStorage } from "../storage";
+import { clearConversationsCache } from "./conversations";
 import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
 
 export async function register(payload: {
@@ -24,6 +25,7 @@ export async function login(email: string, password: string) {
 }
 
 export async function logout() {
+  clearConversationsCache();
   await tokenStorage.clear();
 }
 
@@ -77,6 +79,7 @@ export async function fetchModerationSummary() {
 
 export async function deleteAccount() {
   const response = await api.delete("/profile/delete/");
+  clearConversationsCache();
   await tokenStorage.clear();
   return response.data;
 }

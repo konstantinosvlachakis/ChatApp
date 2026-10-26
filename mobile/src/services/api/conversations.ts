@@ -6,6 +6,14 @@ const CONVERSATIONS_CACHE_TTL_MS = 15_000;
 let cachedConversations: Conversation[] | null = null;
 let cachedConversationsAt = 0;
 let conversationsRequest: Promise<Conversation[]> | null = null;
+let cacheGeneration = 0;
+
+export function clearConversationsCache() {
+  cachedConversations = null;
+  cachedConversationsAt = 0;
+  conversationsRequest = null;
+  cacheGeneration += 1;
+}
 
 export function getCachedConversations() {
   if (!cachedConversations) return null;
@@ -24,15 +32,21 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
     return conversationsRequest;
   }
 
+  const generation = cacheGeneration;
   const request = api
     .get<Conversation[]>("/conversations/")
     .then((response: { data: Conversation[] }) => {
-      cachedConversations = [...response.data];
-      cachedConversationsAt = Date.now();
+      // Skip caching if the cache was cleared (e.g. logout) while this request was in flight.
+      if (generation === cacheGeneration) {
+        cachedConversations = [...response.data];
+        cachedConversationsAt = Date.now();
+      }
       return [...response.data];
     })
     .finally(() => {
-      conversationsRequest = null;
+      if (conversationsRequest === request) {
+        conversationsRequest = null;
+      }
     });
 
   conversationsRequest = request;

@@ -1016,6 +1016,12 @@ export function ConversationsScreen() {
     [messageHighlightOpacity, messageHighlightScale, messageIndexById]
   );
 
+  const scrollToBottom = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      messageListRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
+
   const jumpToLatest = useCallback(() => {
     scrollToBottom(true);
   }, [scrollToBottom]);
@@ -1501,12 +1507,6 @@ export function ConversationsScreen() {
       setLoadingConversation(false);
     }
   }, [currentUserId, selectedConversation?.id]);
-
-  const scrollToBottom = useCallback((animated = true) => {
-    requestAnimationFrame(() => {
-      messageListRef.current?.scrollToEnd({ animated });
-    });
-  }, []);
 
   useEffect(() => {
     if (!selectedConversation?.id) return;

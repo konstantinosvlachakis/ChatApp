@@ -112,7 +112,12 @@ export function SettingsScreen() {
   };
 
   const onContactSupport = async () => {
-    const supportEmail = user?.support_email || "support@langvoyage.app";
+    const serverEmail = user?.support_email?.trim();
+    // Only accept a plain address so server data cannot inject extra mailto params/schemes.
+    const supportEmail =
+      serverEmail && /^[^\s@?&#/:]+@[^\s@?&#/:]+\.[^\s@?&#/:]+$/.test(serverEmail)
+        ? serverEmail
+        : "support@langvoyage.app";
     const mailtoUrl = `mailto:${supportEmail}?subject=${encodeURIComponent("LangVoyage support")}`;
     try {
       await Linking.openURL(mailtoUrl);

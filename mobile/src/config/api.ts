@@ -16,8 +16,17 @@ const getExpoHost = () => {
 
 export const getApiBaseUrl = () => {
   const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (!__DEV__) {
+    // Release builds must be pointed at the API explicitly and over TLS;
+    // never fall back to cleartext local/LAN defaults.
+    if (!envUrl || !envUrl.startsWith("https://")) {
+      throw new Error("EXPO_PUBLIC_API_BASE_URL must be set to an https:// URL for release builds.");
+    }
+    return envUrl.replace(/\/+$/, "");
+  }
+
   if (envUrl) {
-    return envUrl;
+    return envUrl.replace(/\/+$/, "");
   }
 
   // Web frontend runs on this machine.

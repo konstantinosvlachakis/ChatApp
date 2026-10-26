@@ -5,3 +5,5 @@ ios
 android
 *.log
 .expo-shared
+.env
+.env*.local
