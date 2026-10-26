@@ -148,6 +148,22 @@ class RealtimePerformanceTests(TransactionTestCase):
         finally:
             await alice_ws.disconnect()
 
+    async def test_block_made_mid_session_hides_later_presence_changes(self):
+        bob_ws, _ = await self._connect_presence(self.bob)
+        alice_ws, _ = await self._connect_presence(self.alice)
+        try:
+            online = await bob_ws.receive_json_from(timeout=2)
+            self.assertEqual(online["user_id"], self.alice.id)
+
+            await sync_to_async(BlockedUser.objects.create)(
+                blocker=self.bob, blocked=self.alice
+            )
+            await alice_ws.disconnect()
+
+            self.assertTrue(await bob_ws.receive_nothing(timeout=0.2))
+        finally:
+            await bob_ws.disconnect()
+
     async def test_connect_and_disconnect_query_counts_are_bounded(self):
         async with capture_queries() as presence_connect:
             presence_ws, _ = await self._connect_presence(self.alice)
@@ -168,8 +184,9 @@ class RealtimePerformanceTests(TransactionTestCase):
 
         async with capture_queries() as presence_disconnect:
             await presence_ws.disconnect()
-        # last socket: decrement attempt + went-offline update; contacts cached
-        self.assertLessEqual(len(presence_disconnect.captured_queries), 2)
+        # last socket: decrement attempt + went-offline update + contacts
+        # re-read (so mid-session blocks apply)
+        self.assertLessEqual(len(presence_disconnect.captured_queries), 3)
 
         alice = await sync_to_async(Profile.objects.get)(id=self.alice.id)
         self.assertEqual(alice.ws_connection_count, 0)

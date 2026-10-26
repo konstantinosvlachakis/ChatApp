@@ -6,6 +6,7 @@ queries must stay under a fixed bound and must not grow with the number of
 conversations / messages / reactions / translations (no N+1).
 """
 
+from datetime import timedelta
 from unittest import mock
 
 from django.core.cache import cache
@@ -250,10 +251,18 @@ class QueryOptimisationBehaviourTests(TestCase):
     def test_repeat_profile_view_moves_viewer_to_top(self):
         first_viewer = make_user()
         second_viewer = make_user()
-        for viewer in (first_viewer, second_viewer, first_viewer):
-            self.client.force_authenticate(user=viewer)
-            response = self.client.get(f"/api/profile/public/{self.me.username}/")
-            self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Back-to-back requests can share a timestamp on coarse clocks (Windows),
+        # so advance the clock on every call to make the ordering deterministic.
+        start = timezone.now()
+        ticks = iter(range(1, 10_000))
+        with mock.patch(
+            "django.utils.timezone.now",
+            side_effect=lambda: start + timedelta(seconds=next(ticks)),
+        ):
+            for viewer in (first_viewer, second_viewer, first_viewer):
+                self.client.force_authenticate(user=viewer)
+                response = self.client.get(f"/api/profile/public/{self.me.username}/")
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         views = ProfileView.objects.filter(viewed_profile=self.me).order_by(
             "-updated_at", "-id"
