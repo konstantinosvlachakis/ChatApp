@@ -64,7 +64,10 @@ def scrub_sentry_event(event, hint):
             headers[header] = "[Filtered]"
     request.pop("cookies", None)
     request.pop("data", None)
-    return event
+    # Also redact emails in messages/exceptions/breadcrumbs and keep only the user id.
+    from core.observability import scrub_sentry_extras
+
+    return scrub_sentry_extras(event)
 
 
 # Error monitoring is off unless SENTRY_DSN is set (e.g. Heroku config vars), so
@@ -470,8 +473,3 @@ LOGGING = {
     },
 }
 
-
-# Error reporting: only when SENTRY_DSN is set (never in tests by default).
-from core.observability import init_sentry  # noqa: E402
-
-SENTRY_ENABLED = init_sentry(environment=env)

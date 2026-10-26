@@ -1,6 +1,8 @@
 """Error envelope, unknown-path handling, health check, request ids and Sentry init."""
 
 import logging
+import runpy
+from pathlib import Path
 from unittest.mock import patch
 
 from django.core.cache import cache
@@ -17,9 +19,8 @@ from core.exceptions import GENERIC_SERVER_ERROR
 from core.observability import (
     RequestIdLogFilter,
     clean_request_id,
-    init_sentry,
     reset_request_id,
-    scrub_sentry_event,
+    tag_sentry_request_id,
     set_request_id,
 )
 
@@ -297,30 +298,37 @@ class RequestIdTests(TestCase):
         self.assertEqual(record.request_id, "-")
 
 
+SETTINGS_PATH = str(Path(__file__).resolve().parents[2] / "core" / "settings.py")
+
+
 class SentryTests(SimpleTestCase):
-    def test_init_skipped_without_dsn(self):
-        with patch.dict("os.environ", {"SENTRY_DSN": ""}):
+    def _run_settings(self, **env):
+        base = {"DJANGO_ENV": "local", "SENTRY_DSN": "", "SENTRY_TRACES_SAMPLE_RATE": ""}
+        base.update(env)
+        with patch.dict("os.environ", base):
             with patch("sentry_sdk.init") as mock_init:
-                self.assertFalse(init_sentry())
+                namespace = runpy.run_path(SETTINGS_PATH)
+        return mock_init, namespace
+
+    def test_init_skipped_without_dsn(self):
+        mock_init, _ = self._run_settings(SENTRY_DSN="")
         mock_init.assert_not_called()
 
     def test_init_with_dsn_disables_pii(self):
-        env = {
-            "SENTRY_DSN": "https://public@example.invalid/1",
-            "SENTRY_TRACES_SAMPLE_RATE": "0.25",
-            "HEROKU_SLUG_COMMIT": "abc123",
-        }
-        with patch.dict("os.environ", env):
-            with patch("sentry_sdk.init") as mock_init:
-                self.assertTrue(init_sentry(environment="production"))
+        mock_init, namespace = self._run_settings(
+            SENTRY_DSN="https://public@example.invalid/1",
+            SENTRY_TRACES_SAMPLE_RATE="0.25",
+            HEROKU_SLUG_COMMIT="abc123",
+        )
         kwargs = mock_init.call_args.kwargs
         self.assertFalse(kwargs["send_default_pii"])
         self.assertEqual(kwargs["traces_sample_rate"], 0.25)
         self.assertEqual(kwargs["release"], "abc123")
-        self.assertEqual(kwargs["environment"], "production")
-        self.assertIs(kwargs["before_send"], scrub_sentry_event)
+        self.assertIs(kwargs["before_send"], namespace["scrub_sentry_event"])
 
     def test_scrubber_removes_sensitive_data_and_tags_request_id(self):
+        _, namespace = self._run_settings()
+        scrub_sentry_event = namespace["scrub_sentry_event"]
         event = {
             "request": {
                 "cookies": {"lv_access": "x"},
@@ -334,7 +342,7 @@ class SentryTests(SimpleTestCase):
         }
         token = set_request_id("rid-9")
         try:
-            scrubbed = scrub_sentry_event(event)
+            scrubbed = scrub_sentry_event(event, None)
         finally:
             reset_request_id(token)
         self.assertNotIn("cookies", scrubbed["request"])
@@ -346,3 +354,15 @@ class SentryTests(SimpleTestCase):
         self.assertNotIn("@example.com", str(scrubbed))
         self.assertEqual(scrubbed["tags"]["request_id"], "rid-9")
 
+    def test_request_id_tag_is_noop_without_sentry(self):
+        with patch("sentry_sdk.is_initialized", return_value=False), patch(
+            "sentry_sdk.set_tag"
+        ) as mock_set_tag:
+            tag_sentry_request_id("rid-1")
+        mock_set_tag.assert_not_called()
+
+        with patch("sentry_sdk.is_initialized", return_value=True), patch(
+            "sentry_sdk.set_tag"
+        ) as mock_set_tag:
+            tag_sentry_request_id("rid-2")
+        mock_set_tag.assert_called_once_with("request_id", "rid-2")

@@ -5,17 +5,16 @@
   in a context variable, and echoes it in the ``X-Request-ID`` response header.
 - ``RequestIdLogFilter`` adds ``record.request_id`` to every log record so the
   ``LOGGING`` format in settings can print it ("-" outside a request).
-- ``init_sentry()`` initialises sentry-sdk only when ``SENTRY_DSN`` is set; the
-  ``scrub_sentry_event`` hook strips cookies, auth headers, bodies and emails.
+- Sentry itself is initialised in settings (only when ``SENTRY_DSN`` is set);
+  ``scrub_sentry_extras`` adds email/user scrubbing to its ``before_send`` hook and
+  ``tag_sentry_request_id`` tags each request's events with its id.
 """
 
 import contextvars
 import logging
-import os
 import re
 import uuid
 
-logger = logging.getLogger(__name__)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 _REQUEST_ID_META_KEY = "HTTP_X_REQUEST_ID"
@@ -61,12 +60,24 @@ class RequestIdMiddleware:
         request_id = clean_request_id(request.META.get(_REQUEST_ID_META_KEY)) or new_request_id()
         request.request_id = request_id
         token = set_request_id(request_id)
+        tag_sentry_request_id(request_id)
         try:
             response = self.get_response(request)
         finally:
             reset_request_id(token)
         response[REQUEST_ID_HEADER] = request_id
         return response
+
+
+def tag_sentry_request_id(request_id):
+    """Tag the current Sentry scope with the request id; a no-op when Sentry is not
+    installed or not initialised (no SENTRY_DSN)."""
+    try:
+        import sentry_sdk
+    except ImportError:  # pragma: no cover
+        return
+    if sentry_sdk.is_initialized():
+        sentry_sdk.set_tag("request_id", request_id)
 
 
 class RequestIdLogFilter(logging.Filter):
@@ -110,9 +121,10 @@ def _scrub_headers(headers):
     }
 
 
-def scrub_sentry_event(event, _hint=None):
-    """``before_send`` hook: drop anything that could identify a user or carry
-    message content, and tag the event with the current request id."""
+def scrub_sentry_extras(event):
+    """Extra scrubbing used by ``settings.scrub_sentry_event`` (Sentry's
+    ``before_send``): drop anything that could identify a user or carry message
+    content, and tag the event with the current request id."""
     request = event.get("request")
     if isinstance(request, dict):
         request.pop("cookies", None)
@@ -155,38 +167,3 @@ def scrub_sentry_event(event, _hint=None):
         if isinstance(event["tags"], dict):
             event["tags"]["request_id"] = request_id
     return event
-
-
-def _float_env(name, default):
-    try:
-        value = float(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-    return min(max(value, 0.0), 1.0)
-
-
-def init_sentry(environment=None):
-    """Initialise Sentry when SENTRY_DSN is set. Returns True if initialised."""
-    dsn = os.environ.get("SENTRY_DSN", "").strip()
-    if not dsn:
-        return False
-    try:
-        import sentry_sdk
-        from sentry_sdk.integrations.django import DjangoIntegration
-    except ImportError:  # pragma: no cover - package missing in this environment
-        logger.warning("SENTRY_DSN is set but sentry-sdk is not installed.")
-        return False
-
-    release = os.environ.get("HEROKU_SLUG_COMMIT") or os.environ.get("SOURCE_VERSION") or None
-    sentry_sdk.init(
-        dsn=dsn,
-        integrations=[DjangoIntegration()],
-        send_default_pii=False,
-        traces_sample_rate=_float_env("SENTRY_TRACES_SAMPLE_RATE", 0.0),
-        environment=environment or os.environ.get("DJANGO_ENV") or "production",
-        release=release,
-        before_send=scrub_sentry_event,
-        before_send_transaction=scrub_sentry_event,
-        max_request_body_size="never",
-    )
-    return True
