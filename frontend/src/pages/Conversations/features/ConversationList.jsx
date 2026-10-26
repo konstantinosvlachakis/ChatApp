@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
 import { BASE_URL_IMG } from "../../../constants/constants";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
 import axios from "../../../utils/axios";
 import { BASE_URL } from "../../../constants/constants";
 import { useGetConversations } from "../api/getConversations";
@@ -15,7 +16,7 @@ import {
   getCoachConversation,
 } from "./coachConversation";
 
-const DEFAULT_AVATAR = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
+const DEFAULT_AVATAR = DEFAULT_AVATAR_URL;
 
 const resolveAvatarUrl = (path) => {
   if (!path) return DEFAULT_AVATAR;
@@ -378,10 +379,7 @@ function ConversationList({
                   src={imageSrc}
                   alt={otherUser?.username || "Participant"}
                   className="h-10 w-10 rounded-full object-cover sm:h-12 sm:w-12"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = DEFAULT_AVATAR;
-                  }}
+                  onError={handleAvatarError}
                 />
                 {onlineUserIds.has(otherUser?.id) && (
                   <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />

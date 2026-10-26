@@ -1,4 +1,5 @@
 import { BASE_URL_IMG } from "../../../constants/constants";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
 import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
 import { useNavigate } from "react-router-dom";
@@ -9,7 +10,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CallRoundedIcon from "@mui/icons-material/CallRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
 
-const DEFAULT_AVATAR = `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`;
+const DEFAULT_AVATAR = DEFAULT_AVATAR_URL;
 
 const resolveAvatarUrl = (path) => {
   if (!path) return DEFAULT_AVATAR;
@@ -67,10 +68,7 @@ const ChatHeader = ({
         src={normalizedImageSrc}
         alt={otherUser.username}
         className="h-9 w-9 cursor-pointer rounded-full border border-white object-cover shadow-[0_8px_18px_-10px_rgba(15,23,42,0.35)] ring-1 ring-slate-200 sm:h-11 sm:w-11"
-        onError={(e) => {
-          e.currentTarget.onerror = null;
-          e.currentTarget.src = DEFAULT_AVATAR;
-        }}
+        onError={handleAvatarError}
         onClick={() => navigate(`/people/${encodeURIComponent(otherUser.username)}`)}
       />
       <div className="min-w-0 flex-1">

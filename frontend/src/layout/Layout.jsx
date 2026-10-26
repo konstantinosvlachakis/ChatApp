@@ -5,10 +5,11 @@ import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
+import { DEFAULT_AVATAR_URL } from "../constants/avatar";
 import CoachAvatar from "../components/CoachAvatar";
 import { clearClientSessionData, getLegacyAccessToken } from "../utils/auth";
 
-const DEFAULT_PROFILE_AVATAR = `${BASE_URL}/media/profile_images/MainAfter.jpg`;
+const DEFAULT_PROFILE_AVATAR = DEFAULT_AVATAR_URL;
 
 const resolveAvatarUrl = (image) => {
   if (!image) return DEFAULT_PROFILE_AVATAR;

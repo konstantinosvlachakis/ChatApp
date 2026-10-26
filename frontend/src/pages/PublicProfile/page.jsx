@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BASE_URL } from "../../constants/constants";
 import { BASE_URL_IMG } from "../../constants/constants";
+import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
 import { createOrGetConversation } from "../Community/api/conversation";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
@@ -66,8 +67,7 @@ const PublicProfilePage = () => {
 
   const imageUrl = useMemo(
     () =>
-      resolveMediaUrl(profile?.profile_image_url) ||
-      `${BASE_URL_IMG}/media/profile_images/MainAfter.jpg`,
+      resolveMediaUrl(profile?.profile_image_url) || DEFAULT_AVATAR_URL,
     [profile]
   );
 

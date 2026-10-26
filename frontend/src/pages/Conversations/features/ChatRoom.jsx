@@ -11,6 +11,7 @@ import { pinMessage } from "../api/pinMessage";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { BASE_URL, getWebSocketBaseUrl } from "../../../constants/constants";
+import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { useUser } from "../../../context/UserContext";
 import { usePresence } from "../../../context/PresenceContext";
 import { markConversationRead } from "../api/markConversationRead";
@@ -20,7 +21,6 @@ import { getLegacyAccessToken } from "../../../utils/auth";
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-const DEFAULT_AVATAR = "/media/profile_images/MainAfter.jpg";
 const SOCKET_RECONNECT_DELAYS_MS = [800, 1500, 3000, 5000];
 const SCROLL_BOTTOM_THRESHOLD_PX = 72;
 // Close codes the backend uses to reject unauthenticated/unauthorised sockets.
@@ -55,7 +55,7 @@ const formatDuration = (seconds) => {
 };
 
 const resolveAvatarUrl = (path) => {
-  if (!path) return `${BASE_URL}${DEFAULT_AVATAR}`;
+  if (!path) return DEFAULT_AVATAR_URL;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   if (path.startsWith("/media/")) return `${BASE_URL}${path}`;
   if (path.startsWith("media/")) return `${BASE_URL}/${path}`;
