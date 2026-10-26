@@ -5,7 +5,7 @@ import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
-import { DEFAULT_AVATAR_URL } from "../constants/avatar";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../constants/avatar";
 import CoachAvatar from "../components/CoachAvatar";
 import { clearClientSessionData, getLegacyAccessToken } from "../utils/auth";
 
@@ -466,6 +466,7 @@ const Layout = () => {
                   <img
                     src={avatarUrl}
                     alt="Profile avatar"
+                    onError={handleAvatarError}
                     className="h-7 w-7 rounded-full border border-white/50 object-cover sm:h-8 sm:w-8"
                   />
                   <span className="max-w-[120px] truncate">{user?.username || "Account"}</span>
@@ -575,6 +576,7 @@ const Layout = () => {
                       loading="lazy"
                       decoding="async"
                       alt="Profile avatar"
+                      onError={handleAvatarError}
                       className="h-10 w-10 rounded-full border border-white/25 object-cover"
                     />
                     <div className="min-w-0">
