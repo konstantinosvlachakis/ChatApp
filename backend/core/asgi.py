@@ -10,7 +10,6 @@ https://docs.djangoproject.com/en/4.0/howto/deployment/asgi/
 import os
 import sys
 
-from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
 
@@ -28,8 +27,9 @@ from chatapp.routing import websocket_urlpatterns
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
-        "websocket": AuthMiddlewareStack(
-            URLRouter(websocket_urlpatterns)
-        ),
+        # Consumers authenticate the JWT themselves and never read
+        # scope["user"]/scope["session"], so no session/auth middleware (which
+        # would cost a session + user lookup on every handshake).
+        "websocket": URLRouter(websocket_urlpatterns),
     }
 )
