@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import dj_database_url
+import sentry_sdk
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -52,6 +53,31 @@ env = os.getenv("DJANGO_ENV")
 if not env:
     # Auto-detect production for Heroku/runtime DB environments.
     env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") else "local"
+
+
+def scrub_sentry_event(event, hint):
+    # Keep credentials and chat content out of error reports.
+    request = event.get("request") or {}
+    headers = request.get("headers") or {}
+    for header in list(headers):
+        if header.lower() in {"authorization", "cookie", "x-csrftoken"}:
+            headers[header] = "[Filtered]"
+    request.pop("cookies", None)
+    request.pop("data", None)
+    return event
+
+
+# Error monitoring is off unless SENTRY_DSN is set (e.g. Heroku config vars), so
+# local runs and tests never report. Traces are opt-in via SENTRY_TRACES_SAMPLE_RATE.
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=env,
+        release=os.getenv("HEROKU_SLUG_COMMIT") or os.getenv("SOURCE_VERSION"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        send_default_pii=False,
+        before_send=scrub_sentry_event,
+    )
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
