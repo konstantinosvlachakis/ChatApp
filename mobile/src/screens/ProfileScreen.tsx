@@ -23,6 +23,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
+import { toastApiError } from "../services/toast";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
@@ -507,12 +508,8 @@ export function ProfileScreen() {
             payload.complementary_image_2_url || prev.complementary_image_2_url,
         };
       });
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.error ||
-        error?.response?.data?.detail ||
-        "Could not upload photo.";
-      Alert.alert("Upload failed", message);
+    } catch (error) {
+      toastApiError(error, "Could not upload photo.", "Upload failed");
     } finally {
       setUploadingSlot(null);
     }
@@ -545,12 +542,8 @@ export function ProfileScreen() {
       refreshProfile().catch(() => {});
       setIsEditProfileOpen(false);
       Alert.alert("Profile updated", "Your profile changes have been saved.");
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.error ||
-        error?.response?.data?.detail ||
-        "Could not update your profile.";
-      Alert.alert("Save failed", message);
+    } catch (error) {
+      toastApiError(error, "Could not update your profile.", "Save failed");
     } finally {
       setSavingProfile(false);
     }
@@ -587,12 +580,8 @@ export function ProfileScreen() {
       }));
       refreshProfile().catch(() => {});
       setIsMissionCatalogOpen(false);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.error ||
-        error?.response?.data?.detail ||
-        "Could not add this mission right now.";
-      Alert.alert("Mission not added", message);
+    } catch (error) {
+      toastApiError(error, "Could not add this mission right now.", "Mission not added");
     } finally {
       setAddingMissionLanguage(null);
     }
@@ -622,12 +611,8 @@ export function ProfileScreen() {
         };
       });
       refreshProfile().catch(() => {});
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.error ||
-        error?.response?.data?.detail ||
-        "Could not remove this mission right now.";
-      Alert.alert("Mission not removed", message);
+    } catch (error) {
+      toastApiError(error, "Could not remove this mission right now.", "Mission not removed");
     } finally {
       setRemovingMissionLanguage(null);
     }

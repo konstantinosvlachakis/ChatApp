@@ -25,6 +25,7 @@ import {
   unblockUser,
 } from "../services/api/auth";
 import { createOrGetConversation } from "../services/api/conversations";
+import { toastApiError } from "../services/toast";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
@@ -226,8 +227,8 @@ export function PublicProfileScreen() {
             prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false } : prev
           );
         }
-      } catch {
-        Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+      } catch (error) {
+        toastApiError(error, `Could not ${isBlocked ? "unblock" : "block"} this user.`, "Failed");
       } finally {
         setBlocking(false);
       }
@@ -241,8 +242,8 @@ export function PublicProfileScreen() {
       await reportUser({ username: profile.username, reason, details });
       Alert.alert("Report sent", "Thanks. We will review this report.");
       setReportModalOpen(false);
-    } catch {
-      Alert.alert("Failed", "Could not send this report.");
+    } catch (error) {
+      toastApiError(error, "Could not send this report.", "Failed");
     } finally {
       setReporting(false);
     }
@@ -265,8 +266,8 @@ export function PublicProfileScreen() {
           openFromBannerAt: Date.now(),
         },
       });
-    } catch {
-      Alert.alert("Failed", "Could not start a conversation.");
+    } catch (error) {
+      toastApiError(error, "Could not start a conversation.", "Failed");
     } finally {
       setStartingConversation(false);
     }

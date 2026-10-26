@@ -1,14 +1,31 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "../../config/api";
+import { reportApiFailure, reportApiSuccess } from "../connectivity";
+import { captureError } from "../monitoring";
 import { tokenStorage } from "../storage";
+import { ApiError, toApiError } from "./errors";
+
+export { ApiError, getErrorMessage, toApiError } from "./errors";
+
+/** Default per-request timeout; pass `{ timeout }` per call for slow endpoints. */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+export const COACH_TIMEOUT_MS = 35_000; // server deadline is 25 s (Heroku cuts at 30 s)
+export const UPLOAD_TIMEOUT_MS = 60_000;
+
+/** GET/HEAD retries: total attempts, backoff base/cap, and the longest Retry-After we wait. */
+export const MAX_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 400;
+const RETRY_MAX_DELAY_MS = 5_000;
+const MAX_RETRY_AFTER_SECONDS = 30;
 
 export const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
-  timeout: 15000,
+  timeout: DEFAULT_TIMEOUT_MS,
 });
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
-  _retry?: boolean;
+  _retry?: boolean; // 401 refresh already attempted
+  _attempt?: number; // 1-based attempt number for GET/HEAD retries
 };
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -28,7 +45,7 @@ export const refreshAccessToken = async () => {
           `${API_BASE_URL}/api/token/refresh/`,
           { refresh },
           {
-            timeout: 15000,
+            timeout: DEFAULT_TIMEOUT_MS,
             headers: {
               "Content-Type": "application/json",
             },
@@ -59,6 +76,45 @@ export const refreshAccessToken = async () => {
   return refreshPromise;
 };
 
+/** Exponential backoff with full jitter, or the server's Retry-After. */
+export function getRetryDelayMs(attempt: number, retryAfterSeconds: number | null) {
+  if (retryAfterSeconds != null) return Math.ceil(retryAfterSeconds * 1000);
+  const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+  return Math.round(ceiling / 2 + Math.random() * (ceiling / 2));
+}
+
+/** Resolves after `ms`, or rejects with an "aborted" ApiError if the signal fires. */
+export function sleep(ms: number, signal?: AbortSignal | null) {
+  return new Promise<void>((resolve, reject) => {
+    const abortError = () =>
+      new ApiError({ status: 0, code: "aborted", message: "The request was cancelled." });
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener?.("abort", onAbort);
+  });
+}
+
+/** Only idempotent reads are retried, and only for transient failures. */
+export function shouldRetry(method: string | undefined, error: ApiError, attempt: number) {
+  const verb = String(method || "get").toUpperCase();
+  if (verb !== "GET" && verb !== "HEAD") return false;
+  if (attempt >= MAX_ATTEMPTS || !error.retryable) return false;
+  if (error.retryAfterSeconds != null && error.retryAfterSeconds > MAX_RETRY_AFTER_SECONDS) {
+    return false;
+  }
+  return true;
+}
+
 api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await tokenStorage.getAccessToken();
   if (token) {
@@ -73,28 +129,56 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    reportApiSuccess();
+    return response;
+  },
   async (error) => {
-    const originalRequest = error.config as RetryableRequestConfig | undefined;
+    // Already normalised by a nested (replayed) request.
+    if (error instanceof ApiError) throw error;
+
+    const originalRequest = error?.config as RetryableRequestConfig | undefined;
     const status = error?.response?.status;
 
-    if (!originalRequest || status !== 401 || originalRequest._retry) {
-      throw error;
+    // 401: refresh the access token once (single-flight) and replay the request.
+    if (
+      originalRequest &&
+      status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes("/token/refresh/")
+    ) {
+      originalRequest._retry = true;
+      const nextAccessToken = await refreshAccessToken();
+      if (nextAccessToken) {
+        originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
+        return api(originalRequest);
+      }
     }
 
-    if (originalRequest.url?.includes("/token/refresh/")) {
-      throw error;
+    const apiError = toApiError(error);
+    if (apiError.isNetworkError) {
+      reportApiFailure("network");
+    } else if (apiError.status >= 502 && apiError.status <= 504) {
+      reportApiFailure("server");
+    } else if (apiError.status > 0) {
+      reportApiSuccess();
     }
 
-    originalRequest._retry = true;
-    const nextAccessToken = await refreshAccessToken();
-
-    if (!nextAccessToken) {
-      throw error;
+    if (originalRequest && !apiError.isAborted) {
+      const attempt = originalRequest._attempt || 1;
+      if (shouldRetry(originalRequest.method, apiError, attempt)) {
+        originalRequest._attempt = attempt + 1;
+        await sleep(
+          getRetryDelayMs(attempt, apiError.retryAfterSeconds),
+          originalRequest.signal as AbortSignal | undefined
+        );
+        return api(originalRequest);
+      }
     }
 
-    originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
-
-    return api(originalRequest);
+    if (apiError.status >= 500) {
+      captureError(apiError);
+    }
+    throw apiError;
   }
 );

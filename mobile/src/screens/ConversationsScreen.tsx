@@ -49,6 +49,8 @@ import {
   sendConversationMessage,
   translateConversationMessage,
 } from "../services/api/conversations";
+import { getErrorMessage } from "../services/api/errors";
+import { toastApiError } from "../services/toast";
 import { startPresenceHeartbeat } from "../services/realtime";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
@@ -550,6 +552,9 @@ export function ConversationsScreen() {
 
       // No socket relay: the server broadcasts message_created to the chat room.
       await loadConversations(true);
+    } catch (error) {
+      // The draft stays in the input so the user can retry.
+      toastApiError(error, "Could not send your message.", "Message not sent");
     } finally {
       setSending(false);
     }
@@ -589,10 +594,8 @@ export function ConversationsScreen() {
       const { id } = await createOrGetConversation(username);
       setParticipantUsername("");
       await openConversation(id);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.error || error?.response?.data?.detail || "Could not open chat.";
-      Alert.alert("Chat error", message);
+    } catch (error) {
+      Alert.alert("Chat error", getErrorMessage(error, "Could not open chat."));
     } finally {
       setCreatingConversation(false);
     }
@@ -620,8 +623,8 @@ export function ConversationsScreen() {
         const updated = await pinConversationMessage(message.id, !message.is_pinned);
         applyMessageUpdate(updated);
         await loadConversations(true);
-      } catch {
-        Alert.alert("Pin failed", "Could not update this pinned message.");
+      } catch (error) {
+        toastApiError(error, "Could not update this pinned message.", "Pin failed");
       }
     },
     [applyMessageUpdate, loadConversations]
@@ -642,8 +645,8 @@ export function ConversationsScreen() {
           username,
           isBlocked: Boolean(profile.is_blocked_by_me),
         });
-      } catch {
-        Alert.alert("Unavailable", "Could not load chat options right now.");
+      } catch (error) {
+        toastApiError(error, "Could not load chat options right now.", "Unavailable");
       } finally {
         setChatActionLoading(false);
       }
@@ -673,8 +676,8 @@ export function ConversationsScreen() {
         await loadConversations(true);
         Alert.alert("Blocked", `${username} has been blocked.`);
       }
-    } catch {
-      Alert.alert("Failed", `Could not ${isBlocked ? "unblock" : "block"} this user.`);
+    } catch (error) {
+      toastApiError(error, `Could not ${isBlocked ? "unblock" : "block"} this user.`, "Failed");
     } finally {
       setChatActionLoading(false);
     }
@@ -686,8 +689,8 @@ export function ConversationsScreen() {
         const nextEmoji = message.current_user_reaction === emoji ? "" : emoji;
         const updated = await reactToMessage(message.id, nextEmoji);
         applyMessageUpdate(updated);
-      } catch {
-        Alert.alert("Reaction failed", "Could not update reaction.");
+      } catch (error) {
+        toastApiError(error, "Could not update reaction.", "Reaction failed");
       } finally {
         setReactionPickerMessageId(null);
       }
@@ -1197,8 +1200,8 @@ export function ConversationsScreen() {
         });
         // The server broadcasts message_deleted to the chat room after the DELETE.
         loadConversations(true).catch(() => {});
-      } catch {
-        Alert.alert("Delete failed", "Could not delete this message.");
+      } catch (error) {
+        toastApiError(error, "Could not delete this message.", "Delete failed");
       }
     },
     [loadConversations]
@@ -1223,7 +1226,7 @@ export function ConversationsScreen() {
           Alert.alert("Translation", translatedText);
           return;
         }
-        Alert.alert("Translation failed", "Could not translate this message.");
+        toastApiError(error, "Could not translate this message.", "Translation failed");
       }
     },
     [user?.base_translate_language]
@@ -1861,8 +1864,8 @@ export function ConversationsScreen() {
               await reportUser({ username: reportTargetUsername, reason, details });
               Alert.alert("Report sent", "Thanks. We will review this report.");
               setReportTargetUsername(null);
-            } catch {
-              Alert.alert("Failed", "Could not send this report.");
+            } catch (error) {
+              toastApiError(error, "Could not send this report.", "Failed");
             } finally {
               setChatActionLoading(false);
             }

@@ -33,6 +33,7 @@ import {
   resetCoachConversation,
 } from "../features/coachConversation";
 import { sendCoachMessage } from "../services/api/coach";
+import { getErrorMessage } from "../services/api/errors";
 import type { ChatMessage } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
@@ -244,10 +245,12 @@ export function CoachChatScreen() {
         coachReply,
       ]);
       startReplyAnimation(coachReply.id, coachReply.text || "");
-    } catch (error: any) {
-      const fallbackMessage =
-        error?.response?.data?.detail ||
-        "The coach is unavailable right now. Please try again in a moment.";
+    } catch (error) {
+      // Shown as the coach's reply bubble (the chat itself is the feedback surface).
+      const fallbackMessage = getErrorMessage(
+        error,
+        "The coach is unavailable right now. Please try again in a moment."
+      );
       const coachReply: ChatMessage = {
         id: Date.now() + 2,
         text: fallbackMessage,

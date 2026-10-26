@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, UPLOAD_TIMEOUT_MS } from "./client";
 import { tokenStorage } from "../storage";
 import { clearConversationsCache } from "./conversations";
 import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
@@ -133,6 +133,7 @@ export async function uploadProfilePhoto(payload: {
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      timeout: UPLOAD_TIMEOUT_MS,
     }
   );
   return response.data as Partial<Profile>;

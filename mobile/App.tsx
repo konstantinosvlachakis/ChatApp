@@ -30,6 +30,11 @@ import { CoachAvatar } from "./src/components/CoachAvatar";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import { fontFamilies } from "./src/theme/typography";
+import { ToastHost } from "./src/components/ToastHost";
+import { initMonitoring, wrapRoot } from "./src/services/monitoring";
+
+// No-op unless EXPO_PUBLIC_SENTRY_DSN is set at build time.
+initMonitoring();
 
 function LaunchScreen({
   visible,
@@ -205,11 +210,12 @@ function AppContent() {
         freezeForDebug={freezeLaunchForDebug}
         onHidden={handleLaunchHidden}
       />
+      <ToastHost />
     </View>
   );
 }
 
-export default function App() {
+function App() {
   const [fontsLoaded] = useFonts({
     Sora_600SemiBold,
     Sora_700Bold,
@@ -236,6 +242,8 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+export default wrapRoot(App);
 
 const launchStyles = StyleSheet.create({
   backdrop: {

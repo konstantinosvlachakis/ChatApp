@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { refreshAccessToken } from "../services/api/client";
+import { setSocketReconnecting } from "../services/connectivity";
 import { fetchConversations } from "../services/api/conversations";
 import {
   SOCKET_AUTH_CLOSE_CODES,
@@ -298,6 +299,7 @@ function AppTabs() {
 
       socket.onopen = () => {
         reconnectAttempt = 0;
+        setSocketReconnecting(false);
         authRefreshUsed = false;
         stopHeartbeat?.();
         stopHeartbeat = startPresenceHeartbeat(socket);
@@ -321,6 +323,7 @@ function AppTabs() {
         presenceUpdatesSocketRef.current = null;
         if (SOCKET_AUTH_CLOSE_CODES.has(event?.code ?? 0)) {
           // Usually an expired access token: refresh once and retry, else stop.
+          setSocketReconnecting(false);
           if (authRefreshUsed) return;
           authRefreshUsed = true;
           refreshAccessToken()
@@ -330,6 +333,8 @@ function AppTabs() {
             .catch(() => {});
           return;
         }
+        // Flag the banner only once a reconnect has already failed (no flicker on blips).
+        if (reconnectAttempt > 0) setSocketReconnecting(true);
         scheduleReconnect();
       };
     };
@@ -348,6 +353,7 @@ function AppTabs() {
       appStateSubscription.remove();
       clearReconnectTimeout();
       closeSocket();
+      setSocketReconnecting(false);
     };
   }, [loadUnreadChatsCount, user?.user_id, wsBaseUrl]);
 

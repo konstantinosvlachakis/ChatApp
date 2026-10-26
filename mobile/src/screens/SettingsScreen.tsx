@@ -24,6 +24,7 @@ import {
   unblockUser,
   updateSettings,
 } from "../services/api/auth";
+import { toastApiError } from "../services/toast";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 import type { ModerationSummary } from "../types";
@@ -86,8 +87,8 @@ export function SettingsScreen() {
       });
       await refreshProfile();
       Alert.alert("Saved", "Your preferences have been updated.");
-    } catch {
-      Alert.alert("Failed", "Could not update settings.");
+    } catch (error) {
+      toastApiError(error, "Could not update settings.", "Failed");
     } finally {
       setSaving(false);
     }
@@ -140,8 +141,8 @@ export function SettingsScreen() {
               setDeletingAccount(true);
               await deleteAccount();
               await logout();
-            } catch {
-              Alert.alert("Failed", "Could not delete your account.");
+            } catch (error) {
+              toastApiError(error, "Could not delete your account.", "Failed");
             } finally {
               setDeletingAccount(false);
             }
@@ -186,8 +187,8 @@ export function SettingsScreen() {
             }));
             await refreshProfile().catch(() => {});
             Alert.alert("Unblocked", `${username} has been removed from your blocked list.`);
-          } catch {
-            Alert.alert("Failed", "Could not unblock this user.");
+          } catch (error) {
+            toastApiError(error, "Could not unblock this user.", "Failed");
           } finally {
             setUnblockingUsername(null);
           }
