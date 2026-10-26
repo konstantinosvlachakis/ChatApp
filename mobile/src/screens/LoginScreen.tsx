@@ -14,6 +14,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
+import { getErrorMessage } from "../services/api/errors";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 
@@ -30,13 +31,8 @@ export function LoginScreen() {
     try {
       setLoading(true);
       await login(email.trim(), password);
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        "Check your credentials and API base URL.";
-      Alert.alert("Login failed", message);
+    } catch (err) {
+      Alert.alert("Login failed", getErrorMessage(err, "Check your credentials and API base URL."));
     } finally {
       setLoading(false);
     }

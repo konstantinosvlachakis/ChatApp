@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, COACH_TIMEOUT_MS } from "./client";
 
 export async function sendCoachMessage(payload: {
   message: string;
@@ -10,6 +10,6 @@ export async function sendCoachMessage(payload: {
     target_language: string;
     native_language: string;
     mode: string;
-  }>("/coach/chat/", payload);
+  }>("/coach/chat/", payload, { timeout: COACH_TIMEOUT_MS });
   return response.data;
 }

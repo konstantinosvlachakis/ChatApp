@@ -24,6 +24,7 @@ import {
   type PracticeLeaderboardEntry,
   type PracticeStats,
 } from "../services/api/practice";
+import { getErrorMessage } from "../services/api/errors";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 
@@ -216,7 +217,7 @@ export function PracticeScreen() {
       setOverlayVisible(false);
       resetVoiceState(pickVoiceSentence(preferredLanguage));
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Could not load practice.");
+      setError(getErrorMessage(err, "Could not load practice."));
     } finally {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
@@ -350,7 +351,7 @@ export function PracticeScreen() {
       setFeedbackTone("neutral");
       setSubmitted(false);
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Could not load next challenge.");
+      setError(getErrorMessage(err, "Could not load next challenge."));
     }
   };
 
@@ -391,7 +392,7 @@ export function PracticeScreen() {
       }, 2000);
       return true;
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Could not submit answer.");
+      setError(getErrorMessage(err, "Could not submit answer."));
       return false;
     } finally {
       setSubmitting(false);

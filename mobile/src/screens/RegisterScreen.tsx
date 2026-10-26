@@ -14,6 +14,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { register } from "../services/api/auth";
+import { getErrorMessage } from "../services/api/errors";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 
@@ -45,12 +46,8 @@ export function RegisterScreen() {
       });
       Alert.alert("Success", "Account created. You can log in now.");
       navigation.navigate("Login");
-    } catch (err: any) {
-      const message =
-        err?.response?.data?.error ||
-        err?.response?.data?.detail ||
-        "Could not create account.";
-      Alert.alert("Sign up failed", message);
+    } catch (err) {
+      Alert.alert("Sign up failed", getErrorMessage(err, "Could not create account."));
     } finally {
       setLoading(false);
     }
