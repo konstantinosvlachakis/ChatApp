@@ -19,6 +19,7 @@ Each file has a "verified at commit" stamp; diff from that commit and re-read on
 - Never change websocket event names/payloads without updating web and mobile handlers in the same PR.
 - Query counts are guarded by `backend/chatapp/tests/test_query_counts.py`; new list endpoints need prefetching and a bound test.
 - Any PR that changes an endpoint, event, model, cache key or flow updates the matching system-map file and its stamp.
+- All client calls go through the API client (web `frontend/src/lib/api.ts`, mobile `mobile/src/services/api/client.ts`), and every API error uses the envelope `{"error": str, "code": str, ...}` (`backend/core/exceptions.py`).
 
 ## Git and PRs
 - Author every commit as `konstantinosvlachakis` with the email from that author's history: `git -c user.name=konstantinosvlachakis -c user.email="$(git log --author='^konstantinosvlachakis <' -1 --format=%ae)" commit ...` (also for rebases). Never add `Co-Authored-By` or any Claude attribution to commits or PRs.

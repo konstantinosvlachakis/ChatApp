@@ -62,6 +62,15 @@ accept-then-close so clients see the code, exponential reconnect backoff + jitte
 mobile heartbeat + older-message paging, profile-view cache fix, locked conversation get-or-create,
 createsuperuser no longer crashes, login shows backend `message`.
 
+## API & resilience PR (`feat/api-resilience`, stacked on `fix/reliability`, 2026-10-26)
+One error envelope `{error, code, ...}` for every API error (DRF handler + middleware; legacy `message`/`detail`
+kept one release), JSON 404 for unknown `/api/*`, 405 for non-GET SPA paths, `GET /api/health/`, request ids
+(`X-Request-ID`, logs, 500 bodies, Sentry tag), optional Sentry on backend (`SENTRY_DSN`, merged from PR #23
+`chore/sentry-backend`), web (`REACT_APP_SENTRY_DSN`, lazy chunk) and mobile (`EXPO_PUBLIC_SENTRY_DSN`, needs a
+native build). Web: single API client `lib/api.ts` (timeouts, GET-only retries, ApiError), toasts, connectivity
+banner, route error boundaries, logger. Mobile: same ApiError/retry policy, ToastHost banner + toasts.
+Follow-up: drop the legacy `message`/`detail` error keys after the next mobile release.
+
 ## Feature roadmap (language-exchange focus) — chosen 2026-10-26
 | Feature | Status |
 |---|---|
