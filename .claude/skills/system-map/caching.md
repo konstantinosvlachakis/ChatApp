@@ -1,7 +1,7 @@
 # Caching (backend, web, mobile)
 
 Purpose: every cache layer, its keys, TTLs and what invalidates each one, so you can change data flows without stale-data bugs.
-**Verified at commit c1d44c5 (2026-10-26); updated in PR `fix/reliability`.**
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `feat/api-resilience`.**
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/settings.py backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/throttles.py frontend/src/libs frontend/src/pages/Conversations/api frontend/src/pages/Conversations/features/ChatRoom.jsx frontend/src/pages/Conversations/features/ConversationList.jsx frontend/src/layout/Layout.jsx frontend/src/context/UserContext.tsx frontend/src/utils/auth.ts mobile/src/services mobile/src/features`. Re-read only the files that changed, then update this file. To find new keys: `grep -rn "cache\.\(get\|set\|add\|incr\|delete\)" backend/chatapp`.
 
 ## Backend infrastructure (core/settings.py)
@@ -10,7 +10,7 @@ Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/settings.py backend/chat
 | `CACHES["default"]` | `django.core.cache.backends.redis.RedisCache`, LOCATION `REDIS_CACHE_URL` or the Redis URL, socket connect/read timeout 2 s | `LocMemCache` `"chatapp-default-cache"`: **per process**, default MAX_ENTRIES 300 with culling |
 | `CHANNEL_LAYERS["default"]` | `channels_redis.core.RedisChannelLayer` | `InMemoryChannelLayer` (per process) |
 
-- Only the `default` alias exists. There's no `cache_page`, no template/session cache and no HTTP Cache-Control code. Sessions use the DB (`SESSION_ENGINE` db).
+- Only the `default` alias exists. There's no `cache_page` and no template/session cache. The only HTTP Cache-Control header is `no-store` on `/api/health/`. Sessions use the DB (`SESSION_ENGINE` db).
 - DB pool (production + Postgres only, `DB_POOL_ENABLED` default true): `CONN_MAX_AGE=0` and `OPTIONS.pool = {min_size: DB_POOL_MIN_SIZE (1), max_size: DB_POOL_MAX_SIZE (8), timeout: DB_POOL_TIMEOUT_SECONDS (10)}` (psycopg3). Local uses SQLite.
 - Version-key scheme (profile, profile-list, conversation-list): `get_*_cache_version` reads the version key, setting it to 1 with no expiry (`None`) if it's missing. `bump_*_cache_version` runs `cache.incr`, sets it to 2 on `ValueError` (missing key) and swallows any other error (best effort). Payload keys embed `v{n}`, so a bump orphans old payloads, which then expire by TTL.
 
@@ -32,6 +32,7 @@ Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/settings.py backend/chat
 | `practice:daily_library:v1:date:{YYYYMMDD}:lang:{lang}:bucket:{1-3}` | `get_or_build_daily_library` (also the `prewarm_daily_practice` command) | 36 h | date roll | **Shared** pool of generated challenges (list of dicts). Refilled when it has fewer than `PRACTICE_DAILY_LIBRARY_MIN_READY` (8) items, up to `PRACTICE_DAILY_LIBRARY_SIZE` (20). `get_challenge_answer` builds this key inline as the fallback for `dailygen:` ids |
 | `practice:daily_library_seen:v1:date:{YYYYMMDD}:user:{uid}:lang:{lang}:bucket:{b}` | `store_seen_daily_indexes` | 36 h | date roll; reset in memory when every index has been seen | Per user: pool indexes already served |
 | `practice:recent_signatures:v1:user:{uid}:lang:{lang}:bucket:{b}` | `store_recent_practice_signature` | 36 h | rolling (last 6) | Per user: recent sentences, used to avoid repeats |
+| `health:check:{uuid4 hex}` | `core/views.py:_check_cache` (`GET /api/health/`) | 10 s | deleted right after the read | Round-trip probe only; never read by anything else |
 | `throttle_{scope}_{ident}` (DRF `SimpleRateThrottle`) | DRF throttles (`chatapp/throttles.py` + defaults) | the rate's window | expiry | Scopes: `anon` (IP, 300/h), `user` (uid, 3000/h), `auth` (IP, 20/min, applied even when authenticated: `AuthRateThrottle.get_cache_key`), `translate` (uid, 60/min), `report` (uid, 20/h). Rates come from env vars `DRF_THROTTLE_*`. IP from `NUM_PROXIES` (1 in prod) |
 
 Not in the Django cache but still caching:

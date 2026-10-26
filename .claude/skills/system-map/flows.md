@@ -1,16 +1,16 @@
 # End-to-end flows — system map
 
 Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
-Verified at commit c1d44c5 (2026-10-26); updated in PR `fix/reliability`. Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp frontend/src mobile/src`.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `feat/api-resilience`. Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
 Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
 
 ## 1. Login + session
 **Web (httpOnly cookies + CSRF)**
 1. `index.js` → `initCsrfProtection()` (`utils/csrf.ts`). It patches `window.fetch` and the default `axios` interceptor for backend-origin requests: adds `credentials: include`, adds `X-CSRFToken` on unsafe methods, and adds `Authorization: Bearer` when a legacy token exists. `ensureCsrfToken` does `GET /api/csrf/` (`core/views.csrf`) and caches `csrfToken` in sessionStorage. `utils/axios.ts` instance does the same.
 2. `pages/LoginPage.jsx` `handleLogin` → `POST /api/token/ {email, password, remember_me}` → `auth_views.CustomObtainJWTToken` (throttle `auth`, no auth classes, so no CSRF needed). It sets the `lv_access` cookie (1 h) and `lv_refresh` cookie (7 d, or 30 d with remember_me) via `_set_auth_cookies`, and also returns `{access, refresh}` in JSON.
-3. `clearClientSessionData()` (`utils/auth.ts`). Django rotates the CSRF token on login, so the cached one is dropped. On localhost only, `setLegacyTokens`. Then `refreshUserProfile()` and navigate to `/profile`. A failed login shows the backend's `message` (token endpoint `{message, code}`), else `detail` (throttle), else "Invalid credentials."
+3. `clearClientSessionData()` (`utils/auth.ts`). Django rotates the CSRF token on login, so the cached one is dropped. On localhost only, `setLegacyTokens`. Then `refreshUserProfile()` and navigate to `/profile`. A failed login shows `ApiError.message` (the envelope's `error`, e.g. 401 `no_active_account`, 429 `throttled`, or the network/timeout text), else "Invalid credentials."
 4. Refresh (global): the patched `window.fetch` and both axios instances (default via `initCsrfProtection`, `utils/axios.ts` via `installSessionRefreshInterceptor`, all in `utils/csrf.ts`) treat a 401 from a backend URL as an expired access cookie, except for auth endpoints (`isAuthEndpoint`: `/api/token/`, `token/refresh/`, `login/`, `logout/`, `register/`, `csrf/`). They call `refreshSessionOnce()` (`utils/auth.ts`, single-flight around `refreshSession()` → `POST /api/token/refresh/` with no body; `CustomRefreshJWTToken` reads the `lv_refresh` cookie and re-sets the cookies) and replay the request once. If the refresh fails → `handleSessionExpired()`: `clearClientSessionData()` and, on a protected path, `window.location.assign("/login")`. A successful refresh dispatches `session-refreshed` on `window`; chat/presence sockets stopped by 4401/4403 reconnect once on it (and themselves call `refreshSessionOnce()` once when rejected). `fetchUserProfile` relies on this (no own retry). Refresh tokens are not rotated or blacklisted.
-5. Logout (`layout/Layout.jsx` `handleLogout`): `POST /api/presence/offline/` (keepalive) → `POST /api/logout/` (clears cookies) → close the presence socket → `clearClientSessionData` → `queryClient.clear()` → `/login`.
+5. Logout (`layout/Layout.jsx` `handleLogout`): `POST /api/presence/offline/` (best effort, 5 s timeout) → `POST /api/logout/` (clears cookies) → close the presence socket → `resetConnectivity()` → `clearClientSessionData` → `queryClient.clear()` → `/login`.
 
 **Mobile (Bearer + SecureStore)**
 1. `screens/LoginScreen` → `AuthContext.login` → `services/api/auth.login` → `POST /api/token/`. The tokens go to `tokenStorage` (`services/storage.ts`, expo-secure-store keys `lv_access_token`/`lv_refresh_token`). Then `refreshProfile()` → `GET /api/profile/`.
@@ -81,3 +81,24 @@ Web `pages/PublicProfile/page.jsx` / mobile `PublicProfileScreen` (and `Conversa
 
 ## 12. Presence lifecycle (summary)
 Connect a socket → `increment_presence` (if the user just came online → `presence_update` to contacts) → the presence socket sends `initial_online_users` → web and mobile heartbeat every 20 s (`last_seen` written at most every 60 s) → disconnect → `decrement_presence` (if that was the last socket → `presence_update` false). Logout (web) → `POST /api/presence/offline/`. Deploy → `reset_presence` in `Procfile` release. `is_online` is reported only if `last_seen` is under 90 s old. Details in `realtime-events.md`.
+
+## 13. Errors, retries, session refresh and connectivity
+**Backend**
+1. `RequestIdMiddleware` (first middleware, `core/observability.py`) takes a valid `X-Request-ID` or makes a uuid4 hex, binds it to a contextvar (log filter → `[request_id]` in every log line; Sentry tag) and sets `X-Request-ID` on the response.
+2. A DRF view raises → `core/exceptions.py:api_exception_handler` → envelope `{error, code, ...}` (429 adds `Retry-After`; unhandled → 500 `server_error` + `request_id`, traceback logged by `core.api`). A view that returns `{"error"}` itself gets a default `code` from `ApiErrorEnvelopeMiddleware`. Unknown `/api/*` → `api_not_found` JSON 404.
+3. Sentry (only with `SENTRY_DSN`; init in `core/settings.py`): `before_send=scrub_sentry_event` drops cookies/bodies, filters auth/cookie/CSRF headers and (via `core.observability.scrub_sentry_extras`) emails, user fields except id, breadcrumb data.
+
+**Web** (`frontend/src/lib/`)
+1. Call site → `api.get/post/patch/delete/upload("/api/...", ...)` (`lib/api.ts` → `lib/apiClient.ts`) → the `utils/axios.ts` instance: request interceptor adds `X-CSRFToken` on unsafe methods; response interceptor `installSessionRefreshInterceptor` handles a 401 with the single-flight `refreshSessionOnce()` and one replay (flow §1.4) — this happens **inside** one attempt.
+2. Each attempt has a timeout (`API_TIMEOUTS`: 15 s default, 60 s `upload`, 35 s coach). On failure the error is normalised to `ApiError` (`lib/apiError.ts`).
+3. Retry policy (`getRetryDelayMs`): only GET/HEAD, only `retryable` errors (network, timeout, 429, 502, 503, 504), at most 3 attempts. Delay = Retry-After if given (gives up if > 10 s), else 500 ms·2^(n-1) capped at 5 s with 50–100 % jitter. An `AbortSignal` cancels the request and any pending wait (`code: "aborted"`, never toasted).
+4. Every attempt reports to `lib/connectivity.ts`: unreachable failures (network/timeout/502–504) increment `apiFailureStreak`; any HTTP answer resets it. The presence socket in `layout/Layout.jsx` sets `socketReconnecting` once a reconnect attempt has failed and clears it on open/auth close/unmount. `components/ConnectivityBanner.tsx` shows "You're offline" (`navigator.onLine` + online/offline events) or "Reconnecting…" (streak ≥ 2 or socket reconnecting) and, while the API is the cause, probes `GET /api/health/` every 10 s so it clears on recovery.
+5. Failed user actions call `toastApiError(error, "Couldn't …")` (`components/Toast`): errors are `role="alert"`, others `role="status"`, auto-dismiss, max 3, duplicates collapsed.
+6. Render errors (including react-query `useErrorBoundary` errors) hit `components/ErrorBoundary.tsx`: `LazyRoute` wraps each lazy route and `RouteErrorBoundary` wraps the Layout `<Outlet/>`; "Retry" resets the boundary and failed queries (reloads on a chunk-load error); navigation resets it.
+7. `lib/logger.ts`: console in dev/tests, silent in production; `logger.error` → `lib/sentry.ts:captureException` (only with `REACT_APP_SENTRY_DSN`; SDK loaded lazily after first paint; 4xx/network/aborted `ApiError`s are not reported; `request_id`, `api_code`, `http_status` tags).
+
+**Mobile** (`mobile/src/services/`)
+1. `api/client.ts` interceptor: 401 → single-flight `refreshAccessToken` + one replay (unchanged), then `toApiError` (`api/errors.ts`), connectivity reporting (`connectivity.ts`), GET/HEAD retry with backoff (400 ms base, 5 s cap, Retry-After ≤ 30 s, max 3 attempts), 5xx → `monitoring.ts:captureError`; rejects with `ApiError`.
+2. `components/ToastHost.tsx` (mounted once in `App.tsx`) renders the offline/"Reconnecting…" banner (API failure streaks + `RootNavigator` presence socket) and toasts from `toast.ts` (`toastApiError`).
+3. Sentry (`monitoring.ts`) only with `EXPO_PUBLIC_SENTRY_DSN`; native module → needs a dev-client/EAS build.
+
