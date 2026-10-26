@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BASE_URL_IMG } from "../../constants/constants";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { getUserLocation } from "./utils/getUserLocation";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
@@ -147,7 +148,7 @@ const ProfilePage = () => {
     }
   };
 
-  const imageUrl = resolveMediaUrl(user.profile_image_url) || "/default-avatar.png";
+  const imageUrl = resolveMediaUrl(user.profile_image_url) || DEFAULT_AVATAR_URL;
   const avatarRingColor = /^#[0-9a-fA-F]{6}$/.test(user.avatar_ring_color || "")
     ? user.avatar_ring_color
     : "#1b7f79";
@@ -182,6 +183,7 @@ const ProfilePage = () => {
             <img
               src={imageUrl}
               alt="Profile"
+              onError={handleAvatarError}
               className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
             />
           </div>
