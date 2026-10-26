@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import CircularProgress from "@mui/material/CircularProgress";
 import axios from "axios";
 import { BASE_URL } from "../constants/constants";
 import { useUser } from "../context/UserContext";
@@ -163,7 +162,25 @@ const LoginPage = () => {
           disabled={loading}
           className="w-full rounded-full bg-[#14314a] py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(20,49,74,0.22)] transition hover:bg-[#10263a] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? <CircularProgress size={20} color="inherit" /> : "Log in"}
+          {loading ? (
+            <svg
+              className="inline-block h-5 w-5 animate-spin align-middle"
+              viewBox="0 0 24 24"
+              fill="none"
+              role="progressbar"
+              aria-label="Signing in"
+            >
+              <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+              <path
+                d="M21.5 12a9.5 9.5 0 0 0-9.5-9.5"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+          ) : (
+            "Log in"
+          )}
         </button>
 
         <div className="hidden gap-3 rounded-[1.6rem] border border-[#d6e0e8] bg-[#f7fafc] px-4 py-3.5 sm:grid sm:grid-cols-3">

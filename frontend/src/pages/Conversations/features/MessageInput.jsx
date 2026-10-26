@@ -1,11 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import { EmojiPickerWrapper } from "./EmojiPickerWrapper";
+import React, { Suspense, useState, useRef, useEffect, useMemo } from "react";
 import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+// emoji-picker-element is sizeable; only fetch it the first time the picker is opened.
+const EmojiPickerWrapper = React.lazy(() =>
+  import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
+);
 
 const MessageInput = ({
   onSendMessage,
@@ -369,7 +373,11 @@ const MessageInput = ({
           ref={emojiPickerRef}
           className="absolute bottom-[calc(100%+0.9rem)] right-14 z-50 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
         >
-          <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
+          <Suspense
+            fallback={<div className="px-6 py-4 text-xs text-slate-500">Loading emoji...</div>}
+          >
+            <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
+          </Suspense>
         </div>
       )}
 

@@ -5,10 +5,25 @@ import AuthLandingPage from "./pages/AuthLandingPage";
 import AuthLayout from "./components/Auth/AuthLayout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
-import TermsAndConditionsPage from "./pages/TermsAndConditionsPage";
-import ConversationsPage from "./pages/Conversations/page";
 
+// Public legal pages are prerendered (scripts/prerender.js renders PublicAppRoutes, which
+// imports them eagerly), so lazy-loading them here only affects the client bundle.
+const loadPrivacyPolicyPage = () => import("./pages/PrivacyPolicyPage");
+const loadTermsAndConditionsPage = () => import("./pages/TermsAndConditionsPage");
+const loadConversationsPage = () => import("./pages/Conversations/page");
+
+// Start fetching the current route's chunk while the app is still booting (CSRF init runs
+// before the first render), so a direct visit doesn't wait on it after first paint.
+if (typeof window !== "undefined") {
+  const { pathname } = window.location;
+  if (pathname === "/privacy-policy") loadPrivacyPolicyPage();
+  else if (pathname === "/terms-and-conditions") loadTermsAndConditionsPage();
+  else if (pathname.startsWith("/conversations")) loadConversationsPage();
+}
+
+const PrivacyPolicyPage = React.lazy(loadPrivacyPolicyPage);
+const TermsAndConditionsPage = React.lazy(loadTermsAndConditionsPage);
+const ConversationsPage = React.lazy(loadConversationsPage);
 const ProfilePage = React.lazy(() => import("./pages/Profile/page"));
 const EditProfilePage = React.lazy(() => import("./pages/Profile/EditProfilePage"));
 const CommunityPage = React.lazy(() => import("./pages/Community/page"));
@@ -21,8 +36,22 @@ const ComparePlansPage = React.lazy(() => import("./pages/ComparePlansPage"));
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<AuthLandingPage />} />
-    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-    <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+    <Route
+      path="/privacy-policy"
+      element={
+        <Suspense fallback={null}>
+          <PrivacyPolicyPage />
+        </Suspense>
+      }
+    />
+    <Route
+      path="/terms-and-conditions"
+      element={
+        <Suspense fallback={null}>
+          <TermsAndConditionsPage />
+        </Suspense>
+      }
+    />
 
     <Route element={<AuthLayout />}>
       <Route path="/login" element={<LoginPage />} />

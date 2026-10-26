@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import CoachAvatar from "../CoachAvatar";
 
 const defaultHighlights = [
@@ -38,11 +37,9 @@ const AuthShell = ({
             {accentLabel}
           </p>
         </div>
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55 }}
-          className="hidden flex-1 px-1 py-4 text-center sm:px-2 sm:py-5 lg:block lg:px-4 lg:py-3 lg:text-left"
+        <div
+          style={{ "--lv-rise-y": "18px", "--lv-rise-duration": "0.55s" }}
+          className="lv-rise hidden flex-1 px-1 py-4 text-center sm:px-2 sm:py-5 lg:block lg:px-4 lg:py-3 lg:text-left"
         >
           <Link
             to="/"
@@ -75,13 +72,15 @@ const AuthShell = ({
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08 }}
-          className="w-full max-w-2xl flex-1 lg:max-w-[42rem]"
+        <div
+          style={{
+            "--lv-rise-y": "24px",
+            "--lv-rise-duration": "0.6s",
+            "--lv-rise-delay": "0.08s",
+          }}
+          className="lv-rise w-full max-w-2xl flex-1 lg:max-w-[42rem]"
         >
           <div className="flex flex-col rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(248,251,255,0.97),rgba(239,246,252,0.95))] p-4 shadow-[0_20px_64px_rgba(3,11,20,0.26)] sm:p-7 lg:min-h-[46rem] lg:justify-center lg:rounded-[2rem] lg:p-7 xl:p-8">
             <div className="mb-4 text-center sm:mb-5 lg:mb-4 lg:text-left">
@@ -98,7 +97,7 @@ const AuthShell = ({
             {children}
             {footer ? <div className="mt-5 lg:mt-4">{footer}</div> : null}
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
