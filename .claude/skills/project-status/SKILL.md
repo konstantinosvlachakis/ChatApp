@@ -43,7 +43,6 @@ web socket room-leak fix, route guard, logout cleanup, mobile https-only release
 - Refresh tokens not rotated/blacklisted → logout doesn't revoke (backend + web + mobile change).
 - Legacy `/api/login/` + `Token` model issue non-expiring tokens; unused → delete.
 - Backend still accepts `?token=` on websockets; web has a localhost-only legacy token fallback. Remove both together.
-- Websocket chat relay still trusts client `attachmentUrl` (web scheme-checks it); should re-read from DB.
 - `/media/` served without auth (filenames now random) → signed/private delivery.
 - Practice points farmable by replaying answers.
 - Web profile page requests geolocation automatically and sends coords to a third-party geocoder → make opt-in.
@@ -53,8 +52,15 @@ web socket room-leak fix, route guard, logout cleanup, mobile https-only release
 ## Performance work (2026-10-26) — merged
 PRs #14–#18: STORAGES fix (attachments to Cloudinary, compressed static), Gemini 25s deadline,
 N+1 removal + migration 0031 indexes, presence to contacts only, psycopg3 pool, web bundle 202→94 KB.
-Follow-ups: mobile sends no heartbeat (appears offline after 90s); mobile needs older-message paging
-(then lower CONVERSATION_DETAIL_MESSAGE_LIMIT from 200); message list virtualization (new dep).
+Follow-ups: lower CONVERSATION_DETAIL_MESSAGE_LIMIT from 200 now that mobile pages older messages
+(keep mobile `DETAIL_MESSAGE_LIMIT` in sync); message list virtualization (new dep).
+
+## Reliability PR (`fix/reliability`, 2026-10-26)
+Server-broadcast `message_created`/`message_deleted` (client chat/delete relays dropped, per-user fields
+stripped from broadcasts), web global 401 refresh-and-retry + socket refresh on 4401/4403, ws rejections
+accept-then-close so clients see the code, exponential reconnect backoff + jitter (web, mobile RootNavigator),
+mobile heartbeat + older-message paging, profile-view cache fix, locked conversation get-or-create,
+createsuperuser no longer crashes, login shows backend `message`.
 
 ## Feature roadmap (language-exchange focus) — chosen 2026-10-26
 | Feature | Status |

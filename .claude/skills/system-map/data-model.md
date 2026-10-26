@@ -1,7 +1,7 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26).** Latest migration: `0031_query_perf_indexes`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PR `fix/reliability`.** Latest migration: `0031_query_perf_indexes`.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
 
 DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers nothing.
@@ -55,7 +55,7 @@ Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by
 | ws_connection_count | PositiveInt, default 0 |
 
 Meta: index `profile_username_upper_idx` on `Upper("username")` (for `username__iexact`).
-Manager: `create_user(username, password, **extra)` hashes the password. `create_superuser` sets `is_staff` / `is_superuser`, **but those fields don't exist, so it fails and the admin is unusable.**
+Manager: `create_user(username, password, **extra)` hashes the password. `create_superuser` (used by `manage.py createsuperuser`) lowercases the email and creates a **regular** account: there are no `is_staff` / `is_superuser` fields, so the Django admin stays unusable (it used to crash setting them).
 
 ### PracticeStats
 `user` OneToOne→Profile (`practice_stats`), points / xp / correct_answers / total_answers PositiveInt default 0, level PositiveInt default 1, preferred_language Char(50) `""`, updated_at auto_now. Index `pstats_points_idx` on `-points`. Created lazily with `get_or_create` in the practice views.
@@ -91,10 +91,10 @@ Unique constraint `uniq_message_user_target_translation` (message, user, target_
 Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed_profile, -updated_at); Meta `ordering = ["-updated_at"]`.
 
 ## Invariants and business rules
-- **Conversation = an unordered pair.** There is no DB uniqueness on the pair. `ConversationListView.post` looks up `Q(sender=u, receiver=p) | Q(sender=p, receiver=u)` and creates the conversation only if none exists (get-or-create without a lock, so concurrent requests can create duplicates). "sender" just means "who started it". Participant check everywhere: `request.user.id in (sender_id, receiver_id)`, otherwise 403. The consumer checks with `get_participant_details`.
-- That same `post` looks up the participant with **exact `username=`** (case-sensitive), unlike every other username lookup.
+- **Conversation = an unordered pair.** There is no DB uniqueness on the pair (a unique index on least/greatest ids would fail on existing duplicates without a merge migration, so it was not added). `ConversationListView.post` runs get-or-create in `transaction.atomic()` after `select_for_update` on the lower-id participant's Profile row (serialises concurrent creates for the pair on Postgres; SQLite serialises writes anyway), matches `Q(sender=u, receiver=p) | Q(sender=p, receiver=u)` ordered by id, so legacy duplicates resolve to the oldest. "sender" just means "who started it". Participant check everywhere: `request.user.id in (sender_id, receiver_id)`, otherwise 403. The consumer checks with `get_participant_details`.
+- That same `post` looks up the participant case-insensitively (`get_profile_by_username_or_404`), like every other username lookup.
 - **Only Message creation bumps `Conversation.updated_at`** (`Message.save` on create). Edits, pins, status changes, reactions and deletes don't reorder the list. `Conversation.updated_at` also changes on `Conversation.save()` (auto_now), which only runs at creation. The list is ordered by `-updated_at, -id`.
-- **Messages are only persisted over REST** (`MessageListView.post`, multipart). The websocket `chat` frame is a relay that the client sends after the POST: the consumer doesn't write to the DB, the sender identity comes from the socket, and `attachmentUrl`/`replyTo` are trusted from the client.
+- **Messages are only persisted over REST** (`MessageListView.post`, multipart), and the view broadcasts the saved message (`message_created`) to the chat room; deletes broadcast `message_deleted`. The consumer ignores client `chat`/`deleteMessage` frames, so nothing unsaved or unauthorised reaches other clients.
 - **Status lifecycle sent → delivered → read** (it never goes backwards):
   - `delivered`: `mark_messages_delivered(qs, user)` marks the *recipient's* incoming `sent` messages. It's called on GET `/conversations/` (all of the user's conversations, before the cache check), GET `/conversations/<id>/` and GET `/conversations/<id>/messages/`. It broadcasts `message_status_event` per conversation and bumps both participants' list cache versions.
   - `read`: `mark_conversation_read_view` (PATCH) marks every non-read incoming message read (sent → read directly is allowed). It broadcasts `message_status_event` plus `conversation_update` (`messages_read`).
@@ -108,7 +108,7 @@ Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed
 
   `block_user_view` POST also **hard-deletes the pair's conversations (and their messages)**. Unblocking restores nothing. Already-open chat sockets aren't kicked out.
 - **Case-insensitive usernames**: `get_profile_by_username_or_404` uses `iexact` and, if legacy case-variant duplicates exist, falls back to the lowest id. Register and edit reject `iexact` collisions. Email collisions are also checked with `iexact`.
-- **ProfileView is update-then-create** (`record_profile_view`): UPDATE updated_at, else create in `atomic()`, catching IntegrityError on a race and retrying the update. Self-views are ignored. DB lock errors are swallowed. It always bumps the viewed user's profile cache version. Profile payloads show the 12 most recent viewers.
+- **ProfileView is update-then-create** (`record_profile_view`): UPDATE updated_at, else create in `atomic()`, catching IntegrityError on a race and retrying the update. Self-views are ignored. DB lock errors are swallowed. It bumps the viewed user's profile cache version only when the viewer wasn't already the most recent viewer. Profile payloads show the 12 most recent viewers.
 - **PracticeStats are updated with F()** in `practice_submit_view`: atomic increments; `level = (xp + awarded) / 100 + 1`, mirroring `practice_level_from_xp` (`xp // 100 + 1`). Buckets: level ≤2 → 1, ≤4 → 2, else 3. XP/points: correct +15/+10, wrong +3/+1. The leaderboard filters `preferred_language__iexact` and falls back to global.
 - **Presence**:
   - `ws_connection_count` counts open sockets (chat and presence) per user. `increment_presence` / `decrement_presence` (consumers.py) use only atomic filtered UPDATEs, and the count never goes negative.
