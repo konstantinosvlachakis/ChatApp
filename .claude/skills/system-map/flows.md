@@ -1,0 +1,83 @@
+# End-to-end flows — system map
+
+Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
+Verified at commit c1d44c5 (2026-10-26). Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp frontend/src mobile/src`.
+Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
+
+## 1. Login + session
+**Web (httpOnly cookies + CSRF)**
+1. `index.js` → `initCsrfProtection()` (`utils/csrf.ts`). It patches `window.fetch` and the default `axios` interceptor for backend-origin requests: adds `credentials: include`, adds `X-CSRFToken` on unsafe methods, and adds `Authorization: Bearer` when a legacy token exists. `ensureCsrfToken` does `GET /api/csrf/` (`core/views.csrf`) and caches `csrfToken` in sessionStorage. `utils/axios.ts` instance does the same.
+2. `pages/LoginPage.jsx` `handleLogin` → `POST /api/token/ {email, password, remember_me}` → `auth_views.CustomObtainJWTToken` (throttle `auth`, no auth classes, so no CSRF needed). It sets the `lv_access` cookie (1 h) and `lv_refresh` cookie (7 d, or 30 d with remember_me) via `_set_auth_cookies`, and also returns `{access, refresh}` in JSON.
+3. `clearClientSessionData()` (`utils/auth.ts`). Django rotates the CSRF token on login, so the cached one is dropped. On localhost only, `setLegacyTokens`. Then `refreshUserProfile()` and navigate to `/profile`.
+4. Refresh: only `fetchUserProfile` (`pages/Conversations/api/fetchUserProfile.ts`). On 401 it calls `refreshSession()` → `POST /api/token/refresh/` with no body; `CustomRefreshJWTToken` reads the `lv_refresh` cookie and re-sets the cookies; then it retries once. There is **no global 401 interceptor**: after the access cookie expires, other calls fail until the page reloads (see realtime-events gap 6). Refresh tokens are not rotated or blacklisted.
+5. Logout (`layout/Layout.jsx` `handleLogout`): `POST /api/presence/offline/` (keepalive) → `POST /api/logout/` (clears cookies) → close the presence socket → `clearClientSessionData` → `queryClient.clear()` → `/login`.
+
+**Mobile (Bearer + SecureStore)**
+1. `screens/LoginScreen` → `AuthContext.login` → `services/api/auth.login` → `POST /api/token/`. The tokens go to `tokenStorage` (`services/storage.ts`, expo-secure-store keys `lv_access_token`/`lv_refresh_token`). Then `refreshProfile()` → `GET /api/profile/`.
+2. `services/api/client.ts`: a request interceptor adds `Authorization: Bearer`. A response interceptor handles 401 with a single-flight `refreshAccessToken` (`POST /api/token/refresh/ {refresh}`), stores the new access token and replays the request once. If the refresh fails, `tokenStorage.clear()`. Bearer requests skip CSRF on the backend (`authentication.CookieOrHeaderJWTAuthentication` enforces CSRF only for cookie auth).
+3. Logout: `auth.logout` → `clearConversationsCache()` + `tokenStorage.clear()`. No server call: no presence/offline and no revoke.
+
+## 2. Registration
+Web `pages/RegisterPage.jsx` `handleRegister` / mobile `screens/RegisterScreen` → `services/api/auth.register` → `POST /api/register/ {username, email, dateOfBirth, password, nativeLanguage}` → `views.register_view`. It is throttled `auth` and runs with no auth. It validates the username regex, native language, email, uniqueness and Django password validators, then calls `Profile.objects.create_user` and `bump_profile_list_cache_version()` → 201. There is **no auto-login**: both clients navigate to Login.
+
+## 3. Opening the app
+- **Web**: `context/UserContext.tsx` `UserProvider` seeds from the localStorage `user_profile_cache:v1` (24 h TTL), then `refreshUserProfile` → `fetchUserProfile` → `GET /api/profile/` (`views.profile_view`, cached per user/host and keyed by `get_profile_cache_version`; includes `recent_profile_viewers`). On "Unauthorized" it clears session data and redirects to `/login` (unless on a public path). `Layout.jsx` redirects unauthenticated users, runs `useGetConversations` (query key `["conversationsList"]`, staleTime 15 s, refetch on focus) for the unread badge and browser `Notification`s, and opens the presence socket (`ws/presence/`, cookie auth, heartbeat every 20 s). It provides `PresenceProvider {onlineUserIds, subscribeToPresenceEvents}`.
+- **Mobile**: `context/AuthContext.tsx` `hydrate`: if there is a stored access token → `fetchProfile` (8 s timeout); on any failure → clear tokens and log out. `navigation/RootNavigator.tsx` opens a presence socket that only listens for `conversation_update`, which triggers `loadUnreadChatsCount` (sum of `unread_count`, throttled to every 4 s). It also shows a "Someone viewed your profile" banner from `user.recent_profile_viewers[0]`, compared against `profileViewNotificationStorage`.
+
+## 4. Opening a chat
+- **Web**: route `/conversations/:id` → `pages/Conversations/page.jsx` → `features/ChatRoomWrapper.jsx`
+  1. It fetches `GET /api/conversations/<id>/` (`ConversationDetailView.get`: participant check; `mark_messages_delivered` → `message_status` "delivered" to the room plus a cache bump for both users; embeds the latest 200 messages and `unread_count`).
+  2. `ChatRoom.jsx` seeds the messages, then `fetchMessagesPage(id, 1, {force})` → `GET /api/conversations/<id>/messages/?page=1&page_size=…`. `MessageListView.get` marks delivered again and returns newest-first pages reversed, plus `pinned_messages` and `pagination`. The result is cached in React Query `["conversationMessagesPage", id, page]`, and older pages load on scroll.
+  3. The read receipt is sent **once**, by a `ChatRoom` effect: `markConversationReadInList` (optimistic `unread_count=0`) + `markConversationRead` → `PATCH /api/conversations/<id>/read/` (`mark_conversation_read_view`). That view sets status=read, bumps both caches, and sends `message_status` "read" to the room plus `conversation_update`(`messages_read`) to both users. `initialUnreadCountRef` keeps the pre-read count for the "Unread messages" divider (`resolveFirstUnreadMessageId`).
+  4. It opens the chat socket `ws/socket-server/<id>/`.
+- **Mobile**: `screens/ConversationsScreen.tsx` `openConversation` → `fetchConversation` (detail with the embedded ≤200 messages; **no `/messages/` paging**) → anchor at the first unread message → `markConversationRead` → emit `conversations_refresh` → `loadConversations(true)`. The chat socket opens in an effect keyed on `selectedConversation.id` and `isFocused`.
+- Starting a chat from a profile: `pages/Community/api/conversation.ts` `createOrGetConversation` / mobile `services/api/conversations.createOrGetConversation` → `POST /api/conversations/ {participant}` (`ConversationListView.post`: rejects self and blocked pairs; get-or-create; cache bumps; returns `{id}`).
+
+## 5. Sending a message (REST persists, socket only relays)
+1. Web `ChatRoom.handleSendMessage`: adds an optimistic temp message (`id=Date.now()`) → `POST /api/conversations/<id>/messages/` multipart `{text?, attachment?, reply_to?}`. Mobile `sendMessage` → `sendConversationMessage` (text and reply only).
+2. `MessageListView.post`: participant and block checks; text ≤ 5000; attachment validated (§7); `reply_to` must be in the same conversation. `Message.objects.create` (bumps `Conversation.updated_at`) → `bump_conversation_list_cache_version` for both users → `broadcast_conversation_update(..., "message_created")` → 201 with `MessageSerializer` (`reload_message_for_serializer`).
+3. The client replaces the temp message, patches the list (web `applyNewMessageToConversationList`; mobile `bumpConversationToTop` + `loadConversations(true)`), then **relays** `{"type":"chat", id, message, attachmentUrl, replyTo}` on the chat socket, retrying once.
+4. `ChatConsumer.receive` → `group_send` `chat_message` with the server-side `sender`/`sender_id` → the peer's open chat socket gets `chat`.
+- **Persistence = REST only. Live delivery into an open chat = client relay only. List/badge refresh = server `conversation_update`.**
+- Edit: web `api/editMessage.ts` → `PATCH /api/messages/<id>/edit/` (sender only) → `conversation_update`(`message_updated`) + `message_edited` to the room. Mobile has no edit.
+- Delete: web `api/deleteMessage.ts` / mobile `deleteConversationMessage` → `DELETE /api/messages/<id>/delete/` (sender only, cache bumps, no broadcast) → the client relays `deleteMessage`.
+- Pin: `PATCH /api/messages/<id>/pin/ {is_pinned}` → `message_pinned` + `conversation_update`. React: `POST /api/messages/<id>/react/ {emoji}` (empty → remove; must be in `ALLOWED_REACTION_EMOJIS`) → `message_reaction`. Web calls it from `Conversation.jsx` `handleReact`; mobile from `reactToMessage`.
+
+## 6. Receiving a message
+- **In the open chat**: socket `chat`. Web `ChatRoom` appends it (dedupe by id), calls `markConversationRead` if incoming (→ `message_status` read to the sender + `conversation_update`), patches the list with `applyNewMessageToConversationList(..., {markRead})`, and invalidates the history cache. Mobile appends it (without the attachment), adjusts unread with `bumpConversationToTop`, marks read if focused, and reloads the list.
+- **Elsewhere**: presence `conversation_update` → web `ConversationList` invalidates `["conversationsList"]` → `GET /api/conversations/` (`ConversationListView.get`). That call first runs `mark_messages_delivered` (→ `message_status` delivered), then serves the cache keyed `conversation_list:v<version>:user:<id>:host:<host>`, or rebuilds it with a correlated `unread_count` subquery (messages not from me with status≠read) and `last_message`. `Layout.jsx` diffs `unread_count` per conversation to show a browser `Notification` and the nav badge. Mobile: `RootNavigator` refreshes the tab badge; `ConversationsScreen` reloads the list.
+- Web cache helpers (`pages/Conversations/api/conversationListCache.js`): `applyNewMessageToConversationList`, `markConversationReadInList`, `applyMessageStatusToConversationList`. Each returns false if it couldn't patch, and the caller then invalidates.
+
+## 7. Attachments
+- Web `features/MessageInput.jsx`: file picker, paste, or voice note (`MediaRecorder` → `audio/webm`). Client cap 25 MB (`MAX_UPLOAD_BYTES`). Sent as the multipart `attachment` field in §5. Mobile chat has no attachments; mobile profile photos use `uploadProfilePhoto`.
+- Server `views.validate_uploaded_file(file, allowed, max_bytes)`: content type must be in `ALLOWED_ATTACHMENT_TYPES` (jpeg/png/gif/webp/heic/heif, mp4/webm/mov, webm/ogg/mp3/wav/m4a/aac audio; no SVG); size ≤ `MESSAGE_ATTACHMENT_MAX_BYTES` (25 MB). The filename is replaced with `uuid4().hex + safe_ext`. Profile images (`update_profile_image`, `PATCH /api/profile/<user_id>/update-image/`, own id only) use `ALLOWED_IMAGE_TYPES` and ≤ `PROFILE_IMAGE_MAX_BYTES` (10 MB).
+- Storage: `settings.STORAGES["default"]` = `chatapp.storage.CloudinaryMediaStorage` when `CLOUDINARY_URL` is set, else `FileSystemStorage` (`MEDIA_ROOT`, served at `/media/` without auth). `CloudinaryMediaStorage` picks the `video` resource type for audio and video extensions, keeps the extension on the stored name, and builds URLs with `CloudinaryResource`. `views.build_media_url` makes absolute URLs and forces https on production hosts.
+
+## 8. AI coach
+Web `features/CoachChatRoom.jsx` / mobile `screens/CoachChatScreen.tsx` → `services/api/coach.sendCoachMessage` → `POST /api/coach/chat/ {message, target_language, mode}` → `views.coach_chat_view`:
+1. The message must be non-empty and ≤ `COACH_CHAT_MAX_MESSAGE_LENGTH` (2000).
+2. `consume_coach_chat_rate_limit` (12 per 60 s, cache) → 429. `consume_coach_chat_daily_limit` (`COACH_CHAT_DAILY_LIMIT` 200 per user per day, cache key per date, 25 h TTL) → 429.
+3. `sanitize_language_name` for native and target; `mode` must be in `COACH_MODES` (else `casual_chat`).
+4. `gemini.generate_coach_reply` → `_request_model_chain`: tries `GEMINI_MODEL` (default `gemini-2.5-flash-lite`), then `GEMINI_FALLBACK_MODELS` (`gemini-2.0-flash-lite,gemini-2.0-flash`). Each attempt's timeout is `min(GEMINI_TIMEOUT_SECONDS=20, remaining)`, inside an overall `GEMINI_TOTAL_DEADLINE_SECONDS=25` (under Heroku's 30 s limit), and no new attempt starts with less than 2 s left. The key is sent in the `x-goog-api-key` header.
+5. Errors: `CoachAIQuotaError` → 429; `CoachAIError` → 503 with a generic message.
+6. Coach history is client-side only: web `features/coachConversation.js` (localStorage), mobile `features/coachConversation.ts` (AsyncStorage). Neither is cleared on logout.
+
+## 9. Translation
+Web `Conversation.jsx` `handleTranslate` (`{message_id, target_language: baseTranslateLanguage}`), web `PracticePage.jsx` (free text), mobile `translateConversationMessage` → `POST /api/messages/translate/` → `views.translate_message_view` (throttle `translate` 60/min):
+1. With `message_id`: participant check; the text is read from the DB. If a `MessageTranslation` already exists for this user and language → 400 `already_translated` (with the text). A non-numeric id → 500 (open issue).
+2. Text ≤ 5000 chars. Cache key `build_translation_cache_key` (30 days).
+3. On a cache miss → `translate.googleapis.com/translate_a/single?client=gtx` (10 s). If the source language equals the target → 400 `same_language`. Otherwise `MessageTranslation.update_or_create` per user → 200 `{translated_text, source_language, target_language, cached}`. Upstream failure → 502.
+
+## 10. Partner matching (Community)
+Web `pages/Community/page.tsx` → `GET /api/profile/data?page&page_size=24&match=<all|reciprocal|teaches_me>` (`level` is also supported). Mobile `CommunityScreen` → `fetchPeople` (no `match`, so `all`). `views.profile_data_view`:
+1. Excludes self and blocked users (`get_blocked_user_ids`).
+2. `build_partner_match_filters`: `teaches_me` = their `native_language` iexact one of my `languages_practicing` (or `base_translate_language` as fallback); `learns_mine` = their `languages_practicing` JSON contains my native language (quoted-value match). These are annotated as 0/1 with `match_score` = their sum.
+3. Filters: `teaches_me` → teaches_me=1; `reciprocal` → both; `level` → `practice_language_levels__<my native>`.
+4. Ordered by `-match_score, -teaches_me, username` and paginated. Cached per user/page/mode/level under `get_profile_list_cache_version()`, which is bumped on register and profile edits.
+5. Each profile carries `match {teaches_me, learns_mine, reciprocal}`. Web maps it to a "Perfect exchange" badge; mobile shows `components/PartnerCard`.
+
+## 11. Profile view recording
+Web `pages/PublicProfile/page.jsx` / mobile `PublicProfileScreen` (and `ConversationsScreen` partner info) → `GET /api/profile/public/<username>/` → `views.public_profile_view` → `record_profile_view(viewer, profile)`: skipped for self; update-then-create on `ProfileView`, with an `IntegrityError` fallback; DB lock errors are ignored. It then calls `bump_profile_cache_version(viewed.id)`, so the viewed user's `/api/profile/` `recent_profile_viewers` (`build_recent_profile_viewers`, latest 12) is fresh. The response itself is cached per (profile, viewer). There is no realtime push: mobile shows the "viewed your profile" banner on its next profile load, and web shows viewers on `/profile`.
+
+## 12. Presence lifecycle (summary)
+Connect a socket → `increment_presence` (if the user just came online → `presence_update` to contacts) → the presence socket sends `initial_online_users` → web heartbeats every 20 s (`last_seen` written at most every 60 s) → disconnect → `decrement_presence` (if that was the last socket → `presence_update` false). Logout (web) → `POST /api/presence/offline/`. Deploy → `reset_presence` in `Procfile` release. `is_online` is reported only if `last_seen` is under 90 s old. Details in `realtime-events.md`.
