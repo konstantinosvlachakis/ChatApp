@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,36 +7,36 @@ import {
   DeviceEventEmitter,
   Easing,
   FlatList,
-  Image as RNImage,
-  KeyboardAvoidingView,
-  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
-  Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CoachAvatar } from "../components/CoachAvatar";
-import { Composer, type ComposerHandle } from "../components/chat/Composer";
+import type { ComposerHandle } from "../components/chat/Composer";
 import { MessageRow } from "../components/chat/MessageRow";
 import { ImageViewer } from "../components/chat/ImageViewer";
 import { ChatAudioContext, ChatAudioController } from "../components/chat/audioController";
-import { messagePreviewText, type PickedAttachment } from "../components/chat/attachments";
-import { formatDaySeparator, getDayKey, toReplyPreviewText } from "../components/chat/format";
+import type { PickedAttachment } from "../components/chat/attachments";
+import { createChatStyles } from "../components/chat/chatStyles";
+import { toReplyPreviewText } from "../components/chat/format";
+import { getMessageGroupFlags } from "../components/chat/messageGroups";
+import {
+  buildPinnedMessages,
+  countIncomingAfter,
+  findFirstUnreadMessageId,
+  mergeMessagesById,
+  withCurrentUserReaction,
+} from "../components/chat/messageState";
+import { useReducedMotion } from "../components/chat/useReducedMotion";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
-import { tokenStorage } from "../services/storage";
 import {
   blockUser,
   fetchPublicProfile,
@@ -58,22 +58,24 @@ import {
 } from "../services/api/conversations";
 import { getErrorMessage } from "../services/api/errors";
 import { toastApiError } from "../services/toast";
-import { subscribeToPresenceEvents } from "../services/presenceEvents";
 import { setOpenConversationId } from "../services/push";
-import type { ThemeColors } from "../theme/colors";
+import { fontFamilies } from "../theme/typography";
+import { warmColors, type WarmColors } from "../theme/warm";
 import type { ChatMessage, Conversation } from "../types";
-import { avatarImage } from "../utils/media";
+import { ChatOptionsSheet, type ChatOptionsState } from "./chat/ChatOptionsSheet";
+import { ChatRoomView } from "./chat/ChatRoomView";
+import { ConversationListView } from "./chat/ConversationListView";
+import {
+  MessageActionsSheet,
+  type MessageMenuAction,
+  type MessageMenuState,
+} from "./chat/MessageActionsSheet";
+import { useChatPresence } from "./chat/useChatPresence";
+import { useChatSocket } from "./chat/useChatSocket";
+import { useStableCallback } from "./chat/useStableCallback";
 
-// Message events are broadcast by the server after REST writes (to every socket in the
-// room, including the sender's). Their `message` omits per-user fields
-// (current_user_reaction, can_translate, translated_*).
-type ChatPayload =
-  | { type: "message_created"; message?: ChatMessage }
-  | { type: "message_deleted"; messageId: number }
-  | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
-  | { type: "message_edited" | "message_pinned"; message?: ChatMessage }
-  | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
-  | { type: "user_typing" | "user_stopped_typing" };
+// Chats tab (route `ChatsHome`): conversation list, or the open chat. State, requests and socket
+// wiring live here; rendering is in `screens/chat/*` and `components/chat/*`.
 
 // Older history page size for GET /conversations/<id>/messages/ (max 100 server-side).
 const OLDER_MESSAGES_PAGE_SIZE = 50;
@@ -81,74 +83,18 @@ const OLDER_MESSAGES_PAGE_SIZE = 50;
 // with fewer embedded messages means there is no older history.
 const DETAIL_MESSAGE_LIMIT = 200;
 
-// Broadcast payloads carry no current_user_reaction; derive it from `reactions`.
-function withCurrentUserReaction(message: ChatMessage, currentUserId?: number): ChatMessage {
-  if ("current_user_reaction" in message || !Array.isArray(message.reactions)) return message;
-  const own = message.reactions.find((reaction) => reaction.user_id === currentUserId);
-  return { ...message, current_user_reaction: own?.emoji ?? null };
-}
-
-function mergeMessagesById(older: ChatMessage[], current: ChatMessage[]) {
-  const knownIds = new Set(current.map((message) => message.id));
-  return [...older.filter((message) => !knownIds.has(message.id)), ...current];
-}
-
-function resolveMediaUrl(path?: string | null) {
-  if (!path) return "https://placehold.co/100x100";
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
-  if (path.startsWith("media/")) return `${API_BASE_URL}/${path}`;
-  return `${API_BASE_URL}/media/${path}`;
-}
-
-function buildPinnedMessages(messages?: ChatMessage[] | null) {
-  return [...(messages || [])]
-    .filter((message) => Boolean(message?.is_pinned))
-    .sort(
-      (left, right) =>
-        new Date(right.pinned_at || right.timestamp).getTime() -
-        new Date(left.pinned_at || left.timestamp).getTime()
-    );
-}
-
-function findFirstUnreadMessageId(
-  messages: ChatMessage[],
-  unreadCount: number,
-  currentUserId?: number
-) {
-  if (!currentUserId || unreadCount <= 0) return null;
-  let remaining = unreadCount;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!message || message.sender?.id === currentUserId) continue;
-    remaining -= 1;
-    if (remaining <= 0) return message.id;
-  }
-  return null;
-}
-
 // Debounce for conversation-list refetches after realtime events (trailing, coalesced).
 const CONVERSATIONS_REFRESH_DEBOUNCE_MS = 2000;
 
-const messageKeyExtractor = (item: ChatMessage) => String(item.id);
-
-/** Stable function identity that always calls the latest `fn` (for event handlers only). */
-function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
-  const ref = useRef(fn);
-  useLayoutEffect(() => {
-    ref.current = fn;
-  });
-  return useCallback(((...args: Parameters<T>) => ref.current(...args)) as T, []);
-}
-
 export function ConversationsScreen() {
   const { user } = useAuth();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const warm = warmColors(isDark);
+  const chatStyles = useMemo(() => createChatStyles(warm), [warm]);
+  const reduceMotion = useReducedMotion();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
-  const { height: windowHeight } = useWindowDimensions();
   const currentUserId = user?.user_id;
   const currentUsername = user?.username;
   const wsBaseUrl = useMemo(() => API_BASE_URL.replace(/^http/, "ws"), []);
@@ -183,16 +129,8 @@ export function ConversationsScreen() {
   const [showPinnedModal, setShowPinnedModal] = useState(false);
   const [unreadAnchorMessageId, setUnreadAnchorMessageId] = useState<number | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
-  const [messageMenu, setMessageMenu] = useState<{
-    message: ChatMessage;
-    isMine: boolean;
-    top: number;
-    align: "left" | "right";
-  } | null>(null);
-  const [chatActionsMenu, setChatActionsMenu] = useState<{
-    username: string;
-    isBlocked: boolean;
-  } | null>(null);
+  const [messageMenu, setMessageMenu] = useState<MessageMenuState>(null);
+  const [chatActionsMenu, setChatActionsMenu] = useState<ChatOptionsState>(null);
   const [chatActionLoading, setChatActionLoading] = useState(false);
   const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
   // Full-screen photo viewer (original attachment URL).
@@ -231,6 +169,16 @@ export function ConversationsScreen() {
     lastRunAt: 0,
   });
   const conversationsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Within ~140 px of the newest message: new messages and layout changes keep the list pinned to
+  // the bottom only then (or for our own sends), so reading older messages isn't interrupted.
+  const isNearBottomRef = useRef(true);
+  // Set by a drag or an explicit jump (search, pinned, reply quote); cleared at the bottom.
+  const userScrolledRef = useRef(false);
+  // Newest message when the user scrolled away; incoming messages after it are counted on the
+  // jump-to-latest button.
+  const [jumpAnchorMessageId, setJumpAnchorMessageId] = useState<number | null>(null);
+  const latestMessageRef = useRef<ChatMessage | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversation?.id ?? null;
@@ -270,6 +218,9 @@ export function ConversationsScreen() {
     setActiveSearchIndex(0);
     setShowPinnedModal(false);
     setShowJumpToLatest(false);
+    setJumpAnchorMessageId(null);
+    isNearBottomRef.current = true;
+    userScrolledRef.current = false;
     initialUnreadCountRef.current = selectedConversation?.unread_count || 0;
   }, [selectedConversation?.id]);
 
@@ -277,6 +228,9 @@ export function ConversationsScreen() {
     return () => {
       if (singleTapTimeoutRef.current) {
         clearTimeout(singleTapTimeoutRef.current);
+      }
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
       }
       Object.values(remoteTypingTimeoutsRef.current).forEach((timer) => {
         if (timer) clearTimeout(timer);
@@ -623,6 +577,7 @@ export function ConversationsScreen() {
     setReplyTarget(null);
     setUnreadAnchorMessageId(null);
     setShowJumpToLatest(false);
+    setJumpAnchorMessageId(null);
   }, [emitTypingStopped]);
 
   const startConversation = useCallback(async () => {
@@ -691,7 +646,7 @@ export function ConversationsScreen() {
         setChatActionLoading(false);
       }
     },
-    [chatActionLoading, closeConversation, handleReportUser, loadConversations, navigation]
+    [chatActionLoading]
   );
 
   const closeChatActionsMenu = useCallback(() => {
@@ -739,206 +694,33 @@ export function ConversationsScreen() {
   );
 
   // Presence events come from RootNavigator's presence socket (the app's only one).
-  useEffect(() => {
-    if (!currentUserId) return;
-    return subscribeToPresenceEvents((data) => {
-      if (data.type === "initial_online_users") {
-        const ids = data.user_ids || data.userIds || [];
-        setOnlineUserIds(new Set(ids));
-        return;
-      }
-      if (data.type === "presence_update") {
-        setOnlineUserIds((prev) => {
-          const next = new Set(prev);
-          if (data.is_online) next.add(data.user_id);
-          else next.delete(data.user_id);
-          return next;
-        });
-        return;
-      }
-      if (data.type === "typing_status") {
-        setRemoteTyping(data.conversation_id, Boolean(data.is_typing));
-        return;
-      }
-      if (data.type === "conversation_update") {
-        const conversationId = data.conversation_id;
-        if (conversationId && data.trigger === "messages_read" && data.actor_id != null) {
-          // Read receipts don't reorder the list or change previews: patch locally, no refetch.
-          const readByMe = data.actor_id === currentUserId;
-          setConversations((prev) =>
-            prev.map((conversation) => {
-              if (conversation.id !== conversationId) return conversation;
-              if (readByMe) {
-                return conversation.unread_count ? { ...conversation, unread_count: 0 } : conversation;
-              }
-              const lastMessage = conversation.last_message;
-              if (!lastMessage || lastMessage.sender?.id !== currentUserId || lastMessage.status === "read") {
-                return conversation;
-              }
-              return { ...conversation, last_message: { ...lastMessage, status: "read" } };
-            })
-          );
-          return;
-        }
-        if (conversationId) {
-          bumpConversationToTop({
-            conversationId,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        scheduleConversationsRefresh();
-      }
-    });
-  }, [bumpConversationToTop, currentUserId, scheduleConversationsRefresh, setRemoteTyping]);
+  useChatPresence({
+    currentUserId,
+    setOnlineUserIds,
+    setConversations,
+    setRemoteTyping,
+    bumpConversationToTop,
+    scheduleConversationsRefresh,
+  });
 
-  useEffect(() => {
-    let mounted = true;
-    const conversationId = selectedConversation?.id;
-    if (!conversationId) return;
-
-    const connectChat = async () => {
-      const token = await tokenStorage.getAccessToken();
-      if (!token || !mounted) return;
-
-      const socket = new (WebSocket as any)(`${wsBaseUrl}/ws/socket-server/${conversationId}/`, undefined, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      chatSocketRef.current = socket;
-
-      socket.onmessage = (event: WebSocketMessageEvent) => {
-        try {
-          const data = JSON.parse(event.data) as ChatPayload;
-          if (data.type === "message_created") {
-            if (!data.message?.id) return;
-            const broadcast = withCurrentUserReaction(data.message, currentUserId);
-            const senderId = broadcast.sender?.id;
-            const newMessage: ChatMessage = {
-              translated_text: null,
-              translated_source_language: null,
-              can_translate: senderId !== currentUserId && Boolean((broadcast.text || "").trim()),
-              ...broadcast,
-            };
-
-            setSelectedConversation((prev) => {
-              if (!prev || prev.id !== conversationId) return prev;
-              // Our own sends are already appended from the POST response: dedupe by id.
-              const alreadyListed = prev.messages.some((m) => m.id === newMessage.id);
-              if (alreadyListed) {
-                const merged = prev.messages.map((m) =>
-                  m.id === newMessage.id ? { ...m, ...broadcast } : m
-                );
-                return { ...prev, messages: merged, pinned_messages: buildPinnedMessages(merged) };
-              }
-              const nextMessages = [...prev.messages, newMessage];
-              return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
-            });
-
-            const isIncoming = Boolean(senderId && senderId !== currentUserId);
-            if (!isIncoming) {
-              // sendMessage already updated the list for our own message.
-              return;
-            }
-            const shouldResetUnread = isIncoming && isFocused;
-            bumpConversationToTop({
-              conversationId,
-              lastMessage: newMessage,
-              unreadDelta: isIncoming && !isFocused ? 1 : 0,
-              resetUnread: shouldResetUnread,
-              updatedAt: new Date().toISOString(),
-            });
-
-            if (isFocused) {
-              setRemoteTyping(conversationId, false);
-              markConversationRead(conversationId)
-                .then(() => {
-                  if (selectedConversationIdRef.current === conversationId) {
-                    initialUnreadCountRef.current = 0;
-                    setUnreadAnchorMessageId(null);
-                  }
-                  DeviceEventEmitter.emit("conversations_refresh");
-                })
-                .catch(() => {});
-            }
-            scheduleConversationsRefresh();
-            return;
-          }
-
-          if (data.type === "message_deleted") {
-            setSelectedConversation((prev) => {
-              if (!prev || prev.id !== conversationId) return prev;
-              const nextMessages = prev.messages.filter((m) => m.id !== data.messageId);
-              return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
-            });
-            return;
-          }
-
-          if (data.type === "message_status") {
-            const ids = new Set(data.messageIds || []);
-            if (!ids.size || !data.status) return;
-            setSelectedConversation((prev) => {
-              if (!prev || prev.id !== conversationId) return prev;
-              return {
-                ...prev,
-                messages: prev.messages.map((message) =>
-                  ids.has(message.id) ? { ...message, status: data.status } : message
-                ),
-              };
-            });
-            return;
-          }
-
-          if (
-            (data.type === "message_reaction" || data.type === "messageReaction") &&
-            (data as any).message?.id
-          ) {
-            applyMessageUpdate((data as any).message);
-            return;
-          }
-
-          if (
-            (data.type === "message_pinned" || data.type === "message_edited") &&
-            (data as any).message?.id
-          ) {
-            applyMessageUpdate((data as any).message);
-            return;
-          }
-
-          if (data.type === "user_typing") {
-            setRemoteTyping(conversationId, true);
-            return;
-          }
-
-          if (data.type === "user_stopped_typing") {
-            setRemoteTyping(conversationId, false);
-          }
-        } catch {}
-      };
-    };
-
-    connectChat();
-    return () => {
-      mounted = false;
-      isLocalUserTypingRef.current = false;
-      sendTypingEvent("user_stopped_typing");
-      if (chatSocketRef.current) {
-        chatSocketRef.current.close();
-        chatSocketRef.current = null;
-      }
-      setRemoteTyping(conversationId, false);
-    };
-  }, [
+  // The open chat's socket (message/typing/status events for selectedConversation).
+  useChatSocket({
+    conversationId: selectedConversation?.id,
+    isFocused,
+    currentUserId,
+    wsBaseUrl,
+    chatSocketRef,
+    isLocalUserTypingRef,
+    selectedConversationIdRef,
+    initialUnreadCountRef,
+    setSelectedConversation,
+    setUnreadAnchorMessageId,
     applyMessageUpdate,
     bumpConversationToTop,
-    currentUserId,
-    isFocused,
     scheduleConversationsRefresh,
-    selectedConversation?.id,
     sendTypingEvent,
     setRemoteTyping,
-    wsBaseUrl,
-  ]);
+  });
 
   const sortedConversations = useMemo(() => {
     return [...conversations].sort(
@@ -1013,10 +795,26 @@ export function ConversationsScreen() {
     (messageId: number) => {
       const index = messageIndexById[messageId];
       if (index === undefined) return;
-      messageListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      userScrolledRef.current = true;
+      messageListRef.current?.scrollToIndex({ index, animated: !reduceMotion, viewPosition: 0.5 });
       setHighlightedMessageId(messageId);
       messageHighlightOpacity.stopAnimation();
       messageHighlightScale.stopAnimation();
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+      if (reduceMotion) {
+        // Static outline instead of the fade/scale pulse.
+        messageHighlightOpacity.setValue(1);
+        messageHighlightScale.setValue(1);
+        highlightTimeoutRef.current = setTimeout(() => {
+          highlightTimeoutRef.current = null;
+          messageHighlightOpacity.setValue(0);
+          setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
+        }, 1200);
+        return;
+      }
       messageHighlightOpacity.setValue(0);
       messageHighlightScale.setValue(0.985);
 
@@ -1053,7 +851,7 @@ export function ConversationsScreen() {
         setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
       });
     },
-    [messageHighlightOpacity, messageHighlightScale, messageIndexById]
+    [messageHighlightOpacity, messageHighlightScale, messageIndexById, reduceMotion]
   );
 
   const scrollToBottom = useCallback((animated = true) => {
@@ -1063,8 +861,8 @@ export function ConversationsScreen() {
   }, []);
 
   const jumpToLatest = useCallback(() => {
-    scrollToBottom(true);
-  }, [scrollToBottom]);
+    scrollToBottom(!reduceMotion);
+  }, [reduceMotion, scrollToBottom]);
 
   const handleSearchSubmit = useCallback(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -1201,13 +999,7 @@ export function ConversationsScreen() {
 
   const buildMessageMenuActions = useCallback(
     (message: ChatMessage, isMine: boolean) => {
-      const actions: Array<{
-        key: string;
-        label: string;
-        icon: keyof typeof Ionicons.glyphMap;
-        destructive?: boolean;
-        onPress: () => void;
-      }> = [
+      const actions: MessageMenuAction[] = [
         {
           key: "reply",
           label: "Reply",
@@ -1267,28 +1059,20 @@ export function ConversationsScreen() {
     [closeMessageMenu, deleteMessage, handleSwipe, togglePinnedMessage, translateMessage]
   );
 
-  const openMessageMenu = useStableCallback(
-    (message: ChatMessage, isMine: boolean, pageY: number) => {
-      const rowHeight = 44;
-      const basePadding = 10;
-      const actionCount = buildMessageMenuActions(message, isMine).length;
-      const menuHeight = actionCount * rowHeight + basePadding * 2;
-      const gap = 12;
-      const screenPadding = 16;
-      const availableBelow = windowHeight - pageY - screenPadding;
-      const openAbove = availableBelow < menuHeight + gap;
-      const top = openAbove
-        ? Math.max(screenPadding, pageY - menuHeight - gap)
-        : Math.min(windowHeight - menuHeight - screenPadding, pageY + gap);
+  // Rows pass the touch's pageY; the menu is a bottom sheet now, so it isn't needed.
+  const openMessageMenu = useStableCallback((message: ChatMessage, isMine: boolean, _pageY: number) => {
+    setMessageMenu({ message, isMine });
+  });
 
-      setMessageMenu({
-        message,
-        isMine,
-        top,
-        align: isMine ? "right" : "left",
-      });
-    }
+  const messageMenuActions = useMemo(
+    () => (messageMenu ? buildMessageMenuActions(messageMenu.message, messageMenu.isMine) : []),
+    [buildMessageMenuActions, messageMenu]
   );
+
+  // Same request and result alert as the menu's Translate action.
+  const handleTranslateChip = useStableCallback((message: ChatMessage) => {
+    translateMessage(message);
+  });
 
   const openImageViewer = useCallback((url: string) => {
     setViewerImageUrl(url);
@@ -1309,16 +1093,26 @@ export function ConversationsScreen() {
     return previews;
   }, [sortedMessages]);
 
-  // Per-row flags derived from the whole list, computed once per message-list change.
-  const dayLabelById = useMemo(() => {
-    const labels: Record<number, string | null> = {};
-    sortedMessages.forEach((message, index) => {
-      const dayKey = getDayKey(message.timestamp);
-      const previousDayKey = getDayKey(index > 0 ? sortedMessages[index - 1]?.timestamp : null);
-      labels[message.id] = dayKey && dayKey !== previousDayKey ? formatDaySeparator(message.timestamp) : null;
-    });
-    return labels;
-  }, [sortedMessages]);
+  // Per-row flags derived from the whole list (day separators, group position), computed once per
+  // message-list / unread-anchor change; rows get primitives only.
+  const groupFlagsById = useMemo(
+    () => getMessageGroupFlags(sortedMessages, unreadAnchorMessageId),
+    [sortedMessages, unreadAnchorMessageId]
+  );
+
+  latestMessageRef.current = sortedMessages[sortedMessages.length - 1] ?? null;
+  const jumpUnreadCount = useMemo(
+    () => countIncomingAfter(sortedMessages, jumpAnchorMessageId, currentUserId),
+    [currentUserId, jumpAnchorMessageId, sortedMessages]
+  );
+
+  const otherParticipant = selectedConversation
+    ? selectedConversation.sender.username === currentUsername
+      ? selectedConversation.receiver
+      : selectedConversation.sender
+    : null;
+  const otherAvatarName = otherParticipant?.username ?? null;
+  const otherAvatarPath = otherParticipant?.profile_image_url ?? null;
 
   const searchResultIdSet = useMemo(() => new Set(searchResultIds), [searchResultIds]);
   const normalizedSearchQuery = searchQuery.trim();
@@ -1329,21 +1123,32 @@ export function ConversationsScreen() {
     ({ item }: { item: ChatMessage }) => {
       const isMine = item.sender?.id === currentUserId;
       const isSearchMatch = Boolean(normalizedSearchQuery) && searchResultIdSet.has(item.id);
+      const flags = groupFlagsById[item.id];
       return (
         <MessageRow
           item={item}
           currentUserId={currentUserId}
           isMine={isMine}
-          dayLabel={dayLabelById[item.id] ?? null}
+          dayLabel={flags?.dayLabel ?? null}
           showUnreadDivider={unreadAnchorMessageId === item.id}
+          startsGroup={flags?.startsGroup ?? true}
+          endsGroup={flags?.endsGroup ?? true}
+          avatarName={otherAvatarName}
+          avatarPath={otherAvatarPath}
           isReplyActive={replyTarget?.id === item.id}
-          showReactionPicker={!isMine && reactionPickerMessageId === item.id}
+          showReactionPicker={reactionPickerMessageId === item.id}
           isHighlighted={highlightedMessageId === item.id}
           searchHighlight={isSearchMatch ? normalizedSearchQuery : null}
           isActiveSearchMatch={isSearchMatch && activeSearchMessageId === item.id}
           replyPreview={replyPreviewById[item.id] ?? null}
-          styles={styles}
-          colors={colors}
+          showTranslate={
+            !isMine &&
+            item.local_status !== "sending" &&
+            item.can_translate !== false &&
+            Boolean((item.text || "").trim())
+          }
+          styles={chatStyles}
+          warm={warm}
           highlightOpacity={messageHighlightOpacity}
           highlightScale={messageHighlightScale}
           onSwipeReply={handleSwipe}
@@ -1351,29 +1156,33 @@ export function ConversationsScreen() {
           onOpenMenu={openMessageMenu}
           onTap={handleMessageTap}
           onOpenImage={openImageViewer}
+          onTranslate={handleTranslateChip}
         />
       );
     },
     [
       activeSearchMessageId,
-      colors,
+      chatStyles,
       currentUserId,
-      dayLabelById,
+      groupFlagsById,
       handleMessageTap,
       handleReactionSelect,
       handleSwipe,
+      handleTranslateChip,
       highlightedMessageId,
       messageHighlightOpacity,
       messageHighlightScale,
       normalizedSearchQuery,
       openImageViewer,
       openMessageMenu,
+      otherAvatarName,
+      otherAvatarPath,
       reactionPickerMessageId,
       replyPreviewById,
       replyTarget?.id,
       searchResultIdSet,
-      styles,
       unreadAnchorMessageId,
+      warm,
     ]
   );
 
@@ -1479,14 +1288,18 @@ export function ConversationsScreen() {
     const messageCount = selectedConversation.messages?.length || 0;
     const previousCount = previousMessageCountRef.current;
     if (messageCount > previousCount && !skipAutoScrollRef.current) {
-      scrollToBottom(true);
+      // Follow new messages when already at the bottom, or when the newest one is ours.
+      const newest = latestMessageRef.current;
+      if (isNearBottomRef.current || (newest && newest.sender?.id === currentUserId)) {
+        scrollToBottom(true);
+      }
     }
     previousMessageCountRef.current = messageCount;
-  }, [selectedConversation?.id, selectedConversation?.messages?.length, scrollToBottom]);
+  }, [currentUserId, selectedConversation?.id, selectedConversation?.messages?.length, scrollToBottom]);
 
   const handleMessageListContentSizeChange = useCallback(() => {
     if (skipAutoScrollRef.current) return;
-    if (unreadAnchorMessageId == null) {
+    if (unreadAnchorMessageId == null && isNearBottomRef.current) {
       scrollToBottom(false);
     }
   }, [scrollToBottom, unreadAnchorMessageId]);
@@ -1495,20 +1308,21 @@ export function ConversationsScreen() {
     (info: { index: number; averageItemLength: number }) => {
       messageListRef.current?.scrollToOffset({
         offset: Math.max(0, info.averageItemLength * info.index - 48),
-        animated: true,
+        animated: !reduceMotion,
       });
       setTimeout(() => {
         messageListRef.current?.scrollToIndex({
           index: info.index,
-          animated: true,
+          animated: !reduceMotion,
           viewPosition: 0.5,
         });
       }, 160);
     },
-    []
+    [reduceMotion]
   );
 
   const handleMessageListScrollBeginDrag = useCallback(() => {
+    userScrolledRef.current = true;
     if (replyTarget) clearReplyTarget();
   }, [clearReplyTarget, replyTarget]);
 
@@ -1517,7 +1331,17 @@ export function ConversationsScreen() {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const distanceFromBottom =
         contentSize.height - (contentOffset.y + layoutMeasurement.height);
-      setShowJumpToLatest(distanceFromBottom > 140);
+      const isAway = distanceFromBottom > 140;
+      if (!isAway) {
+        isNearBottomRef.current = true;
+        userScrolledRef.current = false;
+      } else if (userScrolledRef.current) {
+        // Only a drag or a jump leaves the bottom; intermediate offsets while the first batches
+        // render (or programmatic scrollToEnd) must not stop the list from following new content.
+        isNearBottomRef.current = false;
+      }
+      setShowJumpToLatest(isAway);
+      setJumpAnchorMessageId((prev) => (isAway ? prev ?? latestMessageRef.current?.id ?? null : null));
       if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
         loadOlderMessages();
       }
@@ -1525,1612 +1349,218 @@ export function ConversationsScreen() {
     [loadOlderMessages]
   );
 
-  if (selectedConversation) {
-    const otherUser =
-      selectedConversation.sender.username === currentUsername
-        ? selectedConversation.receiver
-        : selectedConversation.sender;
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setSearchResultIds([]);
+    setActiveSearchIndex(0);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    clearSearch();
+  }, [clearSearch]);
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      closeSearch();
+      return;
+    }
+    setSearchOpen(true);
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [closeSearch, searchOpen]);
+
+  const openOtherUserProfile = useCallback(
+    (username: string) => {
+      navigation.navigate("PublicProfile", { username });
+    },
+    [navigation]
+  );
+
+  const handleOptionsViewProfile = useCallback(
+    (username: string) => {
+      setChatActionsMenu(null);
+      openOtherUserProfile(username);
+    },
+    [openOtherUserProfile]
+  );
+
+  const handleOptionsReport = useCallback(
+    (username: string) => {
+      setChatActionsMenu(null);
+      handleReportUser(username);
+    },
+    [handleReportUser]
+  );
+
+  const openPinnedList = useCallback(() => setShowPinnedModal(true), []);
+  const closePinnedList = useCallback(() => setShowPinnedModal(false), []);
+
+  const handleReportSubmit = useCallback(
+    async ({ reason, details }: { reason: string; details: string }) => {
+      if (!reportTargetUsername) return;
+      try {
+        setChatActionLoading(true);
+        await reportUser({ username: reportTargetUsername, reason, details });
+        Alert.alert("Report sent", "Thanks. We will review this report.");
+        setReportTargetUsername(null);
+      } catch (error) {
+        toastApiError(error, "Could not send this report.", "Failed");
+      } finally {
+        setChatActionLoading(false);
+      }
+    },
+    [reportTargetUsername]
+  );
+
+  const openCoach = useCallback(() => navigation.navigate("CoachChat"), [navigation]);
+  const findPeople = useCallback(() => navigation.navigate("People"), [navigation]);
+  const refreshList = useCallback(() => loadConversations(true), [loadConversations]);
+  const openConversationFromList = useCallback(
+    (conversationId: number) => {
+      openConversation(conversationId).catch((error) => {
+        toastApiError(error, "Could not open this chat.", "Chat unavailable");
+      });
+    },
+    [openConversation]
+  );
+
+  if (selectedConversation && otherParticipant) {
+    const otherUser = otherParticipant;
+    const trimmedSearch = searchQuery.trim();
 
     return (
       <ChatAudioContext.Provider value={audioController}>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <ChatRoomView
+          warm={warm}
+          chatStyles={chatStyles}
+          reduceMotion={reduceMotion}
           onTouchEndCapture={handleGlobalTouchEnd}
+          otherUser={otherUser}
+          isOnline={onlineUserIds.has(otherUser.id)}
+          isTyping={Boolean(typingByConversation[selectedConversation.id])}
+          optionsLoading={chatActionLoading}
+          onBack={closeConversation}
+          onOpenProfile={() => openOtherUserProfile(otherUser.username)}
+          onOpenOptions={() => openChatActions(otherUser.username)}
+          searchOpen={searchOpen}
+          searchInputRef={searchInputRef}
+          searchQuery={searchQuery}
+          searchResultLabel={
+            trimmedSearch ? `${searchResultIds.length ? activeSearchIndex + 1 : 0}/${searchResultIds.length}` : ""
+          }
+          searchHasResults={searchResultIds.length > 0}
+          onToggleSearch={toggleSearch}
+          onSearchQueryChange={setSearchQuery}
+          onSearchSubmit={handleSearchSubmit}
+          onSearchPrevious={handleSearchPrevious}
+          onSearchNext={handleSearchNext}
+          onCloseSearch={closeSearch}
+          pinnedMessages={pinnedMessages}
+          showPinnedList={showPinnedModal}
+          onOpenPinnedList={openPinnedList}
+          onClosePinnedList={closePinnedList}
+          onJumpToPinned={handlePinnedMessagePress}
+          onUnpin={togglePinnedMessage}
+          loadingConversation={loadingConversation}
+          messageListRef={messageListRef}
+          messages={sortedMessages}
+          renderMessage={renderMessage}
+          loadingOlderMessages={loadingOlderMessages}
+          refreshingConversation={refreshingConversation}
+          onRefresh={onMessageListRefresh}
+          onContentSizeChange={handleMessageListContentSizeChange}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          onScrollBeginDrag={handleMessageListScrollBeginDrag}
+          onScroll={handleMessageListScroll}
+          showJumpToLatest={showJumpToLatest}
+          jumpUnreadCount={jumpUnreadCount}
+          onJumpToLatest={jumpToLatest}
+          composerRef={composerRef}
+          currentUserId={currentUserId}
+          replyTarget={replyTarget}
+          sending={sending}
+          onClearReply={clearReplyTarget}
+          onComposerFocus={handleComposerFocus}
+          onTypingStart={emitTypingStarted}
+          onTypingStop={emitTypingStopped}
+          onSend={sendMessage}
         >
-          <Pressable style={styles.chatHeader} onPress={() => replyTarget && clearReplyTarget()}>
-            <Pressable
-              style={styles.backButton}
-              onPress={(event) => {
-                event.stopPropagation();
-                closeConversation();
-              }}
-            >
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-            </Pressable>
-            <View style={styles.chatTitleWrap}>
-              <View>
-                <RNImage source={{ uri: avatarImage(resolveMediaUrl(otherUser.profile_image_url), 34) }} style={styles.chatAvatar} />
-                {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDotChat} /> : null}
-              </View>
-              <View>
-                <Text style={styles.chatTitle}>{otherUser.username}</Text>
-                {typingByConversation[selectedConversation.id] ? (
-                  <Text style={styles.typingText}>Typing...</Text>
-                ) : onlineUserIds.has(otherUser.id) ? (
-                  <Text style={styles.onlineText}>Online</Text>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.chatHeaderActions}>
-              <Pressable
-                style={styles.chatHeaderActionSoft}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  setSearchOpen((prev) => {
-                    const next = !prev;
-                    if (!next) {
-                      setSearchQuery("");
-                      setSearchResultIds([]);
-                      setActiveSearchIndex(0);
-                    } else {
-                      requestAnimationFrame(() => searchInputRef.current?.focus());
-                    }
-                    return next;
-                  });
-                }}
-              >
-                <Ionicons name="search" size={18} color={colors.text} />
-              </Pressable>
-              <Pressable
-                style={styles.chatHeaderActionSoft}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  openChatActions(otherUser.username);
-                }}
-              >
-                <Ionicons name="ellipsis-horizontal" size={20} color={colors.text} />
-              </Pressable>
-            </View>
-          </Pressable>
-
-          {searchOpen ? (
-            <View style={styles.searchBar}>
-              <Ionicons name="search" size={16} color={colors.mutedText} />
-              <TextInput
-                ref={searchInputRef}
-                style={styles.searchInput}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search in conversation"
-                placeholderTextColor={colors.mutedText}
-                returnKeyType="search"
-                onSubmitEditing={handleSearchSubmit}
-              />
-              <Text style={styles.searchCountText}>
-                {searchQuery.trim() ? `${searchResultIds.length ? activeSearchIndex + 1 : 0}/${searchResultIds.length}` : ""}
-              </Text>
-              <Pressable
-                style={styles.searchActionButton}
-                onPress={handleSearchPrevious}
-                disabled={!searchResultIds.length}
-              >
-                <Ionicons name="chevron-up" size={16} color={searchResultIds.length ? colors.text : colors.mutedText} />
-              </Pressable>
-              <Pressable
-                style={styles.searchActionButton}
-                onPress={handleSearchNext}
-                disabled={!searchResultIds.length}
-              >
-                <Ionicons name="chevron-down" size={16} color={searchResultIds.length ? colors.text : colors.mutedText} />
-              </Pressable>
-              <Pressable
-                style={styles.searchActionButton}
-                onPress={() => {
-                  setSearchOpen(false);
-                  setSearchQuery("");
-                  setSearchResultIds([]);
-                  setActiveSearchIndex(0);
-                }}
-              >
-                <Ionicons name="close" size={16} color={colors.text} />
-              </Pressable>
-            </View>
-          ) : null}
-
-          {latestPinnedMessage ? (
-            <View style={styles.pinnedStripWrap}>
-              <Pressable
-                style={styles.pinnedStrip}
-                onPress={() => handlePinnedMessagePress(latestPinnedMessage)}
-              >
-                <View style={styles.pinnedStripIcon}>
-                  <Ionicons name="pin" size={12} color={colors.primary} />
-                </View>
-                <Text numberOfLines={1} style={styles.pinnedStripText}>
-                  {messagePreviewText(latestPinnedMessage) || "Pinned message"}
-                </Text>
-                {additionalPinnedCount > 0 ? (
-                  <Pressable
-                    style={styles.pinnedCountBadge}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      setShowPinnedModal(true);
-                    }}
-                  >
-                    <Text style={styles.pinnedCountBadgeText}>+{additionalPinnedCount}</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  style={styles.pinnedStripClose}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    togglePinnedMessage(latestPinnedMessage);
-                  }}
-                >
-                  <Ionicons name="close" size={15} color={colors.mutedText} />
-                </Pressable>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {loadingConversation ? (
-            <View style={styles.chatLoading}>
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : (
-            <FlatList
-              ref={messageListRef}
-              data={sortedMessages}
-              keyExtractor={messageKeyExtractor}
-              renderItem={renderMessage}
-              onContentSizeChange={handleMessageListContentSizeChange}
-              // Keeps the visible message in place when older messages are prepended.
-              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-              ListHeaderComponent={
-                loadingOlderMessages ? (
-                  <ActivityIndicator style={styles.olderMessagesLoader} color={colors.primary} />
-                ) : null
-              }
-              onScrollToIndexFailed={handleScrollToIndexFailed}
-              ListFooterComponent={<View style={styles.messagesFooterSpacer} />}
-              refreshControl={
-                <RefreshControl refreshing={refreshingConversation} onRefresh={onMessageListRefresh} />
-              }
-              contentContainerStyle={styles.messagesContent}
-              onScrollBeginDrag={handleMessageListScrollBeginDrag}
-              onScroll={handleMessageListScroll}
-              scrollEventThrottle={16}
-            />
-          )}
-
-          {showJumpToLatest ? (
-            <Pressable style={styles.jumpToLatestButton} onPress={jumpToLatest}>
-              <Text style={styles.jumpToLatestText}>Latest</Text>
-            </Pressable>
-          ) : null}
-
-          <Composer
-            ref={composerRef}
-            styles={styles}
+          <ReportUserModal
             colors={colors}
-            currentUserId={currentUserId}
-            replyTarget={replyTarget}
-            sending={sending}
-            onClearReply={clearReplyTarget}
-            onFocus={handleComposerFocus}
-            onTypingStart={emitTypingStarted}
-            onTypingStop={emitTypingStopped}
-            onSend={sendMessage}
+            visible={Boolean(reportTargetUsername)}
+            username={reportTargetUsername || undefined}
+            loading={chatActionLoading}
+            onClose={() => setReportTargetUsername(null)}
+            onSubmit={handleReportSubmit}
           />
-        </KeyboardAvoidingView>
-        <ReportUserModal
-          colors={colors}
-          visible={Boolean(reportTargetUsername)}
-          username={reportTargetUsername || undefined}
-          loading={chatActionLoading}
-          onClose={() => setReportTargetUsername(null)}
-          onSubmit={async ({ reason, details }) => {
-            if (!reportTargetUsername) return;
-            try {
-              setChatActionLoading(true);
-              await reportUser({ username: reportTargetUsername, reason, details });
-              Alert.alert("Report sent", "Thanks. We will review this report.");
-              setReportTargetUsername(null);
-            } catch (error) {
-              toastApiError(error, "Could not send this report.", "Failed");
-            } finally {
-              setChatActionLoading(false);
-            }
-          }}
-        />
-        <Modal
-          transparent
-          visible={Boolean(chatActionsMenu)}
-          animationType="fade"
-          onRequestClose={closeChatActionsMenu}
-        >
-          <View style={styles.menuOverlay}>
-            <Pressable style={styles.menuOverlayTouchable} onPress={closeChatActionsMenu} />
-            {chatActionsMenu ? (
-              <View style={styles.chatActionsSheetWrap}>
-                <View style={styles.chatActionsSheet}>
-                  <View style={styles.chatActionsHandle} />
-                  <View style={styles.chatActionsHeader}>
-                    <View style={styles.chatActionsHeaderIcon}>
-                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.primary} />
-                    </View>
-                    <View style={styles.chatActionsHeaderTextWrap}>
-                      <Text style={styles.chatActionsTitle}>{chatActionsMenu.username}</Text>
-                      <Text style={styles.chatActionsSubtitle}>Conversation options</Text>
-                    </View>
-                  </View>
-
-                  <Pressable
-                    style={styles.chatActionsItem}
-                    onPress={() => {
-                      setChatActionsMenu(null);
-                      navigation.navigate("PublicProfile", { username: chatActionsMenu.username });
-                    }}
-                  >
-                    <View style={styles.chatActionsItemIconWrap}>
-                      <Ionicons name="person-circle-outline" size={18} color={colors.text} />
-                    </View>
-                    <View style={styles.chatActionsItemBody}>
-                      <Text style={styles.chatActionsItemTitle}>View profile</Text>
-                      <Text style={styles.chatActionsItemSubtitle}>
-                        See photos, languages, and profile details
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  <Pressable
-                    style={[styles.chatActionsItem, styles.chatActionsItemDestructive]}
-                    onPress={() => {
-                      setChatActionsMenu(null);
-                      handleReportUser(chatActionsMenu.username);
-                    }}
-                  >
-                    <View style={[styles.chatActionsItemIconWrap, styles.chatActionsItemIconWrapDestructive]}>
-                      <Ionicons name="flag-outline" size={18} color={colors.danger} />
-                    </View>
-                    <View style={styles.chatActionsItemBody}>
-                      <Text style={[styles.chatActionsItemTitle, styles.chatActionsItemTitleDanger]}>Report user</Text>
-                      <Text style={styles.chatActionsItemSubtitle}>
-                        Let us know if something feels unsafe
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  <Pressable
-                    style={[styles.chatActionsItem, styles.chatActionsItemWarning]}
-                    onPress={handleToggleUserBlock}
-                    disabled={chatActionLoading}
-                  >
-                    <View style={[styles.chatActionsItemIconWrap, styles.chatActionsItemIconWrapWarning]}>
-                      {chatActionLoading ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <Ionicons
-                          name={chatActionsMenu.isBlocked ? "checkmark-circle-outline" : "ban-outline"}
-                          size={18}
-                          color={colors.primary}
-                        />
-                      )}
-                    </View>
-                    <View style={styles.chatActionsItemBody}>
-                      <Text style={styles.chatActionsItemTitle}>
-                        {chatActionsMenu.isBlocked ? "Unblock user" : "Block user"}
-                      </Text>
-                      <Text style={styles.chatActionsItemSubtitle}>
-                        {chatActionsMenu.isBlocked
-                          ? "Allow this user to contact you again"
-                          : "Prevent this user from messaging you"}
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  <Pressable style={styles.chatActionsCancel} onPress={closeChatActionsMenu}>
-                    <Text style={styles.chatActionsCancelText}>Close</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : null}
-          </View>
-        </Modal>
-        <Modal
-          transparent
-          visible={Boolean(messageMenu)}
-          animationType="fade"
-          onRequestClose={closeMessageMenu}
-        >
-          <View style={styles.menuOverlay}>
-            <Pressable style={styles.menuOverlayTouchable} onPress={closeMessageMenu} />
-            {messageMenu ? (
-              <View
-                style={[
-                  styles.messageMenuSheet,
-                  { top: messageMenu.top },
-                  messageMenu.align === "left" ? styles.messageMenuLeft : styles.messageMenuRight,
-                ]}
-              >
-                <View style={styles.messageMenuPreview}>
-                  <Text style={styles.messageMenuPreviewLabel}>
-                    {messageMenu.isMine ? "Your message" : messageMenu.message.sender?.username || "Message"}
-                  </Text>
-                  <Text numberOfLines={2} style={styles.messageMenuPreviewText}>
-                    {messagePreviewText(messageMenu.message) || "Message"}
-                  </Text>
-                </View>
-                {buildMessageMenuActions(messageMenu.message, messageMenu.isMine).map((action) => (
-                  <Pressable
-                    key={`${messageMenu.message.id}-${action.key}`}
-                    style={[
-                      styles.messageMenuItem,
-                      action.destructive ? styles.messageMenuItemDanger : undefined,
-                    ]}
-                    onPress={action.onPress}
-                  >
-                    <View
-                      style={[
-                        styles.messageMenuItemIconWrap,
-                        action.destructive ? styles.messageMenuItemIconWrapDanger : undefined,
-                      ]}
-                    >
-                      <Ionicons
-                        name={action.icon}
-                        size={16}
-                        color={action.destructive ? colors.danger : colors.text}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.messageMenuItemText,
-                        action.destructive ? styles.messageMenuItemTextDanger : undefined,
-                      ]}
-                    >
-                      {action.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-          </View>
-        </Modal>
-        <Modal
-          transparent
-          visible={showPinnedModal}
-          animationType="fade"
-          onRequestClose={() => setShowPinnedModal(false)}
-        >
-          <View style={styles.menuOverlay}>
-            <Pressable style={styles.menuOverlayTouchable} onPress={() => setShowPinnedModal(false)} />
-            <View style={styles.pinnedModal}>
-              <Text style={styles.pinnedModalTitle}>Pinned messages</Text>
-              {pinnedMessages.map((message) => (
-                <Pressable
-                  key={`mobile-pinned-${message.id}`}
-                  style={styles.pinnedModalItem}
-                  onPress={() => handlePinnedMessagePress(message)}
-                >
-                  <Text numberOfLines={2} style={styles.pinnedModalItemText}>
-                    {messagePreviewText(message) || "Pinned message"}
-                  </Text>
-                  <Pressable
-                    style={styles.pinnedModalItemClose}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      togglePinnedMessage(message);
-                    }}
-                  >
-                    <Ionicons name="close" size={15} color={colors.mutedText} />
-                  </Pressable>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </Modal>
-        <ImageViewer url={viewerImageUrl} onClose={closeImageViewer} />
-      </SafeAreaView>
+          <ChatOptionsSheet
+            warm={warm}
+            menu={chatActionsMenu}
+            loading={chatActionLoading}
+            reduceMotion={reduceMotion}
+            onClose={closeChatActionsMenu}
+            onViewProfile={handleOptionsViewProfile}
+            onReport={handleOptionsReport}
+            onToggleBlock={handleToggleUserBlock}
+          />
+          <MessageActionsSheet
+            warm={warm}
+            menu={messageMenu}
+            actions={messageMenuActions}
+            reduceMotion={reduceMotion}
+            onClose={closeMessageMenu}
+          />
+          <ImageViewer url={viewerImageUrl} onClose={closeImageViewer} />
+        </ChatRoomView>
       </ChatAudioContext.Provider>
     );
   }
 
   if (openingFromNotification) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.chatLoading}>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={styles.openingConversationText}>Opening conversation...</Text>
-        </View>
-      </SafeAreaView>
+      <OpeningState warm={warm} />
     );
   }
 
   return (
+    <ConversationListView
+      warm={warm}
+      conversations={sortedConversations}
+      currentUserId={currentUserId}
+      currentUsername={currentUsername}
+      onlineUserIds={onlineUserIds}
+      typingByConversation={typingByConversation}
+      loadingList={loadingList}
+      coachLanguageValue={coachLanguageValue}
+      coachLanguageLabel={coachLanguageLabel}
+      searchQuery={participantUsername}
+      onSearchQueryChange={setParticipantUsername}
+      creatingConversation={creatingConversation}
+      onStartConversation={startConversation}
+      onOpenConversation={openConversationFromList}
+      onOpenCoach={openCoach}
+      onFindPeople={findPeople}
+      onRefresh={refreshList}
+    />
+  );
+}
+
+/** Shown while a push/banner tap opens a conversation. */
+function OpeningState({ warm }: { warm: WarmColors }) {
+  const styles = useMemo(() => createOpeningStyles(warm), [warm]);
+  return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Conversations</Text>
-        <Pressable
-          style={styles.coachCard}
-          onPress={() => navigation.navigate("CoachChat")}
-        >
-          <CoachAvatar language={coachLanguageValue} size={48} />
-          <View style={styles.coachBody}>
-            <View style={styles.coachHeaderRow}>
-              <Text style={styles.coachName}>Lumi AI Coach</Text>
-              <View style={styles.coachOnlineBadge}>
-                <Text style={styles.coachOnlineBadgeText}>Online</Text>
-              </View>
-            </View>
-            <Text style={styles.coachPreview}>
-              Practice {coachLanguageLabel}, switch modes, and get quick corrections.
-            </Text>
-          </View>
-          <Ionicons name="sparkles" size={18} color={colors.primary} />
-        </Pressable>
-        <View style={styles.newChatRow}>
-          <TextInput
-            style={styles.newChatInput}
-            value={participantUsername}
-            onChangeText={setParticipantUsername}
-            placeholder="Start chat by username"
-            placeholderTextColor={colors.mutedText}
-            autoCapitalize="none"
-          />
-          <Pressable style={styles.newChatButton} onPress={startConversation} disabled={creatingConversation}>
-            <Text style={styles.newChatButtonText}>{creatingConversation ? "..." : "Start"}</Text>
-          </Pressable>
-        </View>
+      <View style={styles.center} accessibilityLiveRegion="polite">
+        <ActivityIndicator color={warm.teal} />
+        <Text style={styles.text}>Opening conversation…</Text>
       </View>
-      <FlatList
-        data={sortedConversations}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => {
-          const otherUser = item.sender.username === currentUsername ? item.receiver : item.sender;
-          return (
-            <Pressable style={styles.conversationCard} onPress={() => openConversation(item.id)}>
-              <View>
-                <RNImage source={{ uri: avatarImage(resolveMediaUrl(otherUser.profile_image_url), 44) }} style={styles.avatarImageWrap} />
-                {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDot} /> : null}
-              </View>
-              <View style={styles.conversationBody}>
-                <View style={styles.conversationHeader}>
-                  <Text style={styles.conversationName}>{otherUser.username}</Text>
-                  {item.unread_count > 0 ? (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Text numberOfLines={1} style={styles.conversationPreview}>
-                  {typingByConversation[item.id]
-                    ? "Typing..."
-                    : messagePreviewText(item.last_message) || "No messages yet"}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
-        refreshControl={<RefreshControl refreshing={loadingList} onRefresh={() => loadConversations(true)} />}
-        ListEmptyComponent={
-          loadingList ? (
-            <View style={styles.emptyWrap}>
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : (
-            <Text style={styles.emptyText}>No conversations yet.</Text>
-          )
-        }
-        contentContainerStyle={styles.listContent}
-      />
     </SafeAreaView>
   );
 }
 
-export type ConversationStyles = ReturnType<typeof createStyles>;
-
-const createStyles = (colors: ThemeColors) =>
+const createOpeningStyles = (warm: WarmColors) =>
   StyleSheet.create({
-    flex: { flex: 1 },
-    container: { flex: 1, backgroundColor: colors.background },
-    listHeader: {
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 8,
-    },
-    listTitle: {
-      fontSize: 30,
-      fontWeight: "800",
-      color: colors.text,
-    },
-    coachCard: {
-      marginTop: 12,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 14,
-      paddingVertical: 14,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.08,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 3,
-    },
-    coachAvatar: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-    },
-    coachBody: {
-      flex: 1,
-    },
-    coachHeaderRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    coachName: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: "800",
-    },
-    coachOnlineBadge: {
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: 999,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-    },
-    coachOnlineBadgeText: {
-      color: colors.success,
-      fontSize: 11,
-      fontWeight: "800",
-      textTransform: "uppercase",
-    },
-    coachPreview: {
-      color: colors.mutedText,
-      fontSize: 13,
-      lineHeight: 18,
-      marginTop: 4,
-    },
-    newChatRow: {
-      marginTop: 10,
-      flexDirection: "row",
-      gap: 8,
-    },
-    newChatInput: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      color: colors.text,
-      backgroundColor: colors.inputBackground,
-    },
-    newChatButton: {
-      backgroundColor: colors.navy,
-      borderRadius: 12,
-      paddingHorizontal: 14,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    newChatButtonText: {
-      color: "#fff",
-      fontWeight: "700",
-    },
-    listContent: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      gap: 8,
-    },
-    conversationCard: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      padding: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-    avatarImageWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.surfaceMuted,
-    },
-    onlineDot: {
-      position: "absolute",
-      right: -1,
-      bottom: -1,
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: colors.success,
-      borderWidth: 2,
-      borderColor: colors.surface,
-    },
-    onlineDotChat: {
-      position: "absolute",
-      right: -1,
-      bottom: -1,
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-      backgroundColor: colors.success,
-      borderWidth: 2,
-      borderColor: colors.surface,
-    },
-    conversationBody: {
-      flex: 1,
-    },
-    conversationHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 2,
-    },
-    conversationName: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    unreadBadge: {
-      backgroundColor: colors.primary,
-      borderRadius: 999,
-      minWidth: 20,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      alignItems: "center",
-    },
-    unreadBadgeText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 12,
-    },
-    conversationPreview: {
-      color: colors.mutedText,
-      fontSize: 13,
-    },
-    emptyWrap: {
-      marginTop: 30,
-      alignItems: "center",
-    },
-    emptyText: {
-      marginTop: 30,
-      textAlign: "center",
-      color: colors.mutedText,
-    },
-    chatHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    chatHeaderActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    backButton: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    chatTitleWrap: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    chatAvatar: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: colors.surfaceMuted,
-    },
-    chatTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    typingText: {
-      fontSize: 12,
-      color: colors.primary,
-      marginTop: 1,
-    },
-    onlineText: {
-      fontSize: 12,
-      color: colors.success,
-      marginTop: 1,
-    },
-    chatHeaderActionSoft: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    searchBar: {
-      marginHorizontal: 12,
-      marginTop: 10,
-      marginBottom: 4,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    searchInput: {
-      flex: 1,
-      color: colors.text,
-      paddingVertical: 0,
-    },
-    searchCountText: {
-      color: colors.mutedText,
-      fontSize: 11,
-      fontWeight: "700",
-      minWidth: 34,
-      textAlign: "center",
-    },
-    searchActionButton: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pinnedStripWrap: {
-      paddingHorizontal: 12,
-      paddingTop: 6,
-      paddingBottom: 2,
-      alignItems: "center",
-    },
-    pinnedStrip: {
-      width: "100%",
-      maxWidth: 360,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surfaceMuted,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    pinnedStripIcon: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      backgroundColor: colors.surface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pinnedStripText: {
-      flex: 1,
-      color: colors.text,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    pinnedCountBadge: {
-      borderRadius: 999,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-    },
-    pinnedCountBadgeText: {
-      color: colors.mutedText,
-      fontSize: 11,
-      fontWeight: "800",
-    },
-    pinnedStripClose: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    chatLoading: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    openingConversationText: {
-      marginTop: 10,
-      color: colors.mutedText,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    messagesContent: {
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      gap: 8,
-    },
-    messagesFooterSpacer: {
-      height: 14,
-    },
-    olderMessagesLoader: {
-      paddingVertical: 10,
-    },
-    daySeparatorRow: {
-      alignItems: "center",
-      marginBottom: 10,
-      marginTop: 6,
-    },
-    daySeparatorText: {
-      color: colors.mutedText,
-      fontSize: 11,
-      fontWeight: "800",
-      letterSpacing: 0.2,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 999,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    unreadDividerRow: {
-      alignItems: "center",
-      marginBottom: 10,
-      marginTop: 2,
-    },
-    unreadDividerText: {
-      color: colors.primary,
-      fontSize: 11,
-      fontWeight: "800",
-      letterSpacing: 0.4,
-      paddingHorizontal: 11,
-      paddingVertical: 5,
-      borderRadius: 999,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    messageRow: {
-      flexDirection: "row",
-    },
-    messageRowMine: {
-      justifyContent: "flex-end",
-    },
-    messageRowOther: {
-      justifyContent: "flex-start",
-    },
-    swipeContainer: {
-      overflow: "visible",
-    },
-    swipeChildren: {
-      overflow: "visible",
-    },
-    messageContainer: {
-      position: "relative",
-      maxWidth: "100%",
-    },
-    replySwipeAction: {
-      width: 22,
-      marginVertical: 4,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    replySwipeActionMine: {
-      marginLeft: 6,
-    },
-    replySwipeActionOther: {
-      marginRight: 6,
-    },
-    reactionPicker: {
-      position: "absolute",
-      top: -44,
-      left: 0,
-      zIndex: 20,
-      flexDirection: "row",
-      gap: 4,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 999,
-      paddingHorizontal: 6,
-      paddingVertical: 4,
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 3,
-    },
-    reactionPickerItem: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    reactionPickerItemActive: {
-      backgroundColor: colors.surfaceMuted,
-    },
-    reactionPickerEmoji: {
-      fontSize: 16,
-    },
-    messageBubble: {
-      maxWidth: "100%",
-      borderRadius: 14,
-      paddingHorizontal: 16,
-      paddingVertical: 11,
-    },
-    messageBubbleReplyActiveMine: {
-      transform: [{ translateX: -18 }],
-    },
-    messageBubbleReplyActiveOther: {
-      transform: [{ translateX: 18 }],
-    },
-    messageBubbleHighlighted: {
-      shadowColor: colors.primary,
-      shadowOpacity: 0.08,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 2,
-    },
-    messageBubbleHighlightOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      borderRadius: 14,
-      borderWidth: 2,
-      borderColor: colors.primary,
-      backgroundColor: `${colors.primary}10`,
-    },
-    replyActiveIndicator: {
-      position: "absolute",
-      top: -8,
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      zIndex: 2,
-      shadowColor: "#000",
-      shadowOpacity: 0.12,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 2 },
-      elevation: 2,
-    },
-    replyActiveIndicatorMine: {
-      right: -8,
-    },
-    replyActiveIndicatorOther: {
-      left: -8,
-    },
-    messageMine: {
-      backgroundColor: colors.navy,
-      borderBottomRightRadius: 6,
-    },
-    messageOther: {
-      backgroundColor: colors.surfaceMuted,
-      borderBottomLeftRadius: 6,
-    },
-    messageText: {
-      fontSize: 15,
-      flexShrink: 1,
-      lineHeight: 21,
-    },
-    inlineHighlight: {
-      backgroundColor: "#fef3c7",
-      color: colors.text,
-      borderRadius: 4,
-    },
-    inlineHighlightActive: {
-      backgroundColor: "#fde68a",
-    },
-    messageFlagRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      marginTop: 6,
-    },
-    messageFlagText: {
-      fontSize: 10,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
-    },
-    messageFlagTextMine: {
-      color: "#dbeafe",
-    },
-    messageFlagTextOther: {
-      color: colors.mutedText,
-    },
-    messageEditedText: {
-      marginTop: 4,
-      fontSize: 10,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
-    },
-    messageEditedTextMine: {
-      color: "#cbd5e1",
-    },
-    messageEditedTextOther: {
-      color: colors.mutedText,
-    },
-    replySnippet: {
-      borderLeftWidth: 3,
-      borderRadius: 8,
-      paddingHorizontal: 8,
-      paddingVertical: 6,
-      marginBottom: 6,
-    },
-    replySnippetMine: {
-      borderLeftColor: "#dbeafe",
-      backgroundColor: "rgba(255,255,255,0.14)",
-    },
-    replySnippetOther: {
-      borderLeftColor: colors.primary,
-      backgroundColor: colors.surface,
-    },
-    replySnippetAuthor: {
-      fontSize: 11,
-      fontWeight: "700",
-      marginBottom: 1,
-    },
-    replySnippetAuthorMine: {
-      color: "#e2e8f0",
-    },
-    replySnippetAuthorOther: {
-      color: colors.primary,
-    },
-    replySnippetText: {
-      fontSize: 12,
-    },
-    replySnippetTextMine: {
-      color: "#e2e8f0",
-    },
-    replySnippetTextOther: {
-      color: colors.mutedText,
-    },
-    messageTextMine: {
-      color: "#fff",
-    },
-    messageTextOther: {
-      color: colors.text,
-    },
-    messageMetaRow: {
-      marginTop: 4,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-start",
-      gap: 4,
-    },
-    messageTime: {
-      fontSize: 11,
-    },
-    messageTimeMine: {
-      color: "#cbd5e1",
-      textAlign: "left",
-    },
-    messageTimeOther: {
-      color: colors.mutedText,
-      textAlign: "left",
-    },
-    statusTick: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    statusTickDefault: {
-      color: "#cbd5e1",
-    },
-    statusTickRead: {
-      color: colors.primary,
-    },
-    reactionsRow: {
-      marginTop: 6,
-      flexDirection: "row",
-      gap: 6,
-      flexWrap: "wrap",
-    },
-    reactionsRowMine: {
-      justifyContent: "flex-end",
-    },
-    reactionsRowOther: {
-      justifyContent: "flex-start",
-    },
-    reactionChip: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      borderRadius: 999,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-    },
-    reactionChipMine: {
-      borderColor: colors.primary,
-      backgroundColor: colors.surfaceMuted,
-    },
-    reactionChipText: {
-      fontSize: 12,
-      color: colors.text,
-      fontWeight: "600",
-    },
-    inputWrap: {
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    jumpToLatestButton: {
-      position: "absolute",
-      right: 14,
-      bottom: 82,
-      zIndex: 20,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.16,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 5,
-    },
-    jumpToLatestText: {
-      color: colors.text,
-      fontSize: 11,
-      fontWeight: "800",
-    },
-    replyComposerBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginHorizontal: 12,
-      marginTop: 8,
-      marginBottom: 2,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 10,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.primary,
-      backgroundColor: colors.surfaceMuted,
-    },
-    replyComposerTextWrap: {
-      flex: 1,
-      marginRight: 8,
-    },
-    replyComposerLabel: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.primary,
-      marginBottom: 1,
-    },
-    replyComposerText: {
-      fontSize: 12,
-      color: colors.text,
-    },
-    replyComposerClose: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    menuOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(8, 15, 33, 0.26)",
-      justifyContent: "flex-start",
-      alignItems: "stretch",
-    },
-    menuOverlayTouchable: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    chatActionsSheetWrap: {
-      flex: 1,
-      justifyContent: "flex-end",
-      paddingHorizontal: 12,
-      paddingBottom: 12,
-    },
-    chatActionsSheet: {
-      borderRadius: 24,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 14,
-      shadowColor: "#000",
-      shadowOpacity: 0.18,
-      shadowRadius: 24,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 10,
-    },
-    chatActionsHandle: {
-      alignSelf: "center",
-      width: 42,
-      height: 5,
-      borderRadius: 999,
-      backgroundColor: colors.border,
-      marginBottom: 12,
-      opacity: 0.9,
-    },
-    chatActionsHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      marginBottom: 10,
-      paddingHorizontal: 2,
-    },
-    chatActionsHeaderIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    chatActionsHeaderTextWrap: {
-      flex: 1,
-    },
-    chatActionsTitle: {
-      color: colors.text,
-      fontSize: 22,
-      fontWeight: "800",
-    },
-    chatActionsSubtitle: {
-      color: colors.mutedText,
-      fontSize: 13,
-      marginTop: 2,
-    },
-    chatActionsItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      borderRadius: 18,
-      paddingHorizontal: 10,
-      paddingVertical: 12,
-      backgroundColor: colors.surface,
-    },
-    chatActionsItemWarning: {
-      backgroundColor: colors.surfaceMuted,
-    },
-    chatActionsItemDestructive: {
-      backgroundColor: `${colors.danger}08`,
-    },
-    chatActionsItemIconWrap: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    chatActionsItemIconWrapWarning: {
-      backgroundColor: colors.surface,
-    },
-    chatActionsItemIconWrapDestructive: {
-      backgroundColor: `${colors.danger}14`,
-    },
-    chatActionsItemBody: {
-      flex: 1,
-    },
-    chatActionsItemTitle: {
-      color: colors.text,
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    chatActionsItemTitleDanger: {
-      color: colors.danger,
-    },
-    chatActionsItemSubtitle: {
-      color: colors.mutedText,
-      fontSize: 12,
-      lineHeight: 17,
-      marginTop: 2,
-    },
-    chatActionsCancel: {
-      marginTop: 10,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 12,
-      backgroundColor: colors.surfaceMuted,
-    },
-    chatActionsCancelText: {
-      color: colors.text,
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    messageMenuSheet: {
-      position: "absolute",
-      minWidth: 208,
-      maxWidth: 280,
-      borderRadius: 18,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 8,
-      shadowColor: "#000",
-      shadowOpacity: 0.2,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 12 },
-      elevation: 9,
-    },
-    messageMenuLeft: {
-      left: 14,
-    },
-    messageMenuRight: {
-      right: 14,
-    },
-    messageMenuPreview: {
-      borderRadius: 12,
-      backgroundColor: colors.surfaceMuted,
-      paddingHorizontal: 10,
-      paddingVertical: 9,
-      marginBottom: 6,
-    },
-    messageMenuPreviewLabel: {
-      color: colors.primary,
-      fontSize: 11,
-      fontWeight: "800",
-      marginBottom: 3,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    messageMenuPreviewText: {
-      color: colors.text,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    messageMenuItem: {
-      minHeight: 46,
-      paddingHorizontal: 10,
-      borderRadius: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-    messageMenuItemDanger: {
-      backgroundColor: `${colors.danger}10`,
-    },
-    messageMenuItemIconWrap: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: colors.surfaceMuted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    messageMenuItemIconWrapDanger: {
-      backgroundColor: `${colors.danger}18`,
-    },
-    messageMenuItemText: {
-      color: colors.text,
-      fontSize: 15,
-      fontWeight: "600",
-      flex: 1,
-    },
-    messageMenuItemTextDanger: {
-      color: colors.danger,
-    },
-    pinnedModal: {
-      position: "absolute",
-      left: 16,
-      right: 16,
-      top: 110,
-      borderRadius: 18,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 12,
-      shadowColor: "#000",
-      shadowOpacity: 0.18,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 8,
-    },
-    pinnedModalTitle: {
-      color: colors.text,
-      fontSize: 13,
-      fontWeight: "800",
-      marginBottom: 8,
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
-    },
-    pinnedModalItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingVertical: 10,
-      backgroundColor: colors.surfaceMuted,
-      marginBottom: 6,
-    },
-    pinnedModalItemText: {
-      flex: 1,
-      color: colors.text,
-      fontSize: 14,
-      lineHeight: 19,
-    },
-    pinnedModalItemClose: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    inputRow: {
-      flexDirection: "row",
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    input: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      color: colors.text,
-      backgroundColor: colors.inputBackground,
-    },
-    sendButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 12,
-      backgroundColor: colors.navy,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    attachButton: {
-      width: 36,
-      height: 42,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    composerAttachmentBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      marginHorizontal: 12,
-      marginTop: 8,
-      marginBottom: 2,
-      padding: 8,
-      borderRadius: 10,
-      backgroundColor: colors.surfaceMuted,
-    },
-    composerAttachmentThumb: {
-      width: 44,
-      height: 44,
-      borderRadius: 8,
-      backgroundColor: colors.border,
-    },
-    // Fixed box (CHAT_IMAGE_BOX_* in MessageAttachment) so rows don't jump when the image loads.
-    attachmentImageBox: {
-      width: 220,
-      height: 240,
-      maxWidth: "100%",
-      borderRadius: 10,
-      overflow: "hidden",
-      backgroundColor: "rgba(127,127,127,0.18)",
-    },
-    attachmentImage: {
-      width: "100%",
-      height: "100%",
-    },
-    attachmentImageOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    attachmentImageSending: {
-      backgroundColor: "rgba(0,0,0,0.28)",
-    },
-    attachmentImageErrorText: {
-      fontSize: 12,
-      color: colors.mutedText,
-    },
-    attachmentCaption: {
-      marginTop: 6,
-    },
-    voiceNoteRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      minWidth: 200,
-      paddingVertical: 2,
-    },
-    voiceNoteButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    voiceNoteButtonMine: {
-      backgroundColor: "rgba(255,255,255,0.18)",
-    },
-    voiceNoteButtonOther: {
-      backgroundColor: colors.surface,
-    },
-    voiceNoteBody: {
-      flex: 1,
-      gap: 6,
-    },
-    voiceNoteTrack: {
-      height: 4,
-      borderRadius: 2,
-      overflow: "hidden",
-    },
-    voiceNoteTrackMine: {
-      backgroundColor: "rgba(255,255,255,0.28)",
-    },
-    voiceNoteTrackOther: {
-      backgroundColor: colors.border,
-    },
-    voiceNoteFill: {
-      height: "100%",
-      borderRadius: 2,
-    },
-    voiceNoteFillMine: {
-      backgroundColor: "#fff",
-    },
-    voiceNoteFillOther: {
-      backgroundColor: colors.primary,
-    },
-    voiceNoteTime: {
-      fontSize: 11,
-    },
-    fileChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      minWidth: 180,
-      maxWidth: 260,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 10,
-    },
-    fileChipMine: {
-      backgroundColor: "rgba(255,255,255,0.14)",
-    },
-    fileChipOther: {
-      backgroundColor: colors.surface,
-    },
-    fileChipTextWrap: {
-      flex: 1,
-      minWidth: 0,
-    },
-    fileChipName: {
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    fileChipMeta: {
-      fontSize: 11,
-      marginTop: 2,
-    },
+    container: { flex: 1, backgroundColor: warm.paper },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+    text: { color: warm.mutedInk, fontSize: 14, fontFamily: fontFamilies.bodySemiBold },
   });

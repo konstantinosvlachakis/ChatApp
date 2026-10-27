@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { ConversationStyles } from "../../screens/ConversationsScreen";
 import { showToast } from "../../services/toast";
-import type { ThemeColors } from "../../theme/colors";
+import type { WarmColors } from "../../theme/warm";
 import { audioPlaybackUrl, cloudinaryImage } from "../../utils/media";
 import {
   attachmentFileName,
@@ -13,6 +12,7 @@ import {
   type AttachmentKind,
 } from "./attachments";
 import { useChatAudioController, useChatAudioState } from "./audioController";
+import type { ChatStyles } from "./chatStyles";
 
 /** Rendered size (dp) of the image box inside a bubble; fixed so rows never jump on load. */
 export const CHAT_IMAGE_BOX_WIDTH = 220;
@@ -22,10 +22,9 @@ type AttachmentProps = {
   messageId: number;
   url: string;
   kind: AttachmentKind;
-  isMine: boolean;
   isPending: boolean;
-  styles: ConversationStyles;
-  colors: ThemeColors;
+  styles: ChatStyles;
+  warm: WarmColors;
   onOpenImage: (url: string) => void;
   onLongPress: (pageY: number) => void;
 };
@@ -40,7 +39,7 @@ function openExternally(url: string) {
   });
 }
 
-function ImageAttachment({ url, isPending, styles, colors, onOpenImage, onLongPress }: AttachmentProps) {
+function ImageAttachment({ url, isPending, styles, warm, onOpenImage, onLongPress }: AttachmentProps) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   // Cloudinary resize to the box width (× pixel ratio, capped at 3); other URLs unchanged.
@@ -74,32 +73,32 @@ function ImageAttachment({ url, isPending, styles, colors, onOpenImage, onLongPr
       ) : null}
       {!loaded && !failed ? (
         <View style={styles.attachmentImageOverlay} pointerEvents="none">
-          <ActivityIndicator color={colors.mutedText} />
+          <ActivityIndicator color={warm.mutedInk} />
         </View>
       ) : null}
       {failed ? (
         <View style={styles.attachmentImageOverlay} pointerEvents="none">
-          <Ionicons name="image-outline" size={28} color={colors.mutedText} />
+          <Ionicons name="image-outline" size={28} color={warm.mutedInk} />
           <Text style={styles.attachmentImageErrorText}>Photo unavailable</Text>
         </View>
       ) : null}
       {isPending ? (
         <View style={[styles.attachmentImageOverlay, styles.attachmentImageSending]} pointerEvents="none">
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={warm.onImageScrim} />
         </View>
       ) : null}
     </Pressable>
   );
 }
 
-function VoiceNoteAttachment({ messageId, url, isMine, isPending, styles, colors, onLongPress }: AttachmentProps) {
+function VoiceNoteAttachment({ messageId, url, isPending, styles, warm, onLongPress }: AttachmentProps) {
   const controller = useChatAudioController();
   const key = String(messageId);
   const state = useChatAudioState(key);
   const playbackUrl = useMemo(() => audioPlaybackUrl(url), [url]);
   const isActive = state.activeKey === key;
   const progress = isActive && state.duration > 0 ? Math.min(1, state.currentTime / state.duration) : 0;
-  const tint = isMine ? "#fff" : colors.primary;
+  const tint = warm.teal;
 
   // A deleted (or far-scrolled, virtualized) row must not keep playing invisibly.
   useEffect(
@@ -143,7 +142,7 @@ function VoiceNoteAttachment({ messageId, url, isMine, isPending, styles, colors
       }
       accessibilityValue={isActive && state.duration > 0 ? { text: timeLabel } : undefined}
     >
-      <View style={[styles.voiceNoteButton, isMine ? styles.voiceNoteButtonMine : styles.voiceNoteButtonOther]}>
+      <View style={styles.voiceNoteButton}>
         {isActive && state.loading ? (
           <ActivityIndicator size="small" color={tint} />
         ) : (
@@ -155,16 +154,12 @@ function VoiceNoteAttachment({ messageId, url, isMine, isPending, styles, colors
         )}
       </View>
       <View style={styles.voiceNoteBody}>
-        <View style={[styles.voiceNoteTrack, isMine ? styles.voiceNoteTrackMine : styles.voiceNoteTrackOther]}>
+        <View style={styles.voiceNoteTrack}>
           <View
-            style={[
-              styles.voiceNoteFill,
-              isMine ? styles.voiceNoteFillMine : styles.voiceNoteFillOther,
-              { width: `${Math.round(progress * 100)}%` },
-            ]}
+            style={[styles.voiceNoteFill, { width: `${Math.round(progress * 100)}%` }]}
           />
         </View>
-        <Text style={[styles.voiceNoteTime, isMine ? styles.messageTimeMine : styles.messageTimeOther]}>
+        <Text style={styles.voiceNoteTime}>
           {timeLabel}
         </Text>
       </View>
@@ -172,11 +167,11 @@ function VoiceNoteAttachment({ messageId, url, isMine, isPending, styles, colors
   );
 }
 
-function FileAttachment({ url, kind, isMine, isPending, styles, colors, onLongPress }: AttachmentProps) {
+function FileAttachment({ url, kind, isPending, styles, warm, onLongPress }: AttachmentProps) {
   const name = attachmentFileName(url);
   return (
     <Pressable
-      style={[styles.fileChip, isMine ? styles.fileChipMine : styles.fileChipOther]}
+      style={styles.fileChip}
       onPress={(event) => {
         event.stopPropagation();
         if (!isPending) openExternally(url);
@@ -189,17 +184,17 @@ function FileAttachment({ url, kind, isMine, isPending, styles, colors, onLongPr
       <Ionicons
         name={kind === "video" ? "videocam-outline" : "document-attach-outline"}
         size={20}
-        color={isMine ? "#fff" : colors.primary}
+        color={warm.teal}
       />
       <View style={styles.fileChipTextWrap}>
-        <Text numberOfLines={1} style={[styles.fileChipName, isMine ? styles.messageTextMine : styles.messageTextOther]}>
+        <Text numberOfLines={1} style={styles.fileChipName}>
           {name}
         </Text>
-        <Text style={[styles.fileChipMeta, isMine ? styles.messageTimeMine : styles.messageTimeOther]}>
+        <Text style={styles.fileChipMeta}>
           {attachmentLabel(kind)}
         </Text>
       </View>
-      <Ionicons name="open-outline" size={16} color={isMine ? "#cbd5e1" : colors.mutedText} />
+      <Ionicons name="open-outline" size={16} color={warm.mutedInk} />
     </Pressable>
   );
 }

@@ -2,9 +2,8 @@ import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState }
 import { Image, Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import type { ConversationStyles } from "../../screens/ConversationsScreen";
 import { showToast } from "../../services/toast";
-import type { ThemeColors } from "../../theme/colors";
+import type { WarmColors } from "../../theme/warm";
 import type { ChatMessage } from "../../types";
 import {
   formatFileSize,
@@ -14,7 +13,9 @@ import {
   uploadFileName,
   type PickedAttachment,
 } from "./attachments";
+import type { ChatStyles } from "./chatStyles";
 import { toReplyPreviewText } from "./format";
+import { SendButton } from "./SendButton";
 
 export type ComposerHandle = {
   /** Focuses the input with the cursor at the end (used after swipe/double-tap to reply). */
@@ -23,8 +24,8 @@ export type ComposerHandle = {
 };
 
 type ComposerProps = {
-  styles: ConversationStyles;
-  colors: ThemeColors;
+  styles: ChatStyles;
+  warm: WarmColors;
   currentUserId?: number;
   replyTarget: ChatMessage | null;
   sending: boolean;
@@ -49,7 +50,7 @@ export const Composer = React.memo(
   forwardRef<ComposerHandle, ComposerProps>(function Composer(
     {
       styles,
-      colors,
+      warm,
       currentUserId,
       replyTarget,
       sending,
@@ -86,6 +87,8 @@ export const Composer = React.memo(
       requestAnimationFrame(focusInput);
       setTimeout(focusInput, 50);
       setTimeout(focusInput, 150);
+      // Reply from the message sheet: retry once its slide-out has finished.
+      setTimeout(focusInput, 380);
     }, []);
 
     useImperativeHandle(
@@ -198,15 +201,18 @@ export const Composer = React.memo(
       }
     }, [onSend, onTypingStop]);
 
+    const hasContent = Boolean(attachment) || messageText.trim().length > 0;
+
     return (
-      <View style={styles.inputWrap}>
+      <View style={styles.composerWrap}>
         {replyTarget ? (
-          <View style={styles.replyComposerBar}>
-            <View style={styles.replyComposerTextWrap}>
-              <Text style={styles.replyComposerLabel}>
+          <View style={styles.composerChip}>
+            <View style={styles.composerChipAccent} />
+            <View style={styles.composerChipTextWrap}>
+              <Text style={styles.composerChipLabel} numberOfLines={1}>
                 Replying to {replyTarget.sender?.id === currentUserId ? "your message" : replyTarget.sender?.username || "user"}
               </Text>
-              <Text style={styles.replyComposerText} numberOfLines={1}>
+              <Text style={styles.composerChipText} numberOfLines={1}>
                 {toReplyPreviewText(replyTarget)}
               </Text>
             </View>
@@ -215,22 +221,24 @@ export const Composer = React.memo(
                 event.stopPropagation();
                 onClearReply();
               }}
-              style={styles.replyComposerClose}
+              style={styles.composerChipClose}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel reply"
             >
-              <Ionicons name="close" size={16} color={colors.mutedText} />
+              <Ionicons name="close" size={18} color={warm.mutedInk} />
             </Pressable>
           </View>
         ) : null}
         {attachment ? (
-          <View style={styles.composerAttachmentBar}>
+          <View style={styles.composerChip}>
             <Image
               source={{ uri: attachment.uri }}
-              style={styles.composerAttachmentThumb}
+              style={styles.composerChipThumb}
               accessibilityIgnoresInvertColors
             />
-            <View style={styles.replyComposerTextWrap}>
-              <Text style={styles.replyComposerLabel}>Photo</Text>
-              <Text style={styles.replyComposerText} numberOfLines={1}>
+            <View style={styles.composerChipTextWrap}>
+              <Text style={styles.composerChipLabel}>Photo</Text>
+              <Text style={styles.composerChipText} numberOfLines={1}>
                 {attachment.fileSize ? formatFileSize(attachment.fileSize) : "Add a caption (optional)"}
               </Text>
             </View>
@@ -239,60 +247,53 @@ export const Composer = React.memo(
                 event.stopPropagation();
                 setAttachment(null);
               }}
-              style={styles.replyComposerClose}
-              hitSlop={8}
+              style={styles.composerChipClose}
               accessibilityRole="button"
               accessibilityLabel="Remove photo"
             >
-              <Ionicons name="close" size={16} color={colors.mutedText} />
+              <Ionicons name="close" size={18} color={warm.mutedInk} />
             </Pressable>
           </View>
         ) : null}
-        <View style={styles.inputRow}>
-          <Pressable
-            style={styles.attachButton}
-            onPress={(event) => {
-              event.stopPropagation();
-              handlePickPhoto();
-            }}
+        <View style={styles.composerRow}>
+          <View style={styles.composerPill}>
+            <Pressable
+              style={styles.attachButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                handlePickPhoto();
+              }}
+              disabled={sending}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={attachment ? "Replace photo" : "Attach a photo"}
+            >
+              <Ionicons name="image-outline" size={22} color={warm.teal} />
+            </Pressable>
+            <TextInput
+              ref={messageInputRef}
+              style={styles.composerInput}
+              value={messageText}
+              onChangeText={handleMessageInputChange}
+              onPressIn={(event) => {
+                event.stopPropagation();
+                activateMessageInput();
+              }}
+              onFocus={handleInputFocus}
+              multiline
+              placeholder={attachment ? "Add a caption…" : replyTarget ? "Write a reply…" : "Message"}
+              placeholderTextColor={warm.mutedInk}
+              accessibilityLabel="Message"
+            />
+          </View>
+          <SendButton
+            warm={warm}
+            visible={hasContent}
             disabled={sending}
-            hitSlop={4}
-            accessibilityRole="button"
-            accessibilityLabel={attachment ? "Replace photo" : "Attach a photo"}
-          >
-            <Ionicons name="image-outline" size={22} color={colors.primary} />
-          </Pressable>
-          <TextInput
-            ref={messageInputRef}
-            style={styles.input}
-            value={messageText}
-            onChangeText={handleMessageInputChange}
-            onPressIn={(event) => {
-              event.stopPropagation();
-              activateMessageInput();
-            }}
-            onFocus={handleInputFocus}
-            placeholder={
-              attachment
-                ? "Add a caption..."
-                : replyTarget
-                  ? `Reply to: ${toReplyPreviewText(replyTarget)}`
-                  : "Type a message..."
-            }
-            placeholderTextColor={colors.mutedText}
-          />
-          <Pressable
-            style={styles.sendButton}
-            onPress={(event) => {
-              event.stopPropagation();
-              handleSend();
-            }}
-            disabled={sending}
-            accessibilityRole="button"
+            busy={sending}
             accessibilityLabel={attachment ? "Send photo" : "Send message"}
-          >
-            <Ionicons name="send" size={18} color="#fff" />
-          </Pressable>
+            onPress={handleSend}
+          />
         </View>
       </View>
     );
