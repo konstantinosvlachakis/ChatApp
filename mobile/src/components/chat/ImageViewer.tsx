@@ -119,7 +119,7 @@ export function ImageViewer({ url, onClose }: ImageViewerProps) {
 
 const viewerStyles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#000",
   },
   content: {
@@ -132,7 +132,7 @@ const viewerStyles = StyleSheet.create({
     height: "100%",
   },
   center: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     gap: 10,

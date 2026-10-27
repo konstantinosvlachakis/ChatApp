@@ -426,8 +426,8 @@ export function CommunityScreen() {
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={header}
-        ListEmptyComponent={emptyState}
-        ListFooterComponent={footer}
+        ListEmptyComponent={emptyState ?? undefined}
+        ListFooterComponent={footer ?? undefined}
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
         keyboardShouldPersistTaps="handled"

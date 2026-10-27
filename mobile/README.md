@@ -2,6 +2,29 @@
 
 This is a React Native client scaffold for your existing Django backend.
 
+## Expo Go on a phone
+
+The app uses **Expo SDK 58**. Use an Expo Go installation that supports SDK 58
+and Node **22.13+** (Node 22 LTS is recommended) for local development.
+
+```bash
+cd mobile
+npm ci
+EXPO_PUBLIC_API_BASE_URL=https://langvoyage-d3781c6fad54.herokuapp.com npm start -- --go --lan
+```
+
+Connect your phone and computer to the same Wi-Fi. On iPhone, scan the terminal
+QR code with Camera and open it in Expo Go. Keep the development server running.
+The command above uses the deployed backend and its real accounts/data.
+
+To use a local backend instead, omit `EXPO_PUBLIC_API_BASE_URL` and run Django
+on `0.0.0.0:8000`; the app derives your computer's LAN address from Expo.
+Release builds require an explicit HTTPS backend URL.
+
+Speech recognition requires a custom development build; the rest of Practice
+remains available in Expo Go. Remote push notifications also require a
+development build and configured EAS project credentials.
+
 ## 1) Install dependencies
 
 ```bash

@@ -170,7 +170,7 @@ export const createChatStyles = (warm: WarmColors) =>
       borderColor: warm.teal,
     },
     messageBubbleHighlightOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       borderRadius: BUBBLE_RADIUS,
       borderWidth: 2,
       borderColor: warm.teal,
@@ -320,7 +320,7 @@ export const createChatStyles = (warm: WarmColors) =>
       height: "100%",
     },
     attachmentImageOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
       gap: 6,

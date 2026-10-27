@@ -1,3 +1,4 @@
+import type { ScrollViewInstance } from "react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -254,7 +255,7 @@ export function ProfileScreen() {
   const [addingMissionLanguage, setAddingMissionLanguage] = useState<string | null>(null);
   const [removingMissionLanguage, setRemovingMissionLanguage] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
-  const previewScrollRef = useRef<ScrollView | null>(null);
+  const previewScrollRef = useRef<ScrollViewInstance | null>(null);
   const languageOptions = React.useMemo(() => getCoachLanguageOptions(user), [user]);
   const [editForm, setEditForm] = useState({
     username: "",

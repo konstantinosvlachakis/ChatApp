@@ -10,7 +10,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
+  type TextInputInstance,
   View,
   type ListRenderItem,
 } from "react-native";
@@ -43,7 +43,7 @@ type ChatRoomViewProps = {
   onOpenOptions: () => void;
   // Search
   searchOpen: boolean;
-  searchInputRef: RefObject<TextInput | null>;
+  searchInputRef: RefObject<TextInputInstance | null>;
   searchQuery: string;
   searchResultLabel: string;
   searchHasResults: boolean;
@@ -151,7 +151,7 @@ export function ChatRoomView(props: ChatRoomViewProps) {
               ListHeaderComponent={
                 props.loadingOlderMessages ? (
                   <ActivityIndicator style={styles.olderLoader} color={warm.teal} />
-                ) : null
+                ) : undefined
               }
               onScrollToIndexFailed={props.onScrollToIndexFailed}
               ListFooterComponent={<View style={styles.footerSpacer} />}

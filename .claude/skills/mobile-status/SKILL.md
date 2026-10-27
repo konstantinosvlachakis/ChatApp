@@ -8,6 +8,21 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30), `perf/mobile-chat` (#33), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
 
 ## Navigation (`src/navigation/RootNavigator.tsx`)
+
+Local upgrade (2026-10-27, uncommitted): **Expo SDK 58 / React Native 0.88 /
+React 19.3**, React Navigation 7, Gesture Handler 3 + Reanimated 4 / Worklets.
+Node 22.13+ is required (CI mobile job uses Node 22). `MessageRow` uses
+`ReanimatedSwipeable`; native refs use `TextInputInstance` / `ScrollViewInstance`
+and overlays use `StyleSheet.absoluteFill` for the strict RN TypeScript API.
+Splash configuration moved from `expo.splash` to the `expo-splash-screen` plugin.
+Use matching SDK 58 Expo Go on phones; see `mobile/README.md` for LAN QR startup
+and the deployed-backend environment override. Speech recognition needs a custom
+development build and remains guarded in Practice. SDK 54 dependencies are backed
+up locally under the ignored `mobile/.expo/sdk54/` directory.
+
+Verified locally: TypeScript passes, Expo Doctor 20/20 checks pass, and the iOS
+development bundle returns HTTP 200. Expo's manifest advertises SDK 58.0.0.
+
 Auth stack: `Login`, `Register`, `ForgotPassword` (`screens/ForgotPasswordScreen.tsx`: email -> `services/api/auth.requestPasswordReset` -> `POST /auth/password-reset/` -> "Check your inbox"; opened from LoginScreen's "Forgot password?" with the typed email; the new password is set on the web link, no deep link). App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.
 Screens in `src/screens/`, shared UI in `src/components/` (`ReportUserModal`, `CoachAvatar`; chat pieces in `components/chat/`; People pieces in `components/people/`), theme in `src/theme/` (`warm.ts` = warm exchange palette, light/dark, AA-checked; used by People and Chats (incl. Lumi); add chat tokens there, not hex literals in screens), types in `src/types/`.
 

@@ -1,3 +1,4 @@
+import type { TextInputInstance } from "react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -142,7 +143,7 @@ export function ConversationsScreen() {
   const selectedConversationIdRef = useRef<number | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
   const composerRef = useRef<ComposerHandle | null>(null);
-  const searchInputRef = useRef<TextInput | null>(null);
+  const searchInputRef = useRef<TextInputInstance | null>(null);
   const messageHighlightOpacity = useRef(new Animated.Value(0)).current;
   const messageHighlightScale = useRef(new Animated.Value(0.985)).current;
   const ignoreNextOutsideTapRef = useRef(false);
@@ -1371,7 +1372,10 @@ export function ConversationsScreen() {
 
   const openOtherUserProfile = useCallback(
     (username: string) => {
-      navigation.navigate("PublicProfile", { username });
+      navigation.navigate("People", {
+        screen: "PublicProfile",
+        params: { username },
+      });
     },
     [navigation]
   );

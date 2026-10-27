@@ -1,4 +1,5 @@
 import React, { useMemo, type RefObject } from "react";
+import type { TextInputInstance } from "react-native";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatAvatar } from "../../components/chat/ChatAvatar";
@@ -20,7 +21,7 @@ type ChatHeaderProps = {
   onOpenOptions: () => void;
   // In-chat search
   searchOpen: boolean;
-  searchInputRef: RefObject<TextInput | null>;
+  searchInputRef: RefObject<TextInputInstance | null>;
   searchQuery: string;
   searchResultLabel: string;
   searchHasResults: boolean;

@@ -250,7 +250,7 @@ export default wrapRoot(App);
 
 const launchStyles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#081320",
     alignItems: "center",
     justifyContent: "center",

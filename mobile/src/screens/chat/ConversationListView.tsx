@@ -258,7 +258,7 @@ export function ConversationListView({
         keyExtractor={conversationKeyExtractor}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
-        ListEmptyComponent={listEmpty}
+        ListEmptyComponent={listEmpty ?? undefined}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={

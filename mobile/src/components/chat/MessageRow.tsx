@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
+import Swipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Ionicons } from "@expo/vector-icons";
 import type { WarmColors } from "../../theme/warm";
 import type { ChatMessage } from "../../types";
@@ -81,7 +81,7 @@ function MessageRowComponent({
   onOpenImage,
   onTranslate,
 }: MessageRowProps) {
-  const swipeableRef = useRef<Swipeable | null>(null);
+  const swipeableRef = useRef<SwipeableMethods | null>(null);
   const attachmentUrl = item.attachment_url || null;
   const attachmentKind = getAttachmentKind(attachmentUrl, item.local_mime_type);
   // Optimistic bubble of an attachment upload: not interactive until the server message replaces it.
@@ -191,8 +191,8 @@ function MessageRowComponent({
             overshootRight={false}
             leftThreshold={8}
             rightThreshold={8}
-            dragOffsetFromLeftEdge={8}
-            dragOffsetFromRightEdge={8}
+            dragOffsetFromLeft={8}
+            dragOffsetFromRight={-8}
             containerStyle={styles.swipeContainer}
             childrenContainerStyle={styles.swipeChildren}
             renderLeftActions={!isMine ? renderReplySwipeAction : undefined}

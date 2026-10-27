@@ -1,3 +1,4 @@
+import type { ScrollViewInstance } from "react-native";
 import React from "react";
 import {
   ActivityIndicator,
@@ -126,7 +127,7 @@ export function PublicProfileScreen() {
   const [startingConversation, setStartingConversation] = React.useState(false);
   const [reportModalOpen, setReportModalOpen] = React.useState(false);
   const [profileActionsOpen, setProfileActionsOpen] = React.useState(false);
-  const previewScrollRef = React.useRef<ScrollView | null>(null);
+  const previewScrollRef = React.useRef<ScrollViewInstance | null>(null);
 
   React.useEffect(() => {
     if (!routeUsername) {
@@ -1140,13 +1141,13 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: fontFamilies.bodyBold,
     },
     menuOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "rgba(8, 15, 33, 0.26)",
       justifyContent: "flex-end",
       alignItems: "stretch",
     },
     menuOverlayTouchable: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
     },
     actionsSheetWrap: {
       paddingHorizontal: 12,

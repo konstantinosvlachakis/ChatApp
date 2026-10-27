@@ -1,3 +1,4 @@
+import type { TextInputInstance } from "react-native";
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { Image, Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -65,7 +66,7 @@ export const Composer = React.memo(
     const [messageText, setMessageText] = useState("");
     const messageTextRef = useRef("");
     messageTextRef.current = messageText;
-    const messageInputRef = useRef<TextInput | null>(null);
+    const messageInputRef = useRef<TextInputInstance | null>(null);
     const [attachment, setAttachment] = useState<PickedAttachment | null>(null);
     const attachmentRef = useRef<PickedAttachment | null>(null);
     attachmentRef.current = attachment;

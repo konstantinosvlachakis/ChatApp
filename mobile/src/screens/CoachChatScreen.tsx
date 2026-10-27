@@ -427,7 +427,7 @@ export function CoachChatScreen() {
                   ))}
                 </View>
               </View>
-            ) : null
+            ) : undefined
           }
           ListFooterComponent={
             isCoachTyping ? (
@@ -442,7 +442,7 @@ export function CoachChatScreen() {
                   </Text>
                 </View>
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item }) => {
             const isMine = item.sender.id !== COACH_BOT_ID;
