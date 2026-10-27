@@ -34,6 +34,11 @@ import {
   getReconnectDelayMs,
   startPresenceHeartbeat,
 } from "../services/realtime";
+import {
+  registerForPushNotifications,
+  subscribeToNotificationOpens,
+  watchPushTokenChanges,
+} from "../services/push";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
@@ -284,6 +289,35 @@ function AppTabs() {
       dismissingBannerIdsRef.current.clear();
     };
   }, [loadUnreadChatsCount, scheduleUnreadRefresh]);
+
+  // Push: register after login / on start (asks permission once, a moment after the tabs
+  // appear), re-register when the device token rotates.
+  React.useEffect(() => {
+    if (!user?.user_id) return;
+    const timer = setTimeout(() => {
+      registerForPushNotifications();
+    }, 1500);
+    const stopWatching = watchPushTokenChanges();
+    return () => {
+      clearTimeout(timer);
+      stopWatching();
+    };
+  }, [user?.user_id]);
+
+  // Notification taps (warm, or queued from a cold start / before login) open that chat.
+  React.useEffect(
+    () =>
+      subscribeToNotificationOpens((conversationId) => {
+        navigation.navigate("AppTabs", {
+          screen: "Chats",
+          params: {
+            screen: "ChatsHome",
+            params: { openConversationId: conversationId, openFromBannerAt: Date.now() },
+          },
+        });
+      }),
+    [navigation]
+  );
 
   // The app's only presence socket: its events fan out to screens via services/presenceEvents.
   React.useEffect(() => {

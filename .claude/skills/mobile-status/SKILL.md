@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 
 # Mobile status (Expo / React Native)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30, merged) and `perf/mobile-chat` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30, merged) `perf/mobile-chat` (pending) and `feat/mobile-push` (pending: push notifications). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
 
 ## Navigation (`src/navigation/RootNavigator.tsx`)
 Auth stack: `Login`, `Register`. App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.
@@ -25,18 +25,20 @@ Screens in `src/screens/`, shared UI in `src/components/` (`PartnerCard`, `Repor
 - Coach (`CoachChatScreen`): `sendInFlightRef` is set before the first await (no double send); `generationRef` is bumped by New conversation / mode / language change and stale replies are dropped; appends use `messagesRef` (latest list). `CommunityScreen` starts with `loading` true so the empty state does not flash.
 - Chat (`ConversationsScreen`): messages/deletes/edits arrive as server `message_created`/`message_deleted`/`message_edited` events (deduped by id against the POST response; no client relay). The detail's embedded ≤200 messages are the first page; scrolling to the top loads older pages from `/conversations/<id>/messages/?page=&page_size=50`.
 - Media (branch `perf/media`): `src/utils/media.ts` — `cloudinaryImage(url, { width, height?, crop })` / `avatarImage(url, size)` add `f_auto,q_auto,c_fill,g_face,w_,h_` (or `c_limit,w_`) after `/image/upload/` of `res.cloudinary.com` URLs at style size × `PixelRatio.get()` (capped at 3); other URLs (API `/media/`, file:/data:, video/raw, already-transformed) are unchanged (string parsing; RN's URL polyfill can't set `pathname`). **Always pass user images through the helper** with the dp size from the style: chat header 34 / list 44 (`ConversationsScreen`), `PartnerCard` 78, message banner 34 (`RootNavigator`), profile avatars 108, recent viewers 52, accent preview 74, own photo slots 120, public Photo Moments 140×152, Settings lists 42. Full-screen photo previews keep the original URL. The mobile app renders no chat image attachments and has no bundled default avatar (it uses the server's `MainAfter.jpg`).
+- Push notifications (`feat/mobile-push`, `src/services/push.ts`; deps `expo-notifications`, `expo-device`): `initNotifications()` in `App.tsx` sets the foreground handler (no banner/sound for the conversation on screen — `ConversationsScreen` reports it via `setOpenConversationId` while focused), the Android channel `messages` (importance HIGH; also the plugin's `defaultChannel` in `app.json`) and the tap listener (+ `getLastNotificationResponseAsync` for cold starts). `AppTabs` (mounted only when logged in) calls `registerForPushNotifications()` 1.5 s after mount: physical devices only, needs an EAS `projectId` (`expoConfig.extra.eas.projectId` / `easConfig.projectId`; missing → one dev warning, skipped), shows a short explanation `Alert` once per install (`lv_push_permission_prompted`) before the OS prompt, then `POST /push/devices/ {token, platform}` (stored as `lv_push_registered_token`); re-registers on every start and on `addPushTokenListener`. Taps with `data.type === "message"` navigate to Chats → `ChatsHome` with the existing `openConversationId`/`openFromBannerAt` params; taps before login are queued and replayed when `AppTabs` subscribes. `AuthContext.logout` calls `unregisterPushDevice()` (`DELETE /push/devices/ {token}`, 5 s timeout, errors ignored) before clearing tokens. The in-app `RootNavigator` banner still shows for other tabs, so a foreground push can appear next to it.
 - Coach history/preferences: `src/features/coachConversation.ts` (AsyncStorage, survives logout).
 
 ## Verify
 ```bash
 cd mobile && npx tsc --noEmit
 ```
-Clean (0 errors) as of 2026-10-26 with dependencies installed (`npm ci` in `mobile/`); the earlier TS2307 errors were only missing local installs.
+Clean (0 errors) as of 2026-10-27 on `feat/mobile-push` with dependencies installed (the shared `mobile/node_modules` junction lacks `expo-notifications`/`expo-device` and some older deps until `npm ci`; checked against the `feat/mobile-media` install) (`npm ci` in `mobile/`); the earlier TS2307 errors were only missing local installs.
 
 ## Release checklist
 - Set `EXPO_PUBLIC_API_BASE_URL=https://...` in EAS env / git-ignored `.env`.
 - Optional: `EXPO_PUBLIC_SENTRY_DSN` (+ `EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE`) in EAS env; requires a new native build.
 - Replace placeholder bundle id / package `com.anonymous.langvoyagemobile` in `app.json`.
+- Push notifications: run `eas init` (writes `extra.eas.projectId` to the app config — `app.json` has no `extra` yet), set real bundle id/package first, then `eas credentials` → Android: upload the FCM V1 service-account key; iOS: let EAS create the APNs key with the Apple Developer account. Needs a dev-client/EAS build (Expo Go on Android SDK 53+ has no remote push). Optional: notification `icon`/`color` in the `expo-notifications` plugin once `mobile/assets` exists (the repo has no assets folder; `app.json` already points at missing `./assets/*` files). If Expo enhanced push security is on, set backend `EXPO_ACCESS_TOKEN`.
 - Camera permission is disabled (`expo-image-picker` `cameraPermission: false`); microphone kept for speech recognition.
 
 ## Open issues

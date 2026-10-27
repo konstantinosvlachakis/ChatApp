@@ -1,10 +1,10 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `fix/chat-races` (pending: practice scoring guard).** Latest migration: `0031_query_perf_indexes`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard) and `feat/mobile-push` (pending: `PushDevice`).** Latest migration: `0032_pushdevice`.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
 
-DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers nothing.
+DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers only `PushDevice` (token excluded; the admin is unusable anyway, see Profile).
 
 ## ER diagram
 
@@ -28,6 +28,7 @@ erDiagram
     Profile ||--o{ UserReport : "received_reports (reported_user)"
     Profile ||--o{ ProfileView : "profile_views_made (viewer)"
     Profile ||--o{ ProfileView : "profile_views_received (viewed_profile)"
+    Profile ||--o{ PushDevice : "push_devices"
 ```
 Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by` (SET_NULL). Deleting a Profile removes their conversations, messages, reactions, translations, blocks, reports and views.
 
@@ -90,6 +91,10 @@ Unique constraint `uniq_message_user_target_translation` (message, user, target_
 `viewer` FK (`profile_views_made`), `viewed_profile` FK (`profile_views_received`), created_at, updated_at auto_now db_index.
 Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed_profile, -updated_at); Meta `ordering = ["-updated_at"]`.
 
+### PushDevice (`feat/mobile-push`, migration `0032_pushdevice`)
+`user` FK (`push_devices`), `token` Char(255) **unique** (Expo push token; the view only accepts `ExponentPushToken[...]` / `ExpoPushToken[...]`), `platform` Char(16) choices ios/android, created_at, last_seen_at (default now, refreshed on every register), is_active Bool default True. Index `pushdev_user_active_idx` (user, is_active).
+Rules: a token belongs to one user — registering it moves it to the caller (`update_or_create` on token; `IntegrityError` race → update). `DELETE` removes only the caller's row. `chatapp/push.py` sets `is_active=False` on `DeviceNotRegistered` tickets; a later register reactivates it. Deleted with the Profile (CASCADE).
+
 ## Invariants and business rules
 - **Conversation = an unordered pair.** There is no DB uniqueness on the pair (a unique index on least/greatest ids would fail on existing duplicates without a merge migration, so it was not added). `ConversationListView.post` runs get-or-create in `transaction.atomic()` after `select_for_update` on the lower-id participant's Profile row (serialises concurrent creates for the pair on Postgres; SQLite serialises writes anyway), matches `Q(sender=u, receiver=p) | Q(sender=p, receiver=u)` ordered by id, so legacy duplicates resolve to the oldest. "sender" just means "who started it". Participant check everywhere: `request.user.id in (sender_id, receiver_id)`, otherwise 403. The consumer checks with `get_participant_details`.
 - That same `post` looks up the participant case-insensitively (`get_profile_by_username_or_404`), like every other username lookup.
@@ -105,6 +110,7 @@ Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed
   - `MessageListView.post` (403)
   - conversation creation (403)
   - presence contacts (`get_presence_contact_ids` excludes blocked pairs)
+  - message push (`push.deliver_message_push` re-checks either direction before sending)
 
   `block_user_view` POST also **hard-deletes the pair's conversations (and their messages)**. Unblocking restores nothing. Already-open chat sockets aren't kicked out.
 - **Case-insensitive usernames**: `get_profile_by_username_or_404` uses `iexact` and, if legacy case-variant duplicates exist, falls back to the lowest id. Register and edit reject `iexact` collisions. Email collisions are also checked with `iexact`.

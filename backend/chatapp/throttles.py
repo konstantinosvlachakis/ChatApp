@@ -21,3 +21,7 @@ class TranslateRateThrottle(UserRateThrottle):
 
 class ReportRateThrottle(UserRateThrottle):
     scope = "report"
+
+
+class PushDeviceRateThrottle(UserRateThrottle):
+    scope = "push_devices"

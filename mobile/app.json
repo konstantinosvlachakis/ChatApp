@@ -47,7 +47,13 @@
       ],
       "expo-speech-recognition",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "messages"
+        }
+      ]
     ]
   }
 }

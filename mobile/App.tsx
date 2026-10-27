@@ -32,9 +32,12 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { fontFamilies } from "./src/theme/typography";
 import { ToastHost } from "./src/components/ToastHost";
 import { initMonitoring, wrapRoot } from "./src/services/monitoring";
+import { initNotifications } from "./src/services/push";
 
 // No-op unless EXPO_PUBLIC_SENTRY_DSN is set at build time.
 initMonitoring();
+// Foreground handler, Android channel and notification-tap listener (cold starts too).
+initNotifications();
 
 function LaunchScreen({
   visible,

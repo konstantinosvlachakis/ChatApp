@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+import sys
 import dj_database_url
 import sentry_sdk
 
@@ -337,6 +338,17 @@ USE_I18N = True
 USE_TZ = True
 
 
+# Push notifications for new chat messages (Expo push service, chatapp/push.py).
+# On unless PUSH_NOTIFICATIONS_ENABLED=false. Always off under `manage.py test`
+# so tests never reach the network (push tests enable it with override_settings
+# and mock the HTTP sender).
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+PUSH_NOTIFICATIONS_ENABLED = (not RUNNING_TESTS) and (
+    os.environ.get("PUSH_NOTIFICATIONS_ENABLED", "true").strip().lower() == "true"
+)
+# Optional: only needed when "enhanced push security" is enabled for the Expo project.
+EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
@@ -391,6 +403,7 @@ REST_FRAMEWORK = {
         # Endpoints that call paid / third-party APIs.
         "translate": os.environ.get("DRF_THROTTLE_TRANSLATE", "60/minute"),
         "report": os.environ.get("DRF_THROTTLE_REPORT", "20/hour"),
+        "push_devices": os.environ.get("DRF_THROTTLE_PUSH_DEVICES", "30/hour"),
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets
     # clients spoof their IP and bypass per-IP throttles.
