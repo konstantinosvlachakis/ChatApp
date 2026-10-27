@@ -157,7 +157,11 @@
   background: var(--lv-paper);
   box-shadow: 0 2px 8px #152f3d1f;
 }
-.cv-row-wrap:hover .cv-row-more, .cv-row-more:focus-visible { opacity: 1; }
+.cv-row-wrap:hover .cv-row-more, .cv-row-wrap:focus-within .cv-row-more { opacity: 1; }
+/* The delete button takes the right edge, so the time and unread badge step aside. */
+.cv-row-time, .cv-row-badge { transition: opacity .15s ease; }
+.cv-row-wrap:hover .cv-row-time, .cv-row-wrap:hover .cv-row-badge,
+.cv-row-wrap:focus-within .cv-row-time, .cv-row-wrap:focus-within .cv-row-badge { opacity: 0; }
 .cv-row-more svg { width: 20px; height: 20px; }
 
 /* ---- Confirm dialog ---- */
@@ -383,7 +387,9 @@
   border-radius: var(--lv-radius-pill);
   background: var(--lv-cream);
 }
-.cv-composer:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 2px #177f7933; }
+.cv-composer:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 3px #177f7940; }
+/* The pill shows focus (above); the shell's square input ring would sit inside it. */
+.lv-shell .cv-composer input:focus-visible { outline: none; }
 .cv-composer input { flex: 1; min-width: 0; padding: 10px 8px; background: transparent; color: var(--lv-ink); font-size: 15px; outline: none; }
 .cv-composer input::placeholder { color: var(--lv-muted-ink); }
 .cv-composer .cv-icon-button { background: transparent; color: var(--lv-ink-soft); }
