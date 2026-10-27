@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
@@ -104,9 +104,17 @@ const LoginPage = () => {
         </div>
 
         <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
-            Password
-          </label>
+          <div className="mb-1.5 flex items-baseline justify-between gap-3">
+            <label htmlFor="password" className="block text-sm font-semibold text-[#14314a]">
+              Password
+            </label>
+            <Link
+              to="/forgot-password"
+              className="text-xs font-semibold text-[#1b7f79] hover:text-[#14314a]"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <div className={passwordFieldClassName}>
             <input
               id="password"

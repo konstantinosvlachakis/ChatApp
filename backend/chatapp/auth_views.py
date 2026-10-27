@@ -1,6 +1,11 @@
 from django.conf import settings
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -8,9 +13,26 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from datetime import timedelta
 
-from .throttles import AuthRateThrottle
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.mail import EmailMultiAlternatives
+from django.utils.encoding import force_bytes, force_str
+from django.utils.html import escape
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+
+from core.exceptions import error_response
+
+from .models import Profile, Token
+from .throttles import (
+    AuthRateThrottle,
+    PasswordResetEmailThrottle,
+    PasswordResetIPThrottle,
+)
+from .views import release_db_connection
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -134,5 +156,146 @@ class CustomRefreshJWTToken(TokenRefreshView):
 @permission_classes([AllowAny])
 def logout_view(_request):
     response = Response({"detail": "Logged out."})
+    _clear_auth_cookies(response)
+    return response
+
+
+# --- Password reset -------------------------------------------------------
+
+PASSWORD_RESET_REQUEST_MESSAGE = (
+    "If an account exists for that email, we've sent a link to reset your password."
+)
+INVALID_RESET_LINK_MESSAGE = (
+    "This password reset link is invalid or has expired. Please request a new one."
+)
+
+
+def _password_reset_link(user):
+    base = settings.PASSWORD_RESET_URL_BASE or str(getattr(settings, "BASE_URL", "")).rstrip("/")
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return f"{base}/reset-password/{uid}/{token}"
+
+
+def _send_password_reset_email(user):
+    link = _password_reset_link(user)
+    minutes = max(1, int(settings.PASSWORD_RESET_TIMEOUT // 60))
+    name = user.username or "there"
+    subject = "Reset your LangVoyage password"
+    text_body = (
+        f"Hi {name},\n\n"
+        "We received a request to reset the password for your LangVoyage account.\n"
+        f"Open this link to choose a new password (it expires in {minutes} minutes):\n\n"
+        f"{link}\n\n"
+        "If you didn't ask for this, you can ignore this email; your password stays the same.\n\n"
+        "The LangVoyage team\n"
+    )
+    safe_link = escape(link)
+    html_body = (
+        '<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2a37;line-height:1.5;'
+        'max-width:520px;margin:0 auto;padding:24px;background:#fffaf3;border-radius:16px">'
+        f"<p>Hi {escape(name)},</p>"
+        "<p>We received a request to reset the password for your LangVoyage account.</p>"
+        f'<p style="margin:24px 0"><a href="{safe_link}" style="background:#16324f;color:#ffffff;'
+        'padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:bold">'
+        "Choose a new password</a></p>"
+        f"<p>This link expires in {minutes} minutes. If the button doesn't work, copy this link "
+        f'into your browser:<br><a href="{safe_link}">{safe_link}</a></p>'
+        "<p>If you didn't ask for this, you can ignore this email; your password stays the same.</p>"
+        "<p>The LangVoyage team</p></div>"
+    )
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    message.attach_alternative(html_body, "text/html")
+    message.send(fail_silently=False)
+
+
+@api_view(("POST",))
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetIPThrottle, PasswordResetEmailThrottle])
+def password_reset_request_view(request):
+    """Email a reset link if an active account has this address.
+
+    Always answers 200 with the same message so the endpoint can't be used to
+    find out which emails have accounts.
+    """
+    data = request.data if isinstance(request.data, dict) else {}
+    email = str(data.get("email") or "").strip().lower()
+    response = Response({"message": PASSWORD_RESET_REQUEST_MESSAGE})
+    if not email or len(email) > 255:
+        return response
+
+    user = (
+        Profile.objects.filter(email__iexact=email)
+        .only("id", "email", "username", "password", "last_login")
+        .first()
+    )
+    if user is None or not getattr(user, "is_active", True) or not user.email:
+        return response
+
+    # The SMTP round trip can take seconds; don't hold a pooled DB connection.
+    release_db_connection()
+
+    def send():
+        try:
+            _send_password_reset_email(user)
+        except Exception:
+            # Never log the address; the user id is enough to investigate.
+            logger.exception("Password reset email failed for user_id=%s", user.pk)
+
+    if getattr(settings, "PASSWORD_RESET_EMAIL_ASYNC", True):
+        # Off the request so the response time doesn't reveal whether the account exists.
+        threading.Thread(target=send, name="password-reset-email", daemon=True).start()
+    else:
+        send()
+    return response
+
+
+@api_view(("POST",))
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
+def password_reset_confirm_view(request):
+    data = request.data if isinstance(request.data, dict) else {}
+    uidb64 = str(data.get("uid") or "").strip()
+    token = str(data.get("token") or "").strip()
+    new_password = data.get("new_password")
+
+    user = None
+    if uidb64 and token:
+        try:
+            user_id = int(force_str(urlsafe_base64_decode(uidb64)))
+            user = Profile.objects.filter(pk=user_id).first()
+        except (TypeError, ValueError, OverflowError, UnicodeDecodeError):
+            user = None
+    if (
+        user is None
+        or not getattr(user, "is_active", True)
+        or not default_token_generator.check_token(user, token)
+    ):
+        return error_response(INVALID_RESET_LINK_MESSAGE, "invalid_reset_link", 400)
+
+    if not isinstance(new_password, str) or not new_password:
+        return error_response("Enter a new password.", "invalid_password", 400)
+    try:
+        validate_password(new_password, user=user)
+    except DjangoValidationError as error:
+        messages = list(error.messages)
+        return error_response(" ".join(messages), "invalid_password", 400, details=messages)
+
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    # The new password hash invalidates this and every other reset link. Drop the
+    # legacy API token too. JWTs can't be revoked yet (no blacklist): existing
+    # access tokens live out their 1 h, refresh tokens their 7/30 days.
+    Token.objects.filter(user=user).delete()
+    logger.info("Password reset completed for user_id=%s", user.pk)
+
+    response = Response({"message": "Your password has been reset. You can now log in."})
     _clear_auth_cookies(response)
     return response

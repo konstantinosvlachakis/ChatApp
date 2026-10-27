@@ -1,7 +1,7 @@
 # API contract (REST) — backend ↔ web ↔ mobile
 
 Purpose: every REST endpoint, its payload shape, and which client code depends on which fields, so you don't have to re-explore views/serializers/clients.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged) `fix/chat-races` (#34, merged: practice submit idempotency) and `feat/mobile-matching` (pending: mobile People caller params only); also `feat/mobile-media` (pending: mobile photo sends)..
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged) and `fix/chat-races` (pending: practice submit idempotency); `feat/password-reset` (pending: password reset endpoints, based on `a8abf7b`); also `feat/mobile-matching` (pending: mobile People caller params only); also `feat/mobile-media` (pending: mobile photo sends)...
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/urls.py backend/core/views.py backend/core/exceptions.py backend/chatapp/urls.py backend/chatapp/views.py backend/chatapp/auth_views.py backend/chatapp/serializers.py frontend/src mobile/src/services`, then update the affected rows.
 
 People web caller notes below refreshed on 2026-10-27 against the working tree based on `5fb6498`; backend payloads are unchanged by the discovery redesign.
@@ -18,7 +18,8 @@ Paths: backend views are in `backend/chatapp/views.py` unless noted. Web = `fron
   - Web: `POST /api/token/` sets the httpOnly cookies `lv_access`/`lv_refresh`. `utils/auth.ts:refreshSession` POSTs `/api/token/refresh/` with an empty body (the cookie is used). Every backend request through the patched `window.fetch` or either axios instance refreshes once (single-flight `refreshSessionOnce`) and retries once on a 401, except auth endpoints; a failed refresh clears session data and redirects protected pages to `/login` (flows §1).
   - Mobile: stores `access`/`refresh` from the response body in SecureStore. `client.ts` uses a single-flight refresh-on-401 (body `{refresh}`) and keeps the old refresh token when the response has none.
 - **Throttles** (settings `REST_FRAMEWORK`): the global defaults are anon 300/h and user 3000/h. A view with explicit `throttle_classes` **replaces** the defaults:
-  - `auth` 20/min per IP: token, token/refresh, login, register.
+  - `auth` 20/min per IP: token, token/refresh, login, register, auth/password-reset/confirm.
+  - `password_reset` 5/h per IP **and** `password_reset_email` 5/h per address (cache key = sha256 of the lowercased email): auth/password-reset/ (`DRF_THROTTLE_PASSWORD_RESET`, `DRF_THROTTLE_PASSWORD_RESET_EMAIL`).
   - `translate` 60/min per user.
   - `report` 20/h per user.
   - Coach has its own cache-based limits on top: 12 requests per 60 s and 200 per day (429 with `detail`).
@@ -68,6 +69,8 @@ Columns: **Auth/thr** = authentication and throttle. "dflt" = default auth (Bear
 | POST | /api/token/refresh/ | auth_views.py:CustomRefreshJWTToken | none, auth | `{refresh}` or empty body (falls back to the `lv_refresh` cookie) | `{access}` (no rotation) + resets cookies | utils/auth.ts:refreshSession via `refreshSessionOnce` (global 401 handler in utils/csrf.ts, chat/presence sockets on 4401/4403) | services/api/client.ts:refreshAccessToken (401 interceptor; RootNavigator presence socket on 4401/4403) | Mobile keeps the old refresh token when `refresh` is absent. If rotation is turned on, both clients already handle a new `refresh` |
 | POST | /api/logout/ | auth_views.py:logout_view | none (no auth, no CSRF) | – | `{detail:"Logged out."}`, clears cookies | layout/Layout.jsx:handleLogout | – (mobile only clears SecureStore) | Doesn't revoke tokens |
 | POST | /api/login/ | login_view (legacy) | none, auth | `{email, password}` | `{token}` (legacy `Token` model) / `{error}` | unused | unused | Slated for deletion |
+| POST | /api/auth/password-reset/ | auth_views.py:password_reset_request_view | none (no auth, no CSRF), password_reset + password_reset_email | `{email}` (trimmed, lowercased; matched case-insensitively) | Always 200 `{message}` (same generic text for unknown, blank or malformed email: no account enumeration); 429 `throttled` | pages/ForgotPasswordPage.jsx ("Check your inbox" on 200, envelope text on errors) | services/api/auth.ts:requestPasswordReset (screens/ForgotPasswordScreen) | Sends text + HTML email (`EmailMultiAlternatives`, `DEFAULT_FROM_EMAIL`) with `<PASSWORD_RESET_URL_BASE or BASE_URL>/reset-password/<uidb64>/<token>` (`default_token_generator`, `PASSWORD_RESET_TIMEOUT` 1 h). DB connection released before SMTP; send failures logged with the user id only and still 200. SMTP runs in the request, so response time differs for existing accounts (timing side channel) |
+| POST | /api/auth/password-reset/confirm/ | auth_views.py:password_reset_confirm_view | none (no auth, no CSRF), auth | `{uid, token, new_password}` (snake_case) | 200 `{message}` + clears `lv_access`/`lv_refresh` cookies. 400 `invalid_reset_link` (bad/expired/used token, bad uid) / 400 `invalid_password` (`error` = joined Django validator messages, `details` = list) | pages/ResetPasswordPage.jsx (`/reset-password/:uid/:token`; lists `details`, "Request a new link" on `invalid_reset_link`) | - (mobile users finish on the web link) | Token checked before the password. Setting the password invalidates every outstanding reset link (the token hashes the password) and deletes the legacy `Token`; issued JWTs stay valid until expiry (no blacklist) |
 | POST | /api/register/ | register_view | none, auth | `{username, email, password, nativeLanguage, dateOfBirth?: YYYY-MM-DD}` (**camelCase**) | 201 `{message}` / 400 envelope (`username_taken`, `email_taken`, `invalid`) / 429 `throttled` | pages/RegisterPage.jsx (shows `ApiError.message`) | services/api/auth.ts:register (RegisterScreen) | Keys are camelCase, unlike every other endpoint. Username `^[\w.@+-]{1,30}$`; Django password validators apply |
 
 ### Profile and safety
@@ -148,7 +151,7 @@ Columns: **Auth/thr** = authentication and throttle. "dflt" = default auth (Bear
 
 ## Client coverage asymmetries
 
-- **Web only:** `presence/offline/`, `logout/`, `csrf/`, `profile/location/`, message edit, conversation DELETE.
+- **Web only:** `presence/offline/`, `logout/`, `csrf/`, `profile/location/`, message edit, conversation DELETE, `auth/password-reset/confirm/` (mobile only requests the email).
 - **Mobile only:** `profile/delete/`, block POST, report.
 - **Unused:** `login/` (legacy), `profile/` PATCH (no-op), `admin/`.
 - **Dead web helpers:** none (`getProfileData.ts`, `editProfile.ts` and `DragDropImage.jsx` were deleted in `feat/api-resilience`).
