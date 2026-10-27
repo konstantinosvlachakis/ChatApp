@@ -45,7 +45,7 @@ Safety rules: attachment/user URLs go through the http/https/blob scheme check i
 ```bash
 cd frontend
 npx tsc --noEmit            # clean for src/ (playwright types missing is pre-existing)
-CI=true npx react-scripts test --watchAll=false   # 18 suites / 103 tests (messageMerge, MessageInput double-send/restore, coach stale replies, public profile switching, lib/media, profile utils, Profile + PublicProfile + EditProfile pages, Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast, layout/AppHeader (+tab bar, nav helpers), Community FilterSheet, Conversations utils (grouping, search, times), Conversation (grouping, hover translate shortcut, actions menu), CoachChatRoom (mode bar, quick starts/Ideas, popover/sheet/dock), PhotoViewer); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
+CI=true npx react-scripts test --watchAll=false   # 19 suites / 105 tests (messageMerge, MessageInput double-send/restore, coach stale replies, public profile switching, lib/media, profile utils, Profile + PublicProfile + EditProfile pages, Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast, layout/AppHeader (+tab bar, nav helpers), Community FilterSheet, Conversations utils (grouping, search, times), Conversation (grouping, hover translate shortcut, actions menu), CoachChatRoom (mode bar, quick starts/Ideas, popover/sheet/dock), PhotoViewer); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
 npm run build               # builds + prerenders 5 public routes; main chunk ≈ 101.7 KB gzip (Sentry is a separate lazy chunk)
 ```
 Note `package.json` has `postinstall: npm run build` and POSIX-style e2e scripts.
