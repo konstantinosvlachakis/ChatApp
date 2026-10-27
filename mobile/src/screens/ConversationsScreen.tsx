@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   DeviceEventEmitter,
   Easing,
   FlatList,
@@ -26,7 +27,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../components/CoachAvatar";
 import { Composer, type ComposerHandle } from "../components/chat/Composer";
 import { MessageRow } from "../components/chat/MessageRow";
-import { formatDaySeparator, getDayKey } from "../components/chat/format";
+import { ImageViewer } from "../components/chat/ImageViewer";
+import { ChatAudioContext, ChatAudioController } from "../components/chat/audioController";
+import { messagePreviewText, type PickedAttachment } from "../components/chat/attachments";
+import { formatDaySeparator, getDayKey, toReplyPreviewText } from "../components/chat/format";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
@@ -191,6 +195,11 @@ export function ConversationsScreen() {
   } | null>(null);
   const [chatActionLoading, setChatActionLoading] = useState(false);
   const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
+  // Full-screen photo viewer (original attachment URL).
+  const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
+  // One shared voice-note player for the open chat (only one plays at a time).
+  const [audioController] = useState(() => new ChatAudioController());
+  const sendInFlightRef = useRef(false);
 
   const selectedConversationIdRef = useRef<number | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
@@ -235,7 +244,22 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     setReplyTarget(null);
+    setViewerImageUrl(null);
   }, [selectedConversation?.id]);
+
+  // Voice notes: stop and free the player on chat switch, blur and unmount...
+  useEffect(() => {
+    if (!isFocused) audioController.release();
+    return () => audioController.release();
+  }, [audioController, isFocused, selectedConversation?.id]);
+
+  // ...and when the app leaves the foreground.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") audioController.release();
+    });
+    return () => subscription.remove();
+  }, [audioController]);
 
   useEffect(() => {
     setReactionPickerMessageId(null);
@@ -484,52 +508,108 @@ export function ConversationsScreen() {
     }
   }, [sendTypingEvent]);
 
-  // Called by Composer with its draft; resolves true when sent so the draft is cleared.
-  const sendMessage = useStableCallback(async (messageText: string): Promise<boolean> => {
-    const trimmed = messageText.trim();
-    if (!selectedConversation || !trimmed || sending || !currentUserId || !currentUsername) return false;
+  // Called by Composer with its draft; resolves true when sent. A photo send shows an optimistic
+  // bubble (negative id, `local_status: "sending"`) that the saved message replaces.
+  const sendMessage = useStableCallback(
+    async (messageText: string, attachment: PickedAttachment | null): Promise<boolean> => {
+      const trimmed = messageText.trim();
+      if (!selectedConversation || (!trimmed && !attachment) || !currentUserId || !currentUsername) return false;
+      if (sending || sendInFlightRef.current) return false;
 
-    setSending(true);
-    try {
-      const saved = await sendConversationMessage(selectedConversation.id, trimmed, replyTarget?.id);
-      const savedMessage: ChatMessage = {
-        ...saved,
-        attachment_url: saved.attachment_url || null,
-        reply_to: saved.reply_to || null,
-      };
-
-      setSelectedConversation((prev) => {
-        if (!prev || prev.id !== selectedConversation.id) return prev;
-        const hasMessage = prev.messages.some((m) => m.id === savedMessage.id);
-        if (hasMessage) return prev;
-        const nextMessages = [...prev.messages, savedMessage];
-        return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
-      });
-      if (selectedConversationIdRef.current === selectedConversation.id) {
+      const conversationId = selectedConversation.id;
+      const replyTo = replyTarget && replyTarget.id > 0 ? replyTarget : null;
+      const optimisticId = attachment ? -Date.now() : null;
+      sendInFlightRef.current = true;
+      setSending(true);
+      if (attachment && optimisticId !== null) {
+        const optimistic: ChatMessage = {
+          id: optimisticId,
+          text: trimmed,
+          sender: { id: currentUserId, username: currentUsername },
+          status: "sent",
+          attachment_url: attachment.uri,
+          local_mime_type: attachment.mimeType,
+          local_status: "sending",
+          timestamp: new Date().toISOString(),
+          reply_to: replyTo
+            ? {
+                id: replyTo.id,
+                text: replyTo.text,
+                timestamp: replyTo.timestamp,
+                sender: { id: replyTo.sender?.id, username: replyTo.sender?.username },
+              }
+            : null,
+          reactions: [],
+        };
+        setSelectedConversation((prev) => {
+          if (!prev || prev.id !== conversationId) return prev;
+          return { ...prev, messages: [...prev.messages, optimistic] };
+        });
         setReplyTarget(null);
-        initialUnreadCountRef.current = 0;
-        setUnreadAnchorMessageId(null);
-        emitTypingStopped();
       }
-      bumpConversationToTop({
-        conversationId: selectedConversation.id,
-        lastMessage: savedMessage,
-        resetUnread: true,
-        updatedAt: savedMessage.timestamp || new Date().toISOString(),
-      });
+      try {
+        const saved = await sendConversationMessage(
+          conversationId,
+          trimmed,
+          replyTo?.id,
+          attachment ? { uri: attachment.uri, name: attachment.name, type: attachment.mimeType } : null
+        );
+        const savedMessage: ChatMessage = {
+          ...saved,
+          attachment_url: saved.attachment_url || null,
+          reply_to: saved.reply_to || null,
+        };
 
-      // No socket relay: the server broadcasts message_created to the chat room. The list was
-      // patched above; reconcile once (coalesced with the conversation_update this causes).
-      scheduleConversationsRefresh();
-      return true;
-    } catch (error) {
-      // The draft stays in the input so the user can retry.
-      toastApiError(error, "Could not send your message.", "Message not sent");
-      return false;
-    } finally {
-      setSending(false);
+        setSelectedConversation((prev) => {
+          if (!prev || prev.id !== conversationId) return prev;
+          // Drop the optimistic bubble; the broadcast may already have added the saved id.
+          const withoutOptimistic =
+            optimisticId === null ? prev.messages : prev.messages.filter((m) => m.id !== optimisticId);
+          const hasMessage = withoutOptimistic.some((m) => m.id === savedMessage.id);
+          if (hasMessage && withoutOptimistic === prev.messages) return prev;
+          const nextMessages = hasMessage ? withoutOptimistic : [...withoutOptimistic, savedMessage];
+          return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
+        });
+        if (selectedConversationIdRef.current === conversationId) {
+          setReplyTarget(null);
+          initialUnreadCountRef.current = 0;
+          setUnreadAnchorMessageId(null);
+          emitTypingStopped();
+        }
+        bumpConversationToTop({
+          conversationId,
+          lastMessage: savedMessage,
+          resetUnread: true,
+          updatedAt: savedMessage.timestamp || new Date().toISOString(),
+        });
+
+        // No socket relay: the server broadcasts message_created to the chat room. The list was
+        // patched above; reconcile once (coalesced with the conversation_update this causes).
+        scheduleConversationsRefresh();
+        return true;
+      } catch (error) {
+        // The draft stays in (or is restored to) the composer so the user can retry.
+        if (optimisticId !== null) {
+          setSelectedConversation((prev) => {
+            if (!prev || prev.id !== conversationId) return prev;
+            return { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) };
+          });
+          if (replyTo && selectedConversationIdRef.current === conversationId) {
+            setReplyTarget((current) => current ?? replyTo);
+          }
+        }
+        toastApiError(
+          error,
+          attachment ? "Could not send your photo." : "Could not send your message.",
+          "Message not sent"
+        );
+        return false;
+      } finally {
+        sendInFlightRef.current = false;
+        setSending(false);
+      }
     }
-  });
+  );
 
   const closeConversation = useCallback(() => {
     selectedConversationIdRef.current = null;
@@ -906,6 +986,7 @@ export function ConversationsScreen() {
   }, [sortedMessages]);
 
   const handleSwipe = useCallback((message: ChatMessage) => {
+    if (message.local_status === "sending") return;
     setReactionPickerMessageId(null);
     setReplyTarget(message);
     ignoreNextOutsideTapRef.current = true;
@@ -1209,6 +1290,25 @@ export function ConversationsScreen() {
     }
   );
 
+  const openImageViewer = useCallback((url: string) => {
+    setViewerImageUrl(url);
+  }, []);
+  const closeImageViewer = useCallback(() => {
+    setViewerImageUrl(null);
+  }, []);
+
+  // reply_to payloads carry no attachment: quote the loaded original so photos read "Photo".
+  const replyPreviewById = useMemo(() => {
+    const byId = new Map<number, ChatMessage>();
+    sortedMessages.forEach((message) => byId.set(message.id, message));
+    const previews: Record<number, string> = {};
+    sortedMessages.forEach((message) => {
+      if (!message.reply_to) return;
+      previews[message.id] = toReplyPreviewText(byId.get(message.reply_to.id) ?? message.reply_to);
+    });
+    return previews;
+  }, [sortedMessages]);
+
   // Per-row flags derived from the whole list, computed once per message-list change.
   const dayLabelById = useMemo(() => {
     const labels: Record<number, string | null> = {};
@@ -1241,6 +1341,7 @@ export function ConversationsScreen() {
           isHighlighted={highlightedMessageId === item.id}
           searchHighlight={isSearchMatch ? normalizedSearchQuery : null}
           isActiveSearchMatch={isSearchMatch && activeSearchMessageId === item.id}
+          replyPreview={replyPreviewById[item.id] ?? null}
           styles={styles}
           colors={colors}
           highlightOpacity={messageHighlightOpacity}
@@ -1249,6 +1350,7 @@ export function ConversationsScreen() {
           onReactionSelect={handleReactionSelect}
           onOpenMenu={openMessageMenu}
           onTap={handleMessageTap}
+          onOpenImage={openImageViewer}
         />
       );
     },
@@ -1264,8 +1366,10 @@ export function ConversationsScreen() {
       messageHighlightOpacity,
       messageHighlightScale,
       normalizedSearchQuery,
+      openImageViewer,
       openMessageMenu,
       reactionPickerMessageId,
+      replyPreviewById,
       replyTarget?.id,
       searchResultIdSet,
       styles,
@@ -1428,6 +1532,7 @@ export function ConversationsScreen() {
         : selectedConversation.sender;
 
     return (
+      <ChatAudioContext.Provider value={audioController}>
       <SafeAreaView style={styles.container} edges={["top"]}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -1544,7 +1649,7 @@ export function ConversationsScreen() {
                   <Ionicons name="pin" size={12} color={colors.primary} />
                 </View>
                 <Text numberOfLines={1} style={styles.pinnedStripText}>
-                  {latestPinnedMessage.text?.trim() || "Pinned attachment"}
+                  {messagePreviewText(latestPinnedMessage) || "Pinned message"}
                 </Text>
                 {additionalPinnedCount > 0 ? (
                   <Pressable
@@ -1755,7 +1860,7 @@ export function ConversationsScreen() {
                     {messageMenu.isMine ? "Your message" : messageMenu.message.sender?.username || "Message"}
                   </Text>
                   <Text numberOfLines={2} style={styles.messageMenuPreviewText}>
-                    {messageMenu.message.text?.trim() || "Attachment"}
+                    {messagePreviewText(messageMenu.message) || "Message"}
                   </Text>
                 </View>
                 {buildMessageMenuActions(messageMenu.message, messageMenu.isMine).map((action) => (
@@ -1810,7 +1915,7 @@ export function ConversationsScreen() {
                   onPress={() => handlePinnedMessagePress(message)}
                 >
                   <Text numberOfLines={2} style={styles.pinnedModalItemText}>
-                    {message.text?.trim() || "Pinned attachment"}
+                    {messagePreviewText(message) || "Pinned message"}
                   </Text>
                   <Pressable
                     style={styles.pinnedModalItemClose}
@@ -1826,7 +1931,9 @@ export function ConversationsScreen() {
             </View>
           </View>
         </Modal>
+        <ImageViewer url={viewerImageUrl} onClose={closeImageViewer} />
       </SafeAreaView>
+      </ChatAudioContext.Provider>
     );
   }
 
@@ -1898,7 +2005,9 @@ export function ConversationsScreen() {
                   ) : null}
                 </View>
                 <Text numberOfLines={1} style={styles.conversationPreview}>
-                  {typingByConversation[item.id] ? "Typing..." : item.last_message?.text || "No messages yet"}
+                  {typingByConversation[item.id]
+                    ? "Typing..."
+                    : messagePreviewText(item.last_message) || "No messages yet"}
                 </Text>
               </View>
             </Pressable>
@@ -2895,5 +3004,133 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.navy,
       alignItems: "center",
       justifyContent: "center",
+    },
+    attachButton: {
+      width: 36,
+      height: 42,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    composerAttachmentBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginHorizontal: 12,
+      marginTop: 8,
+      marginBottom: 2,
+      padding: 8,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceMuted,
+    },
+    composerAttachmentThumb: {
+      width: 44,
+      height: 44,
+      borderRadius: 8,
+      backgroundColor: colors.border,
+    },
+    // Fixed box (CHAT_IMAGE_BOX_* in MessageAttachment) so rows don't jump when the image loads.
+    attachmentImageBox: {
+      width: 220,
+      height: 240,
+      maxWidth: "100%",
+      borderRadius: 10,
+      overflow: "hidden",
+      backgroundColor: "rgba(127,127,127,0.18)",
+    },
+    attachmentImage: {
+      width: "100%",
+      height: "100%",
+    },
+    attachmentImageOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+    },
+    attachmentImageSending: {
+      backgroundColor: "rgba(0,0,0,0.28)",
+    },
+    attachmentImageErrorText: {
+      fontSize: 12,
+      color: colors.mutedText,
+    },
+    attachmentCaption: {
+      marginTop: 6,
+    },
+    voiceNoteRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minWidth: 200,
+      paddingVertical: 2,
+    },
+    voiceNoteButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    voiceNoteButtonMine: {
+      backgroundColor: "rgba(255,255,255,0.18)",
+    },
+    voiceNoteButtonOther: {
+      backgroundColor: colors.surface,
+    },
+    voiceNoteBody: {
+      flex: 1,
+      gap: 6,
+    },
+    voiceNoteTrack: {
+      height: 4,
+      borderRadius: 2,
+      overflow: "hidden",
+    },
+    voiceNoteTrackMine: {
+      backgroundColor: "rgba(255,255,255,0.28)",
+    },
+    voiceNoteTrackOther: {
+      backgroundColor: colors.border,
+    },
+    voiceNoteFill: {
+      height: "100%",
+      borderRadius: 2,
+    },
+    voiceNoteFillMine: {
+      backgroundColor: "#fff",
+    },
+    voiceNoteFillOther: {
+      backgroundColor: colors.primary,
+    },
+    voiceNoteTime: {
+      fontSize: 11,
+    },
+    fileChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minWidth: 180,
+      maxWidth: 260,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    fileChipMine: {
+      backgroundColor: "rgba(255,255,255,0.14)",
+    },
+    fileChipOther: {
+      backgroundColor: colors.surface,
+    },
+    fileChipTextWrap: {
+      flex: 1,
+      minWidth: 0,
+    },
+    fileChipName: {
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    fileChipMeta: {
+      fontSize: 11,
+      marginTop: 2,
     },
   });

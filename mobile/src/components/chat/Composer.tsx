@@ -1,9 +1,19 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
+import { Image, Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import type { ConversationStyles } from "../../screens/ConversationsScreen";
+import { showToast } from "../../services/toast";
 import type { ThemeColors } from "../../theme/colors";
 import type { ChatMessage } from "../../types";
+import {
+  formatFileSize,
+  isAttachmentTooLarge,
+  MAX_ATTACHMENT_BYTES,
+  resolveImageMimeType,
+  uploadFileName,
+  type PickedAttachment,
+} from "./attachments";
 import { toReplyPreviewText } from "./format";
 
 export type ComposerHandle = {
@@ -23,8 +33,12 @@ type ComposerProps = {
   onFocus: () => void;
   onTypingStart: () => void;
   onTypingStop: () => void;
-  /** Sends the text; resolves true when it was sent (the draft is then cleared). */
-  onSend: (text: string) => Promise<boolean>;
+  /**
+   * Sends the text (and optional picked photo); resolves true when it was sent. Text-only drafts
+   * are cleared on success; a draft with a photo is cleared right away (the screen shows an
+   * optimistic bubble) and restored if the send fails.
+   */
+  onSend: (text: string, attachment: PickedAttachment | null) => Promise<boolean>;
 };
 
 /**
@@ -51,6 +65,12 @@ export const Composer = React.memo(
     const messageTextRef = useRef("");
     messageTextRef.current = messageText;
     const messageInputRef = useRef<TextInput | null>(null);
+    const [attachment, setAttachment] = useState<PickedAttachment | null>(null);
+    const attachmentRef = useRef<PickedAttachment | null>(null);
+    attachmentRef.current = attachment;
+    // Guards against a double tap sending twice before `sending` re-renders.
+    const sendInFlightRef = useRef(false);
+    const pickingRef = useRef(false);
 
     const activateMessageInput = useCallback(() => {
       const focusInput = () => {
@@ -99,10 +119,84 @@ export const Composer = React.memo(
       });
     }, [onFocus]);
 
+    const handlePickPhoto = useCallback(async () => {
+      if (pickingRef.current) return;
+      pickingRef.current = true;
+      try {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          showToast("Allow photo access in Settings to send photos.", { title: "Permission needed" });
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: false,
+          allowsMultipleSelection: false,
+          quality: 0.8,
+          exif: false,
+        });
+        if (result.canceled || !result.assets?.length) return;
+        const asset = result.assets[0];
+        if (!asset.uri) {
+          showToast("Could not read the selected photo.", { variant: "error" });
+          return;
+        }
+        const mimeType = resolveImageMimeType(asset.mimeType, asset.fileName || asset.uri);
+        if (!mimeType) {
+          showToast("Only JPEG, PNG, GIF, WebP and HEIC photos can be sent.", {
+            title: "Unsupported photo",
+            variant: "error",
+          });
+          return;
+        }
+        if (isAttachmentTooLarge(asset.fileSize)) {
+          showToast(
+            `This photo is ${formatFileSize(asset.fileSize)}; the limit is ${formatFileSize(MAX_ATTACHMENT_BYTES)}.`,
+            { title: "Photo too large", variant: "error" }
+          );
+          return;
+        }
+        setAttachment({
+          uri: asset.uri,
+          name: uploadFileName(mimeType),
+          mimeType,
+          fileSize: asset.fileSize ?? null,
+        });
+      } catch {
+        showToast("Could not open your photos.", { variant: "error" });
+      } finally {
+        pickingRef.current = false;
+      }
+    }, []);
+
     const handleSend = useCallback(async () => {
-      const sent = await onSend(messageTextRef.current);
-      if (sent) setMessageText("");
-    }, [onSend]);
+      if (sendInFlightRef.current) return;
+      const text = messageTextRef.current;
+      const pickedAttachment = attachmentRef.current;
+      if (!pickedAttachment && !text.trim()) return;
+      sendInFlightRef.current = true;
+      try {
+        if (!pickedAttachment) {
+          const sent = await onSend(text, null);
+          if (sent) setMessageText("");
+          return;
+        }
+        // Clear right away: the optimistic bubble shows the photo while it uploads.
+        messageTextRef.current = "";
+        attachmentRef.current = null;
+        setMessageText("");
+        setAttachment(null);
+        onTypingStop();
+        const sent = await onSend(text, pickedAttachment);
+        if (!sent && !messageTextRef.current && !attachmentRef.current) {
+          // Restore the draft unless the user already started a new one.
+          setMessageText(text);
+          setAttachment(pickedAttachment);
+        }
+      } finally {
+        sendInFlightRef.current = false;
+      }
+    }, [onSend, onTypingStop]);
 
     return (
       <View style={styles.inputWrap}>
@@ -127,7 +221,47 @@ export const Composer = React.memo(
             </Pressable>
           </View>
         ) : null}
+        {attachment ? (
+          <View style={styles.composerAttachmentBar}>
+            <Image
+              source={{ uri: attachment.uri }}
+              style={styles.composerAttachmentThumb}
+              accessibilityIgnoresInvertColors
+            />
+            <View style={styles.replyComposerTextWrap}>
+              <Text style={styles.replyComposerLabel}>Photo</Text>
+              <Text style={styles.replyComposerText} numberOfLines={1}>
+                {attachment.fileSize ? formatFileSize(attachment.fileSize) : "Add a caption (optional)"}
+              </Text>
+            </View>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                setAttachment(null);
+              }}
+              style={styles.replyComposerClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Remove photo"
+            >
+              <Ionicons name="close" size={16} color={colors.mutedText} />
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.inputRow}>
+          <Pressable
+            style={styles.attachButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              handlePickPhoto();
+            }}
+            disabled={sending}
+            hitSlop={4}
+            accessibilityRole="button"
+            accessibilityLabel={attachment ? "Replace photo" : "Attach a photo"}
+          >
+            <Ionicons name="image-outline" size={22} color={colors.primary} />
+          </Pressable>
           <TextInput
             ref={messageInputRef}
             style={styles.input}
@@ -139,9 +273,11 @@ export const Composer = React.memo(
             }}
             onFocus={handleInputFocus}
             placeholder={
-              replyTarget
-                ? `Reply to: ${toReplyPreviewText(replyTarget)}`
-                : "Type a message..."
+              attachment
+                ? "Add a caption..."
+                : replyTarget
+                  ? `Reply to: ${toReplyPreviewText(replyTarget)}`
+                  : "Type a message..."
             }
             placeholderTextColor={colors.mutedText}
           />
@@ -152,6 +288,8 @@ export const Composer = React.memo(
               handleSend();
             }}
             disabled={sending}
+            accessibilityRole="button"
+            accessibilityLabel={attachment ? "Send photo" : "Send message"}
           >
             <Ionicons name="send" size={18} color="#fff" />
           </Pressable>

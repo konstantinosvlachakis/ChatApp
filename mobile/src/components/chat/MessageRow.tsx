@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ConversationStyles } from "../../screens/ConversationsScreen";
 import type { ThemeColors } from "../../theme/colors";
 import type { ChatMessage } from "../../types";
+import { getAttachmentKind } from "./attachments";
+import { MessageAttachment } from "./MessageAttachment";
 import {
   ALLOWED_REACTIONS,
   escapeRegExp,
@@ -26,6 +28,8 @@ export type MessageRowProps = {
   /** Trimmed search query when this message is a search result, else null. */
   searchHighlight: string | null;
   isActiveSearchMatch: boolean;
+  /** Quote text for `reply_to` (resolved by the screen so attachments get a label), else null. */
+  replyPreview: string | null;
   styles: ConversationStyles;
   colors: ThemeColors;
   highlightOpacity: Animated.Value;
@@ -35,6 +39,8 @@ export type MessageRowProps = {
   onReactionSelect: (message: ChatMessage, emoji: string) => void;
   onOpenMenu: (message: ChatMessage, isMine: boolean, pageY: number) => void;
   onTap: (message: ChatMessage) => void;
+  /** Opens the full-screen viewer with the original image URL. */
+  onOpenImage: (url: string) => void;
 };
 
 function MessageRowComponent({
@@ -48,6 +54,7 @@ function MessageRowComponent({
   isHighlighted,
   searchHighlight,
   isActiveSearchMatch,
+  replyPreview,
   styles,
   colors,
   highlightOpacity,
@@ -56,8 +63,22 @@ function MessageRowComponent({
   onReactionSelect,
   onOpenMenu,
   onTap,
+  onOpenImage,
 }: MessageRowProps) {
   const swipeableRef = useRef<Swipeable | null>(null);
+  const attachmentUrl = item.attachment_url || null;
+  const attachmentKind = getAttachmentKind(attachmentUrl, item.local_mime_type);
+  // Optimistic bubble of an attachment upload: not interactive until the server message replaces it.
+  const isPending = item.local_status === "sending";
+  const hasText = Boolean((item.text || "").trim());
+
+  const handleAttachmentLongPress = useCallback(
+    (pageY: number) => {
+      if (isPending) return;
+      onOpenMenu(item, isMine, pageY);
+    },
+    [isMine, isPending, item, onOpenMenu]
+  );
 
   const reactionEntries = useMemo(() => {
     const groupedReactions = (item.reactions || []).reduce<Record<string, number>>((acc, reaction) => {
@@ -140,6 +161,7 @@ function MessageRowComponent({
         renderLeftActions={!isMine ? renderReplySwipeAction : undefined}
         renderRightActions={isMine ? renderReplySwipeAction : undefined}
         onSwipeableWillOpen={handleSwipeOpen}
+        enabled={!isPending}
       >
       <View style={styles.messageContainer}>
         {showReactionPicker ? (
@@ -171,10 +193,12 @@ function MessageRowComponent({
           ]}
           onLongPress={(event) => {
             event.stopPropagation();
+            if (isPending) return;
             onOpenMenu(item, isMine, event.nativeEvent.pageY);
           }}
           onPress={(event) => {
             event.stopPropagation();
+            if (isPending) return;
             onTap(item);
           }}
           delayLongPress={520}
@@ -202,15 +226,34 @@ function MessageRowComponent({
                 numberOfLines={1}
                 style={[styles.replySnippetText, isMine ? styles.replySnippetTextMine : styles.replySnippetTextOther]}
               >
-                {toReplyPreviewText(item.reply_to)}
+                {replyPreview ?? toReplyPreviewText(item.reply_to)}
               </Text>
             </View>
           ) : null}
-          <Text
-            style={[styles.messageText, isMine ? styles.messageTextMine : styles.messageTextOther]}
-          >
-            {messageText}
-          </Text>
+          {attachmentUrl && attachmentKind ? (
+            <MessageAttachment
+              messageId={item.id}
+              url={attachmentUrl}
+              kind={attachmentKind}
+              isMine={isMine}
+              isPending={isPending}
+              styles={styles}
+              colors={colors}
+              onOpenImage={onOpenImage}
+              onLongPress={handleAttachmentLongPress}
+            />
+          ) : null}
+          {hasText || !attachmentUrl ? (
+            <Text
+              style={[
+                styles.messageText,
+                isMine ? styles.messageTextMine : styles.messageTextOther,
+                attachmentUrl ? styles.attachmentCaption : null,
+              ]}
+            >
+              {messageText}
+            </Text>
+          ) : null}
           {item.is_pinned ? (
             <View style={styles.messageFlagRow}>
               <Ionicons name="pin" size={11} color={isMine ? "#dbeafe" : colors.mutedText} />
@@ -228,7 +271,9 @@ function MessageRowComponent({
             <Text style={[styles.messageTime, isMine ? styles.messageTimeMine : styles.messageTimeOther]}>
               {formatMessageTime(item.timestamp)}
             </Text>
-            {isMine ? (
+            {isMine && isPending ? (
+              <Ionicons name="time-outline" size={12} color="#cbd5e1" accessibilityLabel="Sending" />
+            ) : isMine ? (
               <Text style={[styles.statusTick, item.status === "read" ? styles.statusTickRead : styles.statusTickDefault]}>
                 {statusTicks(item.status)}
               </Text>
