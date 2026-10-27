@@ -71,6 +71,10 @@
 .lv-header-link:hover { background: #ffffff1a; }
 .lv-header-link.is-active { background: var(--lv-paper); color: var(--lv-teal); }
 .lv-header-link.is-premium:not(.is-active) { background: #ffffff14; box-shadow: inset 0 0 0 1px #ecb1d03d; }
+.lv-shell .lv-header-link:focus-visible,
+.lv-shell .lv-tab:focus-visible { outline: none; }
+.lv-header-link:focus-visible,
+.lv-tab:focus-visible .lv-tab-label { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 /* 18px nav icons (layout/NavIcon.jsx); hidden on narrow tablets so the pills still fit. */
 .lv-header-link-icon { flex-shrink: 0; width: 18px; height: 18px; }
 .lv-header-premium-icon { color: var(--lv-premium); }
