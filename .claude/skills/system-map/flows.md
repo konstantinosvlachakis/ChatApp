@@ -1,7 +1,7 @@
 # End-to-end flows — system map
 
 Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `feat/api-resilience`. Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience` and `perf/backend-db` (at `b57487f`, pending). Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
 Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
 
 ## 1. Login + session
@@ -35,7 +35,7 @@ Web `pages/RegisterPage.jsx` `handleRegister` / mobile `screens/RegisterScreen` 
 
 ## 5. Sending a message (REST persists, server broadcasts)
 1. Web `ChatRoom.handleSendMessage`: adds an optimistic temp message (`id=Date.now()`) → `POST /api/conversations/<id>/messages/` multipart `{text?, attachment?, reply_to?}`. Mobile `sendMessage` → `sendConversationMessage` (text and reply only).
-2. `MessageListView.post`: participant and block checks; text ≤ 5000; attachment validated (§7); `reply_to` must be in the same conversation. `Message.objects.create` (bumps `Conversation.updated_at`) → `bump_conversation_list_cache_version` for both users → `broadcast_conversation_update(..., "message_created")` → `broadcast_chat_room_event(..., "message_created_event", message=message_broadcast_payload(...))` to the room → 201 with `MessageSerializer` (`reload_message_for_serializer`, full per-user view).
+2. `MessageListView.post`: participant and block checks; text ≤ 5000; attachment validated (§7); `reply_to` must be in the same conversation. An attachment is saved to storage first (DB connection released), then `Message.objects.create` with the stored name (bumps `Conversation.updated_at`) → `bump_conversation_list_cache_version` for both users → `broadcast_conversation_update(..., "message_created")` → `broadcast_chat_room_event(..., "message_created_event", message=message_broadcast_payload(...))` to the room → 201 with `MessageSerializer` (`reload_message_for_serializer`, full per-user view).
 3. Every open chat socket in the room (peer and the sender's own tabs/devices) receives `message_created`. Clients dedupe by id: web replaces the temp message with the POST response, or drops it if the broadcast already added the saved id; mobile appends from the POST response only if the id isn't listed yet, and merges the broadcast into an existing entry.
 4. The client patches the list (web `applyNewMessageToConversationList`; mobile `bumpConversationToTop` + `loadConversations(true)`). There is **no** client relay any more; the consumer ignores `chat` frames.
 - **Persistence = REST only. Live delivery into an open chat = server `message_created`. List/badge refresh = server `conversation_update`.**
@@ -59,14 +59,14 @@ Web `features/CoachChatRoom.jsx` / mobile `screens/CoachChatScreen.tsx` → `ser
 2. `consume_coach_chat_rate_limit` (12 per 60 s, cache) → 429. `consume_coach_chat_daily_limit` (`COACH_CHAT_DAILY_LIMIT` 200 per user per day, cache key per date, 25 h TTL) → 429.
 3. `sanitize_language_name` for native and target; `mode` must be in `COACH_MODES` (else `casual_chat`).
 4. `gemini.generate_coach_reply` → `_request_model_chain`: tries `GEMINI_MODEL` (default `gemini-2.5-flash-lite`), then `GEMINI_FALLBACK_MODELS` (`gemini-2.0-flash-lite,gemini-2.0-flash`). Each attempt's timeout is `min(GEMINI_TIMEOUT_SECONDS=20, remaining)`, inside an overall `GEMINI_TOTAL_DEADLINE_SECONDS=25` (under Heroku's 30 s limit), and no new attempt starts with less than 2 s left. The key is sent in the `x-goog-api-key` header.
-5. Errors: `CoachAIQuotaError` → 429; `CoachAIError` → 503 with a generic message.
+5. The DB connection is released (`release_db_connection`) before the Gemini call. Errors: `CoachAIQuotaError` → 429; `CoachAIError` → 503 with a generic message.
 6. Coach history is client-side only: web `features/coachConversation.js` (localStorage), mobile `features/coachConversation.ts` (AsyncStorage). Neither is cleared on logout.
 
 ## 9. Translation
 Web `Conversation.jsx` `handleTranslate` (`{message_id, target_language: baseTranslateLanguage}`), web `PracticePage.jsx` (free text), mobile `translateConversationMessage` → `POST /api/messages/translate/` → `views.translate_message_view` (throttle `translate` 60/min):
 1. With `message_id`: participant check; the text is read from the DB. If a `MessageTranslation` already exists for this user and language → 400 `already_translated` (with the text). A non-numeric id → 500 (open issue).
 2. Text ≤ 5000 chars. Cache key `build_translation_cache_key` (30 days).
-3. On a cache miss → `translate.googleapis.com/translate_a/single?client=gtx` (10 s). If the source language equals the target → 400 `same_language`. Otherwise `MessageTranslation.update_or_create` per user → 200 `{translated_text, source_language, target_language, cached}`. Upstream failure → 502.
+3. On a cache miss → release the DB connection → `fetch_google_translation` (`translate.googleapis.com/translate_a/single?client=gtx`, 10 s). If the source language equals the target → 400 `same_language`. Otherwise `MessageTranslation.update_or_create` per user → 200 `{translated_text, source_language, target_language, cached}`. Upstream failure (network error, timeout, malformed or empty reply) → 502 `translation_unavailable`.
 
 ## 10. Partner matching (Community)
 Web `pages/Community/page.tsx` → `GET /api/profile/data?page&page_size=24&match=<all|reciprocal|teaches_me>` (`level` is also supported). Mobile `CommunityScreen` → `fetchPeople` (no `match`, so `all`). `views.profile_data_view`:
