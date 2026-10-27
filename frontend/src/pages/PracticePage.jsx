@@ -104,6 +104,7 @@ const PracticePage = () => {
   const [feedback, setFeedback] = useState("");
   const [feedbackTone, setFeedbackTone] = useState("neutral");
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [successfulMilestones, setSuccessfulMilestones] = useState(0);
   const [showTreasureAnimation, setShowTreasureAnimation] = useState(false);
   const [animationResult, setAnimationResult] = useState("success");
@@ -127,6 +128,8 @@ const PracticePage = () => {
   const listenSilenceTimerRef = useRef(null);
   const listenMaxTimerRef = useRef(null);
   const autoNextTimerRef = useRef(null);
+  // Synchronous guard: a double click must not submit (and score) the same answer twice.
+  const isSubmittingRef = useRef(false);
 
   const languageOptions = useMemo(() => {
     const set = new Set();
@@ -429,6 +432,9 @@ const PracticePage = () => {
 
   const handleSubmitAnswer = async () => {
     if (!challenge?.id || !droppedWord || submitted || showTreasureAnimation) return false;
+    if (isSubmittingRef.current) return false;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
     setError("");
     if (autoNextTimerRef.current) {
       window.clearTimeout(autoNextTimerRef.current);
@@ -472,6 +478,9 @@ const PracticePage = () => {
     } catch (err) {
       setError(getErrorMessage(err, "Could not submit answer."));
       return false;
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -755,7 +764,8 @@ const PracticePage = () => {
                   <button
                     type="button"
                     onClick={handleSubmitAnswer}
-                    disabled={!droppedWord || submitted}
+                    disabled={!droppedWord || submitted || isSubmitting}
+                    aria-busy={isSubmitting || undefined}
                     className="w-full rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     Check Answer

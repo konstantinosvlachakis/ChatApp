@@ -115,6 +115,12 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
   const [isIdeasOpen, setIsIdeasOpen] = useState(false);
   const messagesContainerRef = useRef(null);
   const settingsButtonRef = useRef(null);
+  // Latest messages (writes go through commitMessages, so concurrent updates compose).
+  const messagesRef = useRef([]);
+  // Bumped by "New conversation", mode/language changes and user changes: a reply for
+  // an older generation is dropped (not shown, not persisted).
+  const requestGenerationRef = useRef(0);
+  const isReplyPendingRef = useRef(false);
   const isPhone = useMediaQuery(PHONE_QUERY);
   const isWide = useMediaQuery(WIDE_QUERY);
   const detailsVariant = isWide ? "docked" : isPhone ? "sheet" : "popover";
@@ -134,9 +140,25 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     setIsDetailsOpen(false);
   }, [detailsVariant]);
 
-  const syncMessages = (nextMessages) => {
+  const commitMessages = (nextMessages) => {
+    messagesRef.current = nextMessages;
     setMessages(nextMessages);
+  };
+
+  const syncMessages = (update) => {
+    const nextMessages = typeof update === "function" ? update(messagesRef.current) : update;
+    commitMessages(nextMessages);
     persistCoachMessages(user, nextMessages);
+  };
+
+  // Drops any in-flight reply and frees the composer.
+  const invalidatePendingReply = () => {
+    requestGenerationRef.current += 1;
+    if (isReplyPendingRef.current) {
+      isReplyPendingRef.current = false;
+      setIsCoachTyping(false);
+      onConversationTypingChange?.(COACH_CONVERSATION_ID, false);
+    }
   };
 
   const syncPreferences = (nextPreferences) => {
@@ -151,6 +173,10 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     setSelectedLanguage(preferences.language);
     setSelectedMode(preferences.mode);
     const storedMessages = readCoachMessages(user, preferences);
+    requestGenerationRef.current += 1;
+    isReplyPendingRef.current = false;
+    setIsCoachTyping(false);
+    messagesRef.current = storedMessages;
     setMessages(storedMessages);
   }, [user]);
 
@@ -181,17 +207,19 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
       language: partialPreferences.language || selectedLanguage,
       mode: partialPreferences.mode || selectedMode,
     };
+    invalidatePendingReply();
     syncPreferences(nextPreferences);
     const nextMessages = resetCoachConversation(user, nextPreferences);
-    setMessages(nextMessages);
+    commitMessages(nextMessages);
   };
 
   const handleStartNewConversation = () => {
+    invalidatePendingReply();
     const nextMessages = resetCoachConversation(user, {
       language: selectedLanguage,
       mode: selectedMode,
     });
-    setMessages(nextMessages);
+    commitMessages(nextMessages);
     setIsIdeasOpen(false);
   };
 
@@ -231,7 +259,11 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     const trimmed = newMessage.trim();
-    if (!trimmed && !attachedFile) return;
+    if (!trimmed && !attachedFile) return false;
+    // One reply at a time: a second send would race the first one's reply.
+    if (isReplyPendingRef.current) return false;
+    const generation = requestGenerationRef.current;
+    isReplyPendingRef.current = true;
 
     const localAttachmentUrl =
       previewImage || (attachedFile ? URL.createObjectURL(attachedFile) : null);
@@ -250,8 +282,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
       can_translate: false,
     };
 
-    const nextMessages = [...messages, outgoingMessage];
-    syncMessages(nextMessages);
+    syncMessages((current) => [...current, outgoingMessage]);
     setIsCoachTyping(true);
     onConversationTypingChange?.(COACH_CONVERSATION_ID, true);
 
@@ -267,6 +298,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
         },
         { timeoutMs: API_TIMEOUTS.coach }
       );
+      if (generation !== requestGenerationRef.current) return true;
 
       const replyMessage = {
         id: `coach-bot-${Date.now()}`,
@@ -281,15 +313,16 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
         current_user_reaction: null,
       };
 
-      syncMessages([...nextMessages, replyMessage]);
+      syncMessages((current) => [...current, replyMessage]);
     } catch (error) {
+      if (generation !== requestGenerationRef.current) return true;
       // The envelope's `error` (legacy `detail`) is user-facing; transport failures get
       // ApiError's friendly text.
       const fallbackMessage = isApiError(error)
         ? getErrorMessage(error)
         : "The coach is unavailable right now. Please try again.";
-      syncMessages([
-        ...nextMessages,
+      syncMessages((current) => [
+        ...current,
         {
           id: `coach-error-${Date.now()}`,
           text: fallbackMessage,
@@ -304,9 +337,14 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
         },
       ]);
     } finally {
-      setIsCoachTyping(false);
-      onConversationTypingChange?.(COACH_CONVERSATION_ID, false);
+      // A reset already cleared these, and a newer request may own them now.
+      if (generation === requestGenerationRef.current) {
+        isReplyPendingRef.current = false;
+        setIsCoachTyping(false);
+        onConversationTypingChange?.(COACH_CONVERSATION_ID, false);
+      }
     }
+    return true;
   };
 
   const handleQuickPrompt = (prompt) => {
@@ -316,13 +354,13 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
   };
 
   const handleDeleteMessage = (messageId) => {
-    syncMessages(messages.filter((message) => message.id !== messageId));
+    syncMessages((current) => current.filter((message) => message.id !== messageId));
   };
 
   const handleMessageReactionChange = (updatedMessage) => {
     if (!updatedMessage?.id) return;
-    syncMessages(
-      messages.map((message) =>
+    syncMessages((current) =>
+      current.map((message) =>
         message.id === updatedMessage.id ? { ...message, ...updatedMessage } : message
       )
     );
@@ -417,6 +455,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
               conversationId={COACH_CONVERSATION_ID}
               connectionStatus="connected"
               onSendMessage={handleSendMessage}
+              disabled={isCoachTyping}
               onTyping={() => {}}
               onStopTyping={() => {}}
             />

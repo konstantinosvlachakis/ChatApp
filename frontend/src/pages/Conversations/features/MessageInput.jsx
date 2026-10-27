@@ -24,6 +24,7 @@ const MessageInput = ({
   connectionStatus = "connected",
   editingMessage = null,
   replyingMessage = null,
+  disabled = false,
 }) => {
   const draftStorageKey = conversationId
     ? `chat:draft:${conversationId}`
@@ -36,6 +37,7 @@ const MessageInput = ({
   const [attachmentSource, setAttachmentSource] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [composerError, setComposerError] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   const emojiPickerRef = useRef(null);
   const emojiButtonRef = useRef(null);
@@ -50,6 +52,19 @@ const MessageInput = ({
   const onStopTypingRef = useRef(onStopTyping);
   const draftBeforeEditRef = useRef("");
   const previousEditingMessageIdRef = useRef(null);
+  // Synchronous in-flight guard: a second Enter during an upload must not post twice.
+  const isSendingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  // Bumped whenever a new attachment is picked, so a failed send only restores its own
+  // attachment if nothing new was attached meanwhile.
+  const attachmentVersionRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     onTypingRef.current = onTyping;
@@ -158,6 +173,7 @@ const MessageInput = ({
   };
 
   const applyVisualAttachment = (file, source = "upload") => {
+    attachmentVersionRef.current += 1;
     const nextPreviewUrl = URL.createObjectURL(file);
     revokePreviewUrl(previewImage);
     setPreviewImage(nextPreviewUrl);
@@ -225,6 +241,7 @@ const MessageInput = ({
     if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
       applyVisualAttachment(file, "upload");
     } else if (file.type.startsWith("audio/")) {
+      attachmentVersionRef.current += 1;
       revokePreviewUrl(previewImage);
       setAttachedFile(file);
       setAudioBlob(file);
@@ -291,6 +308,7 @@ const MessageInput = ({
         stream.getTracks().forEach((track) => track.stop());
         if (recordingStreamRef.current === stream) recordingStreamRef.current = null;
         const blob = new Blob(chunks, { type: "audio/webm" });
+        attachmentVersionRef.current += 1;
         revokePreviewUrl(previewImage);
         setAudioBlob(blob);
         setAttachedFile(blob);
@@ -316,11 +334,19 @@ const MessageInput = ({
 
   // ---------------- Send Message ----------------
   const handleSend = async () => {
+    if (isSendingRef.current || disabled) return;
     setComposerError("");
     if (editingMessage) {
-      const didSave = await onSaveEdit?.(message.trim());
-      if (!didSave) {
-        setComposerError("We couldn't save your edit. Please try again.");
+      isSendingRef.current = true;
+      setIsSending(true);
+      try {
+        const didSave = await onSaveEdit?.(message.trim());
+        if (!didSave && isMountedRef.current) {
+          setComposerError("We couldn't save your edit. Please try again.");
+        }
+      } finally {
+        isSendingRef.current = false;
+        if (isMountedRef.current) setIsSending(false);
       }
       return;
     }
@@ -330,7 +356,12 @@ const MessageInput = ({
       return;
     }
 
-    await onSendMessage(message, attachedFile, previewImage);
+    // Clear right away (the optimistic bubble shows the message) and keep a snapshot to
+    // restore if the send fails. Text typed during the upload is kept either way.
+    const snapshot = { message, attachedFile, previewImage, audioBlob, attachmentSource };
+    const attachmentVersion = attachmentVersionRef.current;
+    isSendingRef.current = true;
+    setIsSending(true);
     if (isTypingRef.current) {
       onStopTypingRef.current?.();
       isTypingRef.current = false;
@@ -341,6 +372,38 @@ const MessageInput = ({
     setAttachedFile(null);
     setAudioBlob(null);
     setAttachmentSource(null);
+
+    let didSend = false;
+    try {
+      didSend = (await onSendMessage(snapshot.message, snapshot.attachedFile, snapshot.previewImage)) !== false;
+    } catch (err) {
+      logger.warn("Send failed:", err);
+    } finally {
+      isSendingRef.current = false;
+      if (isMountedRef.current) setIsSending(false);
+    }
+
+    // On success the chat owns the preview URL (optimistic bubble); nothing to restore.
+    if (didSend) return;
+
+    if (!isMountedRef.current) {
+      // The chat was left mid-send: keep the text as that conversation's draft.
+      if (snapshot.message.trim() && !localStorage.getItem(draftStorageKey)) {
+        localStorage.setItem(draftStorageKey, snapshot.message);
+      }
+      revokePreviewUrl(snapshot.previewImage);
+      return;
+    }
+
+    setMessage((currentText) => (currentText.trim() ? currentText : snapshot.message));
+    if (snapshot.attachedFile && attachmentVersionRef.current === attachmentVersion) {
+      setPreviewImage(snapshot.previewImage);
+      setAttachedFile(snapshot.attachedFile);
+      setAudioBlob(snapshot.audioBlob);
+      setAttachmentSource(snapshot.attachmentSource);
+    } else {
+      revokePreviewUrl(snapshot.previewImage);
+    }
   };
 
   const handleInputChange = (e) => {
@@ -473,6 +536,8 @@ const MessageInput = ({
           type="button"
           className={`cv-send ${editingMessage ? "is-save" : ""}`}
           onClick={handleSend}
+          disabled={isSending || disabled}
+          aria-busy={isSending || undefined}
           aria-label={editingMessage ? "Save edited message" : "Send message"}
         >
           {editingMessage ? "Save" : <SendRoundedIcon />}

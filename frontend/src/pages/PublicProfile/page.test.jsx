@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import PublicProfilePage from "./page";
 import ProfilePage from "../Profile/page";
 import api from "../../lib/api";
@@ -97,5 +97,34 @@ describe("own profile", () => {
     expect(screen.getByText("60 to level 5")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Add a profile photo/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /View as others see it/ })).toHaveAttribute("href", "/people/kostas");
+  });
+
+  test("switching /people/a → /people/b never shows or merges A while B loads", async () => {
+    let resolveB;
+    api.get.mockImplementation((path) => {
+      if (path.includes("/anna/")) {
+        return Promise.resolve({ user_id: 3, username: "anna", age: 31, native_language: "Italian", bio: "Ciao da Anna" });
+      }
+      return new Promise((resolve) => {
+        resolveB = resolve;
+      });
+    });
+    render(
+      <MemoryRouter initialEntries={["/people/anna"]}>
+        <Link to="/people/bruno">Go to Bruno</Link>
+        <Routes>
+          <Route path="/people/:username" element={<PublicProfilePage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(await screen.findByRole("heading", { name: "anna, 31" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link", { name: "Go to Bruno" }));
+    expect(screen.queryByRole("heading", { name: "anna, 31" })).toBeNull();
+    expect(screen.getByText("Loading profile…")).toBeInTheDocument();
+
+    await act(async () => resolveB({ user_id: 4, username: "bruno", age: 40, native_language: "German" }));
+    expect(screen.getByRole("heading", { name: "bruno, 40" })).toBeInTheDocument();
+    expect(screen.queryByText("Ciao da Anna")).toBeNull();
   });
 });

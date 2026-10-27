@@ -1,7 +1,7 @@
 # API contract (REST) — backend ↔ web ↔ mobile
 
 Purpose: every REST endpoint, its payload shape, and which client code depends on which fields, so you don't have to re-explore views/serializers/clients.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `feat/api-resilience`.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience` and `fix/chat-races` (pending: practice submit idempotency).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/urls.py backend/core/views.py backend/core/exceptions.py backend/chatapp/urls.py backend/chatapp/views.py backend/chatapp/auth_views.py backend/chatapp/serializers.py frontend/src mobile/src/services`, then update the affected rows.
 
 People web caller notes below refreshed on 2026-10-27 against the working tree based on `5fb6498`; backend payloads are unchanged by the discovery redesign.
@@ -110,7 +110,7 @@ Columns: **Auth/thr** = authentication and throttle. "dflt" = default auth (Bear
 |---|---|---|---|---|---|---|---|---|
 | GET | /api/practice/state/ | practice_state_view | dflt | `?language=` | `{language, stats: PracticeStats, leaderboard[], current_rank}` | pages/PracticePage.jsx:fetchState; pages/Profile/page.jsx (Practice progress card) | services/api/practice.ts:fetchPracticeState (PracticeScreen) | Creates PracticeStats on the first call |
 | GET | /api/practice/challenge/ | practice_challenge_view | dflt | `?language=` | `{language, challenge: Challenge, stats}`; 500 `{error}` if no templates | PracticePage.jsx:fetchChallenge | fetchPracticeChallenge | The answer stays server-side (cache/library) |
-| POST | /api/practice/submit/ | practice_submit_view | dflt | `{challenge_id, selected_word, language}` | `{correct, correct_answer, awarded_xp, awarded_points, language, stats, leaderboard, current_rank}` | PracticePage.jsx | submitPracticeAnswer | Replaying the same id farms XP (known issue). XP +15/+3, points +10/+1, level = xp//100+1 |
+| POST | /api/practice/submit/ | practice_submit_view | dflt | `{challenge_id, selected_word, language}` | `{correct, correct_answer, awarded_xp, awarded_points, already_scored, language, stats, leaderboard, current_rank}` | PracticePage.jsx (in-flight guard, button disabled while submitting) | submitPracticeAnswer | Scored once per serving: a repeat for the same user + `challenge_id` (double click, retry, replay) returns 200 with the same shape, `already_scored: true`, `awarded_xp`/`awarded_points` 0 and the first attempt's `correct`. Serving the id again from `/practice/challenge/` makes it scorable again (library ids repeat). XP +15/+3, points +10/+1, level = xp//100+1 |
 
 ### Non-API routes (backend/core/urls.py)
 

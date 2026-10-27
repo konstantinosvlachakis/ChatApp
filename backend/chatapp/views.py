@@ -86,6 +86,9 @@ PRACTICE_XP_CORRECT = 15
 PRACTICE_XP_WRONG = 3
 PRACTICE_POINTS_CORRECT = 10
 PRACTICE_POINTS_WRONG = 1
+# How long a scored challenge id stays "used" for a user (cleared when the challenge
+# endpoint serves that id to them again). Matches the other practice keys (36 h).
+PRACTICE_SCORED_TTL_SECONDS = 60 * 60 * 36
 PRACTICE_GENERATOR_ENABLED = (
     os.environ.get("PRACTICE_GENERATOR_ENABLED", "false").lower() == "true"
 )
@@ -3229,6 +3232,12 @@ def get_challenge_answer(challenge_id, user_id):
     return challenge_list[index]["answer"], language_key
 
 
+def practice_scored_cache_key(user_id, challenge_id):
+    # challenge_id is client-supplied: hash it so the cache key stays short and safe.
+    digest = hashlib.sha256(str(challenge_id).encode("utf-8")).hexdigest()[:32]
+    return f"practice:scored:v1:user:{user_id}:id:{digest}"
+
+
 def serialize_practice_stats(stats):
     accuracy = 0
     if stats.total_answers:
@@ -3326,6 +3335,8 @@ def practice_challenge_view(request):
             {"error": "No challenge templates available."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+    # Library ids repeat (lang:bucket:idx): serving one again makes it scorable again.
+    cache.delete(practice_scored_cache_key(request.user.id, challenge.get("id")))
 
     return Response(
         {
@@ -3371,18 +3382,38 @@ def practice_submit_view(request):
     )
     awarded_xp = PRACTICE_XP_CORRECT if is_correct else PRACTICE_XP_WRONG
     awarded_points = PRACTICE_POINTS_CORRECT if is_correct else PRACTICE_POINTS_WRONG
-    # Atomic increments so concurrent submits don't lose updates. The level
-    # mirrors practice_level_from_xp(): (xp // 100) + 1 on the new xp value.
-    PracticeStats.objects.filter(pk=stats.pk).update(
-        preferred_language=language,
-        total_answers=F("total_answers") + 1,
-        correct_answers=F("correct_answers") + (1 if is_correct else 0),
-        points=F("points") + awarded_points,
-        xp=F("xp") + awarded_xp,
-        level=(F("xp") + awarded_xp) / 100 + 1,
-        updated_at=timezone.now(),
+
+    # Idempotency: a challenge is scored once per serving (double clicks, retries and
+    # replays of the same id award nothing). cache.add is atomic, so of two concurrent
+    # submits only one wins. A repeat gets the same response shape with 0 awarded and
+    # the first attempt's result.
+    scored_key = practice_scored_cache_key(request.user.id, challenge_id)
+    already_scored = not cache.add(
+        scored_key, {"correct": is_correct}, timeout=PRACTICE_SCORED_TTL_SECONDS
     )
-    stats.refresh_from_db()
+    if already_scored:
+        previous = cache.get(scored_key) or {}
+        is_correct = bool(previous.get("correct", is_correct))
+        awarded_xp = 0
+        awarded_points = 0
+    else:
+        try:
+            # Atomic increments so concurrent submits don't lose updates. The level
+            # mirrors practice_level_from_xp(): (xp // 100) + 1 on the new xp value.
+            PracticeStats.objects.filter(pk=stats.pk).update(
+                preferred_language=language,
+                total_answers=F("total_answers") + 1,
+                correct_answers=F("correct_answers") + (1 if is_correct else 0),
+                points=F("points") + awarded_points,
+                xp=F("xp") + awarded_xp,
+                level=(F("xp") + awarded_xp) / 100 + 1,
+                updated_at=timezone.now(),
+            )
+        except Exception:
+            # Nothing was scored: let the user submit again.
+            cache.delete(scored_key)
+            raise
+        stats.refresh_from_db()
 
     leaderboard, current_rank = get_leaderboard(
         language, request.user.id, current_stats=stats
@@ -3393,6 +3424,7 @@ def practice_submit_view(request):
             "correct_answer": answer,
             "awarded_xp": awarded_xp,
             "awarded_points": awarded_points,
+            "already_scored": already_scored,
             "language": language,
             "stats": serialize_practice_stats(stats),
             "leaderboard": leaderboard,

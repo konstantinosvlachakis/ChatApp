@@ -34,6 +34,7 @@
 .pf-btn svg { width: 18px; height: 18px; }
 .pf-btn.is-primary { border-color: var(--lv-ink); background: var(--lv-ink); color: var(--lv-on-navy); }
 .pf-btn.is-primary:hover { background: #0e2430; color: var(--lv-on-navy); }
+.pf-btn:disabled { opacity: .6; cursor: progress; }
 .pf-btn:focus-visible, .pf-link:focus-visible, .pf-strength-step:focus-visible, .pf-photo-add:focus-within { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
 
 .pf-self-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; margin: 0 0 16px; padding: 12px 16px; border-radius: 16px; background: var(--lv-sage); color: var(--lv-ink-soft); font-size: 14px; font-weight: 600; }

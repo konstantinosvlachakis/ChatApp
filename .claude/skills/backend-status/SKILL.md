@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Django backend (backend/) — model
 
 # Backend status (Django + DRF + Channels)
 
-Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability` and `feat/api-resilience`. Refresh: `git log --oneline 79ec3a9..HEAD -- backend` — re-read only changed files, then update this file.
+Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability`, `feat/api-resilience` and `fix/chat-races` (pending: practice submit idempotency). Refresh: `git log --oneline 79ec3a9..HEAD -- backend` — re-read only changed files, then update this file.
 
 ## Map
 - `core/settings.py` — env-driven config; `DJANGO_ENV` picks local vs production; Sentry init (only with `SENTRY_DSN`) + `scrub_sentry_event`; `LOGGING` (console, `[request_id]` in every line, level `DJANGO_LOG_LEVEL`). `core/asgi.py` (Channels), `core/urls.py` (API under `/api/`, `/api/health/`, JSON 404 for unknown `/api/*`, `/media/`, SPA fallback; `handler500`), `core/views.py` (serves frontend build — GET/HEAD only, other methods 405; path-traversal guarded; `health`, `api_not_found`, `server_error`).
@@ -21,6 +21,7 @@ Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability` 
 - Any queryset serialized with `MessageSerializer` goes through `serializers.with_message_relations(qs, request.user)` (select_related sender/pinned_by/reply_to__sender + prefetch reactions and the caller's translations). Single messages re-serialized after a write use `reload_message_for_serializer`. The serializer falls back to per-row queries when not prefetched.
 - `GET /conversations/<id>/` embeds only the latest `CONVERSATION_DETAIL_MESSAGE_LIMIT` (200) messages, oldest→newest; older history is `GET /conversations/<id>/messages/?page=N`. Web re-fetches page 1 right away; mobile uses the embedded list as its first page and pages older history from `/messages/` (page size 50).
 - Message create/delete are broadcast to the chat room by the views (`message_created`/`message_deleted`); the chat consumer ignores client `chat`/`deleteMessage` frames. Message broadcasts strip `PER_USER_MESSAGE_FIELDS` (`serializers.message_broadcast_payload`).
+- `practice_submit_view` scores a challenge once per serving: `cache.add` on `practice:scored:v1:user:{uid}:id:{hash}` (36 h); repeats return the same 200 shape with `already_scored: true` and 0 awarded; `practice_challenge_view` deletes the key when it serves that id again. Tests: `tests/test_practice.py`.
 - `record_profile_view` bumps the profile cache version only when the top viewer changes (otherwise the public-profile cache never hits).
 - Conversation create is a locked get-or-create on the unordered pair (no DB unique constraint; legacy duplicates resolve to the oldest).
 - Conversation list: unread count is a correlated subquery; delivery marking (`mark_messages_delivered`) bumps both participants' list cache versions.
@@ -48,7 +49,7 @@ Hardening (all optional, safe defaults): `SECURE_HSTS_*`, `DRF_THROTTLE_{AUTH,US
 ```bash
 cd backend && DJANGO_ENV=local USE_REDIS_REALTIME=false CLOUDINARY_URL= GEMINI_API_KEY= DATABASE_URL= python manage.py test chatapp
 ```
-Baseline: **137 tests, all passing** (2026-10-26, branch `feat/api-resilience`; 105 on `fix/reliability`, 95 at `c1d44c5`). Shortcut: `scripts/test-backend.sh` (also sets `DJANGO_LOG_LEVEL=CRITICAL`, `SENTRY_DSN=`). Test helpers in `tests/factory.py`; envelope/health/request-id/Sentry tests in `tests/test_api_resilience.py`.
+Baseline: **141 tests, all passing** (2026-10-27, branch `fix/chat-races`; 137 on `feat/api-resilience`, 105 on `fix/reliability`, 95 at `c1d44c5`). Shortcut: `scripts/test-backend.sh` (also sets `DJANGO_LOG_LEVEL=CRITICAL`, `SENTRY_DSN=`). Test helpers in `tests/factory.py`; envelope/health/request-id/Sentry tests in `tests/test_api_resilience.py`.
 
 ## Open issues
-Refresh-token rotation/blacklist missing; legacy `/api/login/` + `Token` to delete; `?token=` ws auth to remove; `/media/` unauthenticated; no DB uniqueness on conversation pairs (needs a duplicate-merge migration); practice replay farming; presence ignores blocks; non-numeric `message_id` in translate → 500; throttles per-process without Redis; `requirements.txt` UTF-16 and local Django 5.1.6 vs pinned 5.2.5; admin unusable (no `is_staff`; `createsuperuser` now just creates a regular account).
+Refresh-token rotation/blacklist missing; legacy `/api/login/` + `Token` to delete; `?token=` ws auth to remove; `/media/` unauthenticated; no DB uniqueness on conversation pairs (needs a duplicate-merge migration); practice replay farming (double submits/replays of a served id fixed; unserved known `dailygen:` ids still scorable once, guard per process without Redis); presence ignores blocks; non-numeric `message_id` in translate → 500; throttles per-process without Redis; `requirements.txt` UTF-16 and local Django 5.1.6 vs pinned 5.2.5; admin unusable (no `is_staff`; `createsuperuser` now just creates a regular account).
