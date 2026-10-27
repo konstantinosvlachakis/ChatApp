@@ -78,6 +78,13 @@ export function LoginScreen() {
                 <Text style={styles.buttonText}>Log in</Text>
               )}
             </Pressable>
+            <Pressable
+              onPress={() => navigation.navigate("ForgotPassword", { email: email.trim() })}
+              accessibilityRole="link"
+              hitSlop={8}
+            >
+              <Text style={styles.link}>Forgot password?</Text>
+            </Pressable>
             <Pressable onPress={() => navigation.navigate("Register")}>
               <Text style={styles.link}>Don&apos;t have an account? Sign up</Text>
             </Pressable>

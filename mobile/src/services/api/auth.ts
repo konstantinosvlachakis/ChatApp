@@ -24,6 +24,17 @@ export async function login(email: string, password: string) {
   return response.data;
 }
 
+/**
+ * Asks the backend to email a password reset link. The response is the same whether
+ * or not the address has an account; the reset itself happens on the web link.
+ */
+export async function requestPasswordReset(email: string) {
+  const response = await api.post<{ message: string }>("/auth/password-reset/", {
+    email: email.trim().toLowerCase(),
+  });
+  return response.data;
+}
+
 export async function logout() {
   clearConversationsCache();
   await tokenStorage.clear();

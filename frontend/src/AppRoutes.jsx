@@ -33,6 +33,8 @@ const PublicProfilePage = React.lazy(() => import("./pages/PublicProfile/page"))
 const PracticePage = React.lazy(() => import("./pages/PracticePage"));
 const PremiumPage = React.lazy(() => import("./pages/PremiumPage"));
 const ComparePlansPage = React.lazy(() => import("./pages/ComparePlansPage"));
+const ForgotPasswordPage = React.lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = React.lazy(() => import("./pages/ResetPasswordPage"));
 
 const AppRoutes = () => (
   <Routes>
@@ -57,6 +59,22 @@ const AppRoutes = () => (
     <Route element={<AuthLayout />}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/forgot-password"
+        element={
+          <LazyRoute fallback={null}>
+            <ForgotPasswordPage />
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/reset-password/:uid/:token"
+        element={
+          <LazyRoute fallback={null}>
+            <ResetPasswordPage />
+          </LazyRoute>
+        }
+      />
     </Route>
 
     <Route element={<Layout />}>
