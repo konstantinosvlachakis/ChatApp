@@ -30,7 +30,7 @@ const EditProfilePage = React.lazy(() => import("./pages/Profile/EditProfilePage
 const CommunityPage = React.lazy(() => import("./pages/Community/page"));
 const SettingsPage = React.lazy(() => import("./pages/Settings/page"));
 const PublicProfilePage = React.lazy(() => import("./pages/PublicProfile/page"));
-const PracticePage = React.lazy(() => import("./pages/PracticePage"));
+const PracticePage = React.lazy(() => import("./pages/Practice/PracticePage"));
 const PremiumPage = React.lazy(() => import("./pages/PremiumPage"));
 const ComparePlansPage = React.lazy(() => import("./pages/ComparePlansPage"));
 const ForgotPasswordPage = React.lazy(() => import("./pages/ForgotPasswordPage"));
