@@ -10,6 +10,7 @@ import CoachAvatar from "../components/CoachAvatar";
 import { RouteErrorBoundary } from "../components/ErrorBoundary";
 import api from "../lib/api";
 import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
+import DiscoveryHeader from "./DiscoveryHeader";
 import {
   SESSION_REFRESHED_EVENT,
   clearClientSessionData,
@@ -35,7 +36,10 @@ const resolveAvatarUrl = (image) => {
 const Layout = () => {
   const location = useLocation(); // To identify the active page
   const isChatRoute = location.pathname.startsWith("/conversations");
-  const routeContainerClass = "w-full md:w-[90vw] max-w-[1500px]";
+  const isPeopleRoute = location.pathname === "/community";
+  const routeContainerClass = isPeopleRoute
+    ? "w-full max-w-[1440px]"
+    : "w-full md:w-[90vw] max-w-[1500px]";
   const navigate = useNavigate();
   const { user, setUser, loading: userLoading } = useUser();
   const queryClient = useQueryClient();
@@ -329,11 +333,19 @@ const Layout = () => {
   return (
     <PresenceProvider value={presenceContextValue}>
       <div
-        className={`flex flex-col bg-gray-50 ${
+        className={`flex flex-col bg-gray-50 ${isPeopleRoute ? "people-layout" : ""} ${
           isChatRoute ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"
         }`}
       >
       {/* Header/Menu */}
+      {isPeopleRoute ? (
+        <DiscoveryHeader
+          user={user}
+          avatarUrl={avatarUrl}
+          unreadCount={unreadConversationCount}
+          onLogout={handleLogout}
+        />
+      ) : (
       <header
         className="sticky top-0 z-30 py-3 text-white shadow-md"
         style={{ backgroundColor: "var(--lv-navy)", boxShadow: "0 10px 30px rgba(8,19,32,0.18)" }}
@@ -832,6 +844,7 @@ const Layout = () => {
           )}
         </nav>
       </header>
+      )}
 
       {/* Main Content */}
       <main

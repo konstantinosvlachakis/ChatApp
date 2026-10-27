@@ -12,6 +12,7 @@ export interface User {
     about_me?: string;
     languages?: string[];
     languages_practicing?: string[];
+    practice_language_levels?: Record<string, string>;
     native_language?: string;
     base_translate_language?: string;
     email?: string;
