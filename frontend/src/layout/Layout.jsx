@@ -5,7 +5,7 @@ import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
-import { DEFAULT_AVATAR_URL, handleAvatarError } from "../constants/avatar";
+import { DEFAULT_AVATAR_URL } from "../constants/avatar";
 import { RouteErrorBoundary } from "../components/ErrorBoundary";
 import api from "../lib/api";
 import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
