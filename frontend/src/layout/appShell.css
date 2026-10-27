@@ -71,7 +71,9 @@
 .lv-header-link:hover { background: #ffffff1a; }
 .lv-header-link.is-active { background: var(--lv-paper); color: var(--lv-teal); }
 .lv-header-link.is-premium:not(.is-active) { background: #ffffff14; box-shadow: inset 0 0 0 1px #ecb1d03d; }
-.lv-header-premium-icon { width: 16px; height: 16px; color: var(--lv-premium); }
+/* 18px nav icons (layout/NavIcon.jsx); hidden on narrow tablets so the pills still fit. */
+.lv-header-link-icon { flex-shrink: 0; width: 18px; height: 18px; }
+.lv-header-premium-icon { color: var(--lv-premium); }
 .lv-header-link.is-active .lv-header-premium-icon { color: var(--lv-peach-ink); }
 
 .lv-count-badge {
@@ -147,6 +149,10 @@
 @media (max-width: 1199px) {
   .lv-header-inner { gap: 18px; }
   .lv-header-link { padding-inline: 12px; }
+}
+
+@media (max-width: 1023px) {
+  .lv-header-link-icon:not(.lv-header-premium-icon) { display: none; }
 }
 
 @media (max-width: 767px) {

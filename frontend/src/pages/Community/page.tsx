@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRounded";
 import { BASE_URL } from "../../constants/constants";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
@@ -12,9 +15,9 @@ import "./community.css";
 
 const PAGE_SIZE = 24;
 const segments = [
-  { key: "all", label: "Best matches" },
-  { key: "reciprocal", label: "Perfect exchange" },
-  { key: "teaches_me", label: "Native speakers" },
+  { key: "all", label: "Best matches", Icon: AutoAwesomeRoundedIcon },
+  { key: "reciprocal", label: "Perfect exchange", Icon: SwapHorizRoundedIcon },
+  { key: "teaches_me", label: "Native speakers", Icon: RecordVoiceOverRoundedIcon },
 ];
 const levels = ["beginner", "intermediate", "advanced", "fluent"];
 
@@ -177,7 +180,7 @@ export default function CommunityPage() {
           </button>
         </div>
         <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} nativeFilter={filterLang} level={level} languageOptions={languageOptions} viewerLanguage={nativeLanguage} onApply={applySheetFilters} onReset={resetSheetFilters} />
-        <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}>{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${filteredProfiles.length}${hasNextPage ? "+" : ""} ${filteredProfiles.length === 1 ? "person" : "people"} to meet`}</p></div>
+        <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}><entry.Icon className="people-segment-icon" aria-hidden="true" />{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${filteredProfiles.length}${hasNextPage ? "+" : ""} ${filteredProfiles.length === 1 ? "person" : "people"} to meet`}</p></div>
         {conversationError && <p className="people-error" role="alert">{conversationError}</p>}
         {loading && !profiles.length ? (
           <div className="people-loading" role="status"><div className="people-loading-portrait" /><div><span /><span /><span /><p>Finding your next connection…</p></div></div>
