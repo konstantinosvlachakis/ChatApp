@@ -33,7 +33,7 @@ const mockMe = {
   ],
 };
 
-jest.mock("../../context/UserContext", () => ({ useUser: () => ({ user: mockMe }) }));
+jest.mock("../../context/UserContext", () => ({ useUser: () => ({ user: mockMe, setUser: () => {} }) }));
 jest.mock("../../context/PresenceContext", () => ({ usePresence: () => ({ onlineUserIds: new Set([2]) }) }));
 
 const renderAt = (path) =>
