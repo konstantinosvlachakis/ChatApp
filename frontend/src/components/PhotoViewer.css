@@ -1,0 +1,77 @@
+/* Full-screen photo viewer (components/PhotoViewer.jsx). Tokens: src/styles/tokens.css. */
+.lv-photo-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  /* The dim lives on the dialog itself: older engines don't apply custom properties to ::backdrop. */
+  background: var(--lv-scrim-strong);
+  color: var(--lv-on-navy);
+  overscroll-behavior: contain;
+}
+.lv-photo-viewer::backdrop { background: transparent; }
+.lv-photo-viewer-stage { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 56px 12px; }
+.lv-photo-viewer-image {
+  display: block;
+  max-width: 92vw;
+  max-height: 88vh;
+  max-height: 88dvh;
+  object-fit: contain;
+  border-radius: 12px;
+  animation: lv-photo-viewer-in .18s ease-out;
+}
+.lv-photo-viewer-bar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px 20px;
+}
+.lv-photo-viewer-counter { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.lv-photo-viewer-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--lv-paper);
+  color: var(--lv-ink);
+  box-shadow: var(--lv-shadow-soft);
+}
+.lv-photo-viewer-button:hover { background: var(--lv-cream-deep); }
+.lv-photo-viewer-button:focus-visible { outline: 3px solid var(--lv-on-navy); outline-offset: 3px; }
+.lv-photo-viewer-button svg { width: 26px; height: 26px; }
+.lv-photo-viewer-prev, .lv-photo-viewer-next { position: absolute; top: 50%; transform: translateY(-50%); }
+.lv-photo-viewer-prev { left: 12px; }
+.lv-photo-viewer-next { right: 12px; }
+
+@keyframes lv-photo-viewer-in {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lv-photo-viewer-image { animation: none; }
+}
+@media (max-width: 767px) {
+  .lv-photo-viewer-prev, .lv-photo-viewer-next { top: auto; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: none; }
+  .lv-photo-viewer-prev { left: calc(50% - 60px); }
+  .lv-photo-viewer-next { right: calc(50% - 60px); }
+}
+
+/* Thumbnails that open the viewer (profile pages). */
+/* Fills its (usually overflow-hidden) frame, so the focus ring is drawn inside the edge. */
+.lv-photo-thumb { display: block; width: 100%; height: 100%; border-radius: inherit; cursor: zoom-in; }
+.lv-photo-thumb:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: -3px; box-shadow: inset 0 0 0 6px var(--lv-paper); }
+.lv-photo-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }

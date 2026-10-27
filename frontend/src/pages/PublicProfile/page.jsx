@@ -9,6 +9,7 @@ import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { toastApiError } from "../../components/Toast";
+import PhotoViewer, { buildPhotoGallery, usePhotoViewer } from "../../components/PhotoViewer";
 
 const PublicProfilePage = () => {
   const { username } = useParams();
@@ -83,6 +84,13 @@ const PublicProfilePage = () => {
   ];
 
   const reviews = profile?.reviews || [];
+  const ownerName = profile?.username || "this person";
+  // Only real photos are viewable (no chameleon default / empty slots).
+  const gallery = buildPhotoGallery(
+    photoCards.map((card) => ({ key: card.key, src: card.image, alt: `${card.label} of ${ownerName}` }))
+  );
+  const galleryIndex = (key) => gallery.findIndex((photo) => photo.key === key);
+  const viewer = usePhotoViewer();
 
   const handleStartConversation = async () => {
     if (!profile?.username) return;
@@ -103,11 +111,24 @@ const PublicProfilePage = () => {
     <div className="min-h-screen bg-gray-50 p-3 pb-28 sm:p-5 sm:pb-5 md:p-8">
       <div className="max-w-5xl mx-auto">
         <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
-          <img
-            src={imageUrl}
-            alt="Profile"
-            className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
-          />
+          {galleryIndex("profile") >= 0 ? (
+            <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32">
+              <button
+                type="button"
+                className="lv-photo-thumb"
+                onClick={(event) => viewer.open(galleryIndex("profile"), event)}
+                aria-label={`View photo ${galleryIndex("profile") + 1} of ${gallery.length}`}
+              >
+                <img src={imageUrl} alt="" />
+              </button>
+            </div>
+          ) : (
+            <img
+              src={imageUrl}
+              alt="Profile"
+              className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
+            />
+          )}
           <h1 className="text-xl sm:text-2xl font-bold text-gray-800 text-center">
             {profile.username}, {profile.age || "—"}
           </h1>
@@ -197,14 +218,15 @@ const PublicProfilePage = () => {
                 className="rounded-2xl border border-gray-200 p-2 bg-white"
               >
                 <div className="w-full aspect-square rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
-                  {card.image ? (
-                    <img
-                      src={card.image}
-                      loading="lazy"
-                      decoding="async"
-                      alt={card.label}
-                      className="w-full h-full object-cover"
-                    />
+                  {galleryIndex(card.key) >= 0 ? (
+                    <button
+                      type="button"
+                      className="lv-photo-thumb"
+                      onClick={(event) => viewer.open(galleryIndex(card.key), event)}
+                      aria-label={`View photo ${galleryIndex(card.key) + 1} of ${gallery.length}`}
+                    >
+                      <img src={card.image} loading="lazy" decoding="async" alt="" />
+                    </button>
                   ) : (
                     <span className="text-sm text-gray-400">No photo</span>
                   )}
@@ -253,6 +275,14 @@ const PublicProfilePage = () => {
           Start Conversation
         </button>
       </div>
+
+      <PhotoViewer
+        photos={gallery}
+        index={viewer.index}
+        onClose={viewer.close}
+        returnFocusRef={viewer.triggerRef}
+        label={`Photos of ${ownerName}`}
+      />
     </div>
   );
 };
