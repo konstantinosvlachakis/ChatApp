@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { tokenStorage } from "../services/storage";
 import { fetchProfile, login as loginApi, logout as logoutApi } from "../services/api/auth";
+import { unregisterPushDevice } from "../services/push";
 import type { Profile } from "../types";
 
 type AuthContextValue = {
@@ -63,6 +64,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    // Needs the session, so before the tokens are cleared (bounded, never throws).
+    await unregisterPushDevice();
     await logoutApi();
     setUser(null);
   };

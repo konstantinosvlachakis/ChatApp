@@ -362,3 +362,30 @@ class ProfileView(models.Model):
 
     def __str__(self):
         return f"ProfileView({self.viewer_id}->{self.viewed_profile_id})"
+
+
+class PushDevice(models.Model):
+    """An Expo push token for one of a user's devices (mobile app)."""
+
+    PLATFORM_IOS = "ios"
+    PLATFORM_ANDROID = "android"
+    PLATFORM_CHOICES = [(PLATFORM_IOS, "iOS"), (PLATFORM_ANDROID, "Android")]
+
+    user = models.ForeignKey(
+        Profile, related_name="push_devices", on_delete=models.CASCADE
+    )
+    # A token identifies a device install, so it belongs to at most one user;
+    # registering it again moves it to whoever is logged in now.
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=16, choices=PLATFORM_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "is_active"], name="pushdev_user_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"PushDevice({self.user_id}:{self.platform})"

@@ -29,6 +29,7 @@ urlpatterns = [
     path("profile/delete/", delete_account_view, name="delete_account"),
     path("profile/moderation/", moderation_summary_view, name="moderation_summary"),
     path("presence/offline/", mark_presence_offline_view, name="presence_offline"),
+    path("push/devices/", push_devices_view, name="push_devices"),
     path("coach/chat/", coach_chat_view, name="coach_chat"),
     path("profile/data", profile_data_view, name="profile_data"),
     path("profile/public/<str:username>/", public_profile_view, name="public_profile"),

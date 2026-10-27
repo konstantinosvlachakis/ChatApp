@@ -25,6 +25,10 @@ class ReportRateThrottle(UserRateThrottle):
     scope = "report"
 
 
+class PushDeviceRateThrottle(UserRateThrottle):
+    scope = "push_devices"
+
+
 class PasswordResetIPThrottle(AuthRateThrottle):
     """Per-IP limit on password reset emails."""
 

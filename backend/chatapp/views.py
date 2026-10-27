@@ -25,8 +25,10 @@ from .models import (
     MessageReaction,
     PracticeStats,
     ProfileView,
+    PushDevice,
     UserReport,
 )
+from .push import PUSH_PLATFORMS, is_valid_expo_push_token, schedule_message_push
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from .serializers import (
@@ -65,7 +67,12 @@ from .gemini import (
     generate_coach_reply,
     generate_practice_challenge,
 )
-from .throttles import AuthRateThrottle, ReportRateThrottle, TranslateRateThrottle
+from .throttles import (
+    AuthRateThrottle,
+    PushDeviceRateThrottle,
+    ReportRateThrottle,
+    TranslateRateThrottle,
+)
 from core.exceptions import error_response
 
 logger = logging.getLogger(__name__)
@@ -902,6 +909,50 @@ def broadcast_presence_update(user_id, is_online):
 
     async_to_sync(send_presence_update)(
         channel_layer, user_id, is_online, get_presence_contact_ids(int(user_id))
+    )
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([PushDeviceRateThrottle])
+def push_devices_view(request):
+    """Register (POST, upsert) or remove (DELETE, on logout) an Expo push token."""
+    token = request.data.get("token") if hasattr(request.data, "get") else None
+    token = str(token or "").strip()
+    if not is_valid_expo_push_token(token):
+        return error_response(
+            "A valid Expo push token is required.", "invalid_push_token", 400
+        )
+
+    if request.method == "DELETE":
+        # Only the caller's own registration; someone else's token stays put.
+        PushDevice.objects.filter(token=token, user=request.user).delete()
+        return Response({"ok": True})
+
+    platform = str(request.data.get("platform") or "").strip().lower()
+    if platform not in PUSH_PLATFORMS:
+        return error_response(
+            "platform must be one of: android, ios.", "invalid_platform", 400
+        )
+    fields = {
+        "user": request.user,
+        "platform": platform,
+        "is_active": True,
+        "last_seen_at": timezone.now(),
+    }
+    try:
+        # A token is one app install: if it moved to another account, it now
+        # belongs to whoever registered it last.
+        _device, created = PushDevice.objects.update_or_create(
+            token=token, defaults=fields
+        )
+    except IntegrityError:
+        # Concurrent first registration of the same token: the row exists now.
+        PushDevice.objects.filter(token=token).update(**fields)
+        created = False
+    return Response(
+        {"ok": True, "created": created},
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
 
 
@@ -1953,6 +2004,21 @@ class MessageListView(APIView):
             conversation.id,
             "message_created",
             actor_id=request.user.id,
+        )
+
+        # Push to the other participant's devices after commit, off the request
+        # thread (chatapp/push.py); no queries here.
+        schedule_message_push(
+            conversation_id=conversation.id,
+            sender_id=request.user.id,
+            sender_username=request.user.username,
+            recipient_id=(
+                conversation.receiver_id
+                if conversation.sender_id == request.user.id
+                else conversation.sender_id
+            ),
+            text=text,
+            attachment_content_type=getattr(attachment, "content_type", None),
         )
 
         # Serialize and return the new message

@@ -59,6 +59,7 @@ import {
 import { getErrorMessage } from "../services/api/errors";
 import { toastApiError } from "../services/toast";
 import { subscribeToPresenceEvents } from "../services/presenceEvents";
+import { setOpenConversationId } from "../services/push";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
 import { avatarImage } from "../utils/media";
@@ -234,6 +235,12 @@ export function ConversationsScreen() {
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversation?.id ?? null;
   }, [selectedConversation?.id]);
+
+  // Push: no foreground banner for the chat that is on screen (services/push.ts).
+  useEffect(() => {
+    setOpenConversationId(isFocused ? selectedConversation?.id ?? null : null);
+    return () => setOpenConversationId(null);
+  }, [isFocused, selectedConversation?.id]);
 
   useEffect(() => {
     setReplyTarget(null);
