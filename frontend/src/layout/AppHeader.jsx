@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import CoachAvatar from "../components/CoachAvatar";
 import { handleAvatarError } from "../constants/avatar";
+import { avatarImage } from "../lib/media";
 import { HEADER_NAV_ITEMS, isNavItemActive, unreadLabel } from "./navItems";
 import NavIcon from "./NavIcon";
 
@@ -79,7 +80,7 @@ export default function AppHeader({ user, avatarUrl, unreadCount = 0, onLogout }
             aria-label={`Account menu for ${username}`}
             onClick={() => setAccountOpen((open) => !open)}
           >
-            <img src={avatarUrl} alt="" onError={handleAvatarError} />
+            <img src={avatarImage(avatarUrl, 36)} alt="" onError={handleAvatarError} />
             <span className="lv-account-name">{username}</span>
             <NavIcon name="chevron" className={`lv-account-chevron${accountOpen ? " is-open" : ""}`} />
           </button>

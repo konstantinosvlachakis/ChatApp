@@ -2,7 +2,7 @@
 
 Purpose: every websocket endpoint and event type across backend, web and mobile, so you don't have to re-read `consumers.py` / `ChatRoom.jsx` / `ConversationsScreen.tsx`.
 
-Verified at commit c1d44c5 (2026-10-26); updated in PR `fix/reliability` (server-broadcast messages, close codes, reconnect backoff, mobile heartbeat), and pending `perf/list-refetch` (web `conversation_update` handling).
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` (server-broadcast messages, close codes, reconnect backoff, mobile heartbeat), `perf/backend-db` (#29, merged: worker-thread DB calls, connect ordering) and `perf/list-refetch` (web `conversation_update` handling).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/consumers.py backend/chatapp/views.py frontend/src mobile/src`, then update only the affected rows and bump the commit line.
 
 ## Wiring
@@ -26,7 +26,7 @@ The token is validated with SimpleJWT `AccessToken` (1 h lifetime). Neither cons
 | Consumer | `PresenceConsumer` | `ChatConsumer` |
 | Reject | `accept()` then `close(4401)` if not authenticated | `accept()` then `close(4403)` for **any** failure: no or invalid token, non-numeric id, or not a participant (`get_participant_details`). Accepting first means clients see the real code; closing during the handshake showed up in browsers as 1006 (and clients reconnected forever). |
 | Groups | `presence_user_<own id>` (`user_presence_group_name`) | `str(conversation_id)` (the bare numeric id) |
-| On connect | `increment_presence`; if the user just came online → `broadcast_presence(True)`; then sends `initial_online_users` | `increment_presence` (chat sockets count toward presence too); if the user just came online → broadcast |
+| On connect | after `accept()`: `open_presence` (count + contacts + online list in one DB call); if the user just came online → `broadcast_presence(True)`; then sends `initial_online_users` | before `accept()`: `increment_presence` (chat sockets count toward presence too); if the user just came online → broadcast. Consumer DB calls run on worker threads (`db_async`), so counting before accepting keeps the open ordered after presence |
 | On disconnect | `decrement_presence`; if the user just went offline → `broadcast_presence(False)` (contacts re-read) | Sends `typing_event`(stopped) to the room and `typing_status_event`(false) to the other user's presence group; then `decrement_presence` and a possible offline broadcast |
 | Frame cap | `WS_MAX_MESSAGE_BYTES` (64 KB); bigger frames are silently dropped | same |
 | Client→server types | `heartbeat` only | `user_typing`, `user_stopped_typing`, `call_invite`, `call_accept`, `call_reject`, `call_end`, `webrtc_offer`, `webrtc_answer`, `webrtc_ice_candidate`. Anything else (including the old `chat`/`deleteMessage` relays and frames without a `type`) is ignored |

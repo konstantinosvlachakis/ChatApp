@@ -29,6 +29,10 @@ import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
 import type { ProfilePhotoSlot } from "../services/api/auth";
 import { fontFamilies } from "../theme/typography";
+import { avatarImage } from "../utils/media";
+
+// Photo slots are a third of the card row (flex: 1, square); ~120dp on large phones.
+const PHOTO_SLOT_DP = 120;
 
 const AVATAR_RING_OPTIONS = [
   { value: "#1b7f79", label: "Teal" },
@@ -689,7 +693,7 @@ export function ProfileScreen() {
               }}
               style={styles.avatarShell}
             >
-              <Image source={{ uri: profileImage }} style={[styles.avatar, { borderColor: avatarRingColor }]} />
+              <Image source={{ uri: avatarImage(profileImage, 108) }} style={[styles.avatar, { borderColor: avatarRingColor }]} />
             </Pressable>
             <View style={styles.heroIdentity}>
               <View style={styles.heroEyebrowRow}>
@@ -814,7 +818,7 @@ export function ProfileScreen() {
                     }
                   >
                     <View style={styles.recentViewerIdentity}>
-                      <Image source={{ uri: viewerAvatar }} style={styles.recentViewerAvatar} />
+                      <Image source={{ uri: avatarImage(viewerAvatar, 52) }} style={styles.recentViewerAvatar} />
                       <View style={styles.recentViewerCopy}>
                         <Text style={styles.recentViewerName}>{viewer.username}</Text>
                         <View style={styles.recentViewerMetaRow}>
@@ -1053,7 +1057,7 @@ export function ProfileScreen() {
               disabled={Boolean(uploadingSlot)}
             >
               {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.photo} />
+                <Image source={{ uri: avatarImage(profileImage, PHOTO_SLOT_DP) }} style={styles.photo} />
               ) : (
                 <View style={[styles.photoPlaceholder, styles.photoPlaceholderDashed]}>
                   <Text style={styles.photoPlaceholderIcon}>+</Text>
@@ -1078,7 +1082,7 @@ export function ProfileScreen() {
                 disabled={Boolean(uploadingSlot)}
               >
                 {card.image ? (
-                  <Image source={{ uri: card.image }} style={styles.photo} />
+                  <Image source={{ uri: avatarImage(card.image, PHOTO_SLOT_DP) }} style={styles.photo} />
                 ) : (
                   <View style={[styles.photoPlaceholder, styles.photoPlaceholderDashed]}>
                     <Text style={styles.photoPlaceholderIcon}>+</Text>
@@ -1368,7 +1372,7 @@ export function ProfileScreen() {
                       { borderColor: isValidHexColor(editForm.avatarRingColor) ? editForm.avatarRingColor : "#1b7f79" },
                     ]}
                   >
-                    <Image source={{ uri: profileImage }} style={styles.avatarAccentPreviewImage} />
+                    <Image source={{ uri: avatarImage(profileImage, 74) }} style={styles.avatarAccentPreviewImage} />
                   </View>
                   <View style={styles.avatarAccentTextWrap}>
                     <Text style={styles.avatarAccentTitle}>Avatar ring color</Text>

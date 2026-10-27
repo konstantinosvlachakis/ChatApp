@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { BASE_URL_IMG } from "../../../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
+import { avatarImage } from "../../../lib/media";
 
 // Media paths from the API may be absolute, /media/…, media/… or bare storage names.
 export const resolveAvatarUrl = (path) => {
@@ -13,7 +14,7 @@ export const resolveAvatarUrl = (path) => {
 
 /** Round portrait; falls back to the chameleon default avatar when there is no photo or it fails. */
 function ChatAvatar({ name, imagePath, size = 48, online = false, className = "" }) {
-  const url = resolveAvatarUrl(imagePath);
+  const url = avatarImage(resolveAvatarUrl(imagePath), size);
   const [failedUrl, setFailedUrl] = useState(null);
   const src = url && failedUrl !== url ? url : DEFAULT_AVATAR_URL;
   return (

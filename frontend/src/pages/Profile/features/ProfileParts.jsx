@@ -7,8 +7,13 @@ import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
+import { avatarImage } from "../../../lib/media";
 import { LEVELS, describeLanguage, learningLanguages, levelFor } from "./profileUtils";
 import "./profile.css";
+
+// Rendered sizes from profile.css: hero avatar 160px; photo slots are a third of a card (≤ ~160px).
+const HERO_AVATAR_PX = 160;
+const PHOTO_SLOT_PX = 160;
 
 export const ProfileCard = ({ icon: Icon, title, className = "", children, ...rest }) => (
   <section className={`pf-card ${className}`} {...rest}>
@@ -50,7 +55,7 @@ export const ProfileHero = ({
   const native = profile?.native_language ? describeLanguage(profile.native_language).name : "";
   const avatar = (
     <img
-      src={avatarUrl || DEFAULT_AVATAR_URL}
+      src={avatarImage(avatarUrl, HERO_AVATAR_PX) || DEFAULT_AVATAR_URL}
       alt={onOpenAvatar ? "" : `${profile?.username || "Profile"} photo`}
       onError={(event) => {
         handleAvatarError(event);
@@ -202,7 +207,7 @@ export const PhotosCard = ({ slots, galleryIndex, onOpen, viewLabel, onPhotoErro
                   onClick={(event) => onOpen(index, event)}
                   aria-label={viewLabel(slot.key)}
                 >
-                  <img src={slot.image} loading="lazy" decoding="async" alt="" onError={() => onPhotoError?.(slot.key)} />
+                  <img src={avatarImage(slot.image, PHOTO_SLOT_PX)} loading="lazy" decoding="async" alt="" onError={() => onPhotoError?.(slot.key)} />
                 </button>
                 {renderChange?.(slot)}
               </>

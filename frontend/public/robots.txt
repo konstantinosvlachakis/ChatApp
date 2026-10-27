@@ -2,4 +2,4 @@ User-agent: *
 Disallow:
 Allow: /
 
-Sitemap: https://langvoyage.app/sitemap.xml
+Sitemap: https://www.langvoyage.com/sitemap.xml
