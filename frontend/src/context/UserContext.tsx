@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
 import { clearClientSessionData, isPublicPath } from "../utils/auth";
@@ -51,31 +51,47 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const userRef = useRef(user);
+  userRef.current = user;
+  // Only the newest refresh may apply its result, and a logout (user set to null)
+  // starts a new session epoch so an older in-flight refresh can't restore the user.
+  const latestRefreshRef = useRef(0);
+  const sessionEpochRef = useRef(0);
+
   const setUser: React.Dispatch<React.SetStateAction<User | null>> = useCallback((nextUser) => {
+    if (nextUser === null) sessionEpochRef.current += 1;
     setUserState((prevUser) =>
       typeof nextUser === "function" ? (nextUser as (prev: User | null) => User | null)(prevUser) : nextUser
     );
   }, []);
 
   const refreshUserProfile = useCallback(async () => {
-    setLoading(true);
+    const refreshId = ++latestRefreshRef.current;
+    const epoch = sessionEpochRef.current;
+    const isCurrent = () => refreshId === latestRefreshRef.current && epoch === sessionEpochRef.current;
+    // Background refreshes (after a save, on settings) keep showing the current user;
+    // only a first load without one shows loading, so pages don't blank and remount.
+    if (!userRef.current) setLoading(true);
     try {
       const userData = await fetchUserProfile();
-      setUser(userData);
+      if (!isCurrent()) return;
+      setUserState(userData);
       setError(null);
     } catch (err) {
-      setUser(null);
+      if (!isCurrent()) return;
       setError((err as Error).message);
+      // Only a real 401 signs out; a network blip keeps the session we already have.
       if ((err as Error).message === "Unauthorized") {
+        setUserState(null);
         clearClientSessionData();
         if (typeof window !== "undefined" && !isPublicPath(window.location.pathname)) {
           window.location.href = "/login";
         }
       }
     } finally {
-      setLoading(false);
+      if (refreshId === latestRefreshRef.current) setLoading(false);
     }
-  }, [setUser]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
