@@ -7,6 +7,7 @@ import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
 import { createOrGetConversation } from "./api/conversation";
 import ExchangeProfileCard, { ExchangeProfile, languageLabel, languageLevel } from "./components/ExchangeProfileCard";
+import FilterSheet from "./components/FilterSheet";
 import "./community.css";
 
 const PAGE_SIZE = 24;
@@ -37,7 +38,7 @@ export default function CommunityPage() {
   const [filterLang, setFilterLang] = useState("");
   const [segment, setSegment] = useState("all");
   const [level, setLevel] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -109,6 +110,18 @@ export default function CommunityPage() {
     if (segment !== "all" || level) changeServerFilter("all", "");
   };
 
+  const applySheetFilters = (next: { nativeFilter: string; level: string }) => {
+    setFilterLang(next.nativeFilter);
+    if (next.level !== level) changeServerFilter(segment, next.level);
+    setSheetOpen(false);
+  };
+
+  const resetSheetFilters = () => {
+    setFilterLang("");
+    if (level) changeServerFilter(segment, "");
+    setSheetOpen(false);
+  };
+
   const sayHello = async (username: string) => {
     if (startingUsername) return;
     setStartingUsername(username);
@@ -142,8 +155,8 @@ export default function CommunityPage() {
           <Link to="/profile/edit" className="people-exchange-edit">Edit languages <span aria-hidden="true">↗</span></Link>
         </section>
         <section className="people-filters">
-          <div className="people-filter-heading"><h2>Filters{activeFilters > 0 && <span className="people-filter-count">{activeFilters}</span>}</h2><button type="button" onClick={() => setFiltersOpen(!filtersOpen)} aria-expanded={filtersOpen} aria-controls="people-filter-fields"><TuneRoundedIcon fontSize="small" />{filtersOpen ? "Hide" : "Refine"}</button></div>
-          <div id="people-filter-fields" className={`people-filter-fields ${filtersOpen ? "is-open" : ""}`}>
+          <div className="people-filter-heading"><h2>Filters{activeFilters > 0 && <span className="people-filter-count">{activeFilters}</span>}</h2></div>
+          <div className="people-filter-fields">
             <label htmlFor="people-native-language">Their native language</label>
             <select id="people-native-language" value={filterLang} onChange={(event) => setFilterLang(event.target.value)}><option value="">All languages</option>{languageOptions.map((language) => <option key={language} value={language}>{languageLabel(language)}</option>)}</select>
             <label htmlFor="people-practice-level">{nativeLanguage ? `Their ${languageLabel(nativeLanguage)} level` : "Their practice level"}</label>
@@ -156,7 +169,14 @@ export default function CommunityPage() {
 
       <section className="people-discovery" aria-labelledby="people-heading">
         <div className="people-intro"><p className="people-eyebrow">A little exchange. A new connection.</p><h1 id="people-heading">Find your next great conversation.</h1><p>Meet people who speak your next language. Share a little of yours.</p></div>
-        <div className="people-search"><SearchRoundedIcon aria-hidden="true" /><input aria-label="Search loaded profiles" type="search" placeholder="Search people, languages or learning goals" value={search} onChange={(event) => setSearch(event.target.value)} /><span className="people-search-hint">Search loaded profiles</span></div>
+        <div className="people-search-row">
+          <div className="people-search"><SearchRoundedIcon aria-hidden="true" /><input aria-label="Search loaded profiles" type="search" placeholder="Search people, languages or learning goals" value={search} onChange={(event) => setSearch(event.target.value)} /><span className="people-search-hint">Search loaded profiles</span></div>
+          <button type="button" className="people-filter-button" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-label={activeFilters > 0 ? `Filters, ${activeFilters} active` : "Filters"}>
+            <TuneRoundedIcon aria-hidden="true" />
+            {activeFilters > 0 && <span className="people-filter-button-count" aria-hidden="true">{activeFilters}</span>}
+          </button>
+        </div>
+        <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} nativeFilter={filterLang} level={level} languageOptions={languageOptions} viewerLanguage={nativeLanguage} onApply={applySheetFilters} onReset={resetSheetFilters} />
         <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}>{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${filteredProfiles.length}${hasNextPage ? "+" : ""} ${filteredProfiles.length === 1 ? "person" : "people"} to meet`}</p></div>
         {conversationError && <p className="people-error" role="alert">{conversationError}</p>}
         {loading && !profiles.length ? (
