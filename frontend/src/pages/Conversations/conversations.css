@@ -397,6 +397,7 @@
 }
 .cv-send:hover { background: #0e2537; }
 .cv-send svg { width: 22px; height: 22px; }
+.cv-send:disabled { opacity: .55; cursor: not-allowed; }
 .cv-send.is-save { width: auto; padding: 0 18px; border-radius: var(--lv-radius-pill); font-size: 14px; font-weight: 800; }
 .cv-composer-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; padding: 8px 8px 8px 14px; border-radius: 18px; font-size: 14px; }
 .cv-composer-banner p { min-width: 0; }

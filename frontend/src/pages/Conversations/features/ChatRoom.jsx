@@ -34,6 +34,7 @@ import {
 } from "../../../utils/reconnect";
 import { logger } from "../../../lib/logger";
 import { toastApiError } from "../../../components/Toast";
+import { mergeLatestPage, prependOlderMessages, restoreMessage } from "../utils/messageMerge";
 
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
@@ -151,6 +152,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const pinnedMenuRef = useRef(null);
   const searchRequestRef = useRef(0);
   const initialUnreadCountRef = useRef(0);
+  // Latest list for async loops/callbacks (keeps them stable and avoids stale snapshots).
+  const messagesRef = useRef(messages);
+  const pinnedMessagesRef = useRef(pinnedMessages);
+  // The conversation this instance shows; null after unmount. Async loops re-check it after
+  // every await so a late page never lands in another chat.
+  const activeConversationIdRef = useRef(conversation.id);
 
   const { user, loading } = useUser();
   const { onlineUserIds } = usePresence();
@@ -232,6 +239,21 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   useEffect(() => {
     hasOlderMessagesRef.current = hasOlderMessages;
   }, [hasOlderMessages]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    pinnedMessagesRef.current = pinnedMessages;
+  }, [pinnedMessages]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = conversation.id;
+    return () => {
+      activeConversationIdRef.current = null;
+    };
+  }, [conversation.id]);
 
   useEffect(() => {
     setIsSearchOpen(false);
@@ -340,6 +362,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const resolveFirstUnreadMessageId = useCallback(
     async (messageList, unreadCount) => {
       if (!conversation?.id || !unreadCount || !currentUserIdRef.current) return null;
+      const conversationId = conversation.id;
 
       let workingMessages = Array.isArray(messageList) ? [...messageList] : [];
       let candidateId = findFirstUnreadMessageId(
@@ -351,14 +374,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       let hasMore = hasOlderMessagesRef.current;
 
       while (!candidateId && hasMore) {
-        const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+        const payload = await fetchMessagesPage(conversationId, nextPage, { force: true });
+        if (activeConversationIdRef.current !== conversationId) return null;
         const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
 
         if (nextMessages.length) {
-          const seen = new Set(workingMessages.map((message) => message.id));
-          const uniqueOlder = nextMessages.filter((message) => !seen.has(message.id));
-          workingMessages = [...uniqueOlder, ...workingMessages];
-          setMessages(workingMessages);
+          // workingMessages (what was loaded at open) drives the unread count; the live list
+          // is merged functionally so arrivals during the fetch are kept.
+          workingMessages = prependOlderMessages(workingMessages, nextMessages);
+          setMessages((prev) => prependOlderMessages(prev, nextMessages));
         }
 
         setCurrentMessagesPage(payload.pagination?.page || nextPage);
@@ -381,6 +405,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const jumpToPinnedMessage = useCallback(
     async (messageId) => {
       if (!conversation?.id || !messageId) return;
+      const conversationId = conversation.id;
 
       const foundInCurrentMessages = await scrollToMessage(messageId);
       if (foundInCurrentMessages) return;
@@ -399,14 +424,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             scrollAdjustmentHeightRef.current = container.scrollHeight;
           }
 
-          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const payload = await fetchMessagesPage(conversationId, nextPage, { force: true });
+          if (activeConversationIdRef.current !== conversationId) return;
           const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
 
-          setMessages((prev) => {
-            const seen = new Set(prev.map((msg) => msg.id));
-            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
-            return [...uniqueOlder, ...prev];
-          });
+          setMessages((prev) => prependOlderMessages(prev, nextMessages));
           setCurrentMessagesPage(payload.pagination?.page || nextPage);
           setHasOlderMessages(Boolean(payload.pagination?.has_next));
 
@@ -414,6 +436,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           hasMore = Boolean(payload.pagination?.has_next);
 
           await waitForNextPaint();
+          if (activeConversationIdRef.current !== conversationId) return;
           const foundAfterLoad = await scrollToMessage(messageId);
           if (foundAfterLoad) return;
         }
@@ -430,6 +453,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const jumpToMessageById = useCallback(
     async (messageId) => {
       if (!conversation?.id || !messageId) return false;
+      const conversationId = conversation.id;
 
       const foundInCurrentMessages = await scrollToMessage(messageId);
       if (foundInCurrentMessages) return true;
@@ -448,14 +472,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             scrollAdjustmentHeightRef.current = container.scrollHeight;
           }
 
-          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const payload = await fetchMessagesPage(conversationId, nextPage, { force: true });
+          if (activeConversationIdRef.current !== conversationId) return false;
           const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
 
-          setMessages((prev) => {
-            const seen = new Set(prev.map((msg) => msg.id));
-            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
-            return [...uniqueOlder, ...prev];
-          });
+          setMessages((prev) => prependOlderMessages(prev, nextMessages));
           setCurrentMessagesPage(payload.pagination?.page || nextPage);
           setHasOlderMessages(Boolean(payload.pagination?.has_next));
 
@@ -463,6 +484,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           hasMore = Boolean(payload.pagination?.has_next);
 
           await waitForNextPaint();
+          if (activeConversationIdRef.current !== conversationId) return false;
           const foundAfterLoad = await scrollToMessage(messageId);
           if (foundAfterLoad) return true;
         }
@@ -500,9 +522,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       }
 
       setIsSearchingMessages(true);
+      const conversationId = conversation.id;
+      const isStale = () =>
+        searchRequestRef.current !== requestId ||
+        activeConversationIdRef.current !== conversationId;
 
       try {
-        let workingMessages = [...messages];
+        let workingMessages = [...messagesRef.current];
         let matchedIds = collectSearchMatches(workingMessages, normalizedQuery);
         let nextPage = currentMessagesPageRef.current + 1;
         let hasMore = hasOlderMessagesRef.current;
@@ -512,14 +538,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             return;
           }
 
-          const payload = await fetchMessagesPage(conversation.id, nextPage, { force: true });
+          const payload = await fetchMessagesPage(conversationId, nextPage, { force: true });
+          if (isStale()) return;
           const nextMessages = Array.isArray(payload.messages) ? payload.messages : [];
 
           if (nextMessages.length) {
-            const seen = new Set(workingMessages.map((msg) => msg.id));
-            const uniqueOlder = nextMessages.filter((msg) => !seen.has(msg.id));
-            workingMessages = [...uniqueOlder, ...workingMessages];
-            setMessages(workingMessages);
+            workingMessages = prependOlderMessages(workingMessages, nextMessages);
+            setMessages((prev) => prependOlderMessages(prev, nextMessages));
           }
 
           setCurrentMessagesPage(payload.pagination?.page || nextPage);
@@ -531,7 +556,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           hasMore = Boolean(payload.pagination?.has_next);
         }
 
-        if (searchRequestRef.current !== requestId) {
+        if (isStale()) {
           return;
         }
 
@@ -540,6 +565,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
         if (matchedIds.length > 0) {
           await waitForNextPaint();
+          if (isStale()) return;
           await jumpToMessageById(matchedIds[0]);
         }
       } catch (error) {
@@ -555,7 +581,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       conversation?.id,
       fetchMessagesPage,
       jumpToMessageById,
-      messages,
       waitForNextPaint,
     ]
   );
@@ -987,14 +1012,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (loading) return;
     if (!conversation?.id) return;
     let isMounted = true;
-    const seedMessages = Array.isArray(conversation.messages) ? conversation.messages : [];
-    const seedPinnedMessages = Array.isArray(conversation.pinned_messages)
-      ? conversation.pinned_messages
-      : [];
+    // The detail's messages/pinned_messages are the initial state (ChatRoom is keyed by
+    // conversation id); page 1 is merged in so optimistic sends and arrivals made during
+    // the fetch survive it.
 
     const loadLatestMessages = async () => {
-      setMessages(seedMessages);
-      setPinnedMessages(seedPinnedMessages);
       setUnreadAnchorMessageId(null);
       setLoadingHistory(true);
       setLoadingOlderMessages(false);
@@ -1002,7 +1024,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       try {
         const payload = await fetchMessagesPage(conversation.id, 1, { force: true });
         if (!isMounted) return;
-        setMessages(payload.messages || []);
+        setMessages((prev) => mergeLatestPage(prev, payload.messages));
         setPinnedMessages(payload.pinned_messages || []);
         setCurrentMessagesPage(payload.pagination?.page || 1);
         setHasOlderMessages(Boolean(payload.pagination?.has_next));
@@ -1051,8 +1073,6 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     };
   }, [
     conversation?.id,
-    conversation?.messages,
-    conversation?.pinned_messages,
     fetchMessagesPage,
     loading,
     resolveFirstUnreadMessageId,
@@ -1414,16 +1434,19 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
       logger.error("Cannot send message: user is undefined.");
-      return;
+      return false;
     }
 
-    if (!newMessage.trim() && !attachedFile) return;
+    if (!newMessage.trim() && !attachedFile) return false;
 
     const formData = new FormData();
     if (newMessage.trim()) formData.append("text", newMessage);
     if (attachedFile) formData.append("attachment", attachedFile);
     if (replyingMessage?.id) formData.append("reply_to", String(replyingMessage.id));
 
+    // On failure the composer restores previewImage, so only a URL created here is revoked
+    // then; after a successful send the optimistic copy is replaced and the URL revoked.
+    const ownsAttachmentUrl = !previewImage && Boolean(attachedFile);
     const localAttachmentUrl =
       previewImage || (attachedFile ? URL.createObjectURL(attachedFile) : null);
     const tempMessageId = Date.now();
@@ -1438,6 +1461,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       reply_to: replyingMessage || null,
       reactions: [],
       current_user_reaction: null,
+      isPending: true,
     };
 
     setMessages((prev) => [...prev, tempMessage]);
@@ -1464,6 +1488,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
             ? {
                 ...message,
                 ...savedMessage,
+                isPending: false,
                 attachmentUrl:
                   savedMessage.attachment_url || savedMessage.attachmentUrl || null,
                 attachment_url:
@@ -1485,13 +1510,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       logger.warn("Error sending message:", error);
       toastApiError(error, "Message not sent");
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
-      if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
+      if (ownsAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
       }
-      return;
+      return false;
     }
 
     setReplyingMessage(null);
+    return true;
   };
 
   const handleTyping = () => {
@@ -1517,6 +1543,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   // Handlers passed to the memoised <Conversation> are stable callbacks so typing, socket
   // status or search changes in ChatRoom don't re-render the message list.
   const handleDeleteMessage = useCallback(async (messageId) => {
+    // Remember where the message sat so a failed DELETE can put it back.
+    const list = messagesRef.current;
+    const removedIndex = list.findIndex((msg) => msg.id === messageId);
+    const removedMessage = removedIndex === -1 ? null : list[removedIndex];
+    const previousId = removedIndex > 0 ? list[removedIndex - 1].id : null;
+    const pinnedList = pinnedMessagesRef.current;
+    const pinnedIndex = pinnedList.findIndex((msg) => msg.id === messageId);
+
     setEditingMessage((current) => (current?.id === messageId ? null : current));
     setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
     setPinnedMessages((prev) => prev.filter((msg) => msg.id !== messageId));
@@ -1528,6 +1562,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     } catch (error) {
       logger.warn("Failed to delete message:", error);
       toastApiError(error, "Couldn't delete the message");
+      if (removedMessage) {
+        setMessages((prev) => restoreMessage(prev, removedMessage, previousId, removedIndex));
+      }
+      if (pinnedIndex !== -1) {
+        const previousPinnedId = pinnedIndex > 0 ? pinnedList[pinnedIndex - 1].id : null;
+        setPinnedMessages((prev) =>
+          restoreMessage(prev, pinnedList[pinnedIndex], previousPinnedId, pinnedIndex)
+        );
+      }
       invalidateConversationHistoryCache(conversation.id);
     }
   }, [conversation.id, invalidateConversationHistoryCache]);

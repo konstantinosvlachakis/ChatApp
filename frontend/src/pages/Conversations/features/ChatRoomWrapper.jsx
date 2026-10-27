@@ -14,22 +14,35 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
 
   useEffect(() => {
     if (isCoachConversation) return undefined;
+    // A previous chat's error must not stick to this one; a previous chat's detail is
+    // ignored below (currentConversation) until this id's detail arrives.
+    setError(null);
+    let isCurrent = true;
     const controller = new AbortController();
     const fetchConversation = async () => {
       try {
         const data = await api.get(`/api/conversations/${id}/`, { signal: controller.signal });
+        if (!isCurrent) return;
         setError(null);
         setConversation(data);
       } catch (err) {
-        if (isAbortError(err)) return;
+        if (!isCurrent || isAbortError(err)) return;
         logger.warn("Error fetching conversation:", err);
         setError(getErrorMessage(err, "Failed to load the conversation."));
       }
     };
 
     fetchConversation();
-    return () => controller.abort();
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
   }, [id, isCoachConversation]);
+
+  // Only the detail for the id in the URL is shown: while B loads after A, the header,
+  // messages and composer must not still be A's (Enter would post to A).
+  const currentConversation =
+    conversation && String(conversation.id) === String(id) ? conversation : null;
 
   // The read receipt is sent once by ChatRoom after the conversation has loaded.
 
@@ -42,12 +55,16 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   }
 
   if (error) return <p className="cv-chat-status is-error" role="alert">{error}</p>;
-  if (!conversation) return <p className="cv-chat-status" role="status">Loading chat…</p>;
+  if (!currentConversation) {
+    return <p className="cv-chat-status" role="status">Loading chat…</p>;
+  }
 
   return (
     <div className="h-full min-h-0">
+      {/* Keyed so each conversation gets fresh state (history, search, composer draft). */}
       <ChatRoom
-        conversation={conversation}
+        key={currentConversation.id}
+        conversation={currentConversation}
         onConversationTypingChange={onConversationTypingChange}
       />
     </div>

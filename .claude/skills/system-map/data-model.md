@@ -1,7 +1,7 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PR `fix/reliability`.** Latest migration: `0031_query_perf_indexes`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` and `fix/chat-races` (pending: practice scoring guard).** Latest migration: `0031_query_perf_indexes`.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
 
 DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers nothing.
@@ -109,7 +109,7 @@ Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed
   `block_user_view` POST also **hard-deletes the pair's conversations (and their messages)**. Unblocking restores nothing. Already-open chat sockets aren't kicked out.
 - **Case-insensitive usernames**: `get_profile_by_username_or_404` uses `iexact` and, if legacy case-variant duplicates exist, falls back to the lowest id. Register and edit reject `iexact` collisions. Email collisions are also checked with `iexact`.
 - **ProfileView is update-then-create** (`record_profile_view`): UPDATE updated_at, else create in `atomic()`, catching IntegrityError on a race and retrying the update. Self-views are ignored. DB lock errors are swallowed. It bumps the viewed user's profile cache version only when the viewer wasn't already the most recent viewer. Profile payloads show the 12 most recent viewers.
-- **PracticeStats are updated with F()** in `practice_submit_view`: atomic increments; `level = (xp + awarded) / 100 + 1`, mirroring `practice_level_from_xp` (`xp // 100 + 1`). Buckets: level ≤2 → 1, ≤4 → 2, else 3. XP/points: correct +15/+10, wrong +3/+1. The leaderboard filters `preferred_language__iexact` and falls back to global.
+- **PracticeStats are updated with F()** in `practice_submit_view`, at most once per served challenge (`practice:scored` cache guard, see caching.md): atomic increments; `level = (xp + awarded) / 100 + 1`, mirroring `practice_level_from_xp` (`xp // 100 + 1`). Buckets: level ≤2 → 1, ≤4 → 2, else 3. XP/points: correct +15/+10, wrong +3/+1. The leaderboard filters `preferred_language__iexact` and falls back to global.
 - **Presence**:
   - `ws_connection_count` counts open sockets (chat and presence) per user. `increment_presence` / `decrement_presence` (consumers.py) use only atomic filtered UPDATEs, and the count never goes negative.
   - `is_online` turns True on the first socket and False when the last socket closes, which also sets `last_seen`.
