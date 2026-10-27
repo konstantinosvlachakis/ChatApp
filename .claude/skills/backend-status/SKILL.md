@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Django backend (backend/) — model
 
 # Backend status (Django + DRF + Channels)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged) `fix/chat-races` (pending: practice submit idempotency) and `feat/mobile-push` (pending: `PushDevice`, `/api/push/devices/`, message push in `chatapp/push.py`); also `feat/password-reset` (pending: password reset + email settings. Refresh: `git log --oneline b57487f..HEAD -- backend` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `fix/chat-races` (#34), `feat/password-reset` (#37) and `feat/mobile-push` (#39, pending). Refresh: `git log --oneline b57487f..HEAD -- backend` — re-read only changed files, then update this file.
 
 ## Map
 - `core/settings.py` — env-driven config; `DJANGO_ENV` picks local vs production; Sentry init (only with `SENTRY_DSN`) + `scrub_sentry_event`; `LOGGING` (console, `[request_id]` in every line, level `DJANGO_LOG_LEVEL`). `core/asgi.py` (Channels), `core/urls.py` (API under `/api/`, `/api/health/`, JSON 404 for unknown `/api/*`, `/media/`, SPA fallback; `handler500`), `core/views.py` (serves frontend build — GET/HEAD only, other methods 405; path-traversal guarded; `health`, `api_not_found`, `server_error`).

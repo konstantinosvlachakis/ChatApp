@@ -1,7 +1,7 @@
 # API contract (REST) — backend ↔ web ↔ mobile
 
 Purpose: every REST endpoint, its payload shape, and which client code depends on which fields, so you don't have to re-explore views/serializers/clients.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged) `fix/chat-races` (#34, merged: practice submit idempotency) and `feat/mobile-matching` (pending: mobile People caller params only); also `feat/mobile-media` (pending: mobile photo sends); also `feat/mobile-push` (pending:; also `feat/password-reset` (pending: password reset endpoints.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `fix/chat-races` (#34), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending: `/api/push/devices/`).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/urls.py backend/core/views.py backend/core/exceptions.py backend/chatapp/urls.py backend/chatapp/views.py backend/chatapp/auth_views.py backend/chatapp/serializers.py frontend/src mobile/src/services`, then update the affected rows.
 
 People web caller notes below refreshed on 2026-10-27 against the working tree based on `5fb6498`; backend payloads are unchanged by the discovery redesign.

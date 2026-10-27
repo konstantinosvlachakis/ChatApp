@@ -1,7 +1,7 @@
 # End-to-end flows — system map
 
 Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged), `perf/list-refetch` and `feat/mobile-matching` (pending: §10 mobile caller); also `feat/mobile-media` (pending: mobile attachments); also `feat/mobile-push` (pending: §5 push step; also `feat/password-reset` (pending: section 2b password reset. Refresh:. Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `perf/list-refetch` (#32), `feat/mobile-matching` (#36), `feat/password-reset` (#37, §2b), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending: §5 push step, §14). Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
 Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
 
 ## 1. Login + session

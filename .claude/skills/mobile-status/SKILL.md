@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 
 # Mobile status (Expo / React Native)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30, merged), `perf/mobile-chat` (#33, merged) and `feat/mobile-media` (pending: chat attachments); also `feat/mobile-matching` (pending: People matching); also `feat/mobile-push` (pending: push notifications); also `feat/password-reset` (pending: forgot password screen. Refresh:. Refresh:. Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30), `perf/mobile-chat` (#33), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
 
 ## Navigation (`src/navigation/RootNavigator.tsx`)
 Auth stack: `Login`, `Register`, `ForgotPassword` (`screens/ForgotPasswordScreen.tsx`: email -> `services/api/auth.requestPasswordReset` -> `POST /auth/password-reset/` -> "Check your inbox"; opened from LoginScreen's "Forgot password?" with the typed email; the new password is set on the web link, no deep link). App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.

@@ -5,7 +5,7 @@ description: Current state of the LangVoyage React web app (frontend/) — route
 
 # Web status (React, CRA)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign`, `feat/conversations-redesign`, `fix/redesign-polish` (2026-10-27), `perf/media` (#30, merged), `fix/live-avatar` (#31, merged), `perf/list-refetch` (#32, conversation list refetch policy) and `fix/chat-races` (pending, this branch); `feat/password-reset` (pending: forgot/reset password pages, based on `a8abf7b`); also `feat/web-polish` (pending. Refresh: `git log --oneline b57487f..HEAD -- frontend` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign`, `feat/conversations-redesign`, `fix/redesign-polish`, `perf/media` (#30), `fix/live-avatar` (#31), `perf/list-refetch` (#32), `fix/chat-races` (#34), `feat/web-polish` (#35) and `feat/password-reset` (#37). Refresh: `git log --oneline b57487f..HEAD -- frontend` — re-read only changed files, then update this file.
 
 ## Routes (`src/AppRoutes.jsx`; public-only build uses `src/PublicAppRoutes.jsx`)
 Public: `/`, `/privacy-policy`, `/terms-and-conditions`, `/login`, `/register`, `/forgot-password`, `/reset-password/:uid/:token` (the last two lazy-loaded inside `AuthLayout`, not in `PublicAppRoutes`/prerender; `utils/auth.ts isPublicPath` matches `/reset-password/` by prefix; SEO noindex, and the reset canonical is `/reset-password` so the token stays out of it).
