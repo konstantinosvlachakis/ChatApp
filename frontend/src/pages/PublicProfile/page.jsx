@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { createOrGetConversation } from "../Community/api/conversation";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
@@ -38,17 +38,24 @@ const ExchangeStrip = ({ me, profile, match }) => {
   );
 };
 
-const PublicProfilePage = () => {
-  const { username } = useParams();
+const sameUsername = (left, right) =>
+  String(left || "").toLowerCase() === String(right || "").toLowerCase();
+
+const PublicProfileView = ({ username }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user: me } = useUser();
   const { onlineUserIds } = usePresence();
-  const stateProfile = location.state?.profile;
+  // Navigation state (e.g. a People card) is only a placeholder for the same person.
+  const stateProfile = sameUsername(location.state?.profile?.username, username)
+    ? location.state.profile
+    : undefined;
 
   const [profile, setProfile] = useState(stateProfile || null);
   const [loading, setLoading] = useState(!stateProfile);
   const [error, setError] = useState("");
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
+  const isStartingConversationRef = useRef(false);
   const viewer = usePhotoViewer();
 
   useEffect(() => {
@@ -61,7 +68,10 @@ const PublicProfilePage = () => {
           signal: controller.signal,
         });
         if (isMounted) {
-          setProfile((prev) => ({ ...prev, ...data }));
+          // Merge only over a placeholder for this same person, never over someone else.
+          setProfile((prev) =>
+            prev && sameUsername(prev.username, data?.username) ? { ...prev, ...data } : data
+          );
           setError("");
         }
       } catch (err) {
@@ -83,13 +93,18 @@ const PublicProfilePage = () => {
   }, [stateProfile, username]);
 
   const handleStartConversation = async () => {
-    if (!profile?.username) return;
+    if (!profile?.username || isStartingConversationRef.current) return;
+    isStartingConversationRef.current = true;
+    setIsStartingConversation(true);
     try {
       const conv = await createOrGetConversation(profile.username);
       if (conv?.id) navigate(`/conversations/${conv.id}`);
     } catch (err) {
       // A toast keeps the profile on screen (the page-level error would replace it).
       toastApiError(err, "Couldn't start the conversation");
+    } finally {
+      isStartingConversationRef.current = false;
+      setIsStartingConversation(false);
     }
   };
 
@@ -150,7 +165,13 @@ const PublicProfilePage = () => {
             Edit profile
           </Link>
         ) : (
-          <button type="button" className="pf-btn is-primary" onClick={handleStartConversation}>
+          <button
+            type="button"
+            className="pf-btn is-primary"
+            onClick={handleStartConversation}
+            disabled={isStartingConversation}
+            aria-busy={isStartingConversation || undefined}
+          >
             <ChatBubbleOutlineRoundedIcon aria-hidden="true" />
             Message
           </button>
@@ -192,6 +213,12 @@ const PublicProfilePage = () => {
       />
     </div>
   );
+};
+
+// Keyed by username so /people/a → /people/b starts from a clean state (no A while B loads).
+const PublicProfilePage = () => {
+  const { username } = useParams();
+  return <PublicProfileView key={username} username={username} />;
 };
 
 export default PublicProfilePage;

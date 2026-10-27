@@ -1,4 +1,4 @@
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import CoachChatRoom from "./CoachChatRoom";
 import api from "../../../lib/api";
@@ -179,5 +179,52 @@ describe("CoachChatRoom layout", () => {
     expect(screen.getByRole("button", { name: "Ideas" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
     expect(screen.getByRole("group", { name: "Quick starts" })).toBeInTheDocument();
+  });
+
+  describe("pending replies", () => {
+    const deferred = () => {
+      let resolve;
+      const promise = new Promise((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    };
+
+    test("a second send while Lumi is replying is blocked and both messages survive", async () => {
+      const reply = deferred();
+      api.post.mockReturnValueOnce(reply.promise);
+      renderCoach();
+      const send = screen.getByRole("button", { name: "Send test message" });
+      fireEvent.click(send);
+      fireEvent.click(send);
+      expect(api.post).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        reply.resolve({ reply: "¡Muy bien!" });
+      });
+      expect(screen.getAllByText("Hola, ¿qué tal?")).toHaveLength(1);
+      expect(screen.getByText("¡Muy bien!")).toBeInTheDocument();
+    });
+
+    test("a reply that arrives after New conversation is dropped and not persisted", async () => {
+      const reply = deferred();
+      api.post.mockReturnValueOnce(reply.promise);
+      renderCoach();
+      fireEvent.click(screen.getByRole("button", { name: "Send test message" }));
+      fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+      expect(screen.queryByText("Hola, ¿qué tal?")).toBeNull();
+
+      await act(async () => {
+        reply.resolve({ reply: "Old chat reply" });
+      });
+      expect(screen.queryByText("Old chat reply")).toBeNull();
+      expect(screen.queryByText("Hola, ¿qué tal?")).toBeNull();
+      expect(window.localStorage.getItem("chat:coach:messages:7") || "").not.toContain("Old chat reply");
+
+      // The composer is free again: the next send goes out.
+      fireEvent.click(screen.getByRole("button", { name: "Send test message" }));
+      expect(api.post).toHaveBeenCalledTimes(2);
+      await screen.findByText("¡Muy bien!");
+    });
   });
 });

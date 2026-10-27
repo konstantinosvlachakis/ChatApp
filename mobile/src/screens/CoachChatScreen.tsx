@@ -58,12 +58,27 @@ export function CoachChatScreen() {
   const [animatedReplyMessageId, setAnimatedReplyMessageId] = useState<number | null>(null);
   const [animatedReplyText, setAnimatedReplyText] = useState("");
 
+  // Latest messages (updated synchronously by syncMessages) so async appends never use a stale list.
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+  // In-flight send guard, set before the first await (state updates are too late for double taps).
+  const sendInFlightRef = useRef(false);
+  // Bumped on new conversation / mode / language change; replies from an older generation are dropped.
+  const generationRef = useRef(0);
+
   const activeMode = COACH_MODES.find((mode) => mode.id === selectedMode) || COACH_MODES[0];
   const hasStartedConversation = messages.length > 1;
 
   const syncMessages = async (nextMessages: ChatMessage[]) => {
+    messagesRef.current = nextMessages;
     setMessages(nextMessages);
     await persistCoachMessages(user, nextMessages);
+  };
+
+  const startNewGeneration = () => {
+    generationRef.current += 1;
+    sendInFlightRef.current = false;
+    setIsCoachTyping(false);
   };
 
   const syncPreferences = async (nextPreferences: CoachPreferences) => {
@@ -116,6 +131,7 @@ export function CoachChatScreen() {
       if (!mounted) return;
       setSelectedLanguage(preferences.language);
       setSelectedMode(preferences.mode);
+      messagesRef.current = storedMessages;
       setMessages(storedMessages);
       setLoading(false);
     };
@@ -150,26 +166,33 @@ export function CoachChatScreen() {
       language: partial.language || selectedLanguage,
       mode: partial.mode || selectedMode,
     };
+    const languageChanged = nextPreferences.language !== selectedLanguage;
+    const modeChanged = nextPreferences.mode !== selectedMode;
+    if (!hasStartedConversation || languageChanged || modeChanged) {
+      startNewGeneration();
+    }
+    const generation = generationRef.current;
     await syncPreferences(nextPreferences);
 
     if (!hasStartedConversation) {
       stopReplyAnimation();
       const nextMessages = await resetCoachConversation(user, nextPreferences);
+      if (generationRef.current !== generation) return;
+      messagesRef.current = nextMessages;
       setMessages(nextMessages);
       setIsMenuOpen(false);
       return;
     }
 
-    const languageChanged = nextPreferences.language !== selectedLanguage;
-    const modeChanged = nextPreferences.mode !== selectedMode;
     if (languageChanged || modeChanged) {
       const nextMode = COACH_MODES.find((mode) => mode.id === nextPreferences.mode) || COACH_MODES[0];
       const nextLanguageLabel =
         languageOptions.find((option) => option.value === nextPreferences.language)?.label ||
         nextPreferences.language;
 
+      if (generationRef.current !== generation) return;
       await syncMessages([
-        ...messages,
+        ...messagesRef.current,
         {
           id: Date.now(),
           text: `Got it. We'll continue in ${nextLanguageLabel} with ${nextMode.label.toLowerCase()} mode.`,
@@ -189,18 +212,25 @@ export function CoachChatScreen() {
   };
 
   const handleNewConversation = async () => {
+    startNewGeneration();
+    const generation = generationRef.current;
     stopReplyAnimation();
     const nextMessages = await resetCoachConversation(user, {
       language: selectedLanguage,
       mode: selectedMode,
     });
+    if (generationRef.current !== generation) return;
+    messagesRef.current = nextMessages;
     setMessages(nextMessages);
     setIsMenuOpen(false);
   };
 
   const handleSend = async (value = input) => {
     const trimmed = value.trim();
-    if (!trimmed || !user || isCoachTyping) return;
+    if (!trimmed || !user || isCoachTyping || sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
+    setIsCoachTyping(true);
+    const generation = generationRef.current;
 
     const outgoingMessage: ChatMessage = {
       id: Date.now(),
@@ -215,12 +245,10 @@ export function CoachChatScreen() {
       can_translate: false,
     };
 
-    const nextMessages = [...messages, outgoingMessage];
     setInput("");
-    await syncMessages(nextMessages);
-    setIsCoachTyping(true);
 
     try {
+      await syncMessages([...messagesRef.current, outgoingMessage]);
       const payload = await sendCoachMessage({
         message: trimmed,
         target_language: selectedLanguage,
@@ -240,12 +268,15 @@ export function CoachChatScreen() {
         can_translate: false,
       };
 
+      // The user started over (or switched mode/language) while waiting: drop this reply.
+      if (generationRef.current !== generation) return;
       await syncMessages([
-        ...nextMessages,
+        ...messagesRef.current,
         coachReply,
       ]);
       startReplyAnimation(coachReply.id, coachReply.text || "");
     } catch (error) {
+      if (generationRef.current !== generation) return;
       // Shown as the coach's reply bubble (the chat itself is the feedback surface).
       const fallbackMessage = getErrorMessage(
         error,
@@ -264,12 +295,16 @@ export function CoachChatScreen() {
         can_translate: false,
       };
       await syncMessages([
-        ...nextMessages,
+        ...messagesRef.current,
         coachReply,
       ]);
       startReplyAnimation(coachReply.id, coachReply.text || "");
     } finally {
-      setIsCoachTyping(false);
+      // A newer generation already reset the guard and may have its own send in flight.
+      if (generationRef.current === generation) {
+        sendInFlightRef.current = false;
+        setIsCoachTyping(false);
+      }
     }
   };
 

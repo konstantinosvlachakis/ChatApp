@@ -1,8 +1,8 @@
 // Helpers that patch the cached GET /api/conversations/ list in place so the chat screen
 // doesn't refetch the whole list for every socket event. Each helper returns false when it
 // could not patch safely (list not cached, conversation missing); callers then fall back
-// to invalidating the query. Server-pushed `conversation_update` events still invalidate,
-// so the cache converges on the server's view either way.
+// to invalidating the query. Server-pushed `conversation_update` events refetch whenever
+// the client couldn't apply them itself (see conversationListRefetch.js).
 
 export const CONVERSATIONS_LIST_QUERY_KEY = ["conversationsList"];
 
@@ -78,3 +78,20 @@ export const applyMessageStatusToConversationList = (
     return { ...conversation, last_message: { ...lastMessage, status } };
   });
 };
+
+/**
+ * The other participant read `conversationId` (`conversation_update` `messages_read`): every
+ * message I sent there is now read, so a last message of mine shows as read.
+ */
+export const markOwnMessagesReadInList = (queryClient, conversationId, currentUserId) =>
+  updateConversationInList(queryClient, conversationId, (conversation) => {
+    const lastMessage = conversation.last_message;
+    if (
+      currentUserId == null ||
+      !isSameId(lastMessage?.sender?.id, currentUserId) ||
+      lastMessage.status === "read"
+    ) {
+      return conversation;
+    }
+    return { ...conversation, last_message: { ...lastMessage, status: "read" } };
+  });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,9 +7,10 @@ import {
   Easing,
   FlatList,
   Image as RNImage,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -19,11 +20,13 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../components/CoachAvatar";
+import { Composer, type ComposerHandle } from "../components/chat/Composer";
+import { MessageRow } from "../components/chat/MessageRow";
+import { formatDaySeparator, getDayKey } from "../components/chat/format";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
@@ -51,16 +54,10 @@ import {
 } from "../services/api/conversations";
 import { getErrorMessage } from "../services/api/errors";
 import { toastApiError } from "../services/toast";
-import { startPresenceHeartbeat } from "../services/realtime";
+import { subscribeToPresenceEvents } from "../services/presenceEvents";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
 import { avatarImage } from "../utils/media";
-
-type PresencePayload =
-  | { type: "initial_online_users"; user_ids?: number[]; userIds?: number[] }
-  | { type: "presence_update"; user_id: number; is_online: boolean }
-  | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
-  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
 
 // Message events are broadcast by the server after REST writes (to every socket in the
 // room, including the sender's). Their `message` omits per-user fields
@@ -73,7 +70,6 @@ type ChatPayload =
   | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
   | { type: "user_typing" | "user_stopped_typing" };
 
-const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 // Older history page size for GET /conversations/<id>/messages/ (max 100 server-side).
 const OLDER_MESSAGES_PAGE_SIZE = 50;
 // Must match CONVERSATION_DETAIL_MESSAGE_LIMIT (backend serializers.py): a detail response
@@ -98,34 +94,6 @@ function resolveMediaUrl(path?: string | null) {
   if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
   if (path.startsWith("media/")) return `${API_BASE_URL}/${path}`;
   return `${API_BASE_URL}/media/${path}`;
-}
-
-function statusTicks(status?: string) {
-  if (status === "read") return "✓✓";
-  if (status === "delivered") return "✓✓";
-  return "✓";
-}
-
-function toReplyPreviewText(message?: { text?: string | null } | null) {
-  if (!message?.text) return "Attachment";
-  const trimmed = message.text.trim();
-  if (!trimmed) return "Attachment";
-  return trimmed.length > 70 ? `${trimmed.slice(0, 70)}...` : trimmed;
-}
-
-function formatMessageTime(timestamp?: string | null) {
-  if (!timestamp) return "";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    })
-      .format(new Date(timestamp))
-      .replace(/\b(am|pm)\b/i, (value) => value.toUpperCase());
-  } catch {
-    return "";
-  }
 }
 
 function buildPinnedMessages(messages?: ChatMessage[] | null) {
@@ -154,45 +122,18 @@ function findFirstUnreadMessageId(
   return null;
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// Debounce for conversation-list refetches after realtime events (trailing, coalesced).
+const CONVERSATIONS_REFRESH_DEBOUNCE_MS = 2000;
 
-function getDayKey(timestamp?: string | null) {
-  if (!timestamp) return "";
-  try {
-    const date = new Date(timestamp);
-    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  } catch {
-    return "";
-  }
-}
+const messageKeyExtractor = (item: ChatMessage) => String(item.id);
 
-function formatDaySeparator(timestamp?: string | null) {
-  if (!timestamp) return "";
-
-  try {
-    const date = new Date(timestamp);
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
-
-    const isSameDay = (left: Date, right: Date) =>
-      left.getFullYear() === right.getFullYear() &&
-      left.getMonth() === right.getMonth() &&
-      left.getDate() === right.getDate();
-
-    if (isSameDay(date, today)) return "Today";
-    if (isSameDay(date, yesterday)) return "Yesterday";
-
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
-    }).format(date);
-  } catch {
-    return "";
-  }
+/** Stable function identity that always calls the latest `fn` (for event handlers only). */
+function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = useRef(fn);
+  useLayoutEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback(((...args: Parameters<T>) => ref.current(...args)) as T, []);
 }
 
 export function ConversationsScreen() {
@@ -219,9 +160,10 @@ export function ConversationsScreen() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
+  // Pull-to-refresh of the open chat: keeps the message list mounted (unlike loadingConversation).
+  const [refreshingConversation, setRefreshingConversation] = useState(false);
   const [openingFromNotification, setOpeningFromNotification] = useState(false);
   const [sending, setSending] = useState(false);
-  const [messageText, setMessageText] = useState("");
   const [participantUsername, setParticipantUsername] = useState("");
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
@@ -250,9 +192,8 @@ export function ConversationsScreen() {
   const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
 
   const selectedConversationIdRef = useRef<number | null>(null);
-  const presenceSocketRef = useRef<WebSocket | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
-  const messageInputRef = useRef<TextInput | null>(null);
+  const composerRef = useRef<ComposerHandle | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
   const messageHighlightOpacity = useRef(new Animated.Value(0)).current;
   const messageHighlightScale = useRef(new Animated.Value(0.985)).current;
@@ -279,6 +220,7 @@ export function ConversationsScreen() {
     inFlight: false,
     lastRunAt: 0,
   });
+  const conversationsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversation?.id ?? null;
@@ -308,6 +250,10 @@ export function ConversationsScreen() {
       Object.values(remoteTypingTimeoutsRef.current).forEach((timer) => {
         if (timer) clearTimeout(timer);
       });
+      if (conversationsRefreshTimerRef.current) {
+        clearTimeout(conversationsRefreshTimerRef.current);
+        conversationsRefreshTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -358,6 +304,24 @@ export function ConversationsScreen() {
       }
     }
   }, []);
+
+  // Coalesces realtime-triggered list refetches into one request ~2 s after the first event;
+  // skipped when a fetch already started after that event (its response includes the change).
+  const scheduleConversationsRefresh = useCallback(() => {
+    if (conversationsRefreshTimerRef.current) return;
+    const requestedAt = Date.now();
+    const fire = () => {
+      conversationsRefreshTimerRef.current = null;
+      const meta = conversationsFetchMetaRef.current;
+      if (meta.lastRunAt > requestedAt) return;
+      if (meta.inFlight) {
+        conversationsRefreshTimerRef.current = setTimeout(fire, 500);
+        return;
+      }
+      loadConversations(true).catch(() => {});
+    };
+    conversationsRefreshTimerRef.current = setTimeout(fire, CONVERSATIONS_REFRESH_DEBOUNCE_MS);
+  }, [loadConversations]);
 
   const bumpConversationToTop = useCallback(
     ({
@@ -414,30 +378,37 @@ export function ConversationsScreen() {
       try {
         const response = await fetchConversation(conversationId);
         if (selectedConversationIdRef.current === conversationId) {
-          const sortedResponseMessages = [...(response.messages || [])].sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
-          const firstUnreadMessageId = findFirstUnreadMessageId(
-            sortedResponseMessages,
-            response.unread_count || 0,
-            currentUserId
-          );
           initialUnreadCountRef.current = response.unread_count || 0;
-          setUnreadAnchorMessageId(firstUnreadMessageId);
+          // No unread anchor on open: the chat used to stay behind the spinner until mark-read
+          // cleared it, so it opened at the bottom; keep that now that it shows immediately.
+          setUnreadAnchorMessageId(null);
           setSelectedConversation(response);
           previousMessageCountRef.current = response.messages?.length || 0;
           resetOlderPaging(response.messages?.length || 0);
-          await markConversationRead(conversationId);
-          initialUnreadCountRef.current = 0;
-          setUnreadAnchorMessageId(null);
-          DeviceEventEmitter.emit("conversations_refresh");
-          await loadConversations(true);
+          setLoadingConversation(false);
+          // Background: mark read, then refresh badge + list.
+          markConversationRead(conversationId)
+            .then(() => {
+              if (selectedConversationIdRef.current === conversationId) {
+                initialUnreadCountRef.current = 0;
+                setUnreadAnchorMessageId(null);
+              }
+              DeviceEventEmitter.emit("conversations_refresh");
+              return loadConversations(true);
+            })
+            .catch(() => {});
         }
       } finally {
-        setLoadingConversation(false);
+        // A newer open (or going back) owns the spinner now.
+        if (
+          selectedConversationIdRef.current === conversationId ||
+          selectedConversationIdRef.current === null
+        ) {
+          setLoadingConversation(false);
+        }
       }
     },
-    [currentUserId, loadConversations, resetOlderPaging]
+    [loadConversations, resetOlderPaging]
   );
 
   useEffect(() => {
@@ -506,22 +477,10 @@ export function ConversationsScreen() {
     }
   }, [sendTypingEvent]);
 
-  const handleMessageInputChange = useCallback(
-    (value: string) => {
-      setMessageText(value);
-      if (!selectedConversation) return;
-      if (value.trim().length === 0) {
-        emitTypingStopped();
-        return;
-      }
-      emitTypingStarted();
-    },
-    [emitTypingStarted, emitTypingStopped, selectedConversation]
-  );
-
-  const sendMessage = useCallback(async () => {
+  // Called by Composer with its draft; resolves true when sent so the draft is cleared.
+  const sendMessage = useStableCallback(async (messageText: string): Promise<boolean> => {
     const trimmed = messageText.trim();
-    if (!selectedConversation || !trimmed || sending || !currentUserId || !currentUsername) return;
+    if (!selectedConversation || !trimmed || sending || !currentUserId || !currentUsername) return false;
 
     setSending(true);
     try {
@@ -539,11 +498,12 @@ export function ConversationsScreen() {
         const nextMessages = [...prev.messages, savedMessage];
         return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
       });
-      setMessageText("");
-      setReplyTarget(null);
-      initialUnreadCountRef.current = 0;
-      setUnreadAnchorMessageId(null);
-      emitTypingStopped();
+      if (selectedConversationIdRef.current === selectedConversation.id) {
+        setReplyTarget(null);
+        initialUnreadCountRef.current = 0;
+        setUnreadAnchorMessageId(null);
+        emitTypingStopped();
+      }
       bumpConversationToTop({
         conversationId: selectedConversation.id,
         lastMessage: savedMessage,
@@ -551,25 +511,18 @@ export function ConversationsScreen() {
         updatedAt: savedMessage.timestamp || new Date().toISOString(),
       });
 
-      // No socket relay: the server broadcasts message_created to the chat room.
-      await loadConversations(true);
+      // No socket relay: the server broadcasts message_created to the chat room. The list was
+      // patched above; reconcile once (coalesced with the conversation_update this causes).
+      scheduleConversationsRefresh();
+      return true;
     } catch (error) {
       // The draft stays in the input so the user can retry.
       toastApiError(error, "Could not send your message.", "Message not sent");
+      return false;
     } finally {
       setSending(false);
     }
-  }, [
-    bumpConversationToTop,
-    currentUserId,
-    currentUsername,
-    emitTypingStopped,
-    loadConversations,
-    messageText,
-    replyTarget?.id,
-    selectedConversation,
-    sending,
-  ]);
+  });
 
   const closeConversation = useCallback(() => {
     selectedConversationIdRef.current = null;
@@ -579,7 +532,6 @@ export function ConversationsScreen() {
       chatSocketRef.current = null;
     }
     setSelectedConversation(null);
-    setMessageText("");
     setReactionPickerMessageId(null);
     setReplyTarget(null);
     setUnreadAnchorMessageId(null);
@@ -699,75 +651,58 @@ export function ConversationsScreen() {
     [applyMessageUpdate]
   );
 
+  // Presence events come from RootNavigator's presence socket (the app's only one).
   useEffect(() => {
-    let mounted = true;
-    let stopHeartbeat: (() => void) | null = null;
-    const connectPresence = async () => {
-      if (!currentUserId) return;
-
-      const token = await tokenStorage.getAccessToken();
-      if (!token || !mounted) return;
-
-      const socket = new (WebSocket as any)(`${wsBaseUrl}/ws/presence/`, undefined, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      presenceSocketRef.current = socket;
-      socket.onopen = () => {
-        stopHeartbeat?.();
-        stopHeartbeat = startPresenceHeartbeat(socket);
-      };
-      socket.onclose = () => {
-        stopHeartbeat?.();
-        stopHeartbeat = null;
-      };
-
-      socket.onmessage = (event: WebSocketMessageEvent) => {
-        try {
-          const data = JSON.parse(event.data) as PresencePayload;
-          if (data.type === "initial_online_users") {
-            const ids = data.user_ids || data.userIds || [];
-            setOnlineUserIds(new Set(ids));
-            return;
-          }
-          if (data.type === "presence_update") {
-            setOnlineUserIds((prev) => {
-              const next = new Set(prev);
-              if (data.is_online) next.add(data.user_id);
-              else next.delete(data.user_id);
-              return next;
-            });
-            return;
-          }
-          if (data.type === "typing_status") {
-            setRemoteTyping(data.conversation_id, Boolean(data.is_typing));
-            return;
-          }
-          if (data.type === "conversation_update") {
-            if (data.conversation_id) {
-              bumpConversationToTop({
-                conversationId: data.conversation_id,
-                updatedAt: new Date().toISOString(),
-              });
-            }
-            loadConversations(true).catch(() => {});
-          }
-        } catch {}
-      };
-    };
-
-    connectPresence();
-    return () => {
-      mounted = false;
-      stopHeartbeat?.();
-      stopHeartbeat = null;
-      if (presenceSocketRef.current) {
-        presenceSocketRef.current.close();
-        presenceSocketRef.current = null;
+    if (!currentUserId) return;
+    return subscribeToPresenceEvents((data) => {
+      if (data.type === "initial_online_users") {
+        const ids = data.user_ids || data.userIds || [];
+        setOnlineUserIds(new Set(ids));
+        return;
       }
-    };
-  }, [bumpConversationToTop, currentUserId, loadConversations, setRemoteTyping, wsBaseUrl]);
+      if (data.type === "presence_update") {
+        setOnlineUserIds((prev) => {
+          const next = new Set(prev);
+          if (data.is_online) next.add(data.user_id);
+          else next.delete(data.user_id);
+          return next;
+        });
+        return;
+      }
+      if (data.type === "typing_status") {
+        setRemoteTyping(data.conversation_id, Boolean(data.is_typing));
+        return;
+      }
+      if (data.type === "conversation_update") {
+        const conversationId = data.conversation_id;
+        if (conversationId && data.trigger === "messages_read" && data.actor_id != null) {
+          // Read receipts don't reorder the list or change previews: patch locally, no refetch.
+          const readByMe = data.actor_id === currentUserId;
+          setConversations((prev) =>
+            prev.map((conversation) => {
+              if (conversation.id !== conversationId) return conversation;
+              if (readByMe) {
+                return conversation.unread_count ? { ...conversation, unread_count: 0 } : conversation;
+              }
+              const lastMessage = conversation.last_message;
+              if (!lastMessage || lastMessage.sender?.id !== currentUserId || lastMessage.status === "read") {
+                return conversation;
+              }
+              return { ...conversation, last_message: { ...lastMessage, status: "read" } };
+            })
+          );
+          return;
+        }
+        if (conversationId) {
+          bumpConversationToTop({
+            conversationId,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        scheduleConversationsRefresh();
+      }
+    });
+  }, [bumpConversationToTop, currentUserId, scheduleConversationsRefresh, setRemoteTyping]);
 
   useEffect(() => {
     let mounted = true;
@@ -831,13 +766,15 @@ export function ConversationsScreen() {
               setRemoteTyping(conversationId, false);
               markConversationRead(conversationId)
                 .then(() => {
-                  initialUnreadCountRef.current = 0;
-                  setUnreadAnchorMessageId(null);
+                  if (selectedConversationIdRef.current === conversationId) {
+                    initialUnreadCountRef.current = 0;
+                    setUnreadAnchorMessageId(null);
+                  }
                   DeviceEventEmitter.emit("conversations_refresh");
                 })
                 .catch(() => {});
             }
-            loadConversations(true).catch(() => {});
+            scheduleConversationsRefresh();
             return;
           }
 
@@ -909,7 +846,7 @@ export function ConversationsScreen() {
     bumpConversationToTop,
     currentUserId,
     isFocused,
-    loadConversations,
+    scheduleConversationsRefresh,
     selectedConversation?.id,
     sendTypingEvent,
     setRemoteTyping,
@@ -961,29 +898,13 @@ export function ConversationsScreen() {
     return indexMap;
   }, [sortedMessages]);
 
-  const activateMessageInput = useCallback(() => {
-    const focusInput = () => {
-      const input = messageInputRef.current;
-      if (!input) return;
-      input.focus();
-      const cursorPosition = messageText.length;
-      input.setNativeProps({
-        selection: { start: cursorPosition, end: cursorPosition },
-      });
-    };
-    Keyboard.dismiss();
-    requestAnimationFrame(focusInput);
-    setTimeout(focusInput, 50);
-    setTimeout(focusInput, 150);
-  }, [messageText.length]);
-
   const handleSwipe = useCallback((message: ChatMessage) => {
     setReactionPickerMessageId(null);
     setReplyTarget(message);
     ignoreNextOutsideTapRef.current = true;
     replyActivatedAtRef.current = Date.now();
-    activateMessageInput();
-  }, [activateMessageInput]);
+    composerRef.current?.activate();
+  }, []);
 
   const clearReplyTarget = useCallback(() => {
     setReplyTarget(null);
@@ -996,7 +917,7 @@ export function ConversationsScreen() {
       return;
     }
     if (Date.now() - replyActivatedAtRef.current < 900) return;
-    if (messageInputRef.current?.isFocused()) return;
+    if (composerRef.current?.isFocused()) return;
     clearReplyTarget();
   }, [clearReplyTarget, replyTarget]);
 
@@ -1095,37 +1016,6 @@ export function ConversationsScreen() {
     [jumpToMessage]
   );
 
-  const renderHighlightedMessageText = useCallback(
-    (text?: string | null, messageId?: number) => {
-      const value = String(text || "");
-      const normalizedQuery = searchQuery.trim();
-      if (!normalizedQuery || !searchResultIds.includes(messageId || -1)) {
-        return value;
-      }
-
-      const pattern = new RegExp(`(${escapeRegExp(normalizedQuery)})`, "ig");
-      return value.split(pattern).map((part, index) => {
-        const isMatch = part.toLowerCase() === normalizedQuery.toLowerCase();
-        if (!isMatch) return part;
-        return (
-          <Text
-            key={`${messageId}-${index}`}
-            style={[
-              styles.inlineHighlight,
-              activeSearchIndex < searchResultIds.length &&
-              searchResultIds[activeSearchIndex] === messageId
-                ? styles.inlineHighlightActive
-                : null,
-            ]}
-          >
-            {part}
-          </Text>
-        );
-      });
-    },
-    [activeSearchIndex, searchQuery, searchResultIds, styles.inlineHighlight, styles.inlineHighlightActive]
-  );
-
   const handleSingleMessageTap = useCallback(
     (message: ChatMessage) => {
       if (message.reply_to?.id) {
@@ -1139,7 +1029,7 @@ export function ConversationsScreen() {
     [jumpToMessage, reactionPickerMessageId]
   );
 
-  const handleMessageTap = useCallback(
+  const handleMessageTap = useStableCallback(
     (message: ChatMessage) => {
       const now = Date.now();
       const isDoubleTap =
@@ -1163,28 +1053,12 @@ export function ConversationsScreen() {
         handleSingleMessageTap(message);
         singleTapTimeoutRef.current = null;
       }, 240);
-    },
-    [handleSingleMessageTap, handleSwipe]
+    }
   );
 
-  const handleInputFocus = useCallback(() => {
+  const handleComposerFocus = useCallback(() => {
     setReactionPickerMessageId(null);
-    const input = messageInputRef.current;
-    if (!input) return;
-    const cursorPosition = messageText.length;
-    input.setNativeProps({
-      selection: { start: cursorPosition, end: cursorPosition },
-    });
-  }, [messageText.length]);
-
-  const renderReplySwipeAction = useCallback(
-    (isMine: boolean) => (
-      <View style={[styles.replySwipeAction, isMine ? styles.replySwipeActionMine : styles.replySwipeActionOther]}>
-        <Ionicons name={isMine ? "arrow-undo" : "arrow-redo"} size={18} color={colors.primary} />
-      </View>
-    ),
-    [colors.primary, styles]
-  );
+  }, []);
 
   const deleteMessage = useCallback(
     async (message: ChatMessage) => {
@@ -1305,7 +1179,7 @@ export function ConversationsScreen() {
     [closeMessageMenu, deleteMessage, handleSwipe, togglePinnedMessage, translateMessage]
   );
 
-  const openMessageMenu = useCallback(
+  const openMessageMenu = useStableCallback(
     (message: ChatMessage, isMine: boolean, pageY: number) => {
       const rowHeight = 44;
       const basePadding = 10;
@@ -1325,198 +1199,104 @@ export function ConversationsScreen() {
         top,
         align: isMine ? "right" : "left",
       });
-    },
-    [buildMessageMenuActions, windowHeight]
+    }
   );
 
-  const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
-    const isMine = item.sender?.id === currentUserId;
-    const isReplyActive = replyTarget?.id === item.id;
-    const showReactionPicker = !isMine && reactionPickerMessageId === item.id;
-    const isHighlighted = highlightedMessageId === item.id;
-    const showUnreadDivider = unreadAnchorMessageId === item.id;
-    const previousMessage = index > 0 ? sortedMessages[index - 1] : null;
-    const shouldShowDaySeparator =
-      getDayKey(item.timestamp) && getDayKey(item.timestamp) !== getDayKey(previousMessage?.timestamp);
-    const groupedReactions = (item.reactions || []).reduce<Record<string, number>>((acc, reaction) => {
-      acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1;
-      return acc;
-    }, {});
-    const reactionEntries = Object.entries(groupedReactions);
-    const replyAuthor =
-      item.reply_to?.sender?.id === currentUserId ? "You" : item.reply_to?.sender?.username || "User";
-    const highlightAnimatedStyle = isHighlighted
-      ? {
-          opacity: messageHighlightOpacity,
-          transform: [{ scale: messageHighlightScale }],
-        }
-      : null;
+  // Per-row flags derived from the whole list, computed once per message-list change.
+  const dayLabelById = useMemo(() => {
+    const labels: Record<number, string | null> = {};
+    sortedMessages.forEach((message, index) => {
+      const dayKey = getDayKey(message.timestamp);
+      const previousDayKey = getDayKey(index > 0 ? sortedMessages[index - 1]?.timestamp : null);
+      labels[message.id] = dayKey && dayKey !== previousDayKey ? formatDaySeparator(message.timestamp) : null;
+    });
+    return labels;
+  }, [sortedMessages]);
 
-    let swipeableRef: Swipeable | null = null;
-    const handleSwipeOpen = (direction: "left" | "right") => {
-      if ((isMine && direction !== "right") || (!isMine && direction !== "left")) return;
-      swipeableRef?.close();
-      handleSwipe(item);
-    };
+  const searchResultIdSet = useMemo(() => new Set(searchResultIds), [searchResultIds]);
+  const normalizedSearchQuery = searchQuery.trim();
+  const activeSearchMessageId =
+    activeSearchIndex < searchResultIds.length ? searchResultIds[activeSearchIndex] : null;
 
-    return (
-      <>
-        {shouldShowDaySeparator ? (
-          <View style={styles.daySeparatorRow}>
-            <Text style={styles.daySeparatorText}>{formatDaySeparator(item.timestamp)}</Text>
-          </View>
-        ) : null}
-        {showUnreadDivider ? (
-          <View style={styles.unreadDividerRow}>
-            <Text style={styles.unreadDividerText}>Unread messages</Text>
-          </View>
-        ) : null}
-        <View style={[styles.messageRow, isMine ? styles.messageRowMine : styles.messageRowOther]}>
-        <Swipeable
-          ref={(instance) => {
-            swipeableRef = instance;
-          }}
-          friction={1.05}
-          overshootLeft={false}
-          overshootRight={false}
-          leftThreshold={8}
-          rightThreshold={8}
-          dragOffsetFromLeftEdge={8}
-          dragOffsetFromRightEdge={8}
-          containerStyle={styles.swipeContainer}
-          childrenContainerStyle={styles.swipeChildren}
-          renderLeftActions={!isMine ? () => renderReplySwipeAction(false) : undefined}
-          renderRightActions={isMine ? () => renderReplySwipeAction(true) : undefined}
-          onSwipeableWillOpen={handleSwipeOpen}
-        >
-        <View style={styles.messageContainer}>
-          {showReactionPicker ? (
-            <View style={styles.reactionPicker}>
-              {ALLOWED_REACTIONS.map((emoji) => (
-                <Pressable
-                  key={`${item.id}-${emoji}`}
-                  style={[
-                    styles.reactionPickerItem,
-                    item.current_user_reaction === emoji && styles.reactionPickerItemActive,
-                  ]}
-                  onPress={() => handleReactionSelect(item, emoji)}
-                >
-                  <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          <Pressable
-            style={[
-              styles.messageBubble,
-              isMine ? styles.messageMine : styles.messageOther,
-              isReplyActive
-                ? isMine
-                  ? styles.messageBubbleReplyActiveMine
-                  : styles.messageBubbleReplyActiveOther
-                : null,
-              isHighlighted ? styles.messageBubbleHighlighted : null,
-            ]}
-            onLongPress={(event) => {
-              event.stopPropagation();
-              openMessageMenu(item, isMine, event.nativeEvent.pageY);
-            }}
-            onPress={(event) => {
-              event.stopPropagation();
-              handleMessageTap(item);
-            }}
-            delayLongPress={520}
-          >
-            {isReplyActive ? (
-              <View style={[styles.replyActiveIndicator, isMine ? styles.replyActiveIndicatorMine : styles.replyActiveIndicatorOther]}>
-                <Ionicons name={isMine ? "arrow-undo" : "arrow-redo"} size={14} color={colors.primary} />
-              </View>
-            ) : null}
-            {isHighlighted && highlightAnimatedStyle ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.messageBubbleHighlightOverlay, highlightAnimatedStyle]}
-              />
-            ) : null}
-            {item.reply_to ? (
-              <View style={[styles.replySnippet, isMine ? styles.replySnippetMine : styles.replySnippetOther]}>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.replySnippetAuthor, isMine ? styles.replySnippetAuthorMine : styles.replySnippetAuthorOther]}
-                >
-                  {replyAuthor}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.replySnippetText, isMine ? styles.replySnippetTextMine : styles.replySnippetTextOther]}
-                >
-                  {toReplyPreviewText(item.reply_to)}
-                </Text>
-              </View>
-            ) : null}
-            <Text
-              style={[styles.messageText, isMine ? styles.messageTextMine : styles.messageTextOther]}
-            >
-              {renderHighlightedMessageText(item.text || "", item.id)}
-            </Text>
-            {item.is_pinned ? (
-              <View style={styles.messageFlagRow}>
-                <Ionicons name="pin" size={11} color={isMine ? "#dbeafe" : colors.mutedText} />
-                <Text style={[styles.messageFlagText, isMine ? styles.messageFlagTextMine : styles.messageFlagTextOther]}>
-                  Pinned
-                </Text>
-              </View>
-            ) : null}
-            {item.edited_at ? (
-              <Text style={[styles.messageEditedText, isMine ? styles.messageEditedTextMine : styles.messageEditedTextOther]}>
-                Edited
-              </Text>
-            ) : null}
-            <View style={styles.messageMetaRow}>
-              <Text style={[styles.messageTime, isMine ? styles.messageTimeMine : styles.messageTimeOther]}>
-                {formatMessageTime(item.timestamp)}
-              </Text>
-              {isMine ? (
-                <Text style={[styles.statusTick, item.status === "read" ? styles.statusTickRead : styles.statusTickDefault]}>
-                  {statusTicks(item.status)}
-                </Text>
-              ) : null}
-            </View>
-          </Pressable>
-
-          {reactionEntries.length > 0 ? (
-            <View style={[styles.reactionsRow, isMine ? styles.reactionsRowMine : styles.reactionsRowOther]}>
-              {reactionEntries.map(([emoji, count]) => (
-                <View
-                  key={`${item.id}-${emoji}`}
-                  style={[
-                    styles.reactionChip,
-                    item.current_user_reaction === emoji && styles.reactionChipMine,
-                  ]}
-                >
-                  <Text style={styles.reactionChipText}>
-                    {emoji} {count}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
-        </Swipeable>
-      </View>
-      </>
-    );
-  };
+  const renderMessage = useCallback(
+    ({ item }: { item: ChatMessage }) => {
+      const isMine = item.sender?.id === currentUserId;
+      const isSearchMatch = Boolean(normalizedSearchQuery) && searchResultIdSet.has(item.id);
+      return (
+        <MessageRow
+          item={item}
+          currentUserId={currentUserId}
+          isMine={isMine}
+          dayLabel={dayLabelById[item.id] ?? null}
+          showUnreadDivider={unreadAnchorMessageId === item.id}
+          isReplyActive={replyTarget?.id === item.id}
+          showReactionPicker={!isMine && reactionPickerMessageId === item.id}
+          isHighlighted={highlightedMessageId === item.id}
+          searchHighlight={isSearchMatch ? normalizedSearchQuery : null}
+          isActiveSearchMatch={isSearchMatch && activeSearchMessageId === item.id}
+          styles={styles}
+          colors={colors}
+          highlightOpacity={messageHighlightOpacity}
+          highlightScale={messageHighlightScale}
+          onSwipeReply={handleSwipe}
+          onReactionSelect={handleReactionSelect}
+          onOpenMenu={openMessageMenu}
+          onTap={handleMessageTap}
+        />
+      );
+    },
+    [
+      activeSearchMessageId,
+      colors,
+      currentUserId,
+      dayLabelById,
+      handleMessageTap,
+      handleReactionSelect,
+      handleSwipe,
+      highlightedMessageId,
+      messageHighlightOpacity,
+      messageHighlightScale,
+      normalizedSearchQuery,
+      openMessageMenu,
+      reactionPickerMessageId,
+      replyTarget?.id,
+      searchResultIdSet,
+      styles,
+      unreadAnchorMessageId,
+    ]
+  );
 
   const onMessageListRefresh = useCallback(async () => {
-    if (!selectedConversation?.id) return;
-    setLoadingConversation(true);
+    const conversationId = selectedConversation?.id;
+    if (!conversationId) return;
+    setRefreshingConversation(true);
+    const requestedAt = Date.now();
     try {
-      const updated = await fetchConversation(selectedConversation.id);
+      const updated = await fetchConversation(conversationId);
+      if (selectedConversationIdRef.current !== conversationId) return;
       const sortedUpdatedMessages = [...(updated.messages || [])].sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
-      setSelectedConversation(updated);
+      // The refreshed detail covers [oldest, newest] (all history if under the detail limit):
+      // it wins inside that window; keep already-loaded older pages and newer live messages.
+      const refreshedIds = new Set(sortedUpdatedMessages.map((message) => message.id));
+      const windowStart =
+        sortedUpdatedMessages.length >= DETAIL_MESSAGE_LIMIT
+          ? new Date(sortedUpdatedMessages[0].timestamp).getTime()
+          : -Infinity;
+      const windowEnd = sortedUpdatedMessages.length
+        ? new Date(sortedUpdatedMessages[sortedUpdatedMessages.length - 1].timestamp).getTime()
+        : requestedAt;
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== conversationId) return prev;
+        const kept = prev.messages.filter((message) => {
+          if (refreshedIds.has(message.id)) return false;
+          const time = new Date(message.timestamp).getTime();
+          return time < windowStart || time > windowEnd;
+        });
+        const nextMessages = mergeMessagesById(kept, sortedUpdatedMessages);
+        return { ...updated, messages: nextMessages };
+      });
       initialUnreadCountRef.current = updated.unread_count || 0;
       setUnreadAnchorMessageId(
         findFirstUnreadMessageId(
@@ -1525,10 +1305,14 @@ export function ConversationsScreen() {
           currentUserId
         )
       );
-      previousMessageCountRef.current = updated.messages?.length || 0;
-      resetOlderPaging(updated.messages?.length || 0);
+      // Keep older-history paging unless nothing was pageable before (history may have grown).
+      if (nextOlderPageRef.current == null && !loadingOlderRef.current) {
+        resetOlderPaging(updated.messages?.length || 0);
+      }
+    } catch (error) {
+      toastApiError(error, "Could not refresh this chat.", "Refresh failed");
     } finally {
-      setLoadingConversation(false);
+      setRefreshingConversation(false);
     }
   }, [currentUserId, resetOlderPaging, selectedConversation?.id]);
 
@@ -1588,6 +1372,47 @@ export function ConversationsScreen() {
     }
     previousMessageCountRef.current = messageCount;
   }, [selectedConversation?.id, selectedConversation?.messages?.length, scrollToBottom]);
+
+  const handleMessageListContentSizeChange = useCallback(() => {
+    if (skipAutoScrollRef.current) return;
+    if (unreadAnchorMessageId == null) {
+      scrollToBottom(false);
+    }
+  }, [scrollToBottom, unreadAnchorMessageId]);
+
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; averageItemLength: number }) => {
+      messageListRef.current?.scrollToOffset({
+        offset: Math.max(0, info.averageItemLength * info.index - 48),
+        animated: true,
+      });
+      setTimeout(() => {
+        messageListRef.current?.scrollToIndex({
+          index: info.index,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      }, 160);
+    },
+    []
+  );
+
+  const handleMessageListScrollBeginDrag = useCallback(() => {
+    if (replyTarget) clearReplyTarget();
+  }, [clearReplyTarget, replyTarget]);
+
+  const handleMessageListScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      setShowJumpToLatest(distanceFromBottom > 140);
+      if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
+        loadOlderMessages();
+      }
+    },
+    [loadOlderMessages]
+  );
 
   if (selectedConversation) {
     const otherUser =
@@ -1746,14 +1571,9 @@ export function ConversationsScreen() {
             <FlatList
               ref={messageListRef}
               data={sortedMessages}
-              keyExtractor={(item) => String(item.id)}
+              keyExtractor={messageKeyExtractor}
               renderItem={renderMessage}
-              onContentSizeChange={() => {
-                if (skipAutoScrollRef.current) return;
-                if (unreadAnchorMessageId == null) {
-                  scrollToBottom(false);
-                }
-              }}
+              onContentSizeChange={handleMessageListContentSizeChange}
               // Keeps the visible message in place when older messages are prepended.
               maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
               ListHeaderComponent={
@@ -1761,34 +1581,14 @@ export function ConversationsScreen() {
                   <ActivityIndicator style={styles.olderMessagesLoader} color={colors.primary} />
                 ) : null
               }
-              onScrollToIndexFailed={(info) => {
-                messageListRef.current?.scrollToOffset({
-                  offset: Math.max(0, info.averageItemLength * info.index - 48),
-                  animated: true,
-                });
-                setTimeout(() => {
-                  messageListRef.current?.scrollToIndex({
-                    index: info.index,
-                    animated: true,
-                    viewPosition: 0.5,
-                  });
-                }, 160);
-              }}
+              onScrollToIndexFailed={handleScrollToIndexFailed}
               ListFooterComponent={<View style={styles.messagesFooterSpacer} />}
               refreshControl={
-                <RefreshControl refreshing={loadingConversation} onRefresh={onMessageListRefresh} />
+                <RefreshControl refreshing={refreshingConversation} onRefresh={onMessageListRefresh} />
               }
               contentContainerStyle={styles.messagesContent}
-              onScrollBeginDrag={() => replyTarget && clearReplyTarget()}
-              onScroll={(event) => {
-                const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                const distanceFromBottom =
-                  contentSize.height - (contentOffset.y + layoutMeasurement.height);
-                setShowJumpToLatest(distanceFromBottom > 140);
-                if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
-                  loadOlderMessages();
-                }
-              }}
+              onScrollBeginDrag={handleMessageListScrollBeginDrag}
+              onScroll={handleMessageListScroll}
               scrollEventThrottle={16}
             />
           )}
@@ -1799,58 +1599,19 @@ export function ConversationsScreen() {
             </Pressable>
           ) : null}
 
-          <View style={styles.inputWrap}>
-            {replyTarget ? (
-              <View style={styles.replyComposerBar}>
-                <View style={styles.replyComposerTextWrap}>
-                  <Text style={styles.replyComposerLabel}>
-                    Replying to {replyTarget.sender?.id === currentUserId ? "your message" : replyTarget.sender?.username || "user"}
-                  </Text>
-                  <Text style={styles.replyComposerText} numberOfLines={1}>
-                    {toReplyPreviewText(replyTarget)}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    setReplyTarget(null);
-                  }}
-                  style={styles.replyComposerClose}
-                >
-                  <Ionicons name="close" size={16} color={colors.mutedText} />
-                </Pressable>
-              </View>
-            ) : null}
-            <View style={styles.inputRow}>
-              <TextInput
-                ref={messageInputRef}
-                style={styles.input}
-                value={messageText}
-                onChangeText={handleMessageInputChange}
-                onPressIn={(event) => {
-                  event.stopPropagation();
-                  activateMessageInput();
-                }}
-                onFocus={handleInputFocus}
-                placeholder={
-                  replyTarget
-                    ? `Reply to: ${toReplyPreviewText(replyTarget)}`
-                    : "Type a message..."
-                }
-                placeholderTextColor={colors.mutedText}
-              />
-              <Pressable
-                style={styles.sendButton}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  sendMessage();
-                }}
-                disabled={sending}
-              >
-                <Ionicons name="send" size={18} color="#fff" />
-              </Pressable>
-            </View>
-          </View>
+          <Composer
+            ref={composerRef}
+            styles={styles}
+            colors={colors}
+            currentUserId={currentUserId}
+            replyTarget={replyTarget}
+            sending={sending}
+            onClearReply={clearReplyTarget}
+            onFocus={handleComposerFocus}
+            onTypingStart={emitTypingStarted}
+            onTypingStop={emitTypingStopped}
+            onSend={sendMessage}
+          />
         </KeyboardAvoidingView>
         <ReportUserModal
           colors={colors}
@@ -2151,6 +1912,8 @@ export function ConversationsScreen() {
     </SafeAreaView>
   );
 }
+
+export type ConversationStyles = ReturnType<typeof createStyles>;
 
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({

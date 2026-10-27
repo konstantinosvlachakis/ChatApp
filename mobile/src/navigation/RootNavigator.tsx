@@ -25,6 +25,11 @@ import { setSocketReconnecting } from "../services/connectivity";
 import { avatarImage } from "../utils/media";
 import { fetchConversations } from "../services/api/conversations";
 import {
+  type PresenceEvent,
+  publishPresenceEvent,
+  resetPresenceEvents,
+} from "../services/presenceEvents";
+import {
   SOCKET_AUTH_CLOSE_CODES,
   getReconnectDelayMs,
   startPresenceHeartbeat,
@@ -60,10 +65,9 @@ type BannerState = {
   onPress?: () => void;
 };
 
-type PresenceSocketPayload =
-  | { type: "presence_update"; user_id: number; is_online: boolean }
-  | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
-  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
+// Coalesces the unread-badge refetches triggered by one action (conversation_update events
+// for message_created + messages_read, and conversations_refresh) into one request.
+const UNREAD_REFRESH_DEBOUNCE_MS = 1000;
 
 function resolveMediaUrl(path?: string | null) {
   if (!path) return "https://placehold.co/80x80";
@@ -93,6 +97,7 @@ function AppTabs() {
     Record<string, { translateY: Animated.Value; opacity: Animated.Value }>
   >({});
   const dismissingBannerIdsRef = React.useRef<Set<string>>(new Set());
+  const unreadRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const presenceUpdatesSocketRef = React.useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const dynamicStyles = React.useMemo(() => createDynamicStyles(colors), [colors]);
@@ -237,10 +242,39 @@ function AppTabs() {
     }
   }, [activeTabName, navigation, showBanner, user?.user_id]);
 
+  const loadUnreadChatsCountRef = React.useRef(loadUnreadChatsCount);
+  React.useEffect(() => {
+    loadUnreadChatsCountRef.current = loadUnreadChatsCount;
+  }, [loadUnreadChatsCount]);
+
+  // Trailing, coalesced refetch: skipped if a fetch already started after the first event.
+  const scheduleUnreadRefresh = React.useCallback(() => {
+    if (unreadRefreshTimerRef.current) return;
+    const requestedAt = Date.now();
+    const fire = () => {
+      unreadRefreshTimerRef.current = null;
+      const meta = unreadFetchMetaRef.current;
+      if (meta.lastRunAt > requestedAt) return;
+      if (meta.inFlight) {
+        unreadRefreshTimerRef.current = setTimeout(fire, 500);
+        return;
+      }
+      loadUnreadChatsCountRef.current(true);
+    };
+    unreadRefreshTimerRef.current = setTimeout(fire, UNREAD_REFRESH_DEBOUNCE_MS);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (unreadRefreshTimerRef.current) clearTimeout(unreadRefreshTimerRef.current);
+      unreadRefreshTimerRef.current = null;
+    };
+  }, []);
+
   React.useEffect(() => {
     loadUnreadChatsCount();
     const refreshListener = DeviceEventEmitter.addListener("conversations_refresh", () => {
-      loadUnreadChatsCount(true);
+      scheduleUnreadRefresh();
     });
     return () => {
       refreshListener.remove();
@@ -249,8 +283,9 @@ function AppTabs() {
       bannerAnimRef.current = {};
       dismissingBannerIdsRef.current.clear();
     };
-  }, [loadUnreadChatsCount]);
+  }, [loadUnreadChatsCount, scheduleUnreadRefresh]);
 
+  // The app's only presence socket: its events fan out to screens via services/presenceEvents.
   React.useEffect(() => {
     let cancelled = false;
     let reconnectAttempt = 0;
@@ -308,10 +343,11 @@ function AppTabs() {
 
       socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
-          const payload = JSON.parse(event.data) as PresenceSocketPayload;
-          if (payload.type === "conversation_update") {
-            loadUnreadChatsCount();
+          const payload = JSON.parse(event.data) as PresenceEvent;
+          if (payload?.type === "conversation_update") {
+            scheduleUnreadRefresh();
           }
+          publishPresenceEvent(payload);
         } catch {
           // Ignore malformed payloads.
         }
@@ -354,9 +390,10 @@ function AppTabs() {
       appStateSubscription.remove();
       clearReconnectTimeout();
       closeSocket();
+      resetPresenceEvents();
       setSocketReconnecting(false);
     };
-  }, [loadUnreadChatsCount, user?.user_id, wsBaseUrl]);
+  }, [scheduleUnreadRefresh, user?.user_id, wsBaseUrl]);
 
   React.useEffect(() => {
     const latestViewer = user?.recent_profile_viewers?.[0];
