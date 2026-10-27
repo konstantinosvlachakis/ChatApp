@@ -6,6 +6,12 @@ import { useUser } from "../../../context/UserContext";
 import api from "../../../lib/api";
 import { toastApiError } from "../../../components/Toast";
 import { useGetConversations } from "../api/getConversations";
+import { CONVERSATIONS_LIST_QUERY_KEY } from "../api/conversationListCache";
+import {
+  CONVERSATION_LIST_REFETCH_DEBOUNCE_MS,
+  applyConversationUpdateToList,
+  createTrailingDebounce,
+} from "../api/conversationListRefetch";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
 import ChatAvatar from "./ChatAvatar";
@@ -54,6 +60,8 @@ function ConversationList({
     useState({});
   const [, setCoachRefreshTick] = useState(0);
   const conversationsRef = useRef(conversations);
+  const activeConversationIdRef = useRef(activeConversationId);
+  const refetchListDebouncedRef = useRef(null);
   const touchStateRef = useRef({
     id: null,
     startX: 0,
@@ -196,6 +204,23 @@ function ConversationList({
   }, [conversations]);
 
   useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    const refetchListDebounced = createTrailingDebounce(() => {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+    }, CONVERSATION_LIST_REFETCH_DEBOUNCE_MS);
+    refetchListDebouncedRef.current = refetchListDebounced;
+    return () => {
+      refetchListDebouncedRef.current = null;
+      // Run a pending refetch now rather than drop it: the nav badge (Layout) still reads
+      // this query after the list unmounts.
+      refetchListDebounced.flush();
+    };
+  }, [queryClient]);
+
+  useEffect(() => {
     const refreshCoach = () => setCoachRefreshTick((tick) => tick + 1);
     window.addEventListener(COACH_CONVERSATION_UPDATED_EVENT, refreshCoach);
     return () => {
@@ -238,8 +263,13 @@ function ConversationList({
       }
 
       if (data?.type === "conversation_update") {
-        // invalidateQueries already refetches active queries; no extra refetch needed.
-        queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+        // Patch what the payload (or the open ChatRoom's socket) already tells us; refetch
+        // the whole list only otherwise, debounced so bursts cost one request.
+        const needsRefetch = applyConversationUpdateToList(queryClient, data, {
+          currentUserId: user?.user_id,
+          activeConversationId: activeConversationIdRef.current,
+        });
+        if (needsRefetch) refetchListDebouncedRef.current?.();
       }
     });
   }, [queryClient, subscribeToPresenceEvents, user?.user_id, user?.username]);
