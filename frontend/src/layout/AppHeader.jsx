@@ -58,7 +58,10 @@ export default function AppHeader({ user, avatarUrl, unreadCount = 0, onLogout }
                 className={`lv-header-link${active ? " is-active" : ""}${item.premium ? " is-premium" : ""}`}
                 aria-current={active ? "page" : undefined}
               >
-                {item.premium && <NavIcon name="sparkle" className="lv-header-premium-icon" />}
+                <NavIcon
+                  name={item.premium ? "sparkle" : item.key}
+                  className={item.premium ? "lv-header-link-icon lv-header-premium-icon" : "lv-header-link-icon"}
+                />
                 {item.label}
                 {item.showsUnread && unreadCount > 0 && (
                   <>

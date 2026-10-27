@@ -1,28 +1,44 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import "emoji-picker-element";
 
-export const EmojiPickerWrapper = ({ onEmojiSelect }) => {
+/**
+ * emoji-picker-element web component, lazy-loaded by MessageInput.
+ * Always light (`class="light"`; it otherwise follows the OS colour scheme) and themed through
+ * its CSS custom properties in conversations.css (`.cv-emoji-picker`), incl. the Noto emoji font.
+ */
+export const EmojiPickerWrapper = ({ onEmojiSelect, autoFocus = true }) => {
   const pickerRef = useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const picker = pickerRef.current;
+    if (!picker) return undefined;
 
     const handleEmojiClick = (event) => {
-      if (onEmojiSelect) {
-        onEmojiSelect(event.detail.unicode);
-      }
+      onEmojiSelect?.(event.detail.unicode);
     };
-
-    if (picker) {
-      picker.addEventListener("emoji-click", handleEmojiClick);
-    }
-
-    return () => {
-      if (picker) {
-        picker.removeEventListener("emoji-click", handleEmojiClick);
-      }
-    };
+    picker.addEventListener("emoji-click", handleEmojiClick);
+    return () => picker.removeEventListener("emoji-click", handleEmojiClick);
   }, [onEmojiSelect]);
 
-  return <emoji-picker ref={pickerRef}></emoji-picker>;
+  // The popover sits before the composer in the DOM, so move focus into the search field;
+  // MessageInput returns it to the emoji button on close.
+  useEffect(() => {
+    if (!autoFocus) return undefined;
+    let frame = 0;
+    let cancelled = false;
+    const focusSearch = () => {
+      frame = window.requestAnimationFrame(() => {
+        if (!cancelled) pickerRef.current?.shadowRoot?.querySelector("input")?.focus();
+      });
+    };
+    if (window.customElements?.whenDefined) {
+      window.customElements.whenDefined("emoji-picker").then(focusSearch, () => {});
+    }
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [autoFocus]);
+
+  return <emoji-picker ref={pickerRef} class="light cv-emoji-picker"></emoji-picker>;
 };

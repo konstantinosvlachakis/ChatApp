@@ -31,8 +31,9 @@
 .people-search-hint { flex-shrink: 0; font-size: 12px; color: var(--lv-muted-ink); }
 .people-discovery-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0 16px; }
 .people-segments { display: flex; flex-wrap: wrap; gap: 7px; }
-.people-segments button { min-height: 38px; padding: 8px 14px; border: 1px solid #e0e3dc; border-radius: 20px; background: transparent; font-size: 12px; font-weight: 700; color: #4f626b; }
+.people-segments button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 8px 14px; border: 1px solid #e0e3dc; border-radius: 20px; background: transparent; font-size: 12px; font-weight: 700; color: #4f626b; }
 .people-segments button:hover { border-color: var(--lv-teal); }
+.people-segments .people-segment-icon { flex-shrink: 0; width: 16px; height: 16px; }
 .people-segments button[aria-pressed="true"] { border-color: #176d62; background: #e5efea; color: var(--lv-teal); }
 .people-result-count { flex-shrink: 0; color: var(--lv-muted-ink); font-size: 12px; }
 
@@ -58,6 +59,7 @@
 .people-button-secondary { border-color: #e0e4df; background: #fff; color: #203e4b; }
 .people-button-secondary:hover { background: #f0f5ef; }
 .people-button:disabled { opacity: .6; cursor: wait; }
+.people-button .people-button-icon { flex-shrink: 0; width: 18px; height: 18px; }
 .exchange-inline-match { grid-column: 2; grid-row: 2; align-self: start; margin-top: 5px; color: var(--lv-teal); font-size: 12px; font-weight: 700; }
 .exchange-card-featured { grid-template-columns: 180px minmax(0, 1fr); gap: 0 24px; min-height: 240px; padding: 24px; background: var(--lv-peach-soft); border-color: #f0dfcf; border-radius: 32px; }
 .exchange-card-featured .exchange-portrait { width: 176px; height: 176px; min-height: 0; grid-row: 1 / span 5; align-self: center; border: 6px solid #fffaf3; }
@@ -70,6 +72,62 @@
 .exchange-card-featured .exchange-bio { grid-column: 2; max-width: 62ch; font-size: 14px; margin: 10px 0 14px; }
 .exchange-card-featured .exchange-card-actions { grid-column: 2; }
 .exchange-card-featured .people-button { min-height: 44px; padding: 12px 18px; }
+
+/* Featured card side panel ("Why you'll click" / "Try opening with"): wide screens only. */
+.exchange-panel { display: none; }
+
+@media (min-width: 1100px) {
+  /* Flexible first/last rows absorb a taller panel, so the middle column stays vertically centred. */
+  .exchange-card-featured { grid-template-columns: 180px minmax(0, 1fr) minmax(260px, 340px); grid-template-rows: 1fr repeat(5, auto) 1fr; }
+  .exchange-card-featured .exchange-portrait { grid-row: 1 / -1; }
+  .exchange-card-featured .exchange-match-label { grid-row: 2; }
+  .exchange-card-featured .exchange-card-title { grid-row: 3; }
+  .exchange-card-featured .exchange-languages { grid-row: 4; }
+  .exchange-card-featured .exchange-bio { grid-row: 5; }
+  .exchange-card-featured .exchange-card-actions { grid-row: 6; }
+  .exchange-card-featured .exchange-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    grid-column: 3;
+    grid-row: 1 / -1;
+    align-self: center;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--lv-line-warm);
+    border-radius: var(--lv-radius-panel);
+    background: var(--lv-paper);
+  }
+  .exchange-panel h3 { color: var(--lv-ink); font-family: var(--lv-font-display); font-size: 14px; font-weight: 800; letter-spacing: -.2px; }
+  .exchange-panel h3 + .exchange-panel-facts { margin-top: -2px; }
+  .exchange-panel-facts { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+  .exchange-panel-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.5; }
+  .exchange-panel-facts dt { color: var(--lv-muted-ink); }
+  .exchange-panel-facts dd { color: var(--lv-ink); font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+  .exchange-panel-hint { margin-top: -6px; color: var(--lv-muted-ink); font-size: 12px; line-height: 1.5; }
+  .exchange-starters { display: flex; flex-direction: column; gap: 8px; }
+  .exchange-starters button {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--lv-line);
+    border-radius: 18px;
+    background: var(--lv-cream);
+    color: var(--lv-ink);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+    text-align: left;
+    transition: background-color .15s, border-color .15s;
+  }
+  .exchange-starters button svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; color: var(--lv-teal); }
+  .exchange-starters button span { min-width: 0; overflow-wrap: anywhere; }
+  .exchange-starters button:hover:not(:disabled) { border-color: var(--lv-teal); background: var(--lv-sage); }
+  .exchange-starters button:disabled { opacity: .6; cursor: wait; }
+}
 
 /* The community cards share the spotlight's warmth at a smaller scale. */
 .exchange-card-compact {
@@ -227,7 +285,6 @@
   .people-card-grid .exchange-bio { margin: 12px 0 16px; font-size: 12px; -webkit-line-clamp: 2; }
   .people-card-grid .exchange-card-actions { gap: 6px; }
   .people-card-grid .people-button { min-height: 44px; padding: 9px 11px; font-size: 12px; }
-  .people-card-grid .people-button-primary > span { display: none; }
   .people-card-grid .exchange-card-compact { padding: 16px; }
   .people-card-grid .exchange-card-compact .exchange-languages { margin-top: 13px; }
   .people-card-grid .exchange-card-compact .exchange-bio { margin-bottom: 14px; font-size: 13px; }
@@ -266,5 +323,10 @@
 .people-sheet-reset { align-self: center; min-height: 44px; margin-top: 6px; font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .people-button, .exchange-card-compact { transition: none; }
+  .people-button, .exchange-card-compact, .exchange-starters button { transition: none; }
+}
+
+/* After the max-width: 1199px block so the panel column survives its 2-column override. */
+@media (min-width: 1100px) and (max-width: 1199px) {
+  .exchange-card-featured { grid-template-columns: 120px minmax(0, 1fr) minmax(240px, 280px); }
 }

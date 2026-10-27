@@ -153,9 +153,14 @@ const MessageInput = ({
   }, [connectionStatus, message]);
 
   // ---------------- Emoji Picker ----------------
+  const closeEmojiPicker = () => {
+    setShowPicker(false);
+    emojiButtonRef.current?.focus();
+  };
+
   const handleEmojiSelect = (emoji) => {
     setMessage((prev) => `${prev}${emoji}`);
-    setShowPicker(false);
+    closeEmojiPicker();
   };
 
   const revokePreviewUrl = (url) => {
@@ -225,6 +230,19 @@ const MessageInput = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Escape closes the emoji picker and returns focus to its button.
+  useEffect(() => {
+    if (!showPicker) return undefined;
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setShowPicker(false);
+      emojiButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showPicker]);
 
   // ---------------- File Attach ----------------
   const handleFileAttach = (event) => {
@@ -422,7 +440,7 @@ const MessageInput = ({
   return (
     <div className="cv-composer-inner">
       {showPicker && (
-        <div ref={emojiPickerRef} className="cv-emoji-popover">
+        <div ref={emojiPickerRef} className="cv-emoji-popover" role="dialog" aria-label="Emoji picker">
           <Suspense fallback={<p className="cv-messages-status">Loading emoji…</p>}>
             <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
           </Suspense>
