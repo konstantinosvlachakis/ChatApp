@@ -18,7 +18,7 @@ urlpatterns = [
     # Unknown API paths get a JSON 404 instead of falling through to the SPA.
     re_path(r"^api(?:/.*)?$", api_not_found, name="api_not_found"),
     re_path(
-        r"^(?P<path>(?:favicon\.ico|manifest\.json|robots\.txt|sitemap\.xml|logo192\.png|logo512\.png|coach-avatar-favicon\.svg))$",
+        r"^(?P<path>(?:favicon\.ico|manifest\.json|robots\.txt|sitemap\.xml|logo192\.png|logo512\.png|og-image\.png|coach-avatar-favicon\.svg))$",
         serve,
         {"document_root": str(FRONTEND_BUILD_DIR)},
     ),
