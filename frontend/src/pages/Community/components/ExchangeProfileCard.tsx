@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import type { PartnerMatch } from "../../../components/Cards";
+import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 
 export interface ExchangeProfile {
   username: string;
@@ -40,7 +41,6 @@ export default function ExchangeProfileCard({
   const learning = profile.languagesPracticing.find((language) => language.toLowerCase() === viewerLanguage?.toLowerCase()) || profile.languagesPracticing[0];
   const level = learning ? languageLevel(profile.practiceLanguageLevels, learning) : "";
   const badge = profile.match?.reciprocal ? "Perfect exchange" : profile.match?.teachesMe ? "Native speaker for you" : "Meet someone new";
-  const initials = profile.username.slice(0, 2).toUpperCase();
   const relationship = profile.match?.reciprocal
     ? "Perfect exchange"
     : profile.match?.teachesMe
@@ -55,9 +55,15 @@ export default function ExchangeProfileCard({
     <article className={`exchange-card ${featured ? "exchange-card-featured" : "exchange-card-compact"}`}>
       {featured && <span className="exchange-match-label">{badge}</span>}
       <Link to={profilePath} state={{ profile }} className="exchange-portrait" aria-label={profileLabel}>
-        {profile.profileImage && !imageFailed ? (
-          <img src={profile.profileImage} alt="" loading={featured ? "eager" : "lazy"} decoding="async" onError={() => setImageFailed(true)} />
-        ) : <span className="exchange-initials" aria-hidden="true">{initials}</span>}
+        <img
+          src={profile.profileImage && !imageFailed ? profile.profileImage : DEFAULT_AVATAR_URL}
+          alt=""
+          loading={featured ? "eager" : "lazy"}
+          decoding="async"
+          onError={() => {
+            if (profile.profileImage && !imageFailed) setImageFailed(true);
+          }}
+        />
       </Link>
       <div className="exchange-card-content">
         <div className="exchange-card-title">

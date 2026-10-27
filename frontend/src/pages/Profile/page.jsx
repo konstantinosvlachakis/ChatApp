@@ -11,6 +11,7 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import api, { getErrorMessage, isApiError } from "../../lib/api";
 import { logger } from "../../lib/logger";
 import { toast, toastApiError } from "../../components/Toast";
+import PhotoViewer, { buildPhotoGallery, usePhotoViewer } from "../../components/PhotoViewer";
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
@@ -19,6 +20,11 @@ const ProfilePage = () => {
   const [uploadingSlot, setUploadingSlot] = useState("");
   const navigate = useNavigate();
   const isDetectingLocationRef = useRef(false);
+  const viewer = usePhotoViewer();
+  // Photos whose thumbnail failed to load aren't offered in the viewer.
+  const [failedPhotoKeys, setFailedPhotoKeys] = useState(() => new Set());
+  const markPhotoFailed = (key) =>
+    setFailedPhotoKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
 
   // ---- Fetch User ----
   useEffect(() => {
@@ -141,6 +147,15 @@ const ProfilePage = () => {
     },
   ];
   const practicingLanguages = user.languages_practicing || user.languages || [];
+  // Only real photos are viewable (no chameleon default / empty slots).
+  const gallery = buildPhotoGallery(
+    photoCards
+      .filter((card) => !failedPhotoKeys.has(card.key))
+      .map((card) => ({ key: card.key, src: card.image, alt: `Your ${card.label.toLowerCase()}` }))
+  );
+  const galleryIndex = (key) => gallery.findIndex((photo) => photo.key === key);
+  const viewLabel = (key) => `View photo ${galleryIndex(key) + 1} of ${gallery.length}`;
+  const mainPhotoIndex = galleryIndex("profile");
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-blue-50/40 p-3 sm:p-5 md:p-8">
@@ -151,12 +166,31 @@ const ProfilePage = () => {
             className="group h-28 w-28 overflow-hidden rounded-full border-4 shadow-sm sm:h-32 sm:w-32 md:h-36 md:w-36"
             style={{ borderColor: avatarRingColor }}
           >
-            <img
-              src={imageUrl}
-              alt="Profile"
-              onError={handleAvatarError}
-              className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
-            />
+            {mainPhotoIndex >= 0 ? (
+              <button
+                type="button"
+                className="lv-photo-thumb"
+                onClick={(event) => viewer.open(mainPhotoIndex, event)}
+                aria-label={viewLabel("profile")}
+              >
+                <img
+                  src={imageUrl}
+                  alt=""
+                  onError={(event) => {
+                    handleAvatarError(event);
+                    markPhotoFailed("profile");
+                  }}
+                  className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
+                />
+              </button>
+            ) : (
+              <img
+                src={imageUrl}
+                alt="Profile"
+                onError={handleAvatarError}
+                className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
+              />
+            )}
           </div>
           <h1 className="text-center text-xl font-bold text-slate-800 sm:text-2xl">
             {user.username}, {user.age}
@@ -258,15 +292,13 @@ const ProfilePage = () => {
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {photoCards.map((card) => (
-              <label
-                key={card.key}
-                className="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 p-2 transition hover:border-sky-400"
-              >
+            {photoCards.map((card) => {
+              const uploadInput = (
                 <input
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  className="sr-only"
+                  disabled={uploadingSlot === card.key}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -275,32 +307,83 @@ const ProfilePage = () => {
                     e.target.value = "";
                   }}
                 />
-                <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
-                  {card.image ? (
-                    <img
-                      src={card.image}
-                      loading="lazy"
-                      decoding="async"
-                      alt={card.label}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-4xl text-slate-400">+</span>
-                  )}
-                  {uploadingSlot === card.key && (
-                    <div className="absolute inset-0 bg-black/40 text-white text-sm flex items-center justify-center">
-                      Uploading...
-                    </div>
-                  )}
+              );
+              const uploadingOverlay = uploadingSlot === card.key && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white">
+                  Uploading...
                 </div>
-                <p className="mt-2 text-center text-sm font-medium text-slate-700">
-                  {card.label}
-                </p>
-              </label>
-            ))}
+              );
+
+              if (card.image && galleryIndex(card.key) >= 0) {
+                // Viewing and replacing are separate controls, so opening the viewer never uploads.
+                return (
+                  <div key={card.key} className="rounded-2xl border-2 border-slate-200 p-2">
+                    <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-slate-100">
+                      <button
+                        type="button"
+                        className="lv-photo-thumb"
+                        onClick={(event) => viewer.open(galleryIndex(card.key), event)}
+                        aria-label={viewLabel(card.key)}
+                      >
+                        <img
+                          src={card.image}
+                          loading="lazy"
+                          decoding="async"
+                          alt=""
+                          onError={() => markPhotoFailed(card.key)}
+                        />
+                      </button>
+                      {uploadingOverlay}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate text-sm font-medium text-slate-700">{card.label}</p>
+                      <label className="relative inline-flex min-h-[44px] flex-shrink-0 cursor-pointer items-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-sky-400 focus-within:ring-2 focus-within:ring-sky-600">
+                        {uploadInput}
+                        Change<span className="sr-only"> {card.label.toLowerCase()}</span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <label
+                  key={card.key}
+                  className="relative cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 p-2 transition hover:border-sky-400 focus-within:ring-2 focus-within:ring-sky-600"
+                >
+                  {uploadInput}
+                  <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
+                    {card.image ? (
+                      <img
+                        src={card.image}
+                        loading="lazy"
+                        decoding="async"
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-4xl text-slate-400" aria-hidden="true">+</span>
+                    )}
+                    {uploadingOverlay}
+                  </div>
+                  <p className="mt-2 text-center text-sm font-medium text-slate-700">
+                    <span className="sr-only">{card.image ? "Change " : "Add "}</span>
+                    {card.label}
+                  </p>
+                </label>
+              );
+            })}
           </div>
         </div>
       </div>
+
+      <PhotoViewer
+        photos={gallery}
+        index={viewer.index}
+        onClose={viewer.close}
+        returnFocusRef={viewer.triggerRef}
+        label="Your photos"
+      />
     </div>
   );
 };

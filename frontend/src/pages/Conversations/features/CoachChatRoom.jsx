@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
+import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import api, { API_TIMEOUTS, getErrorMessage, isApiError } from "../../../lib/api";
 import { useUser } from "../../../context/UserContext";
 import Conversation from "./Conversation";
@@ -13,7 +15,6 @@ import {
   COACH_CONVERSATION_ID,
   COACH_MODES,
   COACH_QUICK_PROMPTS,
-  getCoachConversation,
   getCoachLanguageOptions,
   persistCoachMessages,
   persistCoachPreferences,
@@ -21,15 +22,29 @@ import {
   readCoachPreferences,
   resetCoachConversation,
 } from "./coachConversation";
+import {
+  COACH_DETAILS_ID,
+  COACH_MODE_TAGLINES,
+  CoachDetails,
+  CoachModeBar,
+  CoachPopover,
+  CoachSheet,
+  readDockedPreference,
+  useMediaQuery,
+  writeDockedPreference,
+} from "./CoachControls";
+
+const PHONE_QUERY = "(max-width: 767px)";
+const WIDE_QUERY = "(min-width: 1280px)";
 
 const CoachHeader = ({
   languageOptions,
   selectedLanguage,
   selectedMode,
-  collapsed,
-  onToggleCollapsed,
-  onLanguageChange,
-  onModeChange,
+  detailsVisible,
+  detailsVariant,
+  settingsButtonRef,
+  onToggleDetails,
   onStartNewConversation,
 }) => {
   const navigate = useNavigate();
@@ -38,86 +53,53 @@ const CoachHeader = ({
     languageOptions.find((option) => option.value === selectedLanguage)?.label || selectedLanguage;
 
   return (
-    <>
-      <header className="cv-chat-header">
+    <header className="cv-chat-header cv-coach-header">
+      <button
+        type="button"
+        className="cv-icon-button is-plain cv-chat-back"
+        onClick={() => navigate("/conversations")}
+        aria-label="Back to conversations"
+      >
+        <ArrowBackRoundedIcon />
+      </button>
+      <div className="cv-chat-identity">
+        <CoachAvatar language={selectedLanguage} size={44} hideBadge />
+        <span className="cv-chat-identity-text">
+          <span className="cv-chat-name" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Lumi <span className="cv-ai-tag" style={{ background: "var(--lv-sage)" }}>AI</span>
+          </span>
+          <span className="cv-chat-presence is-online">
+            <span className="cv-presence-dot" aria-hidden="true" />
+            {activeMode.shortLabel} · {selectedLanguageLabel}
+          </span>
+          <span className="cv-coach-tagline">{COACH_MODE_TAGLINES[activeMode.id] || activeMode.description}</span>
+        </span>
+      </div>
+      <div className="cv-chat-actions">
         <button
           type="button"
-          className="cv-icon-button is-plain cv-chat-back"
-          onClick={() => navigate("/conversations")}
-          aria-label="Back to conversations"
+          className="cv-pill-button cv-coach-new"
+          onClick={onStartNewConversation}
+          aria-label="New conversation"
         >
-          <ArrowBackRoundedIcon />
+          <RestartAltRoundedIcon aria-hidden="true" />
+          <span className="cv-coach-new-label">New conversation</span>
         </button>
-        <div className="cv-chat-identity">
-          <CoachAvatar language={selectedLanguage} size={48} hideBadge />
-          <span className="cv-chat-identity-text">
-            <span className="cv-chat-name" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              Lumi <span className="cv-ai-tag" style={{ background: "var(--lv-sage)" }}>AI</span>
-            </span>
-            <span className="cv-chat-presence is-online">
-              <span className="cv-presence-dot" aria-hidden="true" />
-              {activeMode.label} · {selectedLanguageLabel}
-            </span>
-          </span>
-        </div>
-        <div className="cv-chat-actions">
-          <button
-            type="button"
-            className={`cv-icon-button ${collapsed ? "" : "is-on"}`}
-            onClick={onToggleCollapsed}
-            aria-expanded={!collapsed}
-            aria-controls="cv-coach-tools"
-            aria-label={collapsed ? "Show coach tools" : "Hide coach tools"}
-            title="Coach tools"
-          >
-            <TuneRoundedIcon />
-          </button>
-        </div>
-      </header>
-
-      {!collapsed && (
-        <div id="cv-coach-tools" className="cv-coach-tools">
-          <p className="cv-coach-intro">
-            Adaptive language coach for real conversation, corrections, travel roleplay,
-            vocabulary drills, and short quizzes. Switch modes whenever you want.
-          </p>
-          <label className="cv-coach-field">
-            <span>Language</span>
-            <select value={selectedLanguage} onChange={(event) => onLanguageChange(event.target.value)}>
-              {languageOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="cv-coach-field">
-            <span id="cv-coach-mode-label">Practice mode</span>
-            <div className="cv-coach-modes" role="group" aria-labelledby="cv-coach-mode-label">
-              {COACH_MODES.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  aria-pressed={mode.id === selectedMode}
-                  onClick={() => onModeChange(mode.id)}
-                >
-                  <strong>{mode.shortLabel}</strong>
-                  <span>{mode.description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="cv-coach-tool-actions">
-            <button type="button" className="cv-pill-button" onClick={onStartNewConversation}>
-              New conversation
-            </button>
-            <button type="button" className="cv-pill-button is-primary" onClick={onToggleCollapsed}>
-              Hide coach tools
-            </button>
-          </div>
-        </div>
-      )}
-    </>
+        <button
+          ref={settingsButtonRef}
+          type="button"
+          className={`cv-icon-button ${detailsVisible ? "is-on" : ""}`}
+          onClick={onToggleDetails}
+          aria-expanded={detailsVisible}
+          aria-controls={detailsVisible ? COACH_DETAILS_ID : undefined}
+          aria-haspopup={detailsVariant === "docked" ? undefined : "dialog"}
+          aria-label="Coach settings"
+          title="Coach settings"
+        >
+          <TuneRoundedIcon />
+        </button>
+      </div>
+    </header>
   );
 };
 
@@ -127,17 +109,30 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
   const [isCoachTyping, setIsCoachTyping] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("english");
   const [selectedMode, setSelectedMode] = useState(COACH_MODES[0].id);
-  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+  // Popover (tablet/desktop) or sheet (phones) open state; the ≥1280px docked panel has its own.
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isDocked, setIsDocked] = useState(readDockedPreference);
+  const [isIdeasOpen, setIsIdeasOpen] = useState(false);
   const messagesContainerRef = useRef(null);
-  const previousMessageCountRef = useRef(0);
+  const settingsButtonRef = useRef(null);
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  const isWide = useMediaQuery(WIDE_QUERY);
+  const detailsVariant = isWide ? "docked" : isPhone ? "sheet" : "popover";
+  const detailsVisible = detailsVariant === "docked" ? isDocked : isDetailsOpen;
 
   const languageOptions = useMemo(() => getCoachLanguageOptions(user), [user]);
-  const coachConversation = useMemo(
-    () => getCoachConversation(user),
-    [user, messages.length, selectedLanguage, selectedMode]
-  );
   const hasActiveConversation = messages.length > 1;
-  const shouldShowQuickStarts = !hasActiveConversation;
+  const showQuickStartChips = !hasActiveConversation || isIdeasOpen;
+
+  const closeDetails = useCallback((returnFocus = true) => {
+    setIsDetailsOpen(false);
+    if (returnFocus) settingsButtonRef.current?.focus();
+  }, []);
+
+  // A popover/sheet doesn't survive a breakpoint change (e.g. rotating a tablet).
+  useEffect(() => {
+    setIsDetailsOpen(false);
+  }, [detailsVariant]);
 
   const syncMessages = (nextMessages) => {
     setMessages(nextMessages);
@@ -157,16 +152,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     setSelectedMode(preferences.mode);
     const storedMessages = readCoachMessages(user, preferences);
     setMessages(storedMessages);
-    previousMessageCountRef.current = storedMessages.length;
-    setIsHeaderCollapsed(storedMessages.length > 1);
   }, [user]);
-
-  useEffect(() => {
-    if (messages.length > 1 && previousMessageCountRef.current <= 1) {
-      setIsHeaderCollapsed(true);
-    }
-    previousMessageCountRef.current = messages.length;
-  }, [messages.length]);
 
   useEffect(() => {
     if (!messagesContainerRef.current) return;
@@ -206,7 +192,41 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
       mode: selectedMode,
     });
     setMessages(nextMessages);
-    setIsHeaderCollapsed(false);
+    setIsIdeasOpen(false);
+  };
+
+  const handleToggleDetails = () => {
+    if (detailsVariant === "docked") {
+      const next = !isDocked;
+      setIsDocked(next);
+      writeDockedPreference(next);
+      return;
+    }
+    setIsDetailsOpen((open) => !open);
+  };
+
+  const handleCloseDetails = (returnFocus = true) => {
+    if (detailsVariant === "docked") {
+      setIsDocked(false);
+      writeDockedPreference(false);
+      settingsButtonRef.current?.focus();
+      return;
+    }
+    closeDetails(returnFocus);
+  };
+
+  // Re-selecting the current mode/language would wipe the chat, so it's a no-op.
+  const handleModeChange = (mode) => {
+    if (mode !== selectedMode) handlePreferenceChange({ mode });
+  };
+  const handleLanguageChange = (language) => {
+    if (language !== selectedLanguage) handlePreferenceChange({ language });
+  };
+
+  // Choosing an option in the popover/sheet closes it; the docked panel stays open.
+  const afterDetailsChoice = (action) => (value) => {
+    action(value);
+    if (detailsVariant !== "docked") closeDetails(true);
   };
 
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
@@ -291,6 +311,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
 
   const handleQuickPrompt = (prompt) => {
     if (isCoachTyping) return;
+    setIsIdeasOpen(false);
     handleSendMessage(prompt, null, null);
   };
 
@@ -307,63 +328,109 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
     );
   };
 
+  const details = (
+    <CoachDetails
+      titleId="cv-coach-details-title"
+      docked={detailsVariant === "docked"}
+      languageOptions={languageOptions}
+      selectedLanguage={selectedLanguage}
+      selectedMode={selectedMode}
+      onLanguageChange={afterDetailsChoice(handleLanguageChange)}
+      onModeChange={afterDetailsChoice(handleModeChange)}
+      onStartNewConversation={afterDetailsChoice(handleStartNewConversation)}
+      onClose={handleCloseDetails}
+    />
+  );
+
   return (
-    <div className="cv-chat">
-      <div className="flex-shrink-0">
+    <div className="cv-chat cv-coach">
+      <div className="cv-coach-top">
         <CoachHeader
           languageOptions={languageOptions}
           selectedLanguage={selectedLanguage}
           selectedMode={selectedMode}
-          collapsed={isHeaderCollapsed}
-          onToggleCollapsed={() => setIsHeaderCollapsed((current) => !current)}
-          onLanguageChange={(language) => handlePreferenceChange({ language })}
-          onModeChange={(mode) => handlePreferenceChange({ mode })}
+          detailsVisible={detailsVisible}
+          detailsVariant={detailsVariant}
+          settingsButtonRef={settingsButtonRef}
+          onToggleDetails={handleToggleDetails}
           onStartNewConversation={handleStartNewConversation}
         />
+        {detailsVariant === "popover" && isDetailsOpen && (
+          <CoachPopover anchorRef={settingsButtonRef} onClose={closeDetails}>
+            {details}
+          </CoachPopover>
+        )}
+        <CoachModeBar
+          languageOptions={languageOptions}
+          selectedLanguage={selectedLanguage}
+          selectedMode={selectedMode}
+          onLanguageChange={handleLanguageChange}
+          onModeChange={handleModeChange}
+        />
       </div>
 
-      {shouldShowQuickStarts && (
-        <div className="cv-quick-starts">
-          <p className="cv-section-label" style={{ margin: "0 0 8px" }}>Quick starts</p>
-          <div className="cv-quick-start-grid">
-            {COACH_QUICK_PROMPTS.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => handleQuickPrompt(prompt)}>
-                {prompt}
+      <div className="cv-coach-body">
+        <div className="cv-coach-main">
+          <div ref={messagesContainerRef} className="cv-messages">
+            <Conversation
+              messages={messages}
+              userId={user.user_id}
+              onDeleteMessage={handleDeleteMessage}
+              onMessageReactionChange={handleMessageReactionChange}
+              baseTranslateLanguage={selectedLanguage}
+            />
+          </div>
+
+          {isCoachTyping && (
+            <div className="cv-typing" role="status">
+              <TypingDots className="cv-typing-dots" />
+              <span>Lumi is thinking through the next response...</span>
+            </div>
+          )}
+
+          <div className="cv-quick-starts">
+            {hasActiveConversation && (
+              <button
+                type="button"
+                className="cv-quick-chip is-ideas"
+                aria-expanded={isIdeasOpen}
+                aria-controls={isIdeasOpen ? "cv-coach-ideas" : undefined}
+                onClick={() => setIsIdeasOpen((open) => !open)}
+              >
+                <LightbulbOutlinedIcon aria-hidden="true" />
+                Ideas
               </button>
-            ))}
+            )}
+            {showQuickStartChips && (
+              <div id="cv-coach-ideas" className="cv-quick-start-chips" role="group" aria-label="Quick starts">
+                {COACH_QUICK_PROMPTS.map((prompt) => (
+                  <button key={prompt} type="button" className="cv-quick-chip" onClick={() => handleQuickPrompt(prompt)}>
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="cv-composer-wrap">
+            <MessageInput
+              conversationId={COACH_CONVERSATION_ID}
+              connectionStatus="connected"
+              onSendMessage={handleSendMessage}
+              onTyping={() => {}}
+              onStopTyping={() => {}}
+            />
           </div>
         </div>
-      )}
 
-      <div
-        ref={messagesContainerRef}
-        className="cv-messages"
-      >
-        <Conversation
-          messages={messages}
-          userId={user.user_id}
-          onDeleteMessage={handleDeleteMessage}
-          onMessageReactionChange={handleMessageReactionChange}
-          baseTranslateLanguage={selectedLanguage}
-        />
+        {detailsVariant === "docked" && isDocked && (
+          <aside id={COACH_DETAILS_ID} className="cv-coach-dock" aria-labelledby="cv-coach-details-title">
+            {details}
+          </aside>
+        )}
       </div>
 
-      {isCoachTyping && (
-        <div className="cv-typing" role="status">
-          <TypingDots className="cv-typing-dots" />
-          <span>Lumi is thinking through the next response...</span>
-        </div>
-      )}
-
-      <div className="cv-composer-wrap">
-        <MessageInput
-          conversationId={COACH_CONVERSATION_ID}
-          connectionStatus="connected"
-          onSendMessage={handleSendMessage}
-          onTyping={() => {}}
-          onStopTyping={() => {}}
-        />
-      </div>
+      {detailsVariant === "sheet" && isDetailsOpen && <CoachSheet onClose={closeDetails}>{details}</CoachSheet>}
     </div>
   );
 };
