@@ -59,7 +59,8 @@ export function CommunityScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [data, setData] = useState<ProfileListResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  // True until the first fetch settles, so the empty state doesn't flash before data arrives.
+  const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
   const [activeSegment, setActiveSegment] = useState<"all" | "nearby" | "travel">("all");
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
@@ -258,7 +259,9 @@ export function CommunityScreen() {
             }
           />
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No people found.</Text>}
+        ListEmptyComponent={
+          loading && data === null ? null : <Text style={styles.empty}>No people found.</Text>
+        }
       />
 
       <Modal

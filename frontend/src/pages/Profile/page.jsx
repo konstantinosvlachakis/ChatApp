@@ -23,6 +23,7 @@ import {
   validRingColor,
 } from "./features/profileUtils";
 import { shareProfileLink } from "./features/shareProfile";
+import { useUser } from "../../context/UserContext";
 
 const VISITORS_PREVIEW = 3;
 
@@ -162,6 +163,8 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(true);
   const [uploadingSlot, setUploadingSlot] = useState("");
   const navigate = useNavigate();
+  // The header and other pages read the shared session user; keep it in step with this page.
+  const { setUser: setSessionUser } = useUser();
   const isDetectingLocationRef = useRef(false);
   const photosRef = useRef(null);
   const viewer = usePhotoViewer();
@@ -172,11 +175,14 @@ const ProfilePage = () => {
 
   // ---- Fetch User ----
   useEffect(() => {
+    const controller = new AbortController();
     const fetchUser = async () => {
       try {
-        const data = await api.get("/api/profile/");
+        const data = await api.get("/api/profile/", { signal: controller.signal });
         setUser(data);
+        setSessionUser((prev) => (prev ? { ...prev, ...data } : prev));
       } catch (err) {
+        if (isAbortError(err)) return;
         if (isApiError(err) && err.status === 401) {
           navigate("/login");
           return;
@@ -189,7 +195,8 @@ const ProfilePage = () => {
     };
 
     fetchUser();
-  }, [navigate]);
+    return () => controller.abort();
+  }, [navigate, setSessionUser]);
 
   // ---- Practice stats (optional card; the profile renders without them) ----
   useEffect(() => {
@@ -256,14 +263,17 @@ const ProfilePage = () => {
       const payload = await api.upload(`/api/profile/${user.user_id}/update-image/`, formData, {
         method: "PATCH",
       });
-      setUser((prev) => ({
+      const withPhotos = (prev) => ({
         ...prev,
         profile_image_url: payload.profile_image_url || prev.profile_image_url,
         complementary_image_1_url:
           payload.complementary_image_1_url || prev.complementary_image_1_url,
         complementary_image_2_url:
           payload.complementary_image_2_url || prev.complementary_image_2_url,
-      }));
+      });
+      setUser(withPhotos);
+      // Updates the header avatar (and every other reader) without a reload.
+      setSessionUser((prev) => (prev ? withPhotos(prev) : prev));
       setFailedPhotoKeys((prev) => {
         const next = new Set(prev);
         next.delete(slot);

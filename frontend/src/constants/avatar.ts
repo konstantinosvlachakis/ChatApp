@@ -12,3 +12,10 @@ export const handleAvatarError = (event: SyntheticEvent<HTMLImageElement>) => {
   img.dataset.avatarFallback = "1";
   img.src = DEFAULT_AVATAR_URL;
 };
+
+// For <img> elements whose src can change (e.g. the header after a photo upload): once
+// anything has loaded, the next src may fall back again. A failing fallback never
+// fires onLoad, so the guard against an onError loop still holds.
+export const handleAvatarLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+  delete event.currentTarget.dataset.avatarFallback;
+};
