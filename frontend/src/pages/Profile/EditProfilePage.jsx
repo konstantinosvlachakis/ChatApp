@@ -1,144 +1,182 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
-import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
-import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
-import TranslateOutlinedIcon from "@mui/icons-material/TranslateOutlined";
-import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
-import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
-import ArrowBackIosNewOutlinedIcon from "@mui/icons-material/ArrowBackIosNewOutlined";
+import { Link } from "react-router-dom";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import MyLocationOutlinedIcon from "@mui/icons-material/MyLocationOutlined";
-import { BASE_URL } from "../../constants/constants";
-import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
 import { getUserLocation } from "./utils/getUserLocation";
 import api, { getErrorMessage } from "../../lib/api";
-import { toastApiError } from "../../components/Toast";
-
-const LANGUAGE_OPTIONS = [
-  "english",
-  "spanish",
-  "french",
-  "german",
-  "italian",
-  "portuguese",
-  "greek",
-  "japanese",
-  "korean",
-  "chinese",
-  "arabic",
-  "russian",
-  "turkish",
-  "hindi",
-];
+import { showToast, toast, toastApiError } from "../../components/Toast";
+import {
+  LANGUAGE_KEYS,
+  LEVELS,
+  describeLanguage,
+  levelFor,
+  normalizeLanguage,
+  profileStrength,
+  resolveMediaUrl,
+  titleCase,
+} from "./features/profileUtils";
+import "./features/profile.css";
+import "./features/editProfile.css";
 
 const AVATAR_RING_OPTIONS = [
-  {
-    value: "#1b7f79",
-    label: "Teal",
-  },
-  {
-    value: "#ecb1d0",
-    label: "Blush",
-  },
-  {
-    value: "#d7b054",
-    label: "Gold",
-  },
-  {
-    value: "#a499e4",
-    label: "Lavender",
-  },
-  {
-    value: "#6b7a90",
-    label: "Slate",
-  },
+  { value: "#1b7f79", label: "Teal" },
+  { value: "#ecb1d0", label: "Blush" },
+  { value: "#d7b054", label: "Gold" },
+  { value: "#a499e4", label: "Lavender" },
+  { value: "#6b7a90", label: "Slate" },
 ];
+
+// Quick starts for the learning goal; each appends a sentence.
+const GOAL_SUGGESTIONS = [
+  { label: "Travel", text: "Get by confidently when I travel." },
+  { label: "Work", text: "Use the language at work." },
+  { label: "Exams", text: "Pass my language exam." },
+  { label: "Friends and family", text: "Talk with friends and family." },
+  { label: "Moving abroad", text: "Settle in after moving abroad." },
+];
+
+const SECTIONS = [
+  { id: "edit-about", label: "About you" },
+  { id: "edit-languages", label: "Languages" },
+  { id: "edit-details", label: "Personal details" },
+  { id: "edit-appearance", label: "Avatar accent" },
+];
+
+const TEXT_LIMIT = 2000;
 
 const isValidHexColor = (value = "") => /^#[0-9a-fA-F]{6}$/.test(String(value).trim());
 
-const toTitleCase = (value = "") =>
-  String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+const ageFrom = (dateOfBirth) => {
+  if (!dateOfBirth) return null;
+  const born = new Date(`${dateOfBirth}T00:00:00`);
+  if (Number.isNaN(born.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - born.getFullYear();
+  const beforeBirthday =
+    today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 ? age : null;
+};
 
-const normalizeLanguage = (value = "") => String(value).trim().toLowerCase();
+const formFromUser = (user) => {
+  const practicing = (user?.languages_practicing || []).map(normalizeLanguage).filter(Boolean);
+  return {
+    username: user?.username || "",
+    email: user?.email || "",
+    date_of_birth: user?.date_of_birth || "",
+    native_language: normalizeLanguage(user?.native_language || "english"),
+    base_translate_language: normalizeLanguage(user?.base_translate_language || user?.native_language || "english"),
+    location: user?.location || "",
+    languages_practicing: practicing,
+    levels: Object.fromEntries(practicing.map((lang) => [lang, levelFor(user?.practice_language_levels, lang)])),
+    bio: user?.bio || "",
+    learning_goal: user?.learning_goal || "",
+    avatar_ring_color: user?.avatar_ring_color || "#1b7f79",
+  };
+};
+
+const FIELD_KEYS = [
+  "username",
+  "email",
+  "date_of_birth",
+  "native_language",
+  "base_translate_language",
+  "location",
+  "languages_practicing",
+  "levels",
+  "bio",
+  "learning_goal",
+  "avatar_ring_color",
+];
+
+const countChanges = (form, initial) =>
+  FIELD_KEYS.filter((key) => JSON.stringify(form[key]) !== JSON.stringify(initial[key])).length;
+
+const Visibility = ({ kind, children }) => (
+  <span className={`pe-tag ${kind === "private" ? "is-private" : ""}`}>{children}</span>
+);
+
+const LevelPicker = ({ language, value, onChange }) => {
+  const name = describeLanguage(language).name;
+  return (
+    <fieldset className="pe-seg">
+      <legend className="sr-only">{name} level</legend>
+      {LEVELS.map((level) => (
+        <label key={level} className={value === level ? "is-on" : ""}>
+          <input
+            type="radio"
+            name={`level-${language}`}
+            value={level}
+            checked={value === level}
+            onChange={() => onChange(level)}
+            className="sr-only"
+          />
+          {titleCase(level)}
+        </label>
+      ))}
+    </fieldset>
+  );
+};
 
 const EditProfilePage = () => {
-  const navigate = useNavigate();
   const { user, refreshUserProfile } = useUser();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [form, setForm] = useState({
-    username: "",
-    email: "",
-    date_of_birth: "",
-    native_language: "english",
-    base_translate_language: "english",
-    location: "",
-    languages_practicing: [],
-    avatar_ring_color: "#1b7f79",
-  });
+  const initial = useMemo(() => formFromUser(user), [user]);
+  const [form, setForm] = useState(initial);
 
+  // Re-hydrate when the user loads or after a save refreshes it.
   useEffect(() => {
-    const hydrate = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      setForm({
-        username: user.username || "",
-        email: user.email || "",
-        date_of_birth: user.date_of_birth || "",
-        native_language: normalizeLanguage(user.native_language || "english"),
-        base_translate_language: normalizeLanguage(
-          user.base_translate_language || user.native_language || "english"
-        ),
-        location: user.location || "",
-        languages_practicing: (user.languages_practicing || [])
-          .map((lang) => normalizeLanguage(lang))
-          .filter(Boolean),
-        avatar_ring_color: user.avatar_ring_color || "#1b7f79",
-      });
-      setLoading(false);
-    };
-    hydrate();
-  }, [user]);
+    setForm(initial);
+  }, [initial]);
 
-  const selectedPracticing = useMemo(
-    () =>
-      form.languages_practicing
-        .filter((lang) => LANGUAGE_OPTIONS.includes(lang))
-        .map((lang) => toTitleCase(lang)),
-    [form.languages_practicing]
-  );
-
-  const previewImageUrl = useMemo(() => {
-    const raw = user?.profile_image_url || "";
-    if (!raw) return DEFAULT_AVATAR_URL;
-    if (raw.startsWith("http")) return raw;
-    if (raw.startsWith("/media/")) return `${BASE_URL}${raw}`;
-    return `${BASE_URL}/media/${raw}`;
-  }, [user?.profile_image_url]);
+  const changes = countChanges(form, initial);
+  const ringValid = isValidHexColor(form.avatar_ring_color);
+  const usernameValid = Boolean(form.username.trim());
+  const canSave = changes > 0 && ringValid && usernameValid && !saving;
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const togglePracticingLanguage = (language) => {
+  const addLanguage = (language) => {
+    setForm((prev) =>
+      prev.languages_practicing.includes(language)
+        ? prev
+        : {
+            ...prev,
+            languages_practicing: [...prev.languages_practicing, language],
+            levels: { ...prev.levels, [language]: prev.levels[language] || "" },
+          }
+    );
+  };
+
+  const removeLanguage = (language) => {
     setForm((prev) => {
-      const exists = prev.languages_practicing.includes(language);
+      const { [language]: _removed, ...levels } = prev.levels;
       return {
         ...prev,
-        languages_practicing: exists
-          ? prev.languages_practicing.filter((entry) => entry !== language)
-          : [...prev.languages_practicing, language],
+        languages_practicing: prev.languages_practicing.filter((entry) => entry !== language),
+        levels,
       };
+    });
+  };
+
+  const setLevel = (language, level) => {
+    setForm((prev) => ({ ...prev, levels: { ...prev.levels, [language]: level } }));
+  };
+
+  const addGoalSuggestion = (text) => {
+    setForm((prev) => {
+      const current = prev.learning_goal.trim();
+      if (current.includes(text)) return prev;
+      const joined = current ? `${current.replace(/[.\s]+$/, "")}. ${text}` : text;
+      return { ...prev, learning_goal: joined.slice(0, TEXT_LIMIT) };
     });
   };
 
@@ -146,327 +184,449 @@ const EditProfilePage = () => {
     try {
       setDetectingLocation(true);
       const { city, country } = await getUserLocation();
-      const location = [city, country].filter(Boolean).join(", ");
-      updateField("location", location);
+      updateField("location", [city, country].filter(Boolean).join(", "));
       setError("");
     } catch (err) {
-      setError(String(err || "Unable to detect location."));
+      toast.error(String(err?.message || err || "Unable to detect location."));
     } finally {
       setDetectingLocation(false);
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (event) => {
+    event?.preventDefault();
+    if (!canSave) return;
     setSaving(true);
     setError("");
-    setSuccess("");
+    // The API stores language labels title-cased; level keys must match those labels exactly.
+    const practicing = form.languages_practicing.map(titleCase);
+    const levels = Object.fromEntries(
+      form.languages_practicing
+        .filter((lang) => LEVELS.includes(form.levels[lang]))
+        .map((lang) => [titleCase(lang), form.levels[lang]])
+    );
     try {
       await api.patch("/api/profile/edit/", {
-          username: form.username.trim(),
-          email: form.email.trim().toLowerCase(),
-          date_of_birth: form.date_of_birth || null,
-          native_language: normalizeLanguage(form.native_language),
-          base_translate_language: normalizeLanguage(form.base_translate_language),
-          location: form.location.trim(),
-          languages_practicing: form.languages_practicing.map((lang) =>
-            toTitleCase(lang)
-          ),
-          avatar_ring_color: form.avatar_ring_color,
+        username: form.username.trim(),
+        email: form.email.trim().toLowerCase(),
+        date_of_birth: form.date_of_birth || null,
+        native_language: normalizeLanguage(form.native_language),
+        base_translate_language: normalizeLanguage(form.base_translate_language),
+        location: form.location.trim(),
+        languages_practicing: practicing,
+        practice_language_levels: levels,
+        bio: form.bio.trim(),
+        learning_goal: form.learning_goal.trim(),
+        avatar_ring_color: form.avatar_ring_color.toLowerCase(),
       });
-
       await refreshUserProfile();
-      setSuccess("Profile updated.");
+      showToast("Your profile changes were saved.", { variant: "success", placement: "top" });
     } catch (err) {
-      const message = getErrorMessage(err, "Failed to save profile.");
-      setError(message);
+      setError(getErrorMessage(err, "Failed to save profile."));
       toastApiError(err, "Couldn't save your profile");
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return <div className="p-8 text-gray-500">Loading profile editor...</div>;
+  if (!user) {
+    return <div className="pf-state">Loading profile editor…</div>;
   }
 
-  return (
-    <div className="min-h-full bg-slate-50 p-3 sm:p-5 md:p-8">
-      <div className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 md:p-8">
-        <div className="mb-6 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate("/profile")}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
-          >
-            <ArrowBackIosNewOutlinedIcon fontSize="inherit" />
-            Back
-          </button>
-          <h1 className="text-xl font-semibold text-slate-800 sm:text-2xl">Edit Profile</h1>
-          <div className="w-14" />
-        </div>
+  const age = ageFrom(form.date_of_birth);
+  const ringColor = ringValid ? form.avatar_ring_color : "#1b7f79";
+  const nativeName = describeLanguage(form.native_language).name;
+  const learningNames = form.languages_practicing.map((lang) => describeLanguage(lang).name);
+  const strength = profileStrength({
+    ...user,
+    bio: form.bio,
+    learning_goal: form.learning_goal,
+    languages_practicing: form.languages_practicing,
+    practice_language_levels: form.levels,
+  });
+  const languagesToAdd = LANGUAGE_KEYS.filter(
+    (lang) => lang !== form.native_language && !form.languages_practicing.includes(lang)
+  );
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Username</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <PersonOutlineIcon fontSize="small" className="text-slate-500" />
-              <input
-                value={form.username}
-                onChange={(event) => updateField("username", event.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none"
-                placeholder="Username"
-              />
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Email</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <EmailOutlinedIcon fontSize="small" className="text-slate-500" />
-              <input
-                value={form.email}
-                onChange={(event) => updateField("email", event.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none"
-                placeholder="Email"
-                type="email"
-              />
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Date of Birth</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <CalendarMonthOutlinedIcon fontSize="small" className="text-slate-500" />
-              <input
-                value={form.date_of_birth}
-                onChange={(event) => updateField("date_of_birth", event.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none"
-                type="date"
-              />
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Location</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <PlaceOutlinedIcon fontSize="small" className="text-slate-500" />
-              <input
-                value={form.location}
-                onChange={(event) => updateField("location", event.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none"
-                placeholder="City, Country"
-              />
-              <button
-                type="button"
-                onClick={detectLocation}
-                className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100"
-                title="Detect current location"
-                disabled={detectingLocation}
-              >
-                <MyLocationOutlinedIcon fontSize="small" />
-              </button>
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Native Language</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <PublicOutlinedIcon fontSize="small" className="text-slate-500" />
-              <select
-                value={form.native_language}
-                onChange={(event) => updateField("native_language", event.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none"
-              >
-                {LANGUAGE_OPTIONS.map((language) => (
-                  <option key={language} value={language}>
-                    {toTitleCase(language)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-slate-700">Base Translate Language</span>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-              <TranslateOutlinedIcon fontSize="small" className="text-slate-500" />
-              <select
-                value={form.base_translate_language}
-                onChange={(event) =>
-                  updateField("base_translate_language", event.target.value)
-                }
-                className="w-full bg-transparent text-slate-800 outline-none"
-              >
-                {LANGUAGE_OPTIONS.map((language) => (
-                  <option key={language} value={language}>
-                    {toTitleCase(language)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </label>
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-slate-200 p-4">
-          <p className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
-            <TranslateOutlinedIcon fontSize="small" />
-            Languages Practicing
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {LANGUAGE_OPTIONS.map((language) => {
-              const selected = form.languages_practicing.includes(language);
-              return (
-                <button
-                  key={language}
-                  type="button"
-                  onClick={() => togglePracticingLanguage(language)}
-                  className={`rounded-full border px-3 py-1 text-sm transition ${
-                    selected
-                      ? "border-blue-300 bg-blue-50 text-blue-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {toTitleCase(language)}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            Selected: {selectedPracticing.length ? selectedPracticing.join(", ") : "None"}
-          </p>
-        </div>
-
-        <div className="mt-6 overflow-hidden rounded-[28px] border border-slate-200">
-          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,#f7fafc_0%,#eef5f8_100%)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--lv-link)]">
-              Avatar Accent
-            </p>
-            <div className="mt-4 grid gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-              <div className="flex flex-col items-center rounded-[26px] border border-white/70 bg-white/80 p-5 text-center">
-                <div
-                  className="group h-28 w-28 overflow-hidden rounded-full border-4 shadow-sm sm:h-32 sm:w-32"
-                  style={{ borderColor: form.avatar_ring_color }}
-                >
-                  <img
-                    src={previewImageUrl}
-                    alt="Avatar preview"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <p className="mt-4 text-sm font-semibold text-slate-800">Live profile preview</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  This uses the same ring thickness and size as your main profile avatar.
-                </p>
-              </div>
-
-              <div className="rounded-[26px] border border-white/70 bg-white/80 p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <label className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-slate-700">Pick a custom color</span>
-                    <input
-                      type="color"
-                      value={isValidHexColor(form.avatar_ring_color) ? form.avatar_ring_color : "#1b7f79"}
-                      onChange={(event) => updateField("avatar_ring_color", event.target.value.toLowerCase())}
-                      className="h-12 w-16 cursor-pointer rounded-2xl border border-slate-200 bg-white p-1"
-                    />
-                  </label>
-                  <label className="flex-1">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Hex value
-                    </span>
-                    <input
-                      type="text"
-                      value={form.avatar_ring_color}
-                      onChange={(event) => updateField("avatar_ring_color", event.target.value)}
-                      placeholder="#1b7f79"
-                      className={`w-full rounded-2xl border px-4 py-3 text-sm text-slate-900 outline-none transition ${
-                        isValidHexColor(form.avatar_ring_color)
-                          ? "border-slate-200 focus:border-[var(--lv-primary)]"
-                          : "border-rose-300 focus:border-rose-400"
-                      }`}
-                    />
-                  </label>
-                </div>
-                <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5">
-                  <span
-                    className="h-3 w-3 rounded-full border border-white"
-                    style={{ backgroundColor: form.avatar_ring_color }}
-                  />
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    {form.avatar_ring_color}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Quick palettes</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Start from a balanced color, then fine-tune it with the picker.
-                </p>
-              </div>
-            </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {AVATAR_RING_OPTIONS.map((option) => {
-              const isSelected = form.avatar_ring_color.toLowerCase() === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => updateField("avatar_ring_color", option.value)}
-                  className={`rounded-[22px] border px-3 py-3 text-left transition ${
-                    isSelected
-                      ? "border-[var(--lv-primary)] bg-[rgba(27,127,121,0.06)]"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div
-                    className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border-[3px]"
-                    style={{
-                      borderColor: option.value,
-                      backgroundColor: `${option.value}1a`,
-                    }}
-                  >
-                    <span className="h-7 w-7 rounded-full bg-slate-200" />
-                  </div>
-                  <p className="text-sm font-medium text-slate-800">{option.label}</p>
-                </button>
-              );
-            })}
-          </div>
-          {!isValidHexColor(form.avatar_ring_color) && (
-            <p className="mt-3 text-xs text-rose-600">
-              Enter a valid 6-digit hex color like `#1b7f79`.
-            </p>
-          )}
-          </div>
-        </div>
-
-        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-        {success && <p className="mt-4 text-sm text-emerald-700">{success}</p>}
-
-        <div className="mt-8 flex flex-col gap-3 rounded-[24px] border border-[var(--lv-border)] bg-[var(--lv-surface-muted)] p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[var(--lv-text)]">Ready to update your profile?</p>
-            <p className="mt-1 text-sm text-[var(--lv-muted-text)]">
-              Save your changes to refresh how your profile appears across LangVoyage.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[var(--lv-navy)] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#10263a] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <SaveOutlinedIcon fontSize="small" />
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
+  const statusText = error
+    ? error
+    : changes
+      ? `${changes} unsaved ${changes === 1 ? "change" : "changes"}`
+      : "No unsaved changes";
+  // Rendered in the header and again after the last section, so saving never needs a scroll.
+  const saveActions = (
+    <div className="pe-actions">
+      <span className={`pe-status ${changes ? "is-dirty" : ""} ${error ? "is-error" : ""}`}>{statusText}</span>
+      <div className="pe-actions-buttons">
+        <button type="button" className="pf-btn" onClick={() => setForm(initial)} disabled={!changes || saving}>
+          Discard
+        </button>
+        <button type="submit" className="pf-btn is-primary" disabled={!canSave}>
+          {saving ? "Saving…" : "Save changes"}
+        </button>
       </div>
     </div>
+  );
+
+  return (
+    <form className="pf-page pe-page" onSubmit={handleSave} noValidate>
+      <div className="pe-head">
+        <Link to="/profile" className="pf-link pe-back">
+          <ArrowBackRoundedIcon aria-hidden="true" />
+          Back to profile
+        </Link>
+        <div className="pe-head-row">
+          <div className="pe-head-text">
+            <h1>Edit profile</h1>
+            <p>The preview updates as you type. Nothing changes for others until you save.</p>
+          </div>
+          {saveActions}
+        </div>
+      </div>
+
+      <div className="pe-layout">
+        <aside className="pe-aside">
+          <section className="pf-card pe-preview" aria-label="Live preview">
+            <div className="pe-preview-body">
+              <span className="pf-eyebrow">Preview</span>
+              <div className="pe-preview-avatar" style={{ background: ringColor }}>
+                <img
+                  src={resolveMediaUrl(user.profile_image_url) || DEFAULT_AVATAR_URL}
+                  alt=""
+                  onError={handleAvatarError}
+                />
+              </div>
+              <strong className="pe-preview-name">
+                {form.username.trim() || "Your name"}
+                {age != null ? `, ${age}` : ""}
+              </strong>
+              {form.location.trim() && <span className="pe-preview-meta">{form.location.trim()}</span>}
+              {learningNames.length > 0 && (
+                <span className="pf-exchange-pill">
+                  {nativeName} <span aria-label="exchanging with">⇄</span> {learningNames.join(", ")}
+                </span>
+              )}
+              {form.bio.trim() && <p className="pe-preview-bio">{form.bio.trim()}</p>}
+            </div>
+          </section>
+
+          <section className="pf-card pe-strength" aria-label="Profile strength">
+            <div className="pe-strength-head">
+              <strong>Profile strength</strong>
+              <strong>{strength.percent}%</strong>
+            </div>
+            <div
+              className="pf-meter"
+              role="progressbar"
+              aria-label="Profile strength"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={strength.percent}
+            >
+              <span style={{ width: `${strength.percent}%` }} />
+            </div>
+            <ul className="pe-checklist">
+              {strength.steps.map((step) => (
+                <li key={step.key} className={step.done ? "is-done" : ""}>
+                  {step.done ? (
+                    <CheckRoundedIcon aria-hidden="true" />
+                  ) : (
+                    <span className="pe-check-empty" aria-hidden="true" />
+                  )}
+                  {step.key === "photo" || step.key === "photos" ? (
+                    step.done ? (
+                      <span>{step.label}</span>
+                    ) : (
+                      <Link to="/profile">{step.label} (on your profile)</Link>
+                    )
+                  ) : (
+                    <span>{step.label}</span>
+                  )}
+                  {step.done && <span className="sr-only"> (done)</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <nav className="pf-card pe-nav" aria-label="Sections">
+            {SECTIONS.map((section) => (
+              <a key={section.id} href={`#${section.id}`}>
+                {section.label}
+              </a>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="pe-main">
+          <section className="pf-card pe-section" id="edit-about" aria-labelledby="edit-about-title">
+            <div className="pe-section-head">
+              <h2 id="edit-about-title">About you</h2>
+              <p>This is what partners read before saying hello.</p>
+            </div>
+            <div className="pe-field">
+              <div className="pe-field-top">
+                <label htmlFor="edit-username">Username</label>
+                <Visibility>Shown on your profile</Visibility>
+              </div>
+              <input
+                id="edit-username"
+                className="pe-input"
+                value={form.username}
+                onChange={(event) => updateField("username", event.target.value)}
+                autoComplete="username"
+                maxLength={30}
+                aria-invalid={!usernameValid}
+                aria-describedby={!usernameValid ? "edit-username-error" : undefined}
+              />
+              {!usernameValid && (
+                <p id="edit-username-error" className="pe-error">
+                  Username can't be empty.
+                </p>
+              )}
+            </div>
+            <div className="pe-field">
+              <div className="pe-field-top">
+                <label htmlFor="edit-bio">Bio</label>
+                <span className="pe-count" aria-live="polite">
+                  {form.bio.length} / {TEXT_LIMIT}
+                </span>
+              </div>
+              <textarea
+                id="edit-bio"
+                className="pe-input"
+                rows={4}
+                value={form.bio}
+                maxLength={TEXT_LIMIT}
+                onChange={(event) => updateField("bio", event.target.value)}
+                aria-describedby="edit-bio-help"
+              />
+              <p id="edit-bio-help" className="pe-help">
+                Ideas: what you like to talk about, your job or studies, your favourite places.
+              </p>
+            </div>
+            <div className="pe-field">
+              <label htmlFor="edit-goal">Learning goal</label>
+              <input
+                id="edit-goal"
+                className="pe-input"
+                value={form.learning_goal}
+                maxLength={TEXT_LIMIT}
+                onChange={(event) => updateField("learning_goal", event.target.value)}
+                placeholder="e.g. Hold a 10-minute conversation by summer"
+              />
+              <div className="pe-chips" aria-label="Goal ideas">
+                {GOAL_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion.label}
+                    type="button"
+                    className="pe-chip"
+                    onClick={() => addGoalSuggestion(suggestion.text)}
+                  >
+                    + {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="pf-card pe-section" id="edit-languages" aria-labelledby="edit-languages-title">
+            <div className="pe-section-head">
+              <h2 id="edit-languages-title">Languages</h2>
+              <p>Levels help People find you the right partners.</p>
+            </div>
+            <div className="pe-row2">
+              <div className="pe-field">
+                <label htmlFor="edit-native">Native language</label>
+                <select
+                  id="edit-native"
+                  className="pe-input"
+                  value={form.native_language}
+                  onChange={(event) => updateField("native_language", event.target.value)}
+                >
+                  {LANGUAGE_KEYS.map((language) => (
+                    <option key={language} value={language}>
+                      {titleCase(language)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="pe-field">
+                <label htmlFor="edit-translate">Translate messages into</label>
+                <select
+                  id="edit-translate"
+                  className="pe-input"
+                  value={form.base_translate_language}
+                  onChange={(event) => updateField("base_translate_language", event.target.value)}
+                >
+                  {LANGUAGE_KEYS.map((language) => (
+                    <option key={language} value={language}>
+                      {titleCase(language)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="pe-field">
+              <span className="pe-label">Languages you're learning</span>
+              {form.languages_practicing.length ? (
+                <ul className="pe-lang-list">
+                  {form.languages_practicing.map((language) => {
+                    const info = describeLanguage(language);
+                    return (
+                      <li key={language} className="pe-lang">
+                        <span className="pf-lang-code is-learning" aria-hidden="true">
+                          {info.code}
+                        </span>
+                        <span className="pf-lang-text pe-lang-name">
+                          <strong>{info.name}</strong>
+                          {info.endonym && <span>{info.endonym}</span>}
+                        </span>
+                        <LevelPicker
+                          language={language}
+                          value={form.levels[language] || ""}
+                          onChange={(level) => setLevel(language, level)}
+                        />
+                        <button
+                          type="button"
+                          className="pe-icon-btn"
+                          onClick={() => removeLanguage(language)}
+                          aria-label={`Remove ${info.name}`}
+                        >
+                          <CloseRoundedIcon aria-hidden="true" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="pe-help">Add the languages you want to practise.</p>
+              )}
+              {languagesToAdd.length > 0 && (
+                <div className="pe-chips" aria-label="Add a language">
+                  <span className="pe-chips-label">Add:</span>
+                  {languagesToAdd.map((language) => (
+                    <button key={language} type="button" className="pe-chip" onClick={() => addLanguage(language)}>
+                      + {titleCase(language)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="pf-card pe-section" id="edit-details" aria-labelledby="edit-details-title">
+            <div className="pe-section-head">
+              <h2 id="edit-details-title">Personal details</h2>
+              <p>Your birthday and email are never shown to anyone.</p>
+            </div>
+            <div className="pe-row2">
+              <div className="pe-field">
+                <div className="pe-field-top">
+                  <label htmlFor="edit-dob">Date of birth</label>
+                  <Visibility>Only your age is shown</Visibility>
+                </div>
+                <input
+                  id="edit-dob"
+                  className="pe-input"
+                  type="date"
+                  value={form.date_of_birth}
+                  onChange={(event) => updateField("date_of_birth", event.target.value)}
+                />
+              </div>
+              <div className="pe-field">
+                <div className="pe-field-top">
+                  <label htmlFor="edit-email">Email</label>
+                  <Visibility kind="private">Private</Visibility>
+                </div>
+                <input
+                  id="edit-email"
+                  className="pe-input"
+                  type="email"
+                  autoComplete="email"
+                  value={form.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="pe-field">
+              <div className="pe-field-top">
+                <label htmlFor="edit-location">Location</label>
+                <Visibility>Shown on your profile</Visibility>
+              </div>
+              <div className="pe-inline">
+                <input
+                  id="edit-location"
+                  className="pe-input"
+                  value={form.location}
+                  placeholder="City, Country"
+                  onChange={(event) => updateField("location", event.target.value)}
+                />
+                <button type="button" className="pf-btn" onClick={detectLocation} disabled={detectingLocation}>
+                  <MyLocationOutlinedIcon aria-hidden="true" />
+                  {detectingLocation ? "Detecting…" : "Use my location"}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="pf-card pe-section" id="edit-appearance" aria-labelledby="edit-appearance-title">
+            <div className="pe-section-head">
+              <h2 id="edit-appearance-title">Avatar accent</h2>
+              <p>The ring colour around your photo. Check it in the preview.</p>
+            </div>
+            <fieldset className="pe-swatches">
+              <legend className="sr-only">Quick palettes</legend>
+              {AVATAR_RING_OPTIONS.map((option) => {
+                const selected = form.avatar_ring_color.toLowerCase() === option.value;
+                return (
+                  <label key={option.value} className={`pe-swatch ${selected ? "is-on" : ""}`}>
+                    <input
+                      type="radio"
+                      name="ring-color"
+                      className="sr-only"
+                      checked={selected}
+                      onChange={() => updateField("avatar_ring_color", option.value)}
+                    />
+                    <span className="pe-swatch-dot" style={{ background: option.value }} aria-hidden="true" />
+                    {option.label}
+                  </label>
+                );
+              })}
+            </fieldset>
+            <div className="pe-custom-color">
+              <label htmlFor="edit-ring-picker">Custom colour</label>
+              <input
+                id="edit-ring-picker"
+                type="color"
+                className="pe-color"
+                value={ringColor}
+                onChange={(event) => updateField("avatar_ring_color", event.target.value.toLowerCase())}
+              />
+              <label htmlFor="edit-ring-hex" className="sr-only">
+                Hex value
+              </label>
+              <input
+                id="edit-ring-hex"
+                className="pe-input pe-hex"
+                value={form.avatar_ring_color}
+                onChange={(event) => updateField("avatar_ring_color", event.target.value.trim())}
+                placeholder="#1b7f79"
+                aria-invalid={!ringValid}
+                aria-describedby={!ringValid ? "edit-ring-error" : undefined}
+              />
+            </div>
+            {!ringValid && (
+              <p id="edit-ring-error" className="pe-error">
+                Enter a 6-digit hex colour like #1b7f79.
+              </p>
+            )}
+          </section>
+
+          <div className="pf-card pe-footer-actions">{saveActions}</div>
+        </div>
+      </div>
+
+    </form>
   );
 };
 

@@ -5,11 +5,14 @@ import { getErrorMessage, isAbortError } from "../../lib/apiError";
  * API helpers, mutation callbacks); <ToastViewport /> renders the queue.
  */
 export type ToastVariant = "error" | "success" | "info";
+/** "corner": bottom-right stack (default). "top": a centred confirmation under the header. */
+export type ToastPlacement = "corner" | "top";
 
 export type Toast = {
   id: number;
   message: string;
   variant: ToastVariant;
+  placement: ToastPlacement;
   durationMs: number;
 };
 
@@ -49,7 +52,7 @@ export const dismissToast = (id: number) => {
 
 export const showToast = (
   message: string,
-  options: { variant?: ToastVariant; durationMs?: number } = {}
+  options: { variant?: ToastVariant; durationMs?: number; placement?: ToastPlacement } = {}
 ) => {
   const text = String(message || "").trim();
   if (!text) return null;
@@ -62,6 +65,7 @@ export const showToast = (
     id: nextId++,
     message: text,
     variant,
+    placement: options.placement || "corner",
     durationMs: options.durationMs ?? DEFAULT_DURATION_MS[variant],
   };
   let next = [...toasts, toast];

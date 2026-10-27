@@ -28,6 +28,21 @@ describe("Toast system", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  test("top placement renders in the centred stack and auto-dismisses", () => {
+    render(<ToastViewport />);
+    act(() => {
+      showToast("Your profile changes were saved.", { variant: "success", placement: "top" });
+      toast.info("Corner note");
+    });
+    expect(screen.getByTestId("toast-viewport-top")).toHaveTextContent("Your profile changes were saved.");
+    expect(screen.getByTestId("toast-viewport")).not.toHaveTextContent("Your profile changes were saved.");
+    expect(screen.getByTestId("toast-viewport")).toHaveTextContent("Corner note");
+    act(() => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(screen.getByTestId("toast-viewport-top")).toBeEmptyDOMElement();
+  });
+
   test("auto-dismisses after its duration", () => {
     render(<ToastViewport />);
     act(() => {

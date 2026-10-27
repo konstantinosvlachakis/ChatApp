@@ -19,11 +19,14 @@ const LANGUAGE_META = {
   hindi: { code: "HI", endonym: "हिन्दी" },
 };
 
+// Same order as the editor's language list.
+export const LANGUAGE_KEYS = Object.keys(LANGUAGE_META);
+
 export const LEVELS = ["beginner", "intermediate", "advanced", "fluent"];
 
 export const normalizeLanguage = (language) => String(language || "").trim().toLowerCase();
 
-const titleCase = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+export const titleCase = (value) => value.charAt(0).toUpperCase() + value.slice(1);
 
 export const describeLanguage = (language) => {
   const key = normalizeLanguage(language);
@@ -96,7 +99,11 @@ export const profileStrength = (profile) => {
     },
   ];
   const doneCount = steps.filter((step) => step.done).length;
-  return { percent: Math.round((doneCount / steps.length) * 100), todo: steps.filter((step) => !step.done) };
+  return {
+    percent: Math.round((doneCount / steps.length) * 100),
+    steps,
+    todo: steps.filter((step) => !step.done),
+  };
 };
 
 export const formatViewedAt = (value, now = new Date()) => {
