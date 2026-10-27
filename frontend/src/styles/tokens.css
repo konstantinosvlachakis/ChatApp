@@ -42,6 +42,8 @@
   --lv-online: #1f9d6b;
   --lv-badge: #c2412f;
   --lv-premium: #ecb1d0;
+  /* Full-screen photo viewer backdrop (white on it >= 12:1). */
+  --lv-scrim-strong: #0b1a23eb;
 
   /* Shape and type */
   --lv-radius-pill: 999px;
