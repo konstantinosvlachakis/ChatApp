@@ -18,6 +18,7 @@ import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
 import AppHeader from "./AppHeader";
 import BottomTabBar from "./BottomTabBar";
 import { isOpenChatPath } from "./navItems";
+import { getNotificationPermission, requestNotificationPermission } from "../utils/notifications";
 import "./appShell.css";
 import {
   SESSION_REFRESHED_EVENT,
@@ -77,9 +78,14 @@ const Layout = () => {
   const offRouteListRefetchRef = useRef(null);
   const [onlineUserIds, setOnlineUserIds] = useState(() => new Set());
 
-  const handleLogout = async () => {
+  // Also used by Settings (via the Outlet context): `{ accountDeleted: true }` skips the
+  // presence call (the account is gone) but still clears the auth cookies and local session.
+  const handleLogout = async (options) => {
+    const accountDeleted = options?.accountDeleted === true;
     // Best effort: logout must complete locally even if the server is unreachable.
-    await api.post("/api/presence/offline/", undefined, { timeoutMs: 5000 }).catch(() => {});
+    if (!accountDeleted) {
+      await api.post("/api/presence/offline/", undefined, { timeoutMs: 5000 }).catch(() => {});
+    }
     await api.post("/api/logout/", undefined, { timeoutMs: 5000 }).catch(() => {});
 
     presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
@@ -125,10 +131,7 @@ const Layout = () => {
   );
 
   useEffect(() => {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
+    if (getNotificationPermission() === "default") requestNotificationPermission();
   }, []);
 
   useEffect(() => {
@@ -407,7 +410,7 @@ const Layout = () => {
               }`}
             >
               <RouteErrorBoundary>
-                <Outlet />
+                <Outlet context={{ onLogout: handleLogout }} />
               </RouteErrorBoundary>
             </div>
           </div>
