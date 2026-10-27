@@ -4,6 +4,12 @@ import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
+import { CONVERSATIONS_LIST_QUERY_KEY } from "../pages/Conversations/api/conversationListCache";
+import {
+  CONVERSATION_LIST_REFETCH_DEBOUNCE_MS,
+  createTrailingDebounce,
+  shouldRefetchListOnFocus,
+} from "../pages/Conversations/api/conversationListRefetch";
 import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../constants/avatar";
 import { RouteErrorBoundary } from "../components/ErrorBoundary";
@@ -46,10 +52,12 @@ const Layout = () => {
   const navigate = useNavigate();
   const { user, setUser, loading: userLoading } = useUser();
   const queryClient = useQueryClient();
+  // No refetch on every focus: socket events keep the list current, and the effects below
+  // refetch only when events may have been missed (see shouldRefetchListOnFocus).
   const { data: conversations = [] } = useGetConversations({
     config: {
       refetchInterval: false,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       staleTime: 15000,
       enabled: Boolean(user?.user_id),
     },
@@ -60,6 +68,13 @@ const Layout = () => {
   const presenceHeartbeatRef = useRef(null);
   const presenceReconnectRef = useRef(null);
   const presenceListenersRef = useRef(new Set());
+  // `conversation_update` is applied by ConversationList, which is mounted only on
+  // /conversations*. Elsewhere a visible tab refetches (debounced) so the unread badge
+  // stays live; a hidden tab remembers the miss and refetches on focus/entry.
+  const isChatRouteRef = useRef(isChatRoute);
+  const missedListUpdateRef = useRef(false);
+  const listHiddenAtRef = useRef(null);
+  const offRouteListRefetchRef = useRef(null);
   const [onlineUserIds, setOnlineUserIds] = useState(() => new Set());
 
   const handleLogout = async () => {
@@ -127,6 +142,7 @@ const Layout = () => {
     let stoppedForAuth = false;
     let authRefreshUsed = false;
     let waitingForVisibleTab = false;
+    let hasConnectedBefore = false;
 
     const clearPresenceTimers = () => {
       if (presenceHeartbeatRef.current) {
@@ -156,6 +172,12 @@ const Layout = () => {
         reconnectAttempt = 0;
         stoppedForAuth = false;
         authRefreshUsed = false;
+        if (hasConnectedBefore) {
+          // The socket was down, so conversation_update events may have been missed.
+          missedListUpdateRef.current = false;
+          queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+        }
+        hasConnectedBefore = true;
         presenceHeartbeatRef.current = window.setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: "heartbeat" }));
@@ -182,6 +204,13 @@ const Layout = () => {
             });
             presenceListenersRef.current.forEach((listener) => listener(data));
             return;
+          }
+          if (data.type === "conversation_update" && !isChatRouteRef.current) {
+            if (isDocumentHidden()) {
+              missedListUpdateRef.current = true;
+            } else {
+              offRouteListRefetchRef.current?.();
+            }
           }
           presenceListenersRef.current.forEach((listener) => listener(data));
         } catch (_error) {
@@ -248,7 +277,59 @@ const Layout = () => {
       presenceSocketRef.current = null;
       setOnlineUserIds(new Set());
     };
-  }, [user?.user_id]);
+  }, [queryClient, user?.user_id]);
+
+  useEffect(() => {
+    const refetch = createTrailingDebounce(
+      () => queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY }),
+      CONVERSATION_LIST_REFETCH_DEBOUNCE_MS
+    );
+    offRouteListRefetchRef.current = refetch;
+    return () => {
+      refetch.cancel();
+      offRouteListRefetchRef.current = null;
+    };
+  }, [queryClient]);
+
+  useEffect(() => {
+    isChatRouteRef.current = isChatRoute;
+    if (isChatRoute && missedListUpdateRef.current) {
+      missedListUpdateRef.current = false;
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+    }
+  }, [isChatRoute, queryClient]);
+
+  useEffect(() => {
+    if (!user?.user_id) return undefined;
+
+    const refreshListIfStale = () => {
+      if (isDocumentHidden()) return;
+      const needsRefetch = shouldRefetchListOnFocus({
+        missedUpdate: missedListUpdateRef.current,
+        hiddenAt: listHiddenAtRef.current,
+        now: Date.now(),
+      });
+      missedListUpdateRef.current = false;
+      listHiddenAtRef.current = null;
+      if (needsRefetch) {
+        queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (isDocumentHidden()) {
+        listHiddenAtRef.current = listHiddenAtRef.current ?? Date.now();
+        return;
+      }
+      refreshListIfStale();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", refreshListIfStale);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", refreshListIfStale);
+    };
+  }, [queryClient, user?.user_id]);
 
   useEffect(() => {
     const currentMap = new Map();
