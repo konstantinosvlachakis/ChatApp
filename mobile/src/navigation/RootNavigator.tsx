@@ -48,6 +48,7 @@ import { PublicProfileScreen } from "../screens/PublicProfileScreen";
 import { PremiumScreen } from "../screens/PremiumScreen";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
+import { messagePreviewText } from "../components/chat/attachments";
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -207,7 +208,7 @@ function AppTabs() {
               conversation.sender.id === user?.user_id ? conversation.receiver : conversation.sender;
             showBanner(
               otherUser.username,
-              lastMessage?.text || "Sent you a message",
+              messagePreviewText(lastMessage) || "Sent you a message",
               otherUser.profile_image_url,
               () => {
                 navigation.navigate("AppTabs", {

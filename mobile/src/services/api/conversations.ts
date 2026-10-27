@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { api, UPLOAD_TIMEOUT_MS } from "./client";
 import type { ChatMessage, Conversation } from "../../types";
 
 const CONVERSATIONS_CACHE_TTL_MS = 15_000;
@@ -93,20 +93,29 @@ export async function createOrGetConversation(participantUsername: string) {
   return response.data;
 }
 
+/** File part for a message upload (React Native FormData file object). */
+export type MessageAttachmentUpload = { uri: string; name: string; type: string };
+
 export async function sendConversationMessage(
   conversationId: number,
   text: string,
-  replyToMessageId?: number | null
-) {
+  replyToMessageId?: number | null,
+  attachment?: MessageAttachmentUpload | null
+): Promise<ChatMessage> {
   const formData = new FormData();
   formData.append("text", text);
   if (replyToMessageId) {
     formData.append("reply_to", String(replyToMessageId));
   }
-  const response = await api.post(`/conversations/${conversationId}/messages/`, formData, {
+  if (attachment) {
+    // RN's FormData takes { uri, name, type } for files; the DOM typings don't know that shape.
+    formData.append("attachment", attachment as unknown as Blob);
+  }
+  const response = await api.post<ChatMessage>(`/conversations/${conversationId}/messages/`, formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },
+    ...(attachment ? { timeout: UPLOAD_TIMEOUT_MS } : null),
   });
   return response.data;
 }
