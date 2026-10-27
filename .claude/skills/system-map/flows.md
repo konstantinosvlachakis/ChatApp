@@ -1,7 +1,7 @@
 # End-to-end flows — system map
 
 Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged), `perf/list-refetch` and `feat/password-reset` (pending: section 2b password reset, based on `a8abf7b`). Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged), `perf/list-refetch` and `feat/password-reset` (pending: section 2b password reset, based on `a8abf7b`); also `feat/mobile-matching` (pending: §10 mobile caller). Refresh:. Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
 Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
 
 ## 1. Login + session
@@ -75,12 +75,12 @@ Web `Conversation.jsx` `handleTranslate` (`{message_id, target_language: baseTra
 3. On a cache miss → release the DB connection → `fetch_google_translation` (`translate.googleapis.com/translate_a/single?client=gtx`, 10 s). If the source language equals the target → 400 `same_language`. Otherwise `MessageTranslation.update_or_create` per user → 200 `{translated_text, source_language, target_language, cached}`. Upstream failure (network error, timeout, malformed or empty reply) → 502 `translation_unavailable`.
 
 ## 10. Partner matching (Community)
-Web `pages/Community/page.tsx` → `GET /api/profile/data?page&page_size=24&match=<all|reciprocal|teaches_me>` (`level` is also supported). Mobile `CommunityScreen` → `fetchPeople` (no `match`, so `all`). `views.profile_data_view`:
+Web `pages/Community/page.tsx` → `GET /api/profile/data?page&page_size=24&match=<all|reciprocal|teaches_me>` (`level` is also supported). Mobile `CommunityScreen` → `fetchPeople({page, segment, level}, {signal})` with the same params (`features/peopleMatching.buildPeopleParams`). `views.profile_data_view`:
 1. Excludes self and blocked users (`get_blocked_user_ids`).
 2. `build_partner_match_filters`: `teaches_me` = their `native_language` iexact one of my `languages_practicing` (or `base_translate_language` as fallback); `learns_mine` = their `languages_practicing` JSON contains my native language (quoted-value match). These are annotated as 0/1 with `match_score` = their sum.
 3. Filters: `teaches_me` → teaches_me=1; `reciprocal` → both; `level` → `practice_language_levels__<my native>`.
 4. Ordered by `-match_score, -teaches_me, username` and paginated. Cached per user/page/mode/level under `get_profile_list_cache_version()`, which is bumped on register and profile edits.
-5. Each profile carries `match {teaches_me, learns_mine, reciprocal}`. Web maps it to a "Perfect exchange" badge; mobile shows `components/PartnerCard`.
+5. Each profile carries `match {teaches_me, learns_mine, reciprocal}`. Both clients map it the same way (featured badge "Perfect exchange" / "Native speaker for you" / "Meet someone new"; inline label adds "Learning your language" / "Open to exchange"): web `components/ExchangeProfileCard.tsx`, mobile `features/peopleMatching.ts` (`matchBadge`, `matchRelationship`) + `components/people/ExchangeCard.tsx`.
 
 ## 11. Profile view recording
 Web `pages/PublicProfile/page.jsx` / mobile `PublicProfileScreen` (and `ConversationsScreen` partner info) → `GET /api/profile/public/<username>/` → `views.public_profile_view` → `record_profile_view(viewer, profile)`: skipped for self; reads the current top viewer, then update-then-create on `ProfileView`, with an `IntegrityError` fallback; DB lock errors are ignored. It calls `bump_profile_cache_version(viewed.id)` **only if the viewer wasn't already the most recent viewer** (new row or order change), so the viewed user's `/api/profile/` `recent_profile_viewers` (`build_recent_profile_viewers`, latest 12) reflects the order, while repeat views by the top viewer leave `viewed_at` up to 5 min stale in that cache. The response itself is cached per (profile, viewer) and now actually hits on repeat views. There is no realtime push: mobile shows the "viewed your profile" banner on its next profile load, and web shows viewers on `/profile`.

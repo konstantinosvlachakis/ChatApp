@@ -282,6 +282,7 @@
   overflow-wrap: anywhere;
   background: var(--lv-bubble-in);
   color: var(--lv-ink);
+  font-family: var(--lv-font-text-emoji);
   font-size: 15px;
   line-height: 1.5;
 }
@@ -337,14 +338,14 @@
 .cv-msg:hover .cv-msg-hover-time, .cv-msg:focus-within .cv-msg-hover-time { opacity: 1; }
 
 .cv-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.cv-reactions span { padding: 2px 8px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-size: 13px; }
+.cv-reactions span { padding: 2px 8px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-family: var(--lv-font-text-emoji); font-size: 13px; }
 .cv-msg-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0 4px; color: var(--lv-muted-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
 .cv-msg-meta .cv-ticks { font-size: 13px; }
 
 /* Message actions menu */
 .cv-actions-menu { position: fixed; z-index: 9999; width: 260px; padding: 6px; border: 1px solid var(--lv-line); border-radius: 20px; background: var(--lv-paper); color: var(--lv-ink); box-shadow: 0 18px 44px #152f3d33; }
 .cv-actions-reactions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 2px; }
-.cv-actions-reactions button { min-height: 44px; border-radius: 14px; font-size: 20px; }
+.cv-actions-reactions button { min-height: 44px; border-radius: 14px; font-family: var(--lv-font-text-emoji); font-size: 20px; }
 .cv-actions-reactions button:hover { background: var(--lv-cream); }
 .cv-actions-sep { margin: 4px 0; border-top: 1px solid var(--lv-line); }
 .cv-actions-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 14px; text-align: left; font-size: 14px; font-weight: 600; color: var(--lv-ink); }
@@ -377,7 +378,7 @@
 .cv-composer:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 3px #177f7940; }
 /* The pill shows focus (above); the shell's square input ring would sit inside it. */
 .lv-shell .cv-composer input:focus-visible { outline: none; }
-.cv-composer input { flex: 1; min-width: 0; padding: 10px 8px; background: transparent; color: var(--lv-ink); font-size: 15px; outline: none; }
+.cv-composer input { flex: 1; min-width: 0; padding: 10px 8px; background: transparent; color: var(--lv-ink); font-family: var(--lv-font-text-emoji); font-size: 15px; outline: none; }
 .cv-composer input::placeholder { color: var(--lv-muted-ink); }
 .cv-composer .cv-icon-button { background: transparent; color: var(--lv-ink-soft); }
 .cv-composer .cv-icon-button:hover:not(:disabled) { background: var(--lv-cream-deep); }
@@ -418,7 +419,63 @@
 .cv-composer-notes span { padding: 4px 10px; border-radius: var(--lv-radius-pill); font-size: 12px; font-weight: 700; }
 .cv-composer-notes .is-error { background: #fdecea; color: #9b2c1f; }
 .cv-composer-notes .is-warning { background: var(--lv-peach-soft); color: var(--lv-peach-deep); }
-.cv-emoji-popover { position: absolute; right: 64px; bottom: calc(100% + 8px); z-index: 50; max-width: calc(100vw - 24px); overflow: hidden; border: 1px solid var(--lv-line); border-radius: 22px; background: #fff; box-shadow: var(--lv-shadow-soft); }
+/*
+ * Emoji picker (EmojiPickerWrapper: emoji-picker-element, forced light). The composer is a size
+ * container so the popover follows the chat panel width, not the viewport. z-index keeps the popover
+ * above the message list's sticky/floating bits (pinned bar, "jump to latest": 20).
+ */
+.cv-composer-wrap { container: cv-composer / inline-size; z-index: 25; }
+.cv-emoji-popover {
+  position: absolute;
+  right: 64px;
+  bottom: calc(100% + 8px);
+  z-index: 50;
+  display: flex;
+  width: 352px;
+  max-width: calc(100% - 16px);
+  height: min(400px, 55vh);
+  overflow: hidden;
+  border: 1px solid var(--lv-line);
+  border-radius: 22px;
+  background: var(--lv-paper);
+  box-shadow: var(--lv-shadow-soft);
+}
+.cv-emoji-popover > .cv-messages-status { margin: auto; }
+.cv-emoji-picker {
+  width: 100%;
+  height: 100%;
+  --background: var(--lv-paper);
+  --border-size: 0;
+  --border-color: var(--lv-line);
+  --indicator-color: var(--lv-teal);
+  --indicator-height: 3px;
+  --input-border-color: var(--lv-line);
+  --input-border-radius: var(--lv-radius-pill);
+  --input-font-color: var(--lv-ink);
+  --input-placeholder-color: var(--lv-muted-ink);
+  --input-padding: 0.4rem 0.85rem;
+  --outline-color: var(--lv-focus);
+  --outline-size: 2px;
+  --category-font-color: var(--lv-ink);
+  --category-font-size: 0.875rem;
+  --button-hover-background: var(--lv-cream-deep);
+  --button-active-background: var(--lv-peach);
+  --skintone-border-radius: var(--lv-radius-pill);
+  --emoji-font-family: var(--lv-emoji-font);
+  --emoji-size: 1.5rem;
+  --emoji-padding: 0.5rem;
+  --category-emoji-size: 1.25rem;
+  --category-emoji-padding: 0.5rem;
+  --num-columns: 7;
+}
+/* Narrow chat panels: span the composer (8px in from each side) and shrink tabs so none are clipped. */
+@container cv-composer (max-width: 560px) {
+  .cv-emoji-popover { right: 8px; left: 8px; width: auto; max-width: none; }
+  .cv-emoji-picker { --category-emoji-size: 1.1rem; --category-emoji-padding: 0.3rem; }
+}
+@container cv-composer (max-width: 380px) {
+  .cv-emoji-picker { --num-columns: 6; --emoji-padding: 0.4rem; }
+}
 
 /* ---- Phones ---- */
 @media (max-width: 767px) {

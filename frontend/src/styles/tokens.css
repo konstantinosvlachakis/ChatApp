@@ -52,6 +52,11 @@
   --lv-shadow-soft: 0 12px 36px #152f3d12;
   --lv-font-body: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --lv-font-display: "Sora", var(--lv-font-body);
+  /* Colour emoji: Google Noto Color Emoji (public/index.html; unicode-range, so only used glyphs load). */
+  --lv-emoji-font: "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  /* Chat text with emoji: letters keep the body font, emoji glyphs fall through to Noto. Same
+     families as --lv-font-body minus its trailing generic, so emoji reach Noto before system fallback. */
+  --lv-font-text-emoji: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, var(--lv-emoji-font);
 
   /* Shell */
   --lv-header-height: 64px;

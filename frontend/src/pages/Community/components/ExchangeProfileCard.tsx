@@ -1,8 +1,12 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { Link } from "react-router-dom";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import WavingHandRoundedIcon from "@mui/icons-material/WavingHandRounded";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import type { PartnerMatch } from "../../../components/Cards";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
+import { buildConversationStarters, buildMatchFacts } from "../utils/conversationStarters";
 
 export interface ExchangeProfile {
   username: string;
@@ -42,6 +46,7 @@ export default function ExchangeProfileCard({
   onSayHello,
 }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
+  const panelId = useId();
   // Largest rendered portrait (community.css): featured 176px on desktop, compact 64px.
   const portrait = avatarImage(profile.profileImage, featured ? FEATURED_PORTRAIT_PX : COMPACT_PORTRAIT_PX);
   const learning = profile.languagesPracticing.find((language) => language.toLowerCase() === viewerLanguage?.toLowerCase()) || profile.languagesPracticing[0];
@@ -56,6 +61,8 @@ export default function ExchangeProfileCard({
         : "Open to exchange";
   const profilePath = `/people/${encodeURIComponent(profile.username)}`;
   const profileLabel = `View ${profile.username}'s profile`;
+  const starters = featured ? buildConversationStarters(profile, viewerLanguage) : [];
+  const facts = featured ? buildMatchFacts(profile, viewerLanguage) : [];
 
   return (
     <article className={`exchange-card ${featured ? "exchange-card-featured" : "exchange-card-compact"}`}>
@@ -102,7 +109,8 @@ export default function ExchangeProfileCard({
             state={{ profile }}
             aria-label={profileLabel}
           >
-            View profile <span aria-hidden="true">↗</span>
+            <PersonOutlineRoundedIcon className="people-button-icon" aria-hidden="true" />
+            View profile
           </Link>
           <button
             className="people-button people-button-secondary"
@@ -111,10 +119,41 @@ export default function ExchangeProfileCard({
             onClick={() => onSayHello(profile.username)}
             aria-label={`Say hello to ${profile.username}`}
           >
+            <WavingHandRoundedIcon className="people-button-icon" aria-hidden="true" />
             {starting ? "Opening…" : "Say hello"}
           </button>
         </div>
       </div>
+      {featured && (
+        // Wide screens only (community.css, >= 1100px): fills the card's right side.
+        <aside className="exchange-panel" aria-labelledby={`${panelId}-why`}>
+          {facts.length > 0 && (
+            <>
+              <h3 id={`${panelId}-why`}>Why you'll click</h3>
+              <dl className="exchange-panel-facts">
+                {facts.map((fact) => (
+                  <div key={fact.label}>
+                    <dt>{fact.label}</dt>
+                    <dd>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </>
+          )}
+          <h3 id={facts.length ? `${panelId}-try` : `${panelId}-why`}>Try opening with</h3>
+          <p id={`${panelId}-hint`} className="exchange-panel-hint">Tap one to start a chat with {profile.username}.</p>
+          <ul className="exchange-starters">
+            {starters.map((starter) => (
+              <li key={starter}>
+                <button type="button" disabled={busy} aria-describedby={`${panelId}-hint`} onClick={() => onSayHello(profile.username)}>
+                  <ChatBubbleOutlineRoundedIcon aria-hidden="true" />
+                  <span>{starter}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
     </article>
   );
 }
