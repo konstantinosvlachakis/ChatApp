@@ -1,612 +1,742 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import CountryFlag from "react-native-country-flag";
-import { useMemo } from "react";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchPeople } from "../services/api/auth";
-import { PartnerCard } from "../components/PartnerCard";
-import type { ProfileListResponse } from "../types";
+import { ExchangeCard } from "../components/people/ExchangeCard";
+import { PeopleFilterSheet } from "../components/people/PeopleFilterSheet";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import type { ThemeColors } from "../theme/colors";
+import {
+  PEOPLE_SEGMENTS,
+  activeFilterCount,
+  filterLoadedPeople,
+  languageLabel,
+  mergePeoplePages,
+  nativeLanguageOptions,
+  type PeopleLevel,
+  type PeopleSegment,
+} from "../features/peopleMatching";
+import { fetchPeople } from "../services/api/auth";
+import { getErrorMessage, toApiError } from "../services/api/client";
+import { createOrGetConversation } from "../services/api/conversations";
+import { toastApiError } from "../services/toast";
+import { fontFamilies } from "../theme/typography";
+import { warmColors, type WarmColors } from "../theme/warm";
+import type { PeopleCard } from "../types";
 
-const LANGUAGE_ISO_MAP: Record<string, string> = {
-  arabic: "sa",
-  chinese: "cn",
-  dutch: "nl",
-  english: "gb",
-  french: "fr",
-  german: "de",
-  greek: "gr",
-  hindi: "in",
-  italian: "it",
-  japanese: "jp",
-  korean: "kr",
-  portuguese: "pt",
-  russian: "ru",
-  spanish: "es",
-  swedish: "se",
-  turkish: "tr",
-  ukrainian: "ua",
-};
+type RequestKind = "first" | "more" | "refresh";
 
-const normalizeLanguage = (value = "") => String(value).trim().toLowerCase();
-
-const toLanguageLabel = (value = "") =>
-  String(value)
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const getLanguageIsoCode = (language?: string | null) => {
-  if (!language) return null;
-  return LANGUAGE_ISO_MAP[normalizeLanguage(language)] || null;
-};
-
+/**
+ * People discovery with server matching (mirrors web `pages/Community/page.tsx`):
+ * `match` segment and `level` are server filters (they reset pagination); the native-language
+ * filter and the text search apply to the loaded profiles, as on web.
+ */
 export function CommunityScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const [data, setData] = useState<ProfileListResponse | null>(null);
-  // True until the first fetch settles, so the empty state doesn't flash before data arrives.
+  const { user } = useAuth();
+  const { isDark } = useTheme();
+  const warm = warmColors(isDark);
+  const styles = useMemo(() => createStyles(warm), [warm]);
+  const viewerLanguage = user?.native_language || "";
+  const viewerPracticing = user?.languages_practicing || [];
+
+  // Server query.
+  const [segment, setSegment] = useState<PeopleSegment>("all");
+  const [level, setLevel] = useState<PeopleLevel>("");
+  const [reloadKey, setReloadKey] = useState(0);
+  // Client-side filters over loaded profiles.
+  const [search, setSearch] = useState("");
+  const [nativeFilter, setNativeFilter] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const [profiles, setProfiles] = useState<PeopleCard[]>([]);
+  const [hasNext, setHasNext] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  // True until the first page of the current query settles (skeleton, no empty-state flash).
   const [loading, setLoading] = useState(true);
-  const [searchText, setSearchText] = useState("");
-  const [activeSegment, setActiveSegment] = useState<"all" | "nearby" | "travel">("all");
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
-  const [draftSelectedLanguages, setDraftSelectedLanguages] = useState<string[]>([]);
-  const [isLanguageFilterOpen, setIsLanguageFilterOpen] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [moreError, setMoreError] = useState("");
+  const [startingUsername, setStartingUsername] = useState("");
 
-  const load = async () => {
-    setLoading(true);
+  // One request at a time: a new request (filter change, refresh) aborts the previous one, and
+  // results are applied only while their controller is still the current one.
+  const requestRef = useRef<AbortController | null>(null);
+  const queryRef = useRef({ segment, level });
+  const pageRef = useRef(1);
+  const hasProfilesRef = useRef(false);
+  hasProfilesRef.current = profiles.length > 0;
+  const startingRef = useRef(false);
+
+  const startRequest = useCallback(async (kind: RequestKind) => {
+    const { segment: match, level: levelFilter } = queryRef.current;
+    const page = kind === "more" ? pageRef.current + 1 : 1;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setLoading(kind === "first");
+    setLoadingMore(kind === "more");
+    setRefreshing(kind === "refresh");
+    // A refresh keeps the current error/list on screen until it succeeds.
+    if (kind === "more") setMoreError("");
+    else if (kind === "first") setError("");
+
     try {
-      const response = await fetchPeople(1, 24);
-      setData(response);
+      const payload = await fetchPeople({ page, segment: match, level: levelFilter }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const next = payload.profiles || [];
+      setProfiles((previous) => mergePeoplePages(previous, next, page === 1));
+      pageRef.current = page;
+      setHasNext(Boolean(payload.pagination?.has_next));
+      setTotalCount(payload.pagination?.total_count ?? next.length);
+      if (page === 1) setError("");
+      setMoreError("");
+    } catch (failure) {
+      if (controller.signal.aborted || toApiError(failure).isAborted) return;
+      const message = getErrorMessage(failure, "Could not load people. Please try again.");
+      if (kind === "more") setMoreError(message);
+      else if (kind === "refresh" && hasProfilesRef.current) toastApiError(failure, message, "Couldn't refresh");
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
-  };
-
-  useEffect(() => {
-    load();
   }, []);
 
+  // Server filters (and "Try again") load page 1 of the new query.
+  useEffect(() => {
+    queryRef.current = { segment, level };
+    pageRef.current = 1;
+    startRequest("first");
+  }, [segment, level, reloadKey, startRequest]);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  // "Find partners" from a Profile mission: show native speakers of that language.
   useEffect(() => {
     const prefillLanguage = route.params?.prefillLanguage;
     if (!prefillLanguage) return;
-    const next = [normalizeLanguage(prefillLanguage)];
-    setSelectedLanguages(next);
-    setDraftSelectedLanguages(next);
-    setSearchText("");
+    setNativeFilter(String(prefillLanguage));
+    setSearch("");
   }, [route.params?.fromMissionAt, route.params?.prefillLanguage]);
 
-  const people = data?.profiles || [];
+  const changeServerFilter = (nextSegment: PeopleSegment, nextLevel: PeopleLevel) => {
+    if (nextSegment === segment && nextLevel === level) return;
+    // Detach the old request so its `finally` can't clear `loading` before the new one starts.
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setProfiles([]);
+    setHasNext(false);
+    setTotalCount(0);
+    setError("");
+    setMoreError("");
+    setLoading(true);
+    setSegment(nextSegment);
+    setLevel(nextLevel);
+  };
 
-  const languageOptions = useMemo(() => {
-    const allLanguages = new Map<string, string>();
-    for (const profile of people) {
-      if (profile.native_language) {
-        const normalized = normalizeLanguage(profile.native_language);
-        if (normalized && !allLanguages.has(normalized)) {
-          allLanguages.set(normalized, toLanguageLabel(profile.native_language));
-        }
+  const loadMore = () => {
+    if (requestRef.current || loading || refreshing || !hasNext || error || moreError) return;
+    startRequest("more");
+  };
+
+  const refresh = () => {
+    if (loading) return;
+    startRequest("refresh");
+  };
+
+  const languageOptions = useMemo(() => nativeLanguageOptions(profiles, nativeFilter), [profiles, nativeFilter]);
+  const filtered = useMemo(() => filterLoadedPeople(profiles, search, nativeFilter), [profiles, search, nativeFilter]);
+  const featured = filtered[0];
+  const morePeople = useMemo(() => filtered.slice(1), [filtered]);
+  const filterCount = activeFilterCount(nativeFilter, level);
+  const anythingToClear = filterCount > 0 || segment !== "all" || search.trim().length > 0;
+
+  const clearFilters = () => {
+    setSearch("");
+    setNativeFilter("");
+    changeServerFilter("all", "");
+  };
+
+  const applySheet = (next: { nativeFilter: string; level: PeopleLevel }) => {
+    setNativeFilter(next.nativeFilter);
+    changeServerFilter(segment, next.level);
+    setSheetOpen(false);
+  };
+
+  const resetSheet = () => {
+    setNativeFilter("");
+    changeServerFilter(segment, "");
+    setSheetOpen(false);
+  };
+
+  const viewProfile = useCallback(
+    (profile: PeopleCard) => navigation.navigate("PublicProfile", { username: profile.username, profile }),
+    [navigation]
+  );
+
+  const sayHello = useCallback(
+    async (username: string) => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      setStartingUsername(username);
+      try {
+        const { id } = await createOrGetConversation(username);
+        if (!id) throw new Error("Missing conversation");
+        navigation.navigate("Chats", {
+          screen: "ChatsHome",
+          params: { openConversationId: id, openFromBannerAt: Date.now() },
+        });
+      } catch (failure) {
+        toastApiError(failure, `Could not open a conversation with ${username}. Please try again.`, "Failed");
+      } finally {
+        startingRef.current = false;
+        setStartingUsername("");
       }
-      for (const lang of profile.languages_practicing || []) {
-        const normalized = normalizeLanguage(lang);
-        if (normalized && !allLanguages.has(normalized)) {
-          allLanguages.set(normalized, toLanguageLabel(lang));
-        }
-      }
+    },
+    [navigation]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: PeopleCard }) => (
+      <ExchangeCard
+        profile={item}
+        viewerLanguage={viewerLanguage}
+        busy={Boolean(startingUsername)}
+        starting={startingUsername === item.username}
+        onSayHello={sayHello}
+        onViewProfile={viewProfile}
+      />
+    ),
+    [viewerLanguage, startingUsername, sayHello, viewProfile]
+  );
+
+  const firstLoad = loading && profiles.length === 0;
+  const countText = firstLoad
+    ? "Finding people…"
+    : `${filtered.length}${hasNext ? "+" : ""} ${filtered.length === 1 ? "person" : "people"} to meet`;
+  const practicingSummary = viewerPracticing.length
+    ? `${languageLabel(viewerPracticing[0])}${viewerPracticing.length > 1 ? ` +${viewerPracticing.length - 1}` : ""}`
+    : "Add a practice language";
+
+  const header = (
+    <View>
+      <Text style={styles.title} accessibilityRole="header">Find your next great conversation.</Text>
+      <Text style={styles.subtitle}>Meet people who speak your next language. Share a little of yours.</Text>
+
+      <Pressable
+        style={styles.exchangeStrip}
+        onPress={() => navigation.navigate("Profile")}
+        accessibilityRole="button"
+        accessibilityLabel="Edit your exchange languages"
+      >
+        <View style={styles.exchangeText}>
+          <Text style={styles.exchangeCaption}>Your exchange</Text>
+          <Text style={styles.exchangeValue} numberOfLines={1}>
+            {viewerLanguage ? languageLabel(viewerLanguage) : "Add a native language"}
+            <Text accessibilityElementsHidden importantForAccessibility="no"> ↔ </Text>
+            {practicingSummary}
+          </Text>
+        </View>
+        <Text style={styles.exchangeEdit}>Edit</Text>
+      </Pressable>
+
+      <View style={styles.searchRow}>
+        <View style={styles.searchField}>
+          <Ionicons name="search" size={18} color={warm.mutedInk} />
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search people, languages or goals"
+            placeholderTextColor={warm.mutedInk}
+            accessibilityLabel="Search loaded profiles"
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {search ? (
+            <Pressable onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel="Clear search" style={styles.clearSearch}>
+              <Ionicons name="close-circle" size={18} color={warm.mutedInk} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          style={[styles.filterButton, filterCount > 0 && styles.filterButtonActive]}
+          onPress={() => setSheetOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} active` : "Filters"}
+        >
+          <Ionicons name="options-outline" size={20} color={filterCount > 0 ? warm.teal : warm.ink} />
+          {filterCount > 0 ? (
+            <View style={styles.filterCount}>
+              <Text style={styles.filterCountText}>{filterCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+      {search.trim() ? <Text style={styles.searchHint}>Searching loaded profiles</Text> : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.segments}
+        accessibilityLabel="Exchange type"
+      >
+        {PEOPLE_SEGMENTS.map((entry) => {
+          const selected = segment === entry.key;
+          return (
+            <Pressable
+              key={entry.key}
+              onPress={() => changeServerFilter(entry.key, level)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={[styles.segment, selected && styles.segmentSelected]}
+            >
+              <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{entry.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <Text style={styles.count} accessibilityLiveRegion="polite">{countText}</Text>
+
+      {featured ? (
+        <ExchangeCard
+          key={`featured-${featured.username}`}
+          profile={featured}
+          featured
+          viewerLanguage={viewerLanguage}
+          busy={Boolean(startingUsername)}
+          starting={startingUsername === featured.username}
+          onSayHello={sayHello}
+          onViewProfile={viewProfile}
+        />
+      ) : null}
+      {morePeople.length > 0 ? (
+        <View style={styles.moreHeading}>
+          <Text style={styles.moreTitle} accessibilityRole="header">More people to meet</Text>
+          <Text style={styles.moreSubtitle}>A new perspective in every conversation</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  let emptyState: React.ReactElement | null = null;
+  if (!featured) {
+    if (firstLoad) {
+      emptyState = (
+        <View style={styles.skeleton} accessibilityLabel="Finding your next connection" accessibilityRole="progressbar">
+          <View style={styles.skeletonRow}>
+            <View style={styles.skeletonPortrait} />
+            <View style={styles.skeletonLines}>
+              <View style={styles.skeletonLine} />
+              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+            </View>
+          </View>
+          <View style={styles.skeletonLine} />
+          <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+          <Text style={styles.skeletonText}>Finding your next connection…</Text>
+        </View>
+      );
+    } else if (error) {
+      emptyState = (
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>We couldn't load people.</Text>
+          <Text style={styles.panelText}>{error}</Text>
+          <Pressable style={styles.primaryButton} onPress={() => setReloadKey((value) => value + 1)} accessibilityRole="button">
+            <Text style={styles.primaryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    } else {
+      emptyState = (
+        <View style={styles.panel}>
+          <Text style={styles.panelIcon} accessibilityElementsHidden importantForAccessibility="no">↔</Text>
+          <Text style={styles.panelTitle}>No people in this view yet.</Text>
+          <Text style={styles.panelText}>
+            {hasNext
+              ? "Nobody in the profiles loaded so far. Meet more people below, or try a wider filter."
+              : "Try another language or a wider exchange filter. You might find an unexpected connection."}
+          </Text>
+          {anythingToClear ? (
+            <Pressable style={styles.primaryButton} onPress={clearFilters} accessibilityRole="button">
+              <Text style={styles.primaryButtonText}>Clear filters</Text>
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.textButton} onPress={() => navigation.navigate("Profile")} accessibilityRole="button">
+            <Text style={styles.textButtonText}>Update your languages</Text>
+          </Pressable>
+        </View>
+      );
     }
-    return Array.from(allLanguages.entries())
-      .sort((left, right) => left[1].localeCompare(right[1]))
-      .map(([value, label]) => ({
-        value,
-        label,
-        isoCode: getLanguageIsoCode(value),
-      }));
-  }, [people]);
+  }
 
-  const filteredPeople = useMemo(() => {
-    const normalizedSearch = searchText.trim().toLowerCase();
-    return people.filter((person) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        person.username.toLowerCase().includes(normalizedSearch) ||
-        (person.native_language || "").toLowerCase().includes(normalizedSearch) ||
-        (person.languages_practicing || []).some((lang) =>
-          lang.toLowerCase().includes(normalizedSearch)
-        );
-
-      const personLanguages = [
-        normalizeLanguage(person.native_language || ""),
-        ...(person.languages_practicing || []).map((lang) => normalizeLanguage(lang)),
-      ].filter(Boolean);
-
-      const matchesLanguage =
-        selectedLanguages.length === 0 ||
-        selectedLanguages.some((language) => personLanguages.includes(language));
-
-      return matchesSearch && matchesLanguage;
-    });
-  }, [people, searchText, selectedLanguages]);
-
-  const toggleLanguageFilter = (language: string) => {
-    setDraftSelectedLanguages((prev) =>
-      prev.includes(language)
-        ? prev.filter((entry) => entry !== language)
-        : [...prev, language]
+  let footer: React.ReactElement | null = null;
+  if (loadingMore) {
+    footer = (
+      <View style={styles.footer}>
+        <ActivityIndicator color={warm.teal} />
+        <Text style={styles.footerText}>Finding more people…</Text>
+      </View>
     );
-  };
-
-  const openLanguageFilter = () => {
-    setDraftSelectedLanguages(selectedLanguages);
-    setIsLanguageFilterOpen(true);
-  };
-
-  const selectedLanguageLabel = useMemo(() => {
-    if (selectedLanguages.length === 0) return "Filter by language";
-    if (selectedLanguages.length === 1) {
-      return languageOptions.find((option) => option.value === selectedLanguages[0])?.label || "1 language";
-    }
-    return `${selectedLanguages.length} languages`;
-  }, [languageOptions, selectedLanguages]);
+  } else if (moreError) {
+    footer = (
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>{moreError}</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => startRequest("more")} accessibilityRole="button">
+          <Text style={styles.secondaryButtonText}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  } else if (hasNext && !loading && !error) {
+    footer = (
+      <View style={styles.footer}>
+        <Pressable style={styles.secondaryButton} onPress={loadMore} accessibilityRole="button">
+          <Text style={styles.secondaryButtonText}>Meet more people</Text>
+        </Pressable>
+        <Text style={styles.footerText}>
+          {profiles.length} of {totalCount} profiles loaded
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <FlatList
-        contentContainerStyle={styles.listContent}
-        data={filteredPeople}
+        data={morePeople}
         keyExtractor={(item) => item.username}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-        ListHeaderComponent={
-          <View style={styles.headerWrap}>
-            <View style={styles.segmentRow}>
-              <Pressable
-                style={[styles.segmentButton, activeSegment === "all" && styles.segmentButtonActive]}
-                onPress={() => setActiveSegment("all")}
-              >
-                <Text
-                  style={[
-                    styles.segmentButtonText,
-                    activeSegment === "all" && styles.segmentButtonTextActive,
-                  ]}
-                >
-                  All members
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.segmentButton, activeSegment === "nearby" && styles.segmentButtonActive]}
-                onPress={() => setActiveSegment("nearby")}
-              >
-                <Text
-                  style={[
-                    styles.segmentButtonText,
-                    activeSegment === "nearby" && styles.segmentButtonTextActive,
-                  ]}
-                >
-                  Nearby
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.segmentButton, activeSegment === "travel" && styles.segmentButtonActive]}
-                onPress={() => setActiveSegment("travel")}
-              >
-                <Text
-                  style={[
-                    styles.segmentButtonText,
-                    activeSegment === "travel" && styles.segmentButtonTextActive,
-                  ]}
-                >
-                  Travel
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={styles.title}>Discover Language Partners</Text>
-            <Text style={styles.subtitle}>Find members by language and start chatting.</Text>
-            <View style={styles.searchRow}>
-              <View style={styles.searchFieldWrap}>
-                <TextInput
-                  style={styles.searchInputInline}
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  placeholder="Search by username or language..."
-                  placeholderTextColor={colors.mutedText}
-                />
-              </View>
-              <Pressable
-                style={[
-                  styles.filterIconButton,
-                  selectedLanguages.length > 0 && styles.filterButtonActive,
-                ]}
-                onPress={openLanguageFilter}
-              >
-                <Ionicons
-                  name="funnel-outline"
-                  size={18}
-                  color={selectedLanguages.length > 0 ? colors.primary : colors.mutedText}
-                />
-                {selectedLanguages.length > 0 ? (
-                  <View style={styles.filterCountBadge}>
-                    <Text style={styles.filterCountBadgeText}>{selectedLanguages.length}</Text>
-                  </View>
-                ) : null}
-              </Pressable>
-            </View>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <PartnerCard
-            username={item.username}
-            nativeLanguage={item.native_language}
-            learningLanguage={item.languages_practicing?.[0]}
-            profileImage={item.profile_image_url || undefined}
-            onPress={() =>
-              navigation.navigate("PublicProfile", {
-                username: item.username,
-                profile: item,
-              })
-            }
-          />
-        )}
-        ListEmptyComponent={
-          loading && data === null ? null : <Text style={styles.empty}>No people found.</Text>
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={header}
+        ListEmptyComponent={emptyState}
+        ListFooterComponent={footer}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.6}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={warm.teal} colors={[warm.action]} />
         }
       />
-
-      <Modal
-        visible={isLanguageFilterOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsLanguageFilterOpen(false)}
-      >
-        <View style={styles.filterModalBackdrop}>
-          <Pressable style={styles.filterModalOverlay} onPress={() => setIsLanguageFilterOpen(false)} />
-          <View style={styles.filterModalSheet}>
-            <View style={styles.filterModalHandle} />
-            <View style={styles.filterModalHeader}>
-              <View>
-                <Text style={styles.filterModalTitle}>Choose languages</Text>
-                <Text style={styles.filterModalSubtitle}>
-                  Show people who speak or practice any selected language.
-                </Text>
-              </View>
-            </View>
-
-            {draftSelectedLanguages.length > 0 ? (
-              <View style={styles.filterSelectedRow}>
-                {draftSelectedLanguages.map((language) => {
-                  const option = languageOptions.find((entry) => entry.value === language);
-                  if (!option) return null;
-                  return (
-                    <Pressable
-                      key={`selected-${language}`}
-                      style={styles.filterSelectedChip}
-                      onPress={() => toggleLanguageFilter(language)}
-                    >
-                      <Text style={styles.filterSelectedChipText}>{option.label}</Text>
-                      <Ionicons name="close" size={12} color={colors.primary} />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
-
-            <View style={styles.filterOptionList}>
-              {languageOptions.map((language) => {
-                const active = draftSelectedLanguages.includes(language.value);
-                return (
-                  <Pressable
-                    key={language.value}
-                    style={[styles.filterOptionRow, active && styles.filterOptionRowActive]}
-                    onPress={() => toggleLanguageFilter(language.value)}
-                  >
-                    <View style={styles.filterOptionContent}>
-                      <View style={styles.filterOptionFlagWrap}>
-                        {language.isoCode ? (
-                          <CountryFlag isoCode={language.isoCode} size={18} />
-                        ) : (
-                          <Ionicons name="globe-outline" size={16} color={colors.mutedText} />
-                        )}
-                      </View>
-                      <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>
-                        {language.label}
-                      </Text>
-                    </View>
-                    <View style={[styles.filterOptionIndicator, active && styles.filterOptionIndicatorActive]}>
-                      {active ? (
-                        <Ionicons name="checkmark" size={13} color="#fff" />
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <View style={styles.filterModalFooter}>
-              <Pressable style={styles.filterFooterSecondary} onPress={() => setDraftSelectedLanguages([])}>
-                <Text style={styles.filterFooterSecondaryText}>Clear all</Text>
-              </Pressable>
-              <Pressable
-                style={styles.filterFooterPrimary}
-                onPress={() => {
-                  setSelectedLanguages(draftSelectedLanguages);
-                  setIsLanguageFilterOpen(false);
-                }}
-              >
-                <Text style={styles.filterFooterPrimaryText}>Done</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <PeopleFilterSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        nativeFilter={nativeFilter}
+        level={level}
+        languageOptions={languageOptions}
+        viewerLanguage={viewerLanguage}
+        onApply={applySheet}
+        onReset={resetSheet}
+      />
     </SafeAreaView>
   );
 }
 
-const createStyles = (colors: ThemeColors) =>
+const createStyles = (warm: WarmColors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
-    },
-    headerWrap: {
-      marginBottom: 12,
-    },
-    segmentRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 12,
-    },
-    segmentButton: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-    },
-    segmentButtonActive: {
-      backgroundColor: colors.activeChipBackground,
-      borderColor: colors.activeChipBackground,
-    },
-    segmentButtonText: {
-      color: colors.text,
-      fontWeight: "600",
-      fontSize: 13,
-    },
-    segmentButtonTextActive: {
-      color: colors.activeChipText,
-    },
-    title: {
-      fontSize: 30,
-      fontWeight: "800",
-      color: colors.text,
-      marginBottom: 4,
-    },
-    subtitle: {
-      color: colors.mutedText,
-      marginBottom: 12,
-      fontSize: 14,
+      backgroundColor: warm.cream,
     },
     listContent: {
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 18,
-      gap: 10,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 28,
+      gap: 12,
+    },
+    title: {
+      color: warm.ink,
+      fontSize: 25,
+      lineHeight: 32,
+      fontFamily: fontFamilies.displayBold,
+    },
+    subtitle: {
+      color: warm.mutedInk,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 4,
+      marginBottom: 14,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    exchangeStrip: {
+      minHeight: 56,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: warm.paper,
+      borderColor: warm.lineWarm,
+      borderWidth: 1,
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      marginBottom: 12,
+    },
+    exchangeText: {
+      flex: 1,
+      minWidth: 0,
+    },
+    exchangeCaption: {
+      color: warm.mutedInk,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    exchangeValue: {
+      color: warm.ink,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    exchangeEdit: {
+      color: warm.teal,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodyBold,
     },
     searchRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      marginBottom: 8,
     },
-    searchFieldWrap: {
+    searchField: {
       flex: 1,
-    },
-    searchInputInline: {
-      backgroundColor: colors.inputBackground,
-      borderColor: colors.border,
+      minHeight: 48,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: warm.paper,
+      borderColor: warm.line,
       borderWidth: 1,
-      borderRadius: 14,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      fontSize: 15,
-      color: colors.text,
+      borderRadius: 999,
+      paddingLeft: 16,
+      paddingRight: 4,
     },
-    filterIconButton: {
+    searchInput: {
+      flex: 1,
+      minHeight: 46,
+      color: warm.ink,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    clearSearch: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    searchHint: {
+      color: warm.mutedInk,
+      fontSize: 12,
+      marginTop: 6,
+      marginLeft: 16,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    filterButton: {
       width: 48,
       height: 48,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
+      borderRadius: 24,
       alignItems: "center",
       justifyContent: "center",
-      position: "relative",
+      backgroundColor: warm.paper,
+      borderColor: warm.line,
+      borderWidth: 1,
     },
     filterButtonActive: {
-      backgroundColor: colors.surface,
-      borderColor: `${colors.primary}33`,
+      backgroundColor: warm.sage,
+      borderColor: warm.teal,
     },
-    filterCountBadge: {
-      minWidth: 18,
-      height: 18,
-      borderRadius: 9,
-      backgroundColor: colors.primary,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 4,
+    filterCount: {
       position: "absolute",
       top: -4,
       right: -4,
-    },
-    filterCountBadgeText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 10,
-    },
-    filterModalBackdrop: {
-      flex: 1,
-      backgroundColor: "rgba(8, 19, 32, 0.28)",
-      justifyContent: "flex-end",
-    },
-    filterModalOverlay: {
-      ...StyleSheet.absoluteFillObject,
-    },
-    filterModalSheet: {
-      borderTopLeftRadius: 26,
-      borderTopRightRadius: 26,
-      backgroundColor: colors.surface,
-      borderTopWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 18,
-      paddingTop: 10,
-      paddingBottom: 18,
-      gap: 14,
-      maxHeight: "78%",
-    },
-    filterModalHandle: {
-      alignSelf: "center",
-      width: 40,
-      height: 5,
-      borderRadius: 999,
-      backgroundColor: colors.border,
-      marginBottom: 8,
-    },
-    filterModalHeader: {
-      gap: 4,
-    },
-    filterModalTitle: {
-      color: colors.text,
-      fontSize: 24,
-      fontWeight: "800",
-    },
-    filterModalSubtitle: {
-      color: colors.mutedText,
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    filterSelectedRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    filterSelectedChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      borderRadius: 999,
-      backgroundColor: colors.activeChipBackground,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-    },
-    filterSelectedChipText: {
-      color: colors.activeChipText,
-      fontWeight: "600",
-      fontSize: 13,
-    },
-    filterOptionList: {
-      gap: 8,
-    },
-    filterOptionContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      flex: 1,
-      minWidth: 0,
-    },
-    filterOptionFlagWrap: {
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      overflow: "hidden",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    filterOptionRow: {
-      minHeight: 54,
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 14,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-    },
-    filterOptionRowActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.activeChipBackground,
-    },
-    filterOptionText: {
-      color: colors.text,
-      fontWeight: "600",
-      fontSize: 14,
-      textTransform: "capitalize",
-    },
-    filterOptionTextActive: {
-      color: colors.text,
-    },
-    filterOptionIndicator: {
-      width: 20,
+      minWidth: 20,
       height: 20,
       borderRadius: 10,
-      borderWidth: 1.5,
-      borderColor: colors.border,
+      paddingHorizontal: 5,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: colors.surface,
+      backgroundColor: warm.action,
     },
-    filterOptionIndicatorActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
+    filterCountText: {
+      color: warm.onAction,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyBold,
     },
-    filterModalFooter: {
+    segments: {
+      gap: 8,
+      paddingTop: 14,
+      paddingBottom: 8,
+    },
+    segment: {
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 16,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: warm.line,
+      backgroundColor: warm.paper,
+    },
+    segmentSelected: {
+      backgroundColor: warm.sage,
+      borderColor: warm.teal,
+    },
+    segmentText: {
+      color: warm.mutedInk,
+      fontSize: 13,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    segmentTextSelected: {
+      color: warm.teal,
+    },
+    count: {
+      color: warm.mutedInk,
+      fontSize: 12,
+      marginBottom: 12,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    moreHeading: {
+      marginTop: 22,
+      marginBottom: 0,
+    },
+    moreTitle: {
+      color: warm.ink,
+      fontSize: 19,
+      fontFamily: fontFamilies.displayBold,
+    },
+    moreSubtitle: {
+      color: warm.mutedInk,
+      fontSize: 13,
+      marginTop: 2,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    skeleton: {
+      backgroundColor: warm.peachSoft,
+      borderColor: warm.lineWarm,
+      borderWidth: 1,
+      borderRadius: 28,
+      padding: 18,
+      gap: 12,
+    },
+    skeletonRow: {
       flexDirection: "row",
-      gap: 10,
-      marginTop: 4,
+      alignItems: "center",
+      gap: 14,
     },
-    filterFooterSecondary: {
+    skeletonPortrait: {
+      width: 112,
+      height: 112,
+      borderRadius: 56,
+      backgroundColor: warm.peachStrong,
+    },
+    skeletonLines: {
       flex: 1,
-      minHeight: 46,
-      borderRadius: 14,
-      backgroundColor: colors.surfaceMuted,
+      gap: 12,
+    },
+    skeletonLine: {
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: warm.skeleton,
+    },
+    skeletonLineShort: {
+      width: "60%",
+    },
+    skeletonText: {
+      color: warm.mutedInk,
+      fontSize: 13,
+      marginTop: 6,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    panel: {
       alignItems: "center",
-      justifyContent: "center",
+      backgroundColor: warm.paper,
+      borderColor: warm.lineWarm,
+      borderWidth: 1,
+      borderRadius: 28,
+      paddingHorizontal: 20,
+      paddingVertical: 28,
+      gap: 10,
     },
-    filterFooterSecondaryText: {
-      color: colors.text,
-      fontWeight: "600",
-      fontSize: 14,
+    panelIcon: {
+      color: warm.peachInk,
+      fontSize: 28,
+      fontFamily: fontFamilies.displayBold,
     },
-    filterFooterPrimary: {
-      flex: 1.2,
-      minHeight: 46,
-      borderRadius: 14,
-      backgroundColor: colors.navy,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    filterFooterPrimaryText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 14,
-    },
-    empty: {
-      color: colors.mutedText,
+    panelTitle: {
+      color: warm.ink,
+      fontSize: 18,
       textAlign: "center",
-      marginTop: 32,
+      fontFamily: fontFamilies.displayBold,
+    },
+    panelText: {
+      color: warm.mutedInk,
+      fontSize: 14,
+      lineHeight: 20,
+      textAlign: "center",
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    primaryButton: {
+      minHeight: 44,
+      borderRadius: 999,
+      paddingHorizontal: 22,
+      marginTop: 6,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.action,
+    },
+    primaryButtonText: {
+      color: warm.onAction,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    secondaryButton: {
+      minHeight: 44,
+      borderRadius: 999,
+      paddingHorizontal: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.secondary,
+      borderColor: warm.lineWarm,
+      borderWidth: 1,
+    },
+    secondaryButtonText: {
+      color: warm.ink,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    textButton: {
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 12,
+    },
+    textButtonText: {
+      color: warm.teal,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    footer: {
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 16,
+    },
+    footerText: {
+      color: warm.mutedInk,
+      fontSize: 12,
+      textAlign: "center",
+      fontFamily: fontFamilies.bodyMedium,
     },
   });
