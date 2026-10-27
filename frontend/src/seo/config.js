@@ -93,6 +93,25 @@ const buildSeoModel = (pathname, params = {}) => {
     };
   }
 
+  if (pathname === "/forgot-password") {
+    return {
+      title: "Reset Your Password",
+      description: "Request a link to reset your LangVoyage password.",
+      path: "/forgot-password",
+      shouldIndex: false,
+    };
+  }
+
+  if (pathname.startsWith("/reset-password/")) {
+    // Never put the uid/token from the emailed link into the canonical URL.
+    return {
+      title: "Choose a New Password",
+      description: "Choose a new password for your LangVoyage account.",
+      path: "/reset-password",
+      shouldIndex: false,
+    };
+  }
+
   if (pathname === "/privacy-policy") {
     return {
       title: "Privacy Policy",
