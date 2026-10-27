@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 
 # Mobile status (Expo / React Native)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` and `perf/mobile-chat` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30, merged) and `perf/mobile-chat` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
 
 ## Navigation (`src/navigation/RootNavigator.tsx`)
 Auth stack: `Login`, `Register`. App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.

@@ -4,6 +4,7 @@ import {
   SITE_NAME,
   SITE_URL,
   DEFAULT_OG_IMAGE,
+  OG_IMAGE_ALT,
   titleWithSite,
   buildSeoModel,
   getDefaultStructuredData,
@@ -100,10 +101,14 @@ const Seo = () => {
       property: "og:image",
       content: DEFAULT_OG_IMAGE,
     });
+    ensureMetaTag('meta[property="og:image:alt"]', {
+      property: "og:image:alt",
+      content: OG_IMAGE_ALT,
+    });
 
     ensureMetaTag('meta[name="twitter:card"]', {
       name: "twitter:card",
-      content: "summary",
+      content: "summary_large_image",
     });
     ensureMetaTag('meta[name="twitter:title"]', {
       name: "twitter:title",
