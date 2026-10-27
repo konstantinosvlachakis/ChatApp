@@ -16,6 +16,7 @@ import CoachAvatar from "../../../components/CoachAvatar";
 import ChatAvatar from "./ChatAvatar";
 import { COACH_BOT_ID } from "./coachConversation";
 import { getMessageGroupFlags } from "../utils/messageGroups";
+import { CHAT_IMAGE_WIDTH, cloudinaryImage } from "../../../lib/media";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
@@ -272,7 +273,15 @@ const MessageRow = React.memo(function MessageRow({
 
               {attachmentUrl &&
                 (isImageAttachment ? (
-                  <img src={attachmentUrl} loading="lazy" decoding="async" alt="Attachment" />
+                  // Bubble shows a resized copy; the link opens the original upload.
+                  <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="cv-bubble-image">
+                    <img
+                      src={cloudinaryImage(attachmentUrl, { width: CHAT_IMAGE_WIDTH, crop: "limit" })}
+                      loading="lazy"
+                      decoding="async"
+                      alt="Attachment"
+                    />
+                  </a>
                 ) : isVideoAttachment ? (
                   <video src={attachmentUrl} controls preload="metadata" />
                 ) : isAudioAttachment ? (

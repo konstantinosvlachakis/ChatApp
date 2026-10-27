@@ -22,6 +22,7 @@ import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { refreshAccessToken } from "../services/api/client";
 import { setSocketReconnecting } from "../services/connectivity";
+import { avatarImage } from "../utils/media";
 import { fetchConversations } from "../services/api/conversations";
 import {
   SOCKET_AUTH_CLOSE_CODES,
@@ -438,7 +439,7 @@ function AppTabs() {
                   dismissBanner(banner.id);
                 }}
               >
-                <Image source={{ uri: resolveMediaUrl(banner.avatarUrl) }} style={dynamicStyles.bannerAvatar} />
+                <Image source={{ uri: avatarImage(resolveMediaUrl(banner.avatarUrl), 34) }} style={dynamicStyles.bannerAvatar} />
                 <View style={styles.bannerContent}>
                   <Text numberOfLines={1} style={dynamicStyles.bannerTitle}>
                     {banner.title}

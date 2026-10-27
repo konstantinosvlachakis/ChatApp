@@ -29,6 +29,10 @@ import { toastApiError } from "../services/toast";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
+import { cloudinaryImage } from "../utils/media";
+
+// Photo Moments tiles: up to ~140dp wide at aspect ratio 0.92 (large tile on a big phone).
+const GALLERY_TILE = { width: 140, height: 152 };
 
 const LANGUAGE_FLAG_MAP: Record<string, string> = {
   arabic: "🇸🇦",
@@ -295,7 +299,7 @@ export function PublicProfileScreen() {
               }}
               style={styles.avatarShell}
             >
-              <Image source={{ uri: profileImage }} style={styles.avatar} />
+              <Image source={{ uri: cloudinaryImage(profileImage, { width: 108 }) }} style={styles.avatar} />
             </Pressable>
             <View style={styles.heroIdentity}>
               <View style={styles.heroEyebrowRow}>
@@ -473,7 +477,7 @@ export function PublicProfileScreen() {
                     });
                   }}
                 >
-                  <Image source={{ uri: image }} style={styles.galleryImage} />
+                  <Image source={{ uri: cloudinaryImage(image, GALLERY_TILE) }} style={styles.galleryImage} />
                 </Pressable>
               ))}
             </View>

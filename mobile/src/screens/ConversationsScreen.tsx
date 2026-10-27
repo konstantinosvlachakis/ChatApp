@@ -54,6 +54,7 @@ import { toastApiError } from "../services/toast";
 import { startPresenceHeartbeat } from "../services/realtime";
 import type { ThemeColors } from "../theme/colors";
 import type { ChatMessage, Conversation } from "../types";
+import { avatarImage } from "../utils/media";
 
 type PresencePayload =
   | { type: "initial_online_users"; user_ids?: number[]; userIds?: number[] }
@@ -1613,7 +1614,7 @@ export function ConversationsScreen() {
             </Pressable>
             <View style={styles.chatTitleWrap}>
               <View>
-                <RNImage source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.chatAvatar} />
+                <RNImage source={{ uri: avatarImage(resolveMediaUrl(otherUser.profile_image_url), 34) }} style={styles.chatAvatar} />
                 {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDotChat} /> : null}
               </View>
               <View>
@@ -2116,7 +2117,7 @@ export function ConversationsScreen() {
           return (
             <Pressable style={styles.conversationCard} onPress={() => openConversation(item.id)}>
               <View>
-                <RNImage source={{ uri: resolveMediaUrl(otherUser.profile_image_url) }} style={styles.avatarImageWrap} />
+                <RNImage source={{ uri: avatarImage(resolveMediaUrl(otherUser.profile_image_url), 44) }} style={styles.avatarImageWrap} />
                 {onlineUserIds.has(otherUser.id) ? <View style={styles.onlineDot} /> : null}
               </View>
               <View style={styles.conversationBody}>

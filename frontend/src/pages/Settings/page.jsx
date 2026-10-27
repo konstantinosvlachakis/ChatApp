@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BASE_URL } from "../../constants/constants";
 import { useUser } from "../../context/UserContext";
 import api, { getErrorMessage } from "../../lib/api";
+import { avatarImage } from "../../lib/media";
 import { toastApiError } from "../../components/Toast";
 
 const LANGUAGE_OPTIONS = [
@@ -335,7 +336,7 @@ const SettingsPage = () => {
                       <div className="flex items-center gap-3">
                         {resolveProfileImage(entry.profile_image_url) ? (
                           <img
-                            src={resolveProfileImage(entry.profile_image_url)}
+                            src={avatarImage(resolveProfileImage(entry.profile_image_url), 44)}
                             loading="lazy"
                             decoding="async"
                             alt={entry.username}
@@ -386,7 +387,7 @@ const SettingsPage = () => {
                         <div className="flex items-center gap-3">
                           {resolveProfileImage(entry.profile_image_url) ? (
                             <img
-                              src={resolveProfileImage(entry.profile_image_url)}
+                              src={avatarImage(resolveProfileImage(entry.profile_image_url), 44)}
                               loading="lazy"
                               decoding="async"
                               alt={entry.username}

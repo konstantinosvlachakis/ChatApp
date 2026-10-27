@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { API_BASE_URL } from "../config/api";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
+import { avatarImage } from "../utils/media";
 
 type Props = {
   username: string;
@@ -32,7 +33,7 @@ export function PartnerCard({
     return `${API_BASE_URL}/media/${path}`;
   };
 
-  const imageUrl = resolveMediaUrl(profileImage);
+  const imageUrl = avatarImage(resolveMediaUrl(profileImage), 78);
 
   return (
     <Pressable style={styles.card} onPress={onPress}>

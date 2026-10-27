@@ -28,6 +28,7 @@ import { toastApiError } from "../services/toast";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 import type { ModerationSummary } from "../types";
+import { avatarImage } from "../utils/media";
 
 type LanguageOption = {
   value: string;
@@ -330,7 +331,7 @@ export function SettingsScreen() {
                   <View style={styles.historyRow}>
                     {resolveMediaUrl(entry.profile_image_url) ? (
                       <Image
-                        source={{ uri: resolveMediaUrl(entry.profile_image_url) || undefined }}
+                        source={{ uri: avatarImage(resolveMediaUrl(entry.profile_image_url), 42) || undefined }}
                         style={styles.historyAvatar}
                       />
                     ) : (
@@ -372,7 +373,7 @@ export function SettingsScreen() {
                   <View style={styles.historyRow}>
                     {resolveMediaUrl(entry.profile_image_url) ? (
                       <Image
-                        source={{ uri: resolveMediaUrl(entry.profile_image_url) || undefined }}
+                        source={{ uri: avatarImage(resolveMediaUrl(entry.profile_image_url), 42) || undefined }}
                         style={styles.historyAvatar}
                       />
                     ) : (
