@@ -2,6 +2,7 @@ import { api, UPLOAD_TIMEOUT_MS } from "./client";
 import { tokenStorage } from "../storage";
 import { clearConversationsCache } from "./conversations";
 import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
+import { buildPeopleParams, type PeopleQuery } from "../../features/peopleMatching";
 
 export async function register(payload: {
   username: string;
@@ -39,10 +40,16 @@ export async function fetchPublicProfile(username: string) {
   return response.data;
 }
 
-export async function fetchPeople(page = 1, pageSize = 24) {
-  const response = await api.get<ProfileListResponse>(
-    `/profile/data?page=${page}&page_size=${pageSize}`
-  );
+/**
+ * People list with server matching (same params as web): `page`, `page_size`, `match`
+ * (all | reciprocal | teaches_me) and optional `level` (their level in my native language).
+ * No trailing slash: profile/data is the one API path without it.
+ */
+export async function fetchPeople(query: PeopleQuery, options: { signal?: AbortSignal } = {}) {
+  const response = await api.get<ProfileListResponse>("/profile/data", {
+    params: buildPeopleParams(query),
+    signal: options.signal,
+  });
   return response.data;
 }
 

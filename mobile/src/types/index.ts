@@ -87,14 +87,30 @@ export interface Conversation {
   messages: ChatMessage[];
 }
 
+/** `match` on each People card (server-computed for the viewer). */
+export interface PeopleMatch {
+  /** Their native language is one I practice. */
+  teaches_me: boolean;
+  /** They practice my native language. */
+  learns_mine: boolean;
+  /** Both of the above ("Perfect exchange"). */
+  reciprocal: boolean;
+  score?: number;
+}
+
+/** Item of `GET /api/profile/data` (PeopleCard in system-map). No id, bio or presence. */
+export interface PeopleCard {
+  username: string;
+  native_language?: string;
+  languages_practicing?: string[];
+  practice_language_levels?: Record<string, string>;
+  learning_goal?: string;
+  profile_image_url?: string | null;
+  match?: PeopleMatch;
+}
+
 export interface ProfileListResponse {
-  profiles: Array<{
-    username: string;
-    native_language?: string;
-    languages_practicing?: string[];
-    practice_language_levels?: Record<string, string>;
-    profile_image_url?: string | null;
-  }>;
+  profiles: PeopleCard[];
   pagination: {
     page: number;
     page_size: number;
