@@ -69,7 +69,7 @@ Web `features/CoachChatRoom.jsx` / mobile `screens/CoachChatScreen.tsx` → `ser
 6. Coach history is client-side only: web `features/coachConversation.js` (localStorage), mobile `features/coachConversation.ts` (AsyncStorage). Neither is cleared on logout.
 
 ## 9. Translation
-Web `Conversation.jsx` `handleTranslate` (`{message_id, target_language: baseTranslateLanguage}`), web `PracticePage.jsx` (free text), mobile `translateConversationMessage` → `POST /api/messages/translate/` → `views.translate_message_view` (throttle `translate` 60/min):
+Web `Conversation.jsx` `handleTranslate` (`{message_id, target_language: baseTranslateLanguage}`), web `pages/Practice/practiceUtils.js` `translateWithFallback` (free text), mobile `translateConversationMessage` → `POST /api/messages/translate/` → `views.translate_message_view` (throttle `translate` 60/min):
 1. With `message_id`: participant check; the text is read from the DB. If a `MessageTranslation` already exists for this user and language → 400 `already_translated` (with the text). A non-numeric id → 500 (open issue).
 2. Text ≤ 5000 chars. Cache key `build_translation_cache_key` (30 days).
 3. On a cache miss → release the DB connection → `fetch_google_translation` (`translate.googleapis.com/translate_a/single?client=gtx`, 10 s). If the source language equals the target → 400 `same_language`. Otherwise `MessageTranslation.update_or_create` per user → 200 `{translated_text, source_language, target_language, cached}`. Upstream failure (network error, timeout, malformed or empty reply) → 502 `translation_unavailable`.
