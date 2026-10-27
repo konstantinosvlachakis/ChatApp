@@ -73,6 +73,10 @@ export interface ChatMessage {
     emoji: string;
   }>;
   current_user_reaction?: string | null;
+  /** Client-only: set on the optimistic bubble while an attachment upload is in flight. */
+  local_status?: "sending";
+  /** Client-only: content type of a locally picked attachment (optimistic bubble). */
+  local_mime_type?: string | null;
 }
 
 export interface Conversation {

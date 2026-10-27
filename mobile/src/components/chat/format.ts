@@ -1,5 +1,7 @@
 // Message formatting helpers shared by ConversationsScreen, MessageRow and Composer.
 
+import { messagePreviewText } from "./attachments";
+
 export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export function statusTicks(status?: string) {
@@ -8,11 +10,16 @@ export function statusTicks(status?: string) {
   return "✓";
 }
 
-export function toReplyPreviewText(message?: { text?: string | null } | null) {
-  if (!message?.text) return "Attachment";
-  const trimmed = message.text.trim();
-  if (!trimmed) return "Attachment";
-  return trimmed.length > 70 ? `${trimmed.slice(0, 70)}...` : trimmed;
+/**
+ * Quote text for a replied-to message. `reply_to` payloads carry no attachment, so pass the full
+ * message when it is loaded to get "Photo" / "Voice message" instead of "Attachment".
+ */
+export function toReplyPreviewText(
+  message?: { text?: string | null; attachment_url?: string | null; local_mime_type?: string | null } | null
+) {
+  const preview = messagePreviewText(message);
+  if (!preview) return "Attachment";
+  return preview.length > 70 ? `${preview.slice(0, 70)}...` : preview;
 }
 
 export function formatMessageTime(timestamp?: string | null) {

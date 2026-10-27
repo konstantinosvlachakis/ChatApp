@@ -1,4 +1,4 @@
-import { PixelRatio } from "react-native";
+import { PixelRatio, Platform } from "react-native";
 
 // Cloudinary delivery transformations for user images (mirrors web `frontend/src/lib/media.ts`).
 // The API returns original URLs; ask Cloudinary for a resized, auto-format copy sized for the
@@ -53,3 +53,16 @@ export function cloudinaryImage(url: string | null | undefined, options: Cloudin
 /** Square avatar / portrait rendered at `size` dp. Always pass user photos through this. */
 export const avatarImage = (url: string | null | undefined, size: number) =>
   cloudinaryImage(url, { width: size, crop: "fill" });
+
+// Cloudinary stores audio as `video` resources and can transcode on delivery by changing the
+// extension. iOS (AVPlayer) can't play WebM/Ogg, which is what web voice notes are recorded as.
+const CLOUDINARY_VIDEO_UNPLAYABLE_ON_IOS =
+  /^(https?:\/\/res\.cloudinary\.com\/[^/?#]+\/video\/upload\/[^?#]+)\.(webm|ogg)([?#].*)?$/i;
+
+/** URL to stream an audio attachment from: on iOS, Cloudinary WebM/Ogg is requested as MP3. */
+export function audioPlaybackUrl(url: string): string {
+  if (Platform.OS !== "ios") return url;
+  const match = CLOUDINARY_VIDEO_UNPLAYABLE_ON_IOS.exec(url);
+  if (!match) return url;
+  return `${match[1]}.mp3${match[3] || ""}`;
+}
