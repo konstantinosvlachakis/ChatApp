@@ -5,7 +5,7 @@ description: Current state of the LangVoyage React web app (frontend/) — route
 
 # Web status (React, CRA)
 
-Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign`, `feat/conversations-redesign`, `fix/redesign-polish` (2026-10-27), `perf/media` (pending) and `fix/chat-races` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- frontend` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign`, `feat/conversations-redesign`, `fix/redesign-polish` (2026-10-27), `perf/media` (#30, merged), `fix/live-avatar` (#31, merged) and `fix/chat-races` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- frontend` — re-read only changed files, then update this file.
 
 ## Routes (`src/AppRoutes.jsx`; public-only build uses `src/PublicAppRoutes.jsx`)
 Public: `/`, `/privacy-policy`, `/terms-and-conditions`, `/login`, `/register`.

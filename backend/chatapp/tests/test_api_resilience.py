@@ -366,3 +366,13 @@ class SentryTests(SimpleTestCase):
         ) as mock_set_tag:
             tag_sentry_request_id("rid-2")
         mock_set_tag.assert_called_once_with("request_id", "rid-2")
+
+
+class PublicRootFileRouteTests(SimpleTestCase):
+    def test_link_preview_image_is_served_from_the_build_root(self):
+        from django.urls import resolve
+        from django.views.static import serve
+
+        match = resolve("/og-image.png")
+        self.assertIs(match.func, serve)
+        self.assertEqual(match.kwargs["path"], "og-image.png")

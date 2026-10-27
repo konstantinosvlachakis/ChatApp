@@ -37,7 +37,7 @@ from .serializers import (
 )
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
-from django.db import DatabaseError, IntegrityError, OperationalError
+from django.db import DatabaseError, IntegrityError, OperationalError, connections
 from django.db.models import IntegerField, Q
 from django.db.models import Case, Count, F, OuterRef, Subquery, Value, When
 from django.db.models.functions import Coalesce
@@ -47,6 +47,7 @@ import uuid
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import urllib.error
+import http.client
 import hashlib
 import re
 import random
@@ -174,6 +175,20 @@ ALLOWED_ATTACHMENT_TYPES = {
     "audio/x-m4a": ".m4a",
     "audio/aac": ".aac",
 }
+
+
+def release_db_connection():
+    """Give the request's DB connections back before a slow outside call.
+
+    With the psycopg pool (production) closing returns the connection to the
+    pool, so a request waiting on Gemini/Google/Cloudinary no longer holds one
+    of the few pooled connections. Django reopens lazily on the next query.
+    Connections inside a transaction are left alone (closing would break it).
+    """
+    for conn in connections.all(initialized_only=True):
+        if conn.in_atomic_block:
+            continue
+        conn.close()
 
 
 def validate_uploaded_file(uploaded_file, allowed_types, max_bytes):
@@ -1011,6 +1026,8 @@ def coach_chat_view(request):
     if mode not in COACH_MODES:
         mode = "casual_chat"
 
+    # Everything below is the Gemini call; don't hold a pooled connection for it.
+    release_db_connection()
     try:
         reply = generate_coach_reply(
             message=message,
@@ -1144,7 +1161,7 @@ def register_view(request):
                 email=email,
                 date_of_birth=parsed_date_of_birth,
             )
-            bump_profile_list_cache_version()
+            # No community-list bump: new users appear within its 30 s TTL.
 
             return JsonResponse({"message": "User registered successfully"}, status=201)
 
@@ -1370,7 +1387,6 @@ def profile_edit_view(request):
     try:
         data = json.loads(request.body)  # Parse the JSON request body
         user = request.user
-        should_bump_profile_list = False
 
         # Update fields if they are present in the request body
         username = data.get("username")
@@ -1405,7 +1421,6 @@ def profile_edit_view(request):
             ):
                 return JsonResponse({"error": "Username already exists", "code": "username_taken"}, status=400)
             user.username = username
-            should_bump_profile_list = True
         for language_value in (native_language, base_translate_language):
             if language_value and (
                 not isinstance(language_value, str)
@@ -1414,7 +1429,6 @@ def profile_edit_view(request):
                 return JsonResponse({"error": "Invalid language value"}, status=400)
         if native_language:
             user.native_language = native_language.strip()
-            should_bump_profile_list = True
         if base_translate_language:
             user.base_translate_language = base_translate_language.strip()
         if languages_practicing is not None:
@@ -1434,7 +1448,6 @@ def profile_edit_view(request):
                     if value:
                         cleaned_languages.append(value)
             user.languages_practicing = cleaned_languages
-            should_bump_profile_list = True
         if practice_language_levels is not None:
             if not isinstance(practice_language_levels, dict):
                 return JsonResponse(
@@ -1516,8 +1529,8 @@ def profile_edit_view(request):
 
         # Save the updated user object
         user.save()
-        if should_bump_profile_list:
-            bump_profile_list_cache_version()
+        # The community list is not re-versioned for profile edits (a global
+        # bump would empty every viewer's list cache); its 30 s TTL is the bound.
         bump_profile_cache_version(user.id)
 
         # Return the updated user data
@@ -1595,6 +1608,8 @@ def delete_account_view(request):
     user_id = user.id
     username = user.username
     user.delete()
+    # Privacy: deleted users and blocks must leave community lists at once, so
+    # these (and block_user_view) are the only community-list bumps.
     bump_profile_list_cache_version()
     bump_profile_cache_version(user_id)
     bump_conversation_list_cache_version(user_id)
@@ -1903,14 +1918,34 @@ class MessageListView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        stored_attachment_name = None
+        if attachment:
+            # Upload before the INSERT (Cloudinary can take seconds) with the DB
+            # connection released, then store just the saved name.
+            release_db_connection()
+            attachment_field = Message._meta.get_field("attachment")
+            stored_attachment_name = attachment_field.storage.save(
+                attachment_field.generate_filename(None, attachment.name),
+                attachment,
+                max_length=attachment_field.max_length,
+            )
+
         # Create a new message
-        message = Message.objects.create(
-            conversation=conversation,
-            text=text,
-            sender=request.user,
-            reply_to=reply_to_message,
-            attachment=attachment,  # Save the file if provided
-        )
+        try:
+            message = Message.objects.create(
+                conversation=conversation,
+                text=text,
+                sender=request.user,
+                reply_to=reply_to_message,
+                attachment=stored_attachment_name,
+            )
+        except Exception:
+            if stored_attachment_name:
+                try:
+                    attachment_field.storage.delete(stored_attachment_name)
+                except Exception:
+                    logger.warning("Could not remove orphaned attachment upload")
+            raise
         bump_conversation_list_cache_version(conversation.sender_id)
         bump_conversation_list_cache_version(conversation.receiver_id)
         broadcast_conversation_update(
@@ -2258,6 +2293,8 @@ def update_profile_image(request, user_id):
                 {"error": image_error}, status=status.HTTP_400_BAD_REQUEST
             )
 
+        # The upload can take seconds; reopen the connection only for the save.
+        release_db_connection()
         stored_url = ""
         if uses_cloudinary_media_storage():
             try:
@@ -2293,7 +2330,6 @@ def update_profile_image(request, user_id):
             profile.profile_image_url = stored_url
 
         profile.save()
-        bump_profile_list_cache_version()
         bump_profile_cache_version(profile.id)
         return Response(
             {
@@ -2362,6 +2398,42 @@ def languages_match(source_language, target_language):
         return False
 
     return src == tgt or src.split("-")[0] == tgt.split("-")[0]
+
+
+class TranslationServiceError(Exception):
+    """The translation provider failed, timed out or sent an unusable reply."""
+
+
+def fetch_google_translation(text, target_language):
+    """Return (translated_text, source_language) from Google's public endpoint.
+
+    Network errors and timeouts (OSError, which covers URLError and
+    TimeoutError) and malformed payloads raise TranslationServiceError.
+    """
+    query = urlencode(
+        {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": target_language,
+            "dt": "t",
+            "q": text,
+        }
+    )
+    url = f"https://translate.googleapis.com/translate_a/single?{query}"
+    try:
+        with urlopen(url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        translated_chunks = payload[0] if isinstance(payload, list) and payload else []
+        translated_text = "".join(
+            chunk[0] for chunk in translated_chunks if isinstance(chunk, list) and chunk
+        ).strip()
+        source_language = (
+            payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
+        )
+    except (OSError, ValueError, TypeError, http.client.HTTPException) as error:
+        raise TranslationServiceError() from error
+    return translated_text, source_language
 
 
 @api_view(["POST"])
@@ -2466,65 +2538,26 @@ def translate_message_view(request):
         # Cache should be best-effort and never block translation.
         cached_result = None
 
+    # All reads are done; don't hold a pooled connection during the HTTP call.
+    release_db_connection()
     try:
-        query = urlencode(
-            {
-                "client": "gtx",
-                "sl": "auto",
-                "tl": target_language,
-                "dt": "t",
-                "q": normalized_text,
-            }
+        translated_text, source_language = fetch_google_translation(
+            normalized_text, target_language
         )
-        url = f"https://translate.googleapis.com/translate_a/single?{query}"
-        with urlopen(url, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-
-        translated_chunks = payload[0] if isinstance(payload, list) and payload else []
-        translated_text = "".join(
-            chunk[0] for chunk in translated_chunks if isinstance(chunk, list) and chunk
-        ).strip()
-        source_language = (
-            payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
+    except TranslationServiceError:
+        logger.warning("Translation service call failed", exc_info=True)
+        return Response(
+            {"error": "Translation service is currently unavailable.", "code": "translation_unavailable"},
+            status=status.HTTP_502_BAD_GATEWAY,
         )
 
-        if not translated_text:
-            return Response(
-                {"error": "Translation service returned an empty response.", "code": "translation_unavailable"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+    if not translated_text:
+        return Response(
+            {"error": "Translation service returned an empty response.", "code": "translation_unavailable"},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
-        if languages_match(source_language, target_language):
-            if message:
-                MessageTranslation.objects.update_or_create(
-                    message=message,
-                    user=request.user,
-                    target_language=target_language,
-                    defaults={
-                        "source_language": source_language,
-                        "translated_text": normalized_text,
-                    },
-                )
-            return Response(
-                {
-                    "error": "Message is already in the selected base language.", "code": "same_language",
-                    "same_language": True,
-                    "source_language": source_language,
-                    "target_language": target_language,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        result = {
-            "translated_text": translated_text,
-            "source_language": source_language,
-            "target_language": target_language,
-        }
-        try:
-            cache.set(cache_key, result, timeout=60 * 60 * 24 * 30)  # 30 days
-        except Exception:
-            pass
-
+    if languages_match(source_language, target_language):
         if message:
             MessageTranslation.objects.update_or_create(
                 message=message,
@@ -2532,22 +2565,47 @@ def translate_message_view(request):
                 target_language=target_language,
                 defaults={
                     "source_language": source_language,
-                    "translated_text": translated_text,
+                    "translated_text": normalized_text,
                 },
             )
-
         return Response(
             {
-                **result,
-                "cached": False,
+                "error": "Message is already in the selected base language.", "code": "same_language",
+                "same_language": True,
+                "source_language": source_language,
+                "target_language": target_language,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_400_BAD_REQUEST,
         )
-    except urllib.error.URLError:
-        return Response(
-            {"error": "Translation service is currently unavailable.", "code": "translation_unavailable"},
-            status=status.HTTP_502_BAD_GATEWAY,
+
+    result = {
+        "translated_text": translated_text,
+        "source_language": source_language,
+        "target_language": target_language,
+    }
+    try:
+        cache.set(cache_key, result, timeout=60 * 60 * 24 * 30)  # 30 days
+    except Exception:
+        pass
+
+    if message:
+        MessageTranslation.objects.update_or_create(
+            message=message,
+            user=request.user,
+            target_language=target_language,
+            defaults={
+                "source_language": source_language,
+                "translated_text": translated_text,
+            },
         )
+
+    return Response(
+        {
+            **result,
+            "cached": False,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
@@ -2874,6 +2932,8 @@ def fetch_generated_challenge(language, level, bucket):
         return None
     if not consume_practice_generator_budget():
         return None
+    # Provider calls take seconds; don't hold a pooled DB connection meanwhile.
+    release_db_connection()
     if PRACTICE_GENERATOR_PROVIDER == "huggingface":
         return fetch_generated_challenge_from_huggingface(language, level, bucket)
     if PRACTICE_GENERATOR_PROVIDER == "gemini":
@@ -3016,9 +3076,29 @@ def store_recent_practice_signature(
     )
 
 
+def daily_library_refill_lock_key(language, bucket):
+    return f"practice:daily_library_refill_lock:v1:date:{daily_library_date_key()}:lang:{language}:bucket:{bucket}"
+
+
+def daily_library_item(generated, language, bucket):
+    return {
+        "sentence": generated.get("sentence", ""),
+        "answer": generated.get("answer", ""),
+        "hint": generated.get("hint", ""),
+        "options": list(generated.get("options") or []),
+        "difficulty_bucket": bucket,
+        "language": language,
+        "source": "generator_daily",
+    }
+
+
 def get_or_build_daily_library(
     language, level, bucket, target_size=None, min_ready=None
 ):
+    """Bulk-fill the shared daily pool (used by `prewarm_daily_practice`).
+
+    Requests use top_up_daily_library instead, which makes at most one call.
+    """
     cache_key = daily_library_cache_key(language, bucket)
     cached = cache.get(cache_key)
     pool = cached if isinstance(cached, list) else []
@@ -3054,17 +3134,7 @@ def get_or_build_daily_library(
                 continue
 
             unique_sentences.add(sentence_key)
-            pool.append(
-                {
-                    "sentence": generated.get("sentence", ""),
-                    "answer": generated.get("answer", ""),
-                    "hint": generated.get("hint", ""),
-                    "options": list(generated.get("options") or []),
-                    "difficulty_bucket": bucket,
-                    "language": language,
-                    "source": "generator_daily",
-                }
-            )
+            pool.append(daily_library_item(generated, language, bucket))
 
         if pool:
             # Keep for ~36h so it survives day boundaries and cache jitter.
@@ -3073,11 +3143,58 @@ def get_or_build_daily_library(
     return pool
 
 
+def top_up_daily_library(language, level, bucket):
+    """Return the shared daily pool, adding at most one generated item.
+
+    Request path only. While the pool is below PRACTICE_DAILY_LIBRARY_MIN_READY,
+    one request per language/bucket/day (a cache.add lock) makes a single
+    generator call; concurrent requests serve what exists (or the static
+    library). Returns (pool, made_generator_call). Bulk refill is left to the
+    `prewarm_daily_practice` command.
+    """
+    cache_key = daily_library_cache_key(language, bucket)
+    cached = cache.get(cache_key)
+    pool = cached if isinstance(cached, list) else []
+    if len(pool) >= PRACTICE_DAILY_LIBRARY_MIN_READY:
+        return pool, False
+    if get_remaining_practice_generator_budget() <= 0:
+        return pool, False
+
+    lock_key = daily_library_refill_lock_key(language, bucket)
+    # Deleted below; the expiry only covers a worker dying mid-call.
+    if not cache.add(lock_key, 1, timeout=60):
+        return pool, False
+    try:
+        generated = fetch_generated_challenge(language, level, bucket)
+        if not generated:
+            return pool, True
+        # Re-read: the prewarm command may have written while we waited.
+        cached = cache.get(cache_key)
+        pool = cached if isinstance(cached, list) else pool
+        sentence_key = normalize_option_value(generated.get("sentence"))
+        existing = {
+            normalize_option_value(item.get("sentence"))
+            for item in pool
+            if isinstance(item, dict) and item.get("sentence")
+        }
+        if sentence_key and sentence_key not in existing:
+            pool = [*pool, daily_library_item(generated, language, bucket)]
+            # Keep for ~36h so it survives day boundaries and cache jitter.
+            cache.set(cache_key, pool, timeout=60 * 60 * 36)
+        return pool, True
+    finally:
+        cache.delete(lock_key)
+
+
 def build_challenge(language, level, user_id):
     bucket = practice_bucket_for_level(level)
     recent_signatures = set(get_recent_practice_signatures(user_id, language, bucket))
+    # A request makes at most one (slow) generator call in total.
+    made_generator_call = False
     if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"daily", "hybrid"}:
-        daily_pool = get_or_build_daily_library(language, level, bucket)
+        daily_pool, made_generator_call = top_up_daily_library(
+            language, level, bucket
+        )
         if daily_pool:
             seen_indexes = get_seen_daily_indexes(user_id, language, bucket)
             available_indexes = [
@@ -3126,18 +3243,12 @@ def build_challenge(language, level, user_id):
                 "source": "generator_daily",
             }
 
-    if PRACTICE_GENERATOR_ENABLED and PRACTICE_GENERATOR_MODE in {"realtime", "hybrid"}:
-        generated = None
-        for _ in range(4):
-            candidate = fetch_generated_challenge(language, level, bucket)
-            if not candidate:
-                continue
-            sentence_signature = normalize_option_value(candidate.get("sentence"))
-            if sentence_signature and sentence_signature in recent_signatures:
-                generated = candidate
-                continue
-            generated = candidate
-            break
+    if (
+        PRACTICE_GENERATOR_ENABLED
+        and PRACTICE_GENERATOR_MODE in {"realtime", "hybrid"}
+        and not made_generator_call
+    ):
+        generated = fetch_generated_challenge(language, level, bucket)
         if generated:
             challenge_id = f"gen:{uuid.uuid4().hex[:16]}"
             store_generated_answer(user_id, challenge_id, generated["answer"], language)
