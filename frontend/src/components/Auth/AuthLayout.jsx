@@ -3,6 +3,15 @@ import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import AuthShell from "./AuthShell";
 import { useUser } from "../../context/UserContext";
 
+const backToLoginFooter = (
+  <p className="text-center text-sm text-slate-600">
+    Remembered your password?{" "}
+    <Link to="/login" className="font-semibold text-[#1b7f79] hover:text-[#14314a]">
+      Log in
+    </Link>
+  </p>
+);
+
 const contentByPath = {
   "/login": {
     eyebrow: "Welcome Back",
@@ -58,15 +67,34 @@ const contentByPath = {
       </>
     ),
   },
+  "/forgot-password": {
+    eyebrow: "Forgot Password",
+    title: "Let's get you back into your conversations.",
+    description: "We'll email you a secure link to choose a new password.",
+    footer: backToLoginFooter,
+  },
 };
+
+const resetPasswordContent = {
+  eyebrow: "New Password",
+  title: "Choose a new password.",
+  description: "Pick a password you don't use anywhere else, then log in with it.",
+  footer: backToLoginFooter,
+};
+
+const RESET_PASSWORD_PREFIX = "/reset-password/";
 
 const AuthLayout = () => {
   const location = useLocation();
   const { user, loading } = useUser();
-  const content = contentByPath[location.pathname] || contentByPath["/login"];
+  const isResetLink = location.pathname.startsWith(RESET_PASSWORD_PREFIX);
+  const content = isResetLink
+    ? resetPasswordContent
+    : contentByPath[location.pathname] || contentByPath["/login"];
 
   // Signed-in users have no reason to see login/register; send them into the app.
-  if (!loading && user) {
+  // An emailed reset link still works while signed in (e.g. a shared computer).
+  if (!loading && user && !isResetLink) {
     return <Navigate to="/profile" replace />;
   }
 

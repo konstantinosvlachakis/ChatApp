@@ -42,6 +42,7 @@ import {
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
+import { ForgotPasswordScreen } from "../screens/ForgotPasswordScreen";
 import { CommunityScreen } from "../screens/CommunityScreen";
 import { ConversationsScreen } from "../screens/ConversationsScreen";
 import { CoachChatScreen } from "../screens/CoachChatScreen";
@@ -622,6 +623,7 @@ export function RootNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

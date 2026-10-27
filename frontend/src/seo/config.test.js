@@ -14,3 +14,14 @@ describe("link preview tags", () => {
     expect(head).toMatch(/<meta property="og:image:alt" content="[^"]+" \/>/);
   });
 });
+
+describe("password reset pages", () => {
+  it("are noindex and keep the emailed token out of the canonical URL", () => {
+    const head = buildHeadTags("/reset-password/MQ/abc-123");
+    expect(head).toContain('<meta name="robots" content="noindex,nofollow" />');
+    expect(head).not.toContain("abc-123");
+    expect(buildHeadTags("/forgot-password")).toContain(
+      '<meta name="robots" content="noindex,nofollow" />'
+    );
+  });
+});

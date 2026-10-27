@@ -1,6 +1,12 @@
 from django.urls import path
 from .views import *
-from .auth_views import CustomObtainJWTToken, CustomRefreshJWTToken, logout_view
+from .auth_views import (
+    CustomObtainJWTToken,
+    CustomRefreshJWTToken,
+    logout_view,
+    password_reset_confirm_view,
+    password_reset_request_view,
+)
 from django.conf import settings
 from django.conf.urls.static import static
 from . import consumers
@@ -12,6 +18,12 @@ urlpatterns = [
     path("logout/", logout_view, name="logout"),
     path("login/", login_view, name="login"),
     path("register/", register_view, name="register"),
+    path("auth/password-reset/", password_reset_request_view, name="password_reset"),
+    path(
+        "auth/password-reset/confirm/",
+        password_reset_confirm_view,
+        name="password_reset_confirm",
+    ),
     # Profile
     path("profile/", profile_view, name="profile"),
     path("profile/delete/", delete_account_view, name="delete_account"),

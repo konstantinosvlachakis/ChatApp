@@ -1,6 +1,15 @@
 import { BASE_URL } from "../constants/constants";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/register", "/privacy-policy", "/terms-and-conditions"]);
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/privacy-policy",
+  "/terms-and-conditions",
+]);
+// Dynamic public routes (the emailed password reset link: /reset-password/<uid>/<token>).
+const PUBLIC_PATH_PREFIXES = ["/reset-password/"];
 const ACCESS_TOKEN_KEY = "accessToken";
 const REFRESH_TOKEN_KEY = "refreshToken";
 // Must match CSRF_STORAGE_KEY in ./csrf (not imported to avoid a circular dependency).
@@ -78,7 +87,8 @@ export const clearClientSessionData = () => {
   }
 };
 
-export const isPublicPath = (pathname: string) => PUBLIC_PATHS.has(pathname);
+export const isPublicPath = (pathname: string) =>
+  PUBLIC_PATHS.has(pathname) || PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
 export const refreshSession = async () => {
   const refreshToken = shouldUseLegacyAuthFallback() ? getLegacyRefreshToken() : "";
@@ -115,6 +125,8 @@ const AUTH_ENDPOINT_PATHS = new Set([
   "/api/logout/",
   "/api/register/",
   "/api/csrf/",
+  "/api/auth/password-reset/",
+  "/api/auth/password-reset/confirm/",
 ]);
 
 export const isAuthEndpoint = (pathname: string) => AUTH_ENDPOINT_PATHS.has(pathname);

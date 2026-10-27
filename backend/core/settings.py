@@ -404,6 +404,11 @@ REST_FRAMEWORK = {
         "translate": os.environ.get("DRF_THROTTLE_TRANSLATE", "60/minute"),
         "report": os.environ.get("DRF_THROTTLE_REPORT", "20/hour"),
         "push_devices": os.environ.get("DRF_THROTTLE_PUSH_DEVICES", "30/hour"),
+        # Password reset emails: per client IP and per (hashed) email address.
+        "password_reset": os.environ.get("DRF_THROTTLE_PASSWORD_RESET", "5/hour"),
+        "password_reset_email": os.environ.get(
+            "DRF_THROTTLE_PASSWORD_RESET_EMAIL", "5/hour"
+        ),
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets
     # clients spoof their IP and bypass per-IP throttles.
@@ -413,6 +418,31 @@ REST_FRAMEWORK = {
         else (None if env == "local" else 1)
     ),
 }
+
+# Email (password reset). SMTP only when EMAIL_HOST is set; otherwise emails are
+# printed to the console so local dev and tests need no mail server.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST
+    else "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "LangVoyage <no-reply@langvoyage.com>"
+)
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+
+# Password reset links: <PASSWORD_RESET_URL_BASE or BASE_URL>/reset-password/<uid>/<token>.
+# Tokens (django.contrib.auth default_token_generator) expire after 1 hour and
+# stop working once the password changes.
+PASSWORD_RESET_URL_BASE = os.environ.get("PASSWORD_RESET_URL_BASE", "").rstrip("/")
+PASSWORD_RESET_TIMEOUT = 60 * 60
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
