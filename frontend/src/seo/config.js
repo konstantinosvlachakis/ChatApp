@@ -1,7 +1,11 @@
 const SITE_NAME = "LangVoyage";
-const DEFAULT_SITE_URL = "https://langvoyage.app";
+const DEFAULT_SITE_URL = "https://www.langvoyage.com";
 const SITE_URL = (process.env.REACT_APP_SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
-const DEFAULT_OG_IMAGE = `${SITE_URL}/favicon.ico`;
+// Link previews (WhatsApp, Slack, Teams, X…) need an absolute PNG/JPG URL; .ico is ignored.
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
+const OG_IMAGE_ALT = "LangVoyage logo — language exchange and daily speaking practice";
 const DEFAULT_DESCRIPTION =
   "LangVoyage helps language learners build confidence through guided practice, thoughtful conversations, and a calmer daily rhythm.";
 
@@ -151,7 +155,12 @@ const buildHeadTags = (pathname, params = {}) => {
     `<meta property="og:description" content="${escapeHtml(description)}" />`,
     `<meta property="og:url" content="${escapeHtml(canonicalUrl)}" />`,
     `<meta property="og:image" content="${escapeHtml(DEFAULT_OG_IMAGE)}" />`,
-    `<meta name="twitter:card" content="summary" />`,
+    `<meta property="og:image:type" content="image/png" />`,
+    `<meta property="og:image:width" content="${OG_IMAGE_WIDTH}" />`,
+    `<meta property="og:image:height" content="${OG_IMAGE_HEIGHT}" />`,
+    `<meta property="og:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}" />`,
     `<meta name="twitter:title" content="${escapeHtml(titleWithSite(title))}" />`,
     `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
     `<meta name="twitter:image" content="${escapeHtml(DEFAULT_OG_IMAGE)}" />`,
@@ -177,6 +186,7 @@ module.exports = {
   SITE_NAME,
   SITE_URL,
   DEFAULT_OG_IMAGE,
+  OG_IMAGE_ALT,
   DEFAULT_DESCRIPTION,
   titleWithSite,
   buildSeoModel,
