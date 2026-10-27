@@ -28,7 +28,7 @@ describe("Conversation message grouping", () => {
     expect(screen.getByText("Today")).toBeInTheDocument();
   });
 
-  test("offers a translate chip only on translatable received messages", () => {
+  test("offers a translate shortcut only on translatable received messages", () => {
     render(<Conversation messages={messages} userId={1} onDeleteMessage={jest.fn()} />);
     expect(screen.getAllByRole("button", { name: "Translate" })).toHaveLength(1);
   });

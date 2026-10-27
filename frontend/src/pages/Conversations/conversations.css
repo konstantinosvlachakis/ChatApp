@@ -322,28 +322,14 @@
 .cv-msg-actions-toggle svg { width: 20px; height: 20px; }
 .cv-msg:hover .cv-msg-actions-toggle, .cv-msg:focus-within .cv-msg-actions-toggle { opacity: 1; }
 @media (hover: none) { .cv-msg-actions-toggle { opacity: 1; } }
+.cv-msg-translate svg { width: 18px; height: 18px; }
+.cv-msg-translate.is-busy { opacity: 1; cursor: wait; animation: cv-translate-pulse 1s ease-in-out infinite; }
+@keyframes cv-translate-pulse { 50% { opacity: .4; } }
+/* Touch devices translate via the long-press menu instead of a permanent extra icon. */
+@media (hover: none) { .cv-msg-translate:not(.is-busy) { display: none; } }
 
 .cv-msg-hover-time { flex-shrink: 0; color: var(--lv-muted-ink); font-size: 12px; opacity: 0; font-variant-numeric: tabular-nums; }
 .cv-msg:hover .cv-msg-hover-time, .cv-msg:focus-within .cv-msg-hover-time { opacity: 1; }
-
-.cv-translate-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  margin-top: 6px;
-  padding: 4px 12px;
-  border: 1px solid var(--lv-line);
-  border-radius: var(--lv-radius-pill);
-  background: var(--lv-paper);
-  color: var(--lv-ink-soft);
-  font-size: 12px;
-  font-weight: 700;
-}
-.cv-translate-chip::before { content: ""; position: absolute; }
-.cv-translate-chip:hover:not(:disabled) { background: var(--lv-cream); }
-.cv-translate-chip:disabled { cursor: wait; opacity: .7; }
-.cv-translate-chip svg { width: 16px; height: 16px; }
 
 .cv-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .cv-reactions span { padding: 2px 8px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-size: 13px; }
@@ -456,6 +442,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cv-icon-button, .cv-msg-actions-toggle, .cv-send, .cv-row-delete-reveal { transition: none; }
+  .cv-msg-translate.is-busy { animation: none; }
 }
 
 /* ---- Lumi (coach) ---- */

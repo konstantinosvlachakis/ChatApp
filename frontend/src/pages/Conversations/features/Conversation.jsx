@@ -324,20 +324,21 @@ const MessageRow = React.memo(function MessageRow({
             >
               <MoreHorizRoundedIcon />
             </button>
+            {/* Hover-only shortcut; the actions menu (right-click / long-press) also offers Translate. */}
+            {(canTranslate || isTranslating) && (
+              <button
+                type="button"
+                className={`cv-msg-actions-toggle cv-msg-translate ${isTranslating ? "is-busy" : ""}`}
+                onClick={() => onTranslate(msg)}
+                disabled={isTranslating}
+                aria-label={isTranslating ? "Translating…" : "Translate"}
+                title={isTranslating ? "Translating…" : "Translate"}
+              >
+                <TranslateRoundedIcon aria-hidden="true" />
+              </button>
+            )}
             {!endsGroup && timeLabel && <span className="cv-msg-hover-time">{timeLabel}</span>}
           </div>
-
-          {(canTranslate || isTranslating) && (
-            <button
-              type="button"
-              className="cv-translate-chip"
-              onClick={() => onTranslate(msg)}
-              disabled={isTranslating}
-            >
-              <TranslateRoundedIcon aria-hidden="true" />
-              {isTranslating ? "Translating…" : "Translate"}
-            </button>
-          )}
 
           {messageReactions.length > 0 && (
             <div className="cv-reactions" aria-label="Reactions">

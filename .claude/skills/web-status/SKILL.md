@@ -40,7 +40,7 @@ Safety rules: attachment/user URLs go through the http/https/blob scheme check i
 ```bash
 cd frontend
 npx tsc --noEmit            # clean for src/ (playwright types missing is pre-existing)
-CI=true npx react-scripts test --watchAll=false   # 9 suites / 42 tests (Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast, layout/AppHeader (+tab bar, nav helpers), Community FilterSheet, Conversations utils (grouping, search, times), Conversation (grouping, translate chip, actions menu)); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
+CI=true npx react-scripts test --watchAll=false   # 9 suites / 42 tests (Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast, layout/AppHeader (+tab bar, nav helpers), Community FilterSheet, Conversations utils (grouping, search, times), Conversation (grouping, hover translate shortcut, actions menu)); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
 npm run build               # builds + prerenders 5 public routes; main chunk ≈ 99.7 KB gzip (Sentry is a separate lazy chunk)
 ```
 Note `package.json` has `postinstall: npm run build` and POSIX-style e2e scripts.
