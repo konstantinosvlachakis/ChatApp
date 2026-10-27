@@ -16,7 +16,7 @@ const ToastViewport = () => {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-[1000] flex flex-col items-center gap-2 px-4 sm:bottom-6 sm:items-end sm:px-6"
+      className="lv-toast-viewport pointer-events-none fixed inset-x-0 bottom-4 z-[1000] flex flex-col items-center gap-2 px-4 sm:bottom-6 sm:items-end sm:px-6"
       data-testid="toast-viewport"
     >
       {toasts.map((toast) => (

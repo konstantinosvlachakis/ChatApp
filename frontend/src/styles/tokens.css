@@ -1,0 +1,57 @@
+/*
+ * LangVoyage design tokens for the warm exchange redesign (People, app shell, Conversations).
+ * Imported once from src/index.js. Use these variables instead of repeating hex values.
+ * Text colours below are checked for WCAG AA (>= 4.5:1) on every surface they are used on:
+ *   --lv-ink        on cream/paper/peach ............ >= 11:1
+ *   --lv-ink-soft   on cream ........................ 7.5:1
+ *   --lv-muted-ink  on bubble-out (worst case) 4.95:1, peach 5.1:1, cream 5.6:1
+ *   --lv-teal       on paper 6.0:1, cream 5.6:1, sage-strong 5.1:1
+ *   --lv-peach-ink  on paper 5.5:1, peach-soft 5.1:1
+ *   --lv-peach-deep on peach-strong 5.2:1 (portrait initials)
+ *   white           on navy 13.4:1, teal 6.1:1, badge 5.1:1; --lv-on-navy-muted on navy 9.7:1
+ */
+:root {
+  /* Surfaces */
+  --lv-cream: #f7f6f2;
+  --lv-cream-deep: #eeede7;
+  --lv-paper: #fffdfa;
+  --lv-warm: #fff8f0;
+  --lv-peach-soft: #fff4e8;
+  --lv-peach: #fbe9da;
+  --lv-peach-strong: #f5cfb1;
+  --lv-sage: #eaf1e9;
+  --lv-sage-strong: #e4eee2;
+  --lv-bubble-in: #e8eee9;
+  --lv-bubble-out: #fde4d0;
+
+  /* Text */
+  --lv-ink: #152f3d;
+  --lv-ink-soft: #3d5260;
+  --lv-muted-ink: #56656c;
+  --lv-teal: #176e65;
+  --lv-teal-strong: #0f5f56;
+  --lv-peach-ink: #a94c26;
+  --lv-peach-deep: #8a3d1d;
+  --lv-on-navy: #ffffff;
+  --lv-on-navy-muted: #d3dde6;
+
+  /* Lines, accents, states */
+  --lv-line: #e8e7e0;
+  --lv-line-warm: #ecdfd0;
+  --lv-focus: #177f79;
+  --lv-online: #1f9d6b;
+  --lv-badge: #c2412f;
+  --lv-premium: #ecb1d0;
+
+  /* Shape and type */
+  --lv-radius-pill: 999px;
+  --lv-radius-card: 28px;
+  --lv-radius-panel: 24px;
+  --lv-shadow-soft: 0 12px 36px #152f3d12;
+  --lv-font-body: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --lv-font-display: "Sora", var(--lv-font-body);
+
+  /* Shell */
+  --lv-header-height: 64px;
+  --lv-tabbar-height: 60px;
+}

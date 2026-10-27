@@ -1,0 +1,207 @@
+/* App shell: navy header, account menu, phone tab bar. Tokens live in src/styles/tokens.css. */
+
+.lv-shell {
+  background: var(--lv-cream);
+  color: var(--lv-ink);
+  font-family: var(--lv-font-body);
+}
+
+.lv-shell :is(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--lv-focus);
+  outline-offset: 2px;
+}
+
+.lv-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Header ---- */
+.lv-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--lv-navy);
+  color: var(--lv-on-navy);
+  box-shadow: 0 10px 30px #08132024;
+}
+.lv-header :is(a, button):focus-visible { outline-color: var(--lv-premium); }
+.lv-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  max-width: 1440px;
+  min-height: var(--lv-header-height);
+  margin: 0 auto;
+  padding: 10px 24px;
+}
+.lv-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 44px;
+  border-radius: 14px;
+  color: var(--lv-on-navy);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+}
+.lv-header-nav { display: flex; align-items: center; gap: 6px; }
+.lv-header-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--lv-radius-pill);
+  color: var(--lv-on-navy);
+  font-size: 14px;
+  font-weight: 700;
+  transition: background-color 0.15s ease;
+}
+.lv-header-link:hover { background: #ffffff1a; }
+.lv-header-link.is-active { background: var(--lv-paper); color: var(--lv-teal); }
+.lv-header-link.is-premium:not(.is-active) { background: #ffffff14; box-shadow: inset 0 0 0 1px #ecb1d03d; }
+.lv-header-premium-icon { width: 16px; height: 16px; color: var(--lv-premium); }
+.lv-header-link.is-active .lv-header-premium-icon { color: var(--lv-peach-ink); }
+
+.lv-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--lv-radius-pill);
+  background: var(--lv-badge);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ---- Account menu ---- */
+.lv-account { position: relative; margin-left: auto; }
+.lv-account-button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 4px 10px 4px 4px;
+  border-radius: var(--lv-radius-pill);
+  color: var(--lv-on-navy);
+  font-size: 14px;
+  font-weight: 700;
+}
+.lv-account-button:hover { background: #ffffff1a; }
+.lv-account-button img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #ffffff55;
+}
+.lv-account-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-account-chevron { width: 20px; height: 20px; transition: transform 0.2s ease; }
+.lv-account-chevron.is-open { transform: rotate(180deg); }
+.lv-account-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
+  width: 220px;
+  padding: 6px;
+  background: var(--lv-paper);
+  border: 1px solid var(--lv-line);
+  border-radius: 20px;
+  box-shadow: var(--lv-shadow-soft);
+  color: var(--lv-ink);
+}
+.lv-account-menu :is(a, button) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lv-ink);
+}
+.lv-account-menu :is(a, button):hover { background: var(--lv-cream-deep); }
+.lv-account-menu .lv-account-logout { margin-top: 4px; border-top: 1px solid var(--lv-line); border-radius: 0 0 14px 14px; color: var(--lv-peach-ink); }
+
+/* ---- Phone tab bar ---- */
+.lv-tabbar { display: none; }
+
+@media (max-width: 1199px) {
+  .lv-header-inner { gap: 18px; }
+  .lv-header-link { padding-inline: 12px; }
+}
+
+@media (max-width: 767px) {
+  .lv-header-inner { min-height: 56px; padding: 6px 12px; gap: 8px; }
+  .lv-brand { font-size: 18px; }
+  .lv-header-nav { display: none; }
+  .lv-account-name, .lv-account-chevron { display: none; }
+  .lv-account-button { padding: 4px; }
+
+  .lv-tabbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    min-height: var(--lv-tabbar-height);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    background: var(--lv-paper);
+    border-top: 1px solid var(--lv-line);
+    box-shadow: 0 -8px 24px #152f3d0d;
+  }
+  .lv-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 52px;
+    border-radius: 14px;
+    color: var(--lv-muted-ink);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .lv-tab.is-active { color: var(--lv-teal); }
+  .lv-tab.is-active .lv-tab-icon { background: var(--lv-sage); }
+  .lv-tab-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 28px;
+    border-radius: var(--lv-radius-pill);
+  }
+  .lv-tab-icon svg { width: 22px; height: 22px; }
+  .lv-tab-badge { position: absolute; top: -4px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-header-link, .lv-account-chevron { transition: none; }
+}
+
+.lv-footer { background: var(--lv-cream-deep); color: var(--lv-muted-ink); }
+
+/* Keep toasts clear of the phone tab bar. */
+@media (max-width: 767px) {
+  body:has(.lv-tabbar) .lv-toast-viewport { bottom: calc(var(--lv-tabbar-height) + 12px + env(safe-area-inset-bottom, 0px)); }
+}

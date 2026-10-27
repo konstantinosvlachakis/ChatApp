@@ -5,6 +5,7 @@ import reportWebVitals from './reportWebVitals';
 import { initCsrfProtection } from './utils/csrf';
 import { logger } from './lib/logger';
 import { scheduleSentryInit } from './lib/sentry';
+import './styles/tokens.css';
 import './index.css';  // Ensure this line is present to import Tailwind CSS
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

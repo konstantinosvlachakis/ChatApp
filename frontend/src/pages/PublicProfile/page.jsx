@@ -100,7 +100,7 @@ const PublicProfilePage = () => {
   if (!profile) return <div className="p-8 text-gray-500">Profile not found.</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 pb-24 sm:p-5 sm:pb-5 md:p-8">
+    <div className="min-h-screen bg-gray-50 p-3 pb-28 sm:p-5 sm:pb-5 md:p-8">
       <div className="max-w-5xl mx-auto">
         <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
           <img
@@ -241,7 +241,10 @@ const PublicProfilePage = () => {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-10px_30px_-20px_rgba(15,23,42,0.5)] backdrop-blur sm:hidden">
+      <div
+        // Sits above the phone tab bar (layout/BottomTabBar).
+        style={{ bottom: "calc(var(--lv-tabbar-height) + env(safe-area-inset-bottom, 0px))" }}
+        className="fixed inset-x-0 z-30 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-10px_30px_-20px_rgba(15,23,42,0.5)] backdrop-blur sm:hidden">
         <button
           type="button"
           onClick={handleStartConversation}

@@ -5,7 +5,7 @@ description: Current state of the LangVoyage React web app (frontend/) — route
 
 # Web status (React, CRA)
 
-Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability` and `feat/api-resilience`. Refresh: `git log --oneline 79ec3a9..HEAD -- frontend` — re-read only changed files, then update this file.
+Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign` (2026-10-27). Refresh: `git log --oneline 79ec3a9..HEAD -- frontend` — re-read only changed files, then update this file.
 
 ## Routes (`src/AppRoutes.jsx`; public-only build uses `src/PublicAppRoutes.jsx`)
 Public: `/`, `/privacy-policy`, `/terms-and-conditions`, `/login`, `/register`.
@@ -27,6 +27,11 @@ Protected (wrapped in `layout/Layout.jsx`, which redirects to `/login` without a
 - `lib/logger.ts` instead of `console.*` (silent in production; `logger.error` reports to Sentry). `lib/sentry.ts` loads `lib/sentrySdk.ts` (`@sentry/react` 11.7.0, tree-shaken, ~62 KB gzip lazy chunk) after first paint, **only** when `REACT_APP_SENTRY_DSN` is set. Env: `REACT_APP_SENTRY_DSN`, `REACT_APP_SENTRY_TRACES_SAMPLE_RATE` (default 0), optional `REACT_APP_SENTRY_ENVIRONMENT`, `REACT_APP_SENTRY_RELEASE`. SDK v11 has no `sendDefaultPii`; `dataCollection` disables user info, cookies, headers, bodies, query params.
 
 ## Key feature files
+App shell (2026-10-27, branch `feat/people-redesign`): `layout/Layout.jsx` keeps all session/presence logic (presence socket + `PresenceContext`, unread count from `useGetConversations`, desktop notifications, logout incl. `presence/offline`, `RouteErrorBoundary`; `ConnectivityBanner`/`ToastViewport` live in `App.jsx`) and renders `layout/AppHeader.jsx` (navy header on every protected route: existing `CoachAvatar` logo, nav pills People/Conversations(+unread)/Practice/Premium, avatar disclosure menu with My profile, Settings, Privacy, Terms, Log out; closes on outside click, route change and Escape, focus returns to the toggle) and `layout/BottomTabBar.jsx` (phones <768px only, via CSS: People, Practice, Chats(+unread), Profile, Premium; `aria-current`; sticky with safe-area padding; not rendered on `/conversations/:id`). Nav config + active matching in `layout/navItems.js` (prefix match, e.g. `/people/:u` → People, `/profile/edit` → Profile). Icons in `layout/NavIcon.jsx` are inlined MUI Rounded paths so the main bundle doesn't pull MUI/emotion. Styles: `layout/appShell.css` (`lv-*` classes; `.lv-shell` sets the cream background, body font and focus-visible ring for all app pages).
+Design tokens: `src/styles/tokens.css` (imported once in `index.js`): cream/paper/peach/sage surfaces, ink/muted/teal text colours (AA-checked ratios in the file header), focus, badge, radii, header/tab-bar heights. Use `var(--lv-*)` instead of new hex values. Older `--lv-*` tokens (`--lv-navy`, `--lv-primary`, …) remain in `index.css`.
+
+People discovery: `pages/Community/page.tsx`, `components/ExchangeProfileCard.tsx`, `components/FilterSheet.tsx`, `community.css`. Warm layout: featured first result, profile grid, desktop exchange/filters sidebar. Phones: compact exchange strip, search + filter icon button opening `FilterSheet` (native `<dialog>` + `showModal()`: inert background/focus containment, Escape and backdrop close; "Find your exchange": native-language select, level pills Any/Beginner/Intermediate/Advanced/Fluent, "Show people" applies the draft, "Reset filters"). Cards use real `learning_goal`/`practice_language_levels` (no age/bio/premium claims; PeopleCard has no id/online flag, so no presence dot). Search + native-language filter are client-side over loaded profiles; match mode + level are server filters and reset pagination. Say hello uses the conversation create/get API. All text ≥12px; muted/teal text uses AA-checked tokens. The Expo app has not been redesigned.
+
 Chat: `pages/Conversations/features/{ChatRoom,Conversation,MessageInput,ChatHeader,ConversationList,CallPanel,CoachChatRoom,Sidebar}.jsx` (+ `api/*.ts`). Community: `pages/Community/page.tsx`. Profiles: `pages/Profile/*`, `pages/PublicProfile/page.jsx`. Practice: `pages/PracticePage.jsx`. Coach history: `features/coachConversation.js` (localStorage).
 Safety rules: attachment/user URLs go through the http/https/blob scheme check in `Conversation.jsx`; usernames in paths use `encodeURIComponent`; no `console.*` (use `lib/logger`) and never log user data; no `dangerouslySetInnerHTML`.
 
@@ -34,7 +39,7 @@ Safety rules: attachment/user URLs go through the http/https/blob scheme check i
 ```bash
 cd frontend
 npx tsc --noEmit            # clean for src/ (playwright types missing is pre-existing)
-CI=true npx react-scripts test --watchAll=false   # 5 suites / 22 tests (Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
+CI=true npx react-scripts test --watchAll=false   # 7 suites / 31 tests (Settings, utils/reconnect, lib/apiError, lib/apiClient, Toast, layout/AppHeader (+tab bar, nav helpers), Community FilterSheet); from a .claude worktree add --testMatch "**/src/**/*.test.{js,jsx,ts,tsx}"
 npm run build               # builds + prerenders 5 public routes; main chunk ≈ 99.7 KB gzip (Sentry is a separate lazy chunk)
 ```
 Note `package.json` has `postinstall: npm run build` and POSIX-style e2e scripts.
