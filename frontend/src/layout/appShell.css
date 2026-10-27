@@ -54,6 +54,8 @@
   font-weight: 800;
   letter-spacing: -0.6px;
 }
+.lv-shell .lv-brand:focus-visible { outline: none; }
+.lv-brand:focus-visible > span { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .lv-header-nav { display: flex; align-items: center; gap: 6px; }
 .lv-header-link {
   position: relative;

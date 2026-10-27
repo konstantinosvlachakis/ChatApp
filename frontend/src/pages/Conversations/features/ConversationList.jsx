@@ -357,7 +357,7 @@ function ConversationList({
           : "No messages yet";
 
         return (
-          <div key={conversation.id} className="cv-row-wrap">
+          <div key={conversation.id} className={`cv-row-wrap${isDeleteVisible ? " is-delete-revealed" : ""}`}>
             <div
               className="cv-row-delete-reveal"
               style={{ opacity: isDeleteVisible ? 1 : 0 }}
@@ -442,6 +442,8 @@ function ConversationList({
             <button
               type="button"
               className="cv-icon-button cv-row-more"
+              tabIndex={isDeleteVisible ? -1 : 0}
+              aria-hidden={isDeleteVisible}
               onClick={(event) => {
                 event.stopPropagation();
                 requestDeleteConversation(conversation.id, otherUser?.username);

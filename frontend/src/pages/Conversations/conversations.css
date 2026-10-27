@@ -117,6 +117,8 @@
   text-align: left;
 }
 .cv-row:hover { background: var(--lv-cream); }
+.lv-shell .cv-page .cv-row:focus-visible { outline: none; }
+.cv-row:focus-visible .cv-row-name { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .cv-row.is-active { background: var(--lv-bubble-out); }
 .cv-row.is-companion { background: var(--lv-sage); }
 .cv-row.is-companion:hover { background: var(--lv-sage-strong); }
@@ -158,6 +160,7 @@
   box-shadow: 0 2px 8px #152f3d1f;
 }
 .cv-row-wrap:hover .cv-row-more, .cv-row-wrap:focus-within .cv-row-more { opacity: 1; }
+.cv-row-wrap.is-delete-revealed .cv-row-more { opacity: 0; pointer-events: none; }
 /* The delete button takes the right edge, so the time and unread badge step aside. */
 .cv-row-time, .cv-row-badge { transition: opacity .15s ease; }
 .cv-row-wrap:hover .cv-row-time, .cv-row-wrap:hover .cv-row-badge,
