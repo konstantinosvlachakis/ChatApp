@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import os
@@ -30,6 +31,13 @@ PRESENCE_TOUCH_INTERVAL_SECONDS = int(
 # Generous enough for WebRTC SDP payloads, small enough to stop memory abuse.
 WS_MAX_MESSAGE_BYTES = int(os.environ.get("WS_MAX_MESSAGE_BYTES", str(64 * 1024)))
 
+# Consumer DB calls run on the default thread pool. The default
+# thread_sensitive=True would funnel every socket in the process through
+# asgiref's single shared thread (Channels sets no per-connection context).
+# DatabaseSyncToAsync still runs close_old_connections around each call, so
+# pooled connections go back to the pool afterwards.
+db_async = functools.partial(database_sync_to_async, thread_sensitive=False)
+
 
 def user_presence_group_name(user_id):
     return f"presence_user_{user_id}"
@@ -57,6 +65,41 @@ def get_presence_contact_ids(user_id):
         if other_id and other_id != user_id:
             contact_ids.add(other_id)
     return contact_ids
+
+
+def increment_presence_count(user_id):
+    """Count a new socket; return True if the user just came online.
+
+    Atomic UPDATEs only (no row lock). A user still flagged online but with
+    a stale last_seen (e.g. counts left behind by a crash) counts as coming
+    online, so contacts get told.
+    """
+    now = timezone.now()
+    threshold = now - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
+    if Profile.objects.filter(
+        id=user_id, is_online=True, last_seen__gte=threshold
+    ).update(ws_connection_count=F("ws_connection_count") + 1, last_seen=now):
+        return False
+    return bool(
+        Profile.objects.filter(id=user_id).update(
+            ws_connection_count=F("ws_connection_count") + 1,
+            is_online=True,
+            last_seen=now,
+        )
+    )
+
+
+def get_online_user_ids(user_ids):
+    if not user_ids:
+        return []
+    threshold = timezone.now() - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
+    return list(
+        Profile.objects.filter(
+            id__in=user_ids,
+            is_online=True,
+            last_seen__gte=threshold,
+        ).values_list("id", flat=True)
+    )
 
 
 async def send_presence_update(channel_layer, user_id, is_online, contact_ids):
@@ -168,29 +211,11 @@ class PresenceTrackingMixin:
         except Exception:
             return None
 
-    @database_sync_to_async
+    @db_async
     def increment_presence(self, user_id):
-        """Count a new socket; return True if the user just came online.
+        return increment_presence_count(user_id)
 
-        Atomic UPDATEs only (no row lock). A user still flagged online but with
-        a stale last_seen (e.g. counts left behind by a crash) counts as coming
-        online, so contacts get told.
-        """
-        now = timezone.now()
-        threshold = now - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
-        if Profile.objects.filter(
-            id=user_id, is_online=True, last_seen__gte=threshold
-        ).update(ws_connection_count=F("ws_connection_count") + 1, last_seen=now):
-            return False
-        return bool(
-            Profile.objects.filter(id=user_id).update(
-                ws_connection_count=F("ws_connection_count") + 1,
-                is_online=True,
-                last_seen=now,
-            )
-        )
-
-    @database_sync_to_async
+    @db_async
     def touch_presence(self, user_id):
         # The guard skips the write when another socket of the same user touched
         # last_seen recently. Half the interval leaves slack for clock jitter so
@@ -203,7 +228,7 @@ class PresenceTrackingMixin:
             last_seen=now
         )
 
-    @database_sync_to_async
+    @db_async
     def decrement_presence(self, user_id):
         """Release a socket; return True if the user just went offline.
 
@@ -227,7 +252,7 @@ class PresenceTrackingMixin:
                 return False
         return False
 
-    @database_sync_to_async
+    @db_async
     def load_presence_contact_ids(self, user_id):
         return get_presence_contact_ids(user_id)
 
@@ -249,20 +274,7 @@ class PresenceTrackingMixin:
             self.channel_layer, self.user_id, is_online, contact_ids
         )
 
-    @database_sync_to_async
-    def get_online_contact_ids(self, contact_ids):
-        if not contact_ids:
-            return []
-        threshold = timezone.now() - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
-        return list(
-            Profile.objects.filter(
-                id__in=contact_ids,
-                is_online=True,
-                last_seen__gte=threshold,
-            ).values_list("id", flat=True)
-        )
-
-    @database_sync_to_async
+    @db_async
     def get_participant_details(self, conversation_id, user_id):
         """Return (username, other_participant_id) if user_id is a participant.
 
@@ -314,12 +326,12 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         self.room_group_name = str(conversation_id)
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        # Count the socket before accepting: DB calls run on worker threads, so
+        # this keeps "client saw the open" after "presence is up to date".
+        became_online = await self.increment_presence(self.user_id)
+        if became_online:
+            await self.broadcast_presence(True)
         await self.accept()
-
-        if self.user_id:
-            became_online = await self.increment_presence(self.user_id)
-            if became_online:
-                await self.broadcast_presence(True)
 
     async def disconnect(self, close_code):
         if not getattr(self, "room_group_name", None):
@@ -534,18 +546,28 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         )
         await self.accept()
 
-        became_online = await self.increment_presence(self.user_id)
+        became_online, self.contact_ids, online_ids = await self.open_presence(
+            self.user_id
+        )
         self.last_touch_monotonic = time.monotonic()
-        contact_ids = await self.get_contact_ids()
         if became_online:
             await self.broadcast_presence(True)
 
-        online_ids = await self.get_online_contact_ids(contact_ids)
         await self.send(
             text_data=json.dumps(
                 {"type": "initial_online_users", "user_ids": online_ids}
             )
         )
+
+    @db_async
+    def open_presence(self, user_id):
+        """Connect-time DB work in one thread hop.
+
+        Returns (became_online, contact_ids, online_contact_ids).
+        """
+        became_online = increment_presence_count(user_id)
+        contact_ids = get_presence_contact_ids(user_id)
+        return became_online, contact_ids, get_online_user_ids(contact_ids)
 
     async def disconnect(self, close_code):
         if not getattr(self, "user_id", None):

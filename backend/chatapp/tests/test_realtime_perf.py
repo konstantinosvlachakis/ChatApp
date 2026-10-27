@@ -8,9 +8,8 @@ from channels.layers import get_channel_layer
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.core.management import call_command
-from django.db import connection
+from django.db.backends.utils import CursorWrapper
 from django.test import TransactionTestCase, override_settings
-from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -24,27 +23,37 @@ ws_application = URLRouter(websocket_urlpatterns)
 
 
 class capture_queries:
-    """Async wrapper for CaptureQueriesContext.
+    """Async context that records every SQL statement, from any thread.
 
-    Consumers run their ORM calls via database_sync_to_async on the test's
-    main thread, and the async test body may resolve `connection` to another
-    wrapper, so the context is entered, exited and read on the sync side.
+    Consumers run their ORM calls with thread_sensitive=False, i.e. on worker
+    threads with their own connections, so a per-connection
+    CaptureQueriesContext would miss them. This patches CursorWrapper instead.
     """
 
     def __init__(self):
         self.captured_queries = []
 
+    def _record(self, original):
+        captured = self.captured_queries
+
+        def wrapper(cursor_wrapper, sql, *args, **kwargs):
+            captured.append({"sql": sql})
+            return original(cursor_wrapper, sql, *args, **kwargs)
+
+        return wrapper
+
     async def __aenter__(self):
-        self._ctx = CaptureQueriesContext(connection)
-        await sync_to_async(self._ctx.__enter__)()
+        self._patches = [
+            patch.object(CursorWrapper, name, self._record(getattr(CursorWrapper, name)))
+            for name in ("_execute", "_executemany")
+        ]
+        for patcher in self._patches:
+            patcher.start()
         return self
 
     async def __aexit__(self, *exc_info):
-        def finish():
-            self._ctx.__exit__(*exc_info)
-            self.captured_queries = list(self._ctx.captured_queries)
-
-        await sync_to_async(finish)()
+        for patcher in reversed(self._patches):
+            patcher.stop()
 
 
 @override_settings(
@@ -180,7 +189,7 @@ class RealtimePerformanceTests(TransactionTestCase):
         async with capture_queries() as chat_disconnect:
             await chat_ws.disconnect()
         # one decrement, no conversation re-read
-        self.assertLessEqual(len(chat_disconnect.captured_queries), 1)
+        self.assertLessEqual(len(chat_disconnect.captured_queries), 1, chat_disconnect.captured_queries)
 
         async with capture_queries() as presence_disconnect:
             await presence_ws.disconnect()
