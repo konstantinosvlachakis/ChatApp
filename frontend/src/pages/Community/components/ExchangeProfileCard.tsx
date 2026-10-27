@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import type { PartnerMatch } from "../../../components/Cards";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
+import { avatarImage } from "../../../lib/media";
 
 export interface ExchangeProfile {
   username: string;
@@ -19,6 +20,9 @@ export const languageLevel = (levels: Record<string, string>, language: string) 
   const key = Object.keys(levels).find((entry) => entry.toLowerCase() === language.toLowerCase());
   return key ? languageLabel(levels[key]) : "";
 };
+
+const FEATURED_PORTRAIT_PX = 176;
+const COMPACT_PORTRAIT_PX = 64;
 
 interface Props {
   profile: ExchangeProfile;
@@ -38,6 +42,8 @@ export default function ExchangeProfileCard({
   onSayHello,
 }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
+  // Largest rendered portrait (community.css): featured 176px on desktop, compact 64px.
+  const portrait = avatarImage(profile.profileImage, featured ? FEATURED_PORTRAIT_PX : COMPACT_PORTRAIT_PX);
   const learning = profile.languagesPracticing.find((language) => language.toLowerCase() === viewerLanguage?.toLowerCase()) || profile.languagesPracticing[0];
   const level = learning ? languageLevel(profile.practiceLanguageLevels, learning) : "";
   const badge = profile.match?.reciprocal ? "Perfect exchange" : profile.match?.teachesMe ? "Native speaker for you" : "Meet someone new";
@@ -56,12 +62,12 @@ export default function ExchangeProfileCard({
       {featured && <span className="exchange-match-label">{badge}</span>}
       <Link to={profilePath} state={{ profile }} className="exchange-portrait" aria-label={profileLabel}>
         <img
-          src={profile.profileImage && !imageFailed ? profile.profileImage : DEFAULT_AVATAR_URL}
+          src={portrait && !imageFailed ? portrait : DEFAULT_AVATAR_URL}
           alt=""
           loading={featured ? "eager" : "lazy"}
           decoding="async"
           onError={() => {
-            if (profile.profileImage && !imageFailed) setImageFailed(true);
+            if (portrait && !imageFailed) setImageFailed(true);
           }}
         />
       </Link>

@@ -5,6 +5,7 @@ import MyLocationOutlinedIcon from "@mui/icons-material/MyLocationOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
+import { avatarImage } from "../../lib/media";
 import { useUser } from "../../context/UserContext";
 import { getUserLocation } from "./utils/getUserLocation";
 import api, { getErrorMessage } from "../../lib/api";
@@ -291,7 +292,7 @@ const EditProfilePage = () => {
               <span className="pf-eyebrow">Preview</span>
               <div className="pe-preview-avatar" style={{ background: ringColor }}>
                 <img
-                  src={resolveMediaUrl(user.profile_image_url) || DEFAULT_AVATAR_URL}
+                  src={avatarImage(resolveMediaUrl(user.profile_image_url), 92) || DEFAULT_AVATAR_URL}
                   alt=""
                   onError={handleAvatarError}
                 />

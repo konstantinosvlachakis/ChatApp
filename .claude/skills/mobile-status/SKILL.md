@@ -5,7 +5,7 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 
 # Mobile status (Expo / React Native)
 
-Last verified: 2026-10-26 at commit `79ec3a9`; updated in PRs `fix/reliability` and `feat/api-resilience`. Refresh: `git log --oneline 79ec3a9..HEAD -- mobile` — re-read only changed files, then update this file.
+Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience` and `perf/media` (pending, this branch). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.
 
 ## Navigation (`src/navigation/RootNavigator.tsx`)
 Auth stack: `Login`, `Register`. App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.
@@ -20,6 +20,7 @@ Screens in `src/screens/`, shared UI in `src/components/` (`PartnerCard`, `Repor
 - `src/context/AuthContext.tsx` — session bootstrap (any startup failure logs out — UX choice).
 - WebSockets send the JWT in a header (not the URL); backend closes with 4401/4403. Presence sockets heartbeat every 20 s (`src/services/realtime.ts`). `RootNavigator`'s presence socket reconnects with exponential backoff + jitter (paused while backgrounded) and on 4401/4403 refreshes the token once (`refreshAccessToken`, exported from `client.ts`).
 - Chat (`ConversationsScreen`): messages/deletes/edits arrive as server `message_created`/`message_deleted`/`message_edited` events (deduped by id against the POST response; no client relay). The detail's embedded ≤200 messages are the first page; scrolling to the top loads older pages from `/conversations/<id>/messages/?page=&page_size=50`.
+- Media (branch `perf/media`): `src/utils/media.ts` — `cloudinaryImage(url, { width, height?, crop })` / `avatarImage(url, size)` add `f_auto,q_auto,c_fill,g_face,w_,h_` (or `c_limit,w_`) after `/image/upload/` of `res.cloudinary.com` URLs at style size × `PixelRatio.get()` (capped at 3); other URLs (API `/media/`, file:/data:, video/raw, already-transformed) are unchanged (string parsing; RN's URL polyfill can't set `pathname`). **Always pass user images through the helper** with the dp size from the style: chat header 34 / list 44 (`ConversationsScreen`), `PartnerCard` 78, message banner 34 (`RootNavigator`), profile avatars 108, recent viewers 52, accent preview 74, own photo slots 120, public Photo Moments 140×152, Settings lists 42. Full-screen photo previews keep the original URL. The mobile app renders no chat image attachments and has no bundled default avatar (it uses the server's `MainAfter.jpg`).
 - Coach history/preferences: `src/features/coachConversation.ts` (AsyncStorage, survives logout).
 
 ## Verify

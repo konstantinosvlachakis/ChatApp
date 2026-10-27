@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
+import { avatarImage } from "../../lib/media";
 import { getUserLocation } from "./utils/getUserLocation";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
@@ -97,7 +98,7 @@ const VisitorsCard = ({ user }) => {
             <li key={visitor.user_id || visitor.username}>
               <Link to={`/people/${encodeURIComponent(visitor.username)}`} className="pf-person">
                 <img
-                  src={resolveMediaUrl(visitor.profile_image_url) || DEFAULT_AVATAR_URL}
+                  src={avatarImage(resolveMediaUrl(visitor.profile_image_url), 40) || DEFAULT_AVATAR_URL}
                   alt=""
                   loading="lazy"
                   onError={handleAvatarError}

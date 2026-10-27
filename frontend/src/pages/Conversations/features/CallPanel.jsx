@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { avatarImage } from "../../../lib/media";
 
 const formatDuration = (seconds) => {
   const safeSeconds = Math.max(0, Number.isFinite(seconds) ? Math.floor(seconds) : 0);
@@ -42,7 +43,7 @@ const AvatarBadge = ({ src, name, showPulse = false }) => (
         />
       )}
       <img
-        src={src}
+        src={avatarImage(src, 80)}
         alt={name}
         className="relative h-20 w-20 rounded-full border-2 border-white/30 object-cover shadow-md"
       />
