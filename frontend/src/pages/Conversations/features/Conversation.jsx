@@ -7,9 +7,15 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
+import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
+import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
 import api, { getErrorMessage, isApiError } from "../../../lib/api";
 import { logger } from "../../../lib/logger";
 import { toast, toastApiError } from "../../../components/Toast";
+import CoachAvatar from "../../../components/CoachAvatar";
+import ChatAvatar from "./ChatAvatar";
+import { COACH_BOT_ID } from "./coachConversation";
+import { getMessageGroupFlags } from "../utils/messageGroups";
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const LONG_PRESS_MS = 450;
@@ -63,17 +69,6 @@ const formatMessageTime = (timestamp) => {
   }
 };
 
-const getDayKey = (timestamp) => {
-  if (!timestamp) return "";
-
-  try {
-    const date = new Date(timestamp);
-    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  } catch {
-    return "";
-  }
-};
-
 const formatDaySeparator = (timestamp) => {
   if (!timestamp) return "";
 
@@ -101,51 +96,14 @@ const formatDaySeparator = (timestamp) => {
   }
 };
 
-const getMinutesBetween = (leftTimestamp, rightTimestamp) => {
-  if (!leftTimestamp || !rightTimestamp) return Number.POSITIVE_INFINITY;
-
-  const left = new Date(leftTimestamp).getTime();
-  const right = new Date(rightTimestamp).getTime();
-  if (Number.isNaN(left) || Number.isNaN(right)) return Number.POSITIVE_INFINITY;
-  return Math.abs(right - left) / 60000;
-};
-
 const MessageStatusMeta = ({ status = "sent" }) => {
-  if (status === "read") {
-    return (
-      <span className="inline-flex items-center gap-1 text-sky-500/90">
-        <span className="text-[10px] font-semibold">✓✓</span>
-        <span>Seen</span>
-      </span>
-    );
-  }
-
-  if (status === "delivered") {
-    return (
-      <span className="inline-flex items-center gap-1 text-slate-400/90">
-        <span className="text-[10px] font-semibold">✓✓</span>
-        <span>Delivered</span>
-      </span>
-    );
-  }
-
+  const label = status === "read" ? "Seen" : status === "delivered" ? "Delivered" : "Sent";
   return (
-    <span className="inline-flex items-center gap-1 text-slate-400/90">
-      <span className="text-[10px] font-semibold">✓</span>
-      <span>Sent</span>
+    <span className={`cv-ticks ${status === "read" ? "is-read" : ""}`} title={label}>
+      <span aria-hidden="true">{status === "sent" ? "✓" : "✓✓"}</span>
+      <span className="lv-visually-hidden">{label}</span>
     </span>
   );
-};
-
-const shouldInlineBubbleMeta = (msg, { attachmentUrl, hasTranslation, isSentByUser }) => {
-  if (!isSentByUser) return false;
-  if (attachmentUrl || hasTranslation || msg.reply_to || msg.is_pinned || msg.edited_at) {
-    return false;
-  }
-
-  const text = String(msg.text || "");
-  if (!text.trim() || text.includes("\n")) return false;
-  return text.length <= 28;
 };
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -164,14 +122,7 @@ const renderHighlightedText = (text, query, isActiveMatch = false) => {
     if (!isMatch) return <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>;
 
     return (
-      <mark
-        key={`${part}-${index}`}
-        className={`rounded px-0.5 ${
-          isActiveMatch
-            ? "bg-amber-200/95 text-slate-900"
-            : "bg-amber-100/90 text-slate-900"
-        }`}
-      >
+      <mark key={`${part}-${index}`} className={isActiveMatch ? "is-active" : ""}>
         {part}
       </mark>
     );
@@ -204,252 +155,207 @@ const groupedReactions = (reactions = []) => {
   return Object.entries(counts);
 };
 
-// One chat bubble. Memoised so typing, search input or a new message only re-renders the
-// rows whose props actually changed instead of the whole history.
+const MessageAvatar = ({ sender }) =>
+  sender?.id === COACH_BOT_ID ? (
+    <CoachAvatar size={32} hideBadge />
+  ) : (
+    <ChatAvatar name={sender?.username} imagePath={sender?.profile_image_url} size={32} />
+  );
+
+// One chat bubble. Consecutive messages from one sender form a group: the avatar and the
+// time/read ticks are shown once, at the end of the group (other bubbles reveal their time on
+// hover/focus). Memoised so typing, search input or a new message only re-renders the rows
+// whose props actually changed instead of the whole history.
 const MessageRow = React.memo(function MessageRow({
   msg,
   isSentByUser,
-  isGroupedWithPrevious,
-  isGroupedWithNext,
-  hasLargeGapToNextMessage,
-  shouldShowDaySeparator,
-  shouldShowUnreadDivider,
+  startsGroup,
+  endsGroup,
+  showDaySeparator,
+  showUnreadDivider,
   translatedText,
   isTranslating,
+  canTranslate,
   highlightQuery,
   isActiveSearchMatch,
   onOpenActionsMenu,
+  onTranslate,
   onTouchStart,
   onClearLongPress,
 }) {
   const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
   const attachmentUrl = normalizeUrl(rawUrl);
   const messageReactions = groupedReactions(msg.reactions || []);
-  const isSystemMessage = Boolean(msg.isSystem);
   const hasText = Boolean(msg.text?.trim());
   const timeLabel = formatMessageTime(msg.timestamp);
   const hasTranslation = Boolean(translatedText);
-  const inlineBubbleMeta = shouldInlineBubbleMeta(msg, {
-    attachmentUrl,
-    hasTranslation,
-    isSentByUser,
-  });
-  const isImageAttachment = attachmentUrl
-    ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl)
-    : false;
-  const isVideoAttachment = attachmentUrl
-    ? /\.(mp4|webm)$/i.test(attachmentUrl)
-    : false;
+  const isImageAttachment = attachmentUrl ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl) : false;
+  const isVideoAttachment = attachmentUrl ? /\.(mp4|webm)$/i.test(attachmentUrl) : false;
   const isAudioAttachment = attachmentUrl ? isLikelyAudio(attachmentUrl) : false;
-  const shouldShowBubbleMeta = !isGroupedWithNext || hasLargeGapToNextMessage;
-  const bubbleClassName = isSentByUser
-    ? "bg-[linear-gradient(180deg,#dce9ff_0%,#d4e4ff_100%)] text-slate-900 border border-[#c7dbfb] shadow-[0_14px_30px_-22px_rgba(76,115,176,0.45)]"
-    : "bg-white text-slate-800 border border-slate-200/90 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.18)]";
-  const groupedBubbleRadiusClassName = isSentByUser
-    ? `${isGroupedWithPrevious ? "rounded-tr-[0.95rem]" : "rounded-tr-[1.55rem]"} ${
-        isGroupedWithNext ? "rounded-br-[0.95rem]" : "rounded-br-[0.7rem]"
-      } rounded-tl-[1.55rem] rounded-bl-[1.55rem]`
-    : `${isGroupedWithPrevious ? "rounded-tl-[0.95rem]" : "rounded-tl-[1.55rem]"} ${
-        isGroupedWithNext ? "rounded-bl-[0.95rem]" : "rounded-bl-[0.7rem]"
-      } rounded-tr-[1.55rem] rounded-br-[1.55rem]`;
-  const messageTextClassName = isSentByUser
-    ? "text-[15px] font-medium leading-[1.45] text-slate-900"
-    : "text-[15px] leading-[1.5] text-slate-800";
-  const bubbleMetaClassName = isSentByUser
-    ? "text-[10px] font-medium tracking-[0.01em] text-slate-500/90"
-    : "text-[10px] font-medium tracking-[0.01em] text-slate-400";
 
-  if (isSystemMessage) {
+  const separators = (
+    <>
+      {showDaySeparator && (
+        <div className="cv-day">
+          <span>{formatDaySeparator(msg.timestamp)}</span>
+        </div>
+      )}
+      {showUnreadDivider && <div className="cv-unread-divider">Unread messages</div>}
+    </>
+  );
+
+  if (msg.isSystem) {
     return (
-      <div className="mb-3 flex justify-center">
-        <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">
-          {msg.text}
-        </span>
-      </div>
+      <>
+        {separators}
+        <div className="cv-system">
+          <span>{msg.text}</span>
+        </div>
+      </>
     );
   }
 
+  const openMenuFromButton = (event) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    onOpenActionsMenu(
+      msg.id,
+      {
+        top: rect.bottom + 10,
+        anchorTop: rect.top,
+        right: Math.max(12, window.innerWidth - rect.right),
+      },
+      event.currentTarget
+    );
+  };
+
   return (
     <>
-      {shouldShowDaySeparator && (
-        <div className="mb-3 flex justify-center pt-1">
-          <span className="rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-semibold text-slate-400 shadow-[0_8px_18px_-18px_rgba(15,23,42,0.22)]">
-            {formatDaySeparator(msg.timestamp)}
-          </span>
-        </div>
-      )}
-      {shouldShowUnreadDivider && (
-        <div className="mb-3 flex items-center gap-3 px-1 pt-1">
-          <div className="h-px flex-1 bg-sky-200/80" />
-          <span className="rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600">
-            Unread messages
-          </span>
-          <div className="h-px flex-1 bg-sky-200/80" />
-        </div>
-      )}
+      {separators}
       <div
         data-message-id={msg.id}
-        className={`group flex flex-col ${
-          isGroupedWithNext && !hasLargeGapToNextMessage ? "mb-1" : "mb-3"
-        } ${
-          isSentByUser ? "items-end" : "items-start"
-        }`}
+        className={`cv-msg ${isSentByUser ? "is-sent" : ""} ${startsGroup ? "starts-group" : ""} ${
+          endsGroup ? "ends-group" : ""
+        } ${isActiveSearchMatch ? "is-search-active" : ""}`}
       >
-        <div
-          data-message-bubble="true"
-          className={`relative max-w-[calc(100%-2rem)] break-words px-3.5 py-2.5 sm:max-w-md sm:px-4 ${bubbleClassName} ${groupedBubbleRadiusClassName}`}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onOpenActionsMenu(msg.id, {
-              top: e.clientY + 12,
-              anchorTop: e.clientY,
-              right: Math.max(12, window.innerWidth - e.clientX - 12),
-            });
-          }}
-          onTouchStart={(e) => onTouchStart(e, msg.id)}
-          onTouchEnd={onClearLongPress}
-          onTouchCancel={onClearLongPress}
-          onTouchMove={onClearLongPress}
-        >
-          <div
-            className={`absolute top-1/2 z-20 -translate-y-1/2 ${
-              isSentByUser ? "-left-5" : "-right-5"
-            }`}
-          >
-            <button
-              type="button"
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/92 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition hover:bg-white hover:text-slate-600 hover:ring-slate-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-              onClick={(event) => {
-                event.stopPropagation();
-                const rect = event.currentTarget.getBoundingClientRect();
+        <span className={`cv-msg-avatar ${endsGroup ? "" : "is-hidden"}`} aria-hidden="true">
+          {endsGroup && <MessageAvatar sender={msg.sender} />}
+        </span>
+        <div className="cv-msg-column">
+          {startsGroup && !isSentByUser && msg.sender?.username && (
+            <span className="lv-visually-hidden">{msg.sender.username} said:</span>
+          )}
+          <div className="cv-bubble-line">
+            <div
+              data-message-bubble="true"
+              className="cv-bubble"
+              title={timeLabel || undefined}
+              onContextMenu={(e) => {
+                e.preventDefault();
                 onOpenActionsMenu(msg.id, {
-                  top: rect.bottom + 10,
-                  anchorTop: rect.top,
-                  right: Math.max(12, window.innerWidth - rect.right),
+                  top: e.clientY + 12,
+                  anchorTop: e.clientY,
+                  right: Math.max(12, window.innerWidth - e.clientX - 12),
                 });
               }}
-              aria-label="Open message actions"
+              onTouchStart={(e) => onTouchStart(e, msg.id)}
+              onTouchEnd={onClearLongPress}
+              onTouchCancel={onClearLongPress}
+              onTouchMove={onClearLongPress}
             >
-              <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
-              <span className="mx-[3px] inline-block h-1 w-1 rounded-full bg-current"></span>
-              <span className="inline-block h-1 w-1 rounded-full bg-current"></span>
-            </button>
-          </div>
+              {msg.reply_to && (
+                <div className="cv-bubble-reply">
+                  <strong>Replying to {msg.reply_to.sender?.username || "message"}</strong>
+                  <span>{msg.reply_to.text || "Attachment"}</span>
+                </div>
+              )}
 
-          <div className="space-y-2">
-            {msg.reply_to && (
-              <div className="rounded-2xl border border-slate-300/70 bg-white/45 px-3 py-2 text-xs text-slate-600">
-                <p className="font-semibold text-slate-700">
-                  Replying to {msg.reply_to.sender?.username || "message"}
-                </p>
-                <p className="mt-1 line-clamp-2">{msg.reply_to.text || "Attachment"}</p>
-              </div>
-            )}
-
-            {attachmentUrl && (
-              isImageAttachment ? (
-                <img
-                  src={attachmentUrl}
-                  loading="lazy"
-                  decoding="async"
-                  alt="Attachment"
-                  className="h-auto max-w-full rounded-lg"
-                />
-              ) : isVideoAttachment ? (
-                <video
-                  src={attachmentUrl}
-                  controls
-                  preload="metadata"
-                  className="h-48 max-w-full rounded-lg sm:h-60"
-                />
-              ) : isAudioAttachment ? (
-                <audio controls preload="metadata" src={attachmentUrl} className="w-52 sm:w-60" />
-              ) : (
-                <a
-                  href={attachmentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center space-x-1 text-blue-500 underline"
-                >
-                  <span role="img" aria-label="attachment">
-                    📎
-                  </span>
-                  <span>View Attachment</span>
-                </a>
-              )
-            )}
-
-            {hasText && (
-              <div>
-              {inlineBubbleMeta && shouldShowBubbleMeta ? (
-                <div className="flex items-end gap-3">
-                  <p className={`min-w-0 flex-1 break-words ${messageTextClassName}`}>
-                    {renderHighlightedText(msg.text, highlightQuery, isActiveSearchMatch)}
-                  </p>
-                  <div className={`shrink-0 pb-0.5 tabular-nums ${bubbleMetaClassName}`}>
-                      <div className="flex items-center gap-2">
-                        {timeLabel && <span>{timeLabel}</span>}
-                        <MessageStatusMeta status={msg.status || "sent"} />
-                      </div>
-                    </div>
-                  </div>
+              {attachmentUrl &&
+                (isImageAttachment ? (
+                  <img src={attachmentUrl} loading="lazy" decoding="async" alt="Attachment" />
+                ) : isVideoAttachment ? (
+                  <video src={attachmentUrl} controls preload="metadata" />
+                ) : isAudioAttachment ? (
+                  <audio controls preload="metadata" src={attachmentUrl} aria-label="Voice message" />
                 ) : (
-                  <p className={messageTextClassName}>
-                    {renderHighlightedText(msg.text, highlightQuery, isActiveSearchMatch)}
-                  </p>
-                )}
-                {msg.is_pinned && (
-                  <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-white/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    <PushPinRoundedIcon sx={{ fontSize: 12 }} />
-                    Pinned
-                  </p>
-                )}
-                {msg.edited_at && (
-                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Edited
-                  </p>
-                )}
-                {hasTranslation && (
-                  <>
-                    <hr className="my-2 border-slate-300/70" />
-                    <p className="text-[14px] leading-[1.45] text-slate-700">
-                      {renderHighlightedText(
-                        translatedText,
-                        highlightQuery,
-                        isActiveSearchMatch
-                      )}
-                    </p>
-                  </>
-                )}
-                {isTranslating && (
-                  <p className="mt-2 text-xs text-gray-600">Translating...</p>
-                )}
-                {shouldShowBubbleMeta && !inlineBubbleMeta && (isSentByUser || timeLabel) && (
-                  <div className={`mt-2 flex items-center gap-2 tabular-nums ${bubbleMetaClassName} justify-end`}>
-                    {timeLabel && <span>{timeLabel}</span>}
-                    {isSentByUser && <MessageStatusMeta status={msg.status || "sent"} />}
-                  </div>
-                )}
-              </div>
-            )}
+                  <a
+                    href={attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="cv-bubble-file"
+                  >
+                    <AttachFileRoundedIcon fontSize="small" aria-hidden="true" />
+                    View attachment
+                  </a>
+                ))}
+
+              {hasText && (
+                <p className="cv-bubble-text">
+                  {renderHighlightedText(msg.text, highlightQuery, isActiveSearchMatch)}
+                </p>
+              )}
+
+              {(msg.is_pinned || msg.edited_at) && (
+                <div className="cv-bubble-tags">
+                  {msg.is_pinned && (
+                    <span className="cv-bubble-tag">
+                      <PushPinRoundedIcon aria-hidden="true" />
+                      Pinned
+                    </span>
+                  )}
+                  {msg.edited_at && <span className="cv-bubble-tag">Edited</span>}
+                </div>
+              )}
+
+              {hasTranslation && (
+                <p className="cv-bubble-translation">
+                  {renderHighlightedText(translatedText, highlightQuery, isActiveSearchMatch)}
+                </p>
+              )}
+
+              {!attachmentUrl && !hasText && <p className="cv-bubble-muted">Audio message</p>}
+            </div>
+            <button
+              type="button"
+              className="cv-msg-actions-toggle"
+              onClick={openMenuFromButton}
+              aria-label="Message actions"
+              aria-haspopup="true"
+            >
+              <MoreHorizRoundedIcon />
+            </button>
+            {!endsGroup && timeLabel && <span className="cv-msg-hover-time">{timeLabel}</span>}
           </div>
-          {!attachmentUrl && !hasText && (
-            <p className="italic text-gray-500">Audio message</p>
+
+          {(canTranslate || isTranslating) && (
+            <button
+              type="button"
+              className="cv-translate-chip"
+              onClick={() => onTranslate(msg)}
+              disabled={isTranslating}
+            >
+              <TranslateRoundedIcon aria-hidden="true" />
+              {isTranslating ? "Translating…" : "Translate"}
+            </button>
+          )}
+
+          {messageReactions.length > 0 && (
+            <div className="cv-reactions" aria-label="Reactions">
+              {messageReactions.map(([emoji, count]) => (
+                <span key={`${msg.id}-${emoji}`}>
+                  {emoji} {count}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {endsGroup && (timeLabel || isSentByUser) && (
+            <div className="cv-msg-meta">
+              {timeLabel && <time dateTime={msg.timestamp}>{timeLabel}</time>}
+              {isSentByUser && <MessageStatusMeta status={msg.status || "sent"} />}
+            </div>
           )}
         </div>
-
-        {messageReactions.length > 0 && (
-          <div className="mt-1 flex max-w-[calc(100%-2rem)] flex-wrap gap-1 px-1">
-            {messageReactions.map(([emoji, count]) => (
-              <span
-                key={`${msg.id}-${emoji}`}
-                className="rounded-full border border-gray-300 bg-white px-2 py-1 text-xs leading-none text-gray-700"
-              >
-                {emoji} {count}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </>
   );
@@ -476,13 +382,29 @@ const Conversation = ({
     useState({});
   const [translatingMessageId, setTranslatingMessageId] = useState(null);
   const longPressTimerRef = useRef(null);
+  const actionsMenuRef = useRef(null);
+  const menuReturnFocusRef = useRef(null);
+
+  const groupFlags = useMemo(
+    () => getMessageGroupFlags(messages, { userId, unreadAnchorMessageId }),
+    [messages, userId, unreadAnchorMessageId]
+  );
 
   const matchedSearchMessageIdSet = useMemo(
     () => new Set(matchedSearchMessageIds),
     [matchedSearchMessageIds]
   );
 
-  const closeMessageActionsMenu = useCallback(() => setMessageActionsMenu(null), []);
+  const closeMessageActionsMenu = useCallback((options) => {
+    setMessageActionsMenu(null);
+    if (options?.restoreFocus) menuReturnFocusRef.current?.focus?.();
+  }, []);
+
+  // Move focus into the actions menu when it opens (keyboard users land on the first action).
+  const isActionsMenuOpen = Boolean(messageActionsMenu);
+  useEffect(() => {
+    if (isActionsMenuOpen) actionsMenuRef.current?.querySelector("button")?.focus();
+  }, [isActionsMenuOpen]);
   const canEditMessage = (msg) => msg?.sender?.id === userId;
 
   useEffect(() => {
@@ -582,7 +504,8 @@ const Conversation = ({
     }
   };
 
-  const openMessageActionsMenu = useCallback((messageId, position = null) => {
+  const openMessageActionsMenu = useCallback((messageId, position = null, trigger = null) => {
+    menuReturnFocusRef.current = trigger;
     const padding = 12;
     const defaultTop = Math.max(padding, window.innerHeight / 2 - 120);
     const defaultRight = padding;
@@ -622,7 +545,7 @@ const Conversation = ({
     }, LONG_PRESS_MS);
   }, [clearLongPressTimer, openMessageActionsMenu]);
 
-  const handleTranslate = async (msg) => {
+  const handleTranslate = useCallback(async (msg) => {
     if (!msg?.text?.trim()) return;
 
     try {
@@ -652,7 +575,7 @@ const Conversation = ({
       setTranslatingMessageId(null);
       closeMessageActionsMenu();
     }
-  };
+  }, [baseTranslateLanguage, closeMessageActionsMenu]);
 
   const handleReact = async (messageId, emoji) => {
     try {
@@ -784,57 +707,52 @@ const Conversation = ({
   };
 
   return (
-    <div className="flex w-full flex-col overflow-x-hidden px-1 py-2 sm:px-2 sm:py-3">
+    <div className="cv-thread">
       {messages.length > 0 ? (
         messages.map((msg, index) => {
-          const previousMessage = index > 0 ? messages[index - 1] : null;
-          const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
-          const dayKey = getDayKey(msg.timestamp);
-
+          const flags = groupFlags[index];
+          const isSentByUser = flags.isSentByUser;
           return (
             <MessageRow
               key={msg.id || index}
               msg={msg}
-              isSentByUser={msg.sender?.id === userId}
-              isGroupedWithPrevious={
-                !previousMessage?.isSystem && previousMessage?.sender?.id === msg.sender?.id
-              }
-              isGroupedWithNext={
-                !nextMessage?.isSystem && nextMessage?.sender?.id === msg.sender?.id
-              }
-              hasLargeGapToNextMessage={
-                getMinutesBetween(msg.timestamp, nextMessage?.timestamp) >= 15
-              }
-              shouldShowDaySeparator={
-                Boolean(dayKey) && dayKey !== getDayKey(previousMessage?.timestamp)
-              }
-              shouldShowUnreadDivider={
-                unreadAnchorMessageId != null && msg.id === unreadAnchorMessageId
-              }
+              isSentByUser={isSentByUser}
+              startsGroup={flags.startsGroup}
+              endsGroup={flags.endsGroup}
+              showDaySeparator={flags.showDaySeparator}
+              showUnreadDivider={flags.showUnreadDivider}
               translatedText={translationsByMessageId[msg.id] || msg.translated_text}
               isTranslating={translatingMessageId === msg.id}
+              canTranslate={canShowTranslate(msg, isSentByUser)}
               highlightQuery={matchedSearchMessageIdSet.has(msg.id) ? searchQuery : ""}
               isActiveSearchMatch={activeSearchMessageId === msg.id}
               onOpenActionsMenu={openMessageActionsMenu}
+              onTranslate={handleTranslate}
               onTouchStart={handleTouchStart}
               onClearLongPress={clearLongPressTimer}
             />
           );
         })
       ) : (
-        <div className="text-gray-500">No messages yet!</div>
+        <p className="cv-messages-status">No messages yet. Say hello!</p>
       )}
 
       {messageActionsMenu && (
         <>
+          <div className="fixed inset-0 z-[9998]" onClick={closeMessageActionsMenu} />
           <div
-            className="fixed inset-0 z-[9998]"
-            onClick={closeMessageActionsMenu}
-          />
-          <div
-            className="fixed z-[9999] w-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white/98 p-1.5 shadow-[0_18px_44px_-22px_rgba(15,23,42,0.45)] backdrop-blur-sm"
+            ref={actionsMenuRef}
+            className="cv-actions-menu"
             style={getMessageActionsMenuStyle()}
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeMessageActionsMenu({ restoreFocus: true });
+              }
+            }}
+            role="dialog"
+            aria-label="Message actions"
           >
             {(() => {
               const msg = messages.find((message) => message.id === messageActionsMenu.messageId);
@@ -845,12 +763,11 @@ const Conversation = ({
 
               return (
                 <>
-                  <div className="grid grid-cols-6 gap-1 px-1 py-1">
+                  <div className="cv-actions-reactions">
                     {REACTION_OPTIONS.map((emoji) => (
                       <button
                         key={`${msg.id}-menu-${emoji}`}
                         type="button"
-                        className="rounded-xl px-2 py-2 text-xl transition hover:bg-slate-100"
                         onClick={() => handleReact(msg.id, emoji)}
                         aria-label={`React with ${emoji}`}
                       >
@@ -862,92 +779,80 @@ const Conversation = ({
                     <button
                       type="button"
                       onClick={() => handleReact(msg.id, "")}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                      className="cv-actions-item is-danger"
                     >
-                      <RemoveCircleOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                      <RemoveCircleOutlineRoundedIcon />
                       <span>Remove reaction</span>
                     </button>
                   )}
-                  {(canEditMessage(msg) || canShowTranslate(msg, isSentByUser)) && (
-                    <div className="my-1 border-t border-slate-200" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onCommentMessage?.(msg);
-                      closeMessageActionsMenu();
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                  >
-                    <ReplyRoundedIcon sx={{ fontSize: 18 }} />
-                    <span>Comment</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyMessage(msg)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                  >
-                    <ContentCopyRoundedIcon sx={{ fontSize: 18 }} />
-                    <span>Copy</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSpeakMessage(msg)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                  >
-                    <CampaignRoundedIcon sx={{ fontSize: 18 }} />
-                    <span>Speak</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await onTogglePinMessage?.(msg);
-                      closeMessageActionsMenu();
-                    }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-                      msg.is_pinned
-                        ? "text-amber-700 hover:bg-amber-50"
-                        : "text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    <PushPinRoundedIcon sx={{ fontSize: 18 }} />
-                    <span>{msg.is_pinned ? "Unpin message" : "Pin message"}</span>
-                  </button>
-                  {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg)) && (
-                    <div className="my-1 border-t border-slate-200" />
-                  )}
-                  {canShowTranslate(msg, isSentByUser) && (
+                  <div className="cv-actions-sep" />
+                  {onCommentMessage && (
                     <button
                       type="button"
-                      onClick={() => handleTranslate(msg)}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                      onClick={() => {
+                        onCommentMessage(msg);
+                        closeMessageActionsMenu();
+                      }}
+                      className="cv-actions-item"
                     >
-                      <TranslateRoundedIcon sx={{ fontSize: 18 }} />
+                      <ReplyRoundedIcon />
+                      <span>Reply</span>
+                    </button>
+                  )}
+                  <button type="button" onClick={() => handleCopyMessage(msg)} className="cv-actions-item">
+                    <ContentCopyRoundedIcon />
+                    <span>Copy</span>
+                  </button>
+                  <button type="button" onClick={() => handleSpeakMessage(msg)} className="cv-actions-item">
+                    <CampaignRoundedIcon />
+                    <span>Speak</span>
+                  </button>
+                  {onTogglePinMessage && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await onTogglePinMessage(msg);
+                        closeMessageActionsMenu();
+                      }}
+                      className="cv-actions-item"
+                    >
+                      <PushPinRoundedIcon />
+                      <span>{msg.is_pinned ? "Unpin message" : "Pin message"}</span>
+                    </button>
+                  )}
+                  {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg)) && (
+                    <div className="cv-actions-sep" />
+                  )}
+                  {canShowTranslate(msg, isSentByUser) && (
+                    <button type="button" onClick={() => handleTranslate(msg)} className="cv-actions-item">
+                      <TranslateRoundedIcon />
                       <span>Translate</span>
                     </button>
                   )}
                   {canEditMessage(msg) && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onEditMessage?.(msg);
-                          closeMessageActionsMenu();
-                        }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                      >
-                        <EditRoundedIcon sx={{ fontSize: 18 }} />
-                        <span>Edit message</span>
-                      </button>
+                      {onEditMessage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onEditMessage(msg);
+                            closeMessageActionsMenu();
+                          }}
+                          className="cv-actions-item"
+                        >
+                          <EditRoundedIcon />
+                          <span>Edit message</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
                           onDeleteMessage(msg.id);
                           closeMessageActionsMenu();
                         }}
-                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                        className="cv-actions-item is-danger"
                       >
-                        <DeleteOutlineRoundedIcon sx={{ fontSize: 18 }} />
+                        <DeleteOutlineRoundedIcon />
                         <span>Delete message</span>
                       </button>
                     </>
@@ -960,16 +865,11 @@ const Conversation = ({
       )}
 
       {copyFeedback && (
-        <div className="pointer-events-none fixed bottom-5 left-1/2 z-[10000] -translate-x-1/2">
-          <div
-            className={`rounded-full px-4 py-2 text-sm font-medium shadow-lg ${
-              copyFeedback === "Copy failed"
-                ? "bg-rose-600 text-white"
-                : "bg-slate-900 text-white"
-            }`}
-          >
-            {copyFeedback}
-          </div>
+        <div
+          className={`cv-copy-feedback ${copyFeedback === "Copy failed" ? "is-error" : ""}`}
+          role="status"
+        >
+          {copyFeedback}
         </div>
       )}
     </div>

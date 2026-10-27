@@ -1,8 +1,9 @@
 import React, { Suspense, useState, useRef, useEffect, useMemo } from "react";
-import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
-import AttachFileIcon from "@mui/icons-material/AttachFile";
-import SendIcon from "@mui/icons-material/Send";
-import SettingsVoiceIcon from "@mui/icons-material/SettingsVoice";
+import SentimentSatisfiedAltRoundedIcon from "@mui/icons-material/SentimentSatisfiedAltRounded";
+import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import MicNoneRoundedIcon from "@mui/icons-material/MicNoneRounded";
+import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import { logger } from "../../../lib/logger";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -356,222 +357,141 @@ const MessageInput = ({
   };
 
   return (
-    <div className="relative m-2 overflow-visible rounded-[32px] border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(248,251,255,0.92))] p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] backdrop-blur sm:m-3">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-10 top-0 h-16 rounded-full bg-[radial-gradient(circle,rgba(255,214,153,0.34),transparent_72%)] blur-2xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -left-6 bottom-3 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(104,163,255,0.16),transparent_70%)] blur-2xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-8 top-4 h-24 w-24 rounded-full bg-[radial-gradient(circle,rgba(45,212,191,0.14),transparent_70%)] blur-2xl"
-      />
+    <div className="cv-composer-inner">
       {showPicker && (
-        <div
-          ref={emojiPickerRef}
-          className="absolute bottom-[calc(100%+0.9rem)] right-14 z-50 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
-        >
-          <Suspense
-            fallback={<div className="px-6 py-4 text-xs text-slate-500">Loading emoji...</div>}
-          >
+        <div ref={emojiPickerRef} className="cv-emoji-popover">
+          <Suspense fallback={<p className="cv-messages-status">Loading emoji…</p>}>
             <EmojiPickerWrapper onEmojiSelect={handleEmojiSelect} />
           </Suspense>
         </div>
       )}
 
-      <div className="relative flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          {editingMessage && (
-            <div className="mb-2 flex items-center justify-between gap-3 rounded-[20px] bg-[#fff5db] px-3 py-2.5 text-sm text-amber-900">
-              <div className="min-w-0">
-                <p className="font-semibold">Editing message</p>
-                <p className="truncate text-xs text-amber-700">Press Enter to save changes.</p>
-              </div>
-              <button
-                type="button"
-                onClick={onCancelEdit}
-                className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-amber-900 transition hover:bg-white"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+      {editingMessage && (
+        <div className="cv-composer-banner is-edit">
+          <p>
+            <strong>Editing message</strong>
+            <span>Press Enter to save changes.</span>
+          </p>
+          <button type="button" onClick={onCancelEdit}>
+            Cancel
+          </button>
+        </div>
+      )}
 
-          {replyingMessage && !editingMessage && (
-            <div className="mb-2 flex items-center justify-between gap-3 rounded-[20px] bg-[#eaf4ff] px-3 py-2.5 text-sm text-sky-900">
-              <div className="min-w-0">
-                <p className="font-medium">
-                  Replying to {replyingMessage.sender?.username || "message"}
-                </p>
-                <p className="truncate text-xs text-sky-700">
-                  {(replyingMessage.text || "Attachment").slice(0, 90)}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onCancelReply}
-                className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-sky-900 transition hover:bg-white"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+      {replyingMessage && !editingMessage && (
+        <div className="cv-composer-banner is-reply">
+          <p>
+            <strong>Replying to {replyingMessage.sender?.username || "message"}</strong>
+            <span>{(replyingMessage.text || "Attachment").slice(0, 90)}</span>
+          </p>
+          <button type="button" onClick={onCancelReply} aria-label="Cancel reply">
+            Cancel
+          </button>
+        </div>
+      )}
 
-          {(previewImage || audioBlob) && (
-            <div className="mb-2">
-              {previewImage && (
-                <div className="flex items-center gap-3 rounded-[22px] border border-white/80 bg-white/95 px-3 py-2.5 shadow-[0_12px_24px_rgba(148,163,184,0.12)]">
-                  <img
-                    src={previewImage}
-                    alt="Preview"
-                    className="h-14 w-14 rounded-[16px] object-cover"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium text-slate-700">
-                        {attachmentSource === "paste" ? "Pasted image" : "Image attached"}
-                      </p>
-                      {attachmentSource === "paste" && (
-                        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                          Clipboard
-                        </span>
-                      )}
-                    </div>
-                    <p className="truncate text-xs text-slate-500">
-                      {attachedFile?.name || "Ready to send"}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={clearCurrentAttachment}
-                    className="text-sm font-medium text-rose-500"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
+      {previewImage && (
+        <div className="cv-attachment-preview">
+          <img src={previewImage} alt="Attachment preview" />
+          <p className="cv-attachment-preview-text">
+            {attachmentSource === "paste" ? "Pasted image" : "Image attached"}
+            <span>{attachedFile?.name || "Ready to send"}</span>
+          </p>
+          <button type="button" onClick={clearCurrentAttachment} className="cv-attachment-remove">
+            Remove
+          </button>
+        </div>
+      )}
 
-              {audioBlob && (
-                <div className="flex items-center gap-3 rounded-[20px] bg-white px-3 py-2.5">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-slate-900 text-xs font-medium text-white">
-                    Mic
-                  </div>
-                  <audio controls src={audioPreviewUrl} className="h-9 max-w-[180px] flex-1" />
-                  <button
-                    type="button"
-                    onClick={clearCurrentAttachment}
-                    className="text-sm font-medium text-rose-500"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+      {audioBlob && (
+        <div className="cv-attachment-preview">
+          <p className="cv-attachment-preview-text" style={{ flex: "none" }}>Voice note</p>
+          <audio controls src={audioPreviewUrl} aria-label="Recorded voice note" />
+          <button type="button" onClick={clearCurrentAttachment} className="cv-attachment-remove">
+            Remove
+          </button>
+        </div>
+      )}
 
-          <div className="flex items-center gap-3 rounded-[28px] border border-white/90 bg-white/95 px-5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_30px_rgba(148,163,184,0.14)] backdrop-blur">
-            <div className="min-w-0 flex-1">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Message
-              </p>
-              <input
-                type="text"
-                ref={inputRef}
-                value={message}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={editingMessage ? "Refine your message..." : "Write something thoughtful..."}
-                className="w-full min-w-0 bg-transparent text-[15px] font-medium text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400"
-              />
-            </div>
+      <div className="cv-composer-row">
+        <button
+          type="button"
+          className="cv-icon-button"
+          onClick={() => fileInputRef.current.click()}
+          disabled={Boolean(editingMessage)}
+          aria-label="Attach file"
+          title="Attach file"
+        >
+          <AttachFileRoundedIcon />
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          onChange={handleFileAttach}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
 
-            <div className="h-9 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent" />
-
-            <div className="flex items-center gap-1 rounded-full bg-slate-50/80 px-1.5 py-1">
-              <button
-                type="button"
-                ref={emojiButtonRef}
-                className={`rounded-full p-2.5 transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                  showPicker
-                    ? "bg-white text-slate-700 shadow-sm"
-                    : "text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm"
-                }`}
-                onClick={() => setShowPicker((prev) => !prev)}
-                disabled={Boolean(editingMessage)}
-                aria-label="Open emoji picker"
-              >
-                <AddReactionOutlinedIcon fontSize="small" />
-              </button>
-
-              <button
-                type="button"
-                className="rounded-full p-2.5 text-slate-500 transition hover:bg-white hover:text-slate-700 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-45"
-                onClick={() => fileInputRef.current.click()}
-                disabled={Boolean(editingMessage)}
-                aria-label="Attach file"
-              >
-                <AttachFileIcon fontSize="small" />
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: "none" }}
-                onChange={handleFileAttach}
-              />
-
-              <button
-                type="button"
-                className={`rounded-full p-2.5 transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                  isRecording
-                    ? "bg-rose-100 text-rose-500 shadow-sm"
-                    : "text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm"
-                }`}
-                onClick={isRecording ? handleStopRecording : handleStartRecording}
-                disabled={Boolean(editingMessage)}
-                aria-label={isRecording ? "Stop recording" : "Start recording"}
-              >
-                <SettingsVoiceIcon fontSize="small" />
-              </button>
-            </div>
-          </div>
-
-          {(composerError || connectionStatus !== "connected") && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              {composerError && (
-                <span className="rounded-full bg-rose-50 px-2 py-1 font-medium text-rose-600">
-                  {composerError}
-                </span>
-              )}
-              {connectionStatus !== "connected" && (
-                <span className="rounded-full bg-amber-50 px-2 py-1 font-medium text-amber-700">
-                  {connectionStatus === "reconnecting"
-                    ? "Chat is reconnecting. Draft is saved."
-                    : "Chat is offline. Draft is saved."}
-                </span>
-              )}
-            </div>
-          )}
+        <div className="cv-composer">
+          <input
+            type="text"
+            ref={inputRef}
+            value={message}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder={editingMessage ? "Edit your message…" : "Write a message…"}
+            aria-label={editingMessage ? "Edit message" : "Message"}
+          />
+          <button
+            type="button"
+            ref={emojiButtonRef}
+            className={`cv-icon-button ${showPicker ? "is-on" : ""}`}
+            onClick={() => setShowPicker((prev) => !prev)}
+            disabled={Boolean(editingMessage)}
+            aria-label={showPicker ? "Close emoji picker" : "Open emoji picker"}
+            aria-expanded={showPicker}
+            title="Emoji"
+          >
+            <SentimentSatisfiedAltRoundedIcon />
+          </button>
+          <button
+            type="button"
+            className={`cv-icon-button ${isRecording ? "is-on" : ""}`}
+            onClick={isRecording ? handleStopRecording : handleStartRecording}
+            disabled={Boolean(editingMessage)}
+            aria-label={isRecording ? "Stop recording" : "Record a voice note"}
+            aria-pressed={isRecording}
+            title={isRecording ? "Stop recording" : "Voice note"}
+          >
+            {isRecording ? <StopRoundedIcon /> : <MicNoneRoundedIcon />}
+          </button>
         </div>
 
         <button
           type="button"
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#172033,#0f172a)] text-white shadow-[0_14px_28px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:brightness-105"
+          className={`cv-send ${editingMessage ? "is-save" : ""}`}
           onClick={handleSend}
           aria-label={editingMessage ? "Save edited message" : "Send message"}
         >
-          {editingMessage ? (
-            <span className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em]">
-              Save
-            </span>
-          ) : (
-            <SendIcon fontSize="small" />
-          )}
+          {editingMessage ? "Save" : <SendRoundedIcon />}
         </button>
       </div>
+
+      {(composerError || connectionStatus !== "connected" || isRecording) && (
+        <div className="cv-composer-notes" role="status">
+          {isRecording && <span className="is-warning">Recording… tap stop when you're done.</span>}
+          {composerError && <span className="is-error">{composerError}</span>}
+          {connectionStatus !== "connected" && (
+            <span className="is-warning">
+              {connectionStatus === "reconnecting"
+                ? "Chat is reconnecting. Draft is saved."
+                : "Chat is offline. Draft is saved."}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

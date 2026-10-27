@@ -1,23 +1,20 @@
-import { BASE_URL_IMG } from "../../../constants/constants";
-import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
+import { Link, useNavigate } from "react-router-dom";
 import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
-import { useNavigate } from "react-router-dom";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CallRoundedIcon from "@mui/icons-material/CallRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ChatAvatar from "./ChatAvatar";
+import { formatListTime, getOtherParticipant } from "../utils/conversationSearch";
 
-const DEFAULT_AVATAR = DEFAULT_AVATAR_URL;
-
-const resolveAvatarUrl = (path) => {
-  if (!path) return DEFAULT_AVATAR;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
-  if (path.startsWith("media/")) return `${BASE_URL_IMG}/${path}`;
-  return `${BASE_URL_IMG}/media/${path}`;
+const lastSeenLabel = (lastSeen) => {
+  const label = formatListTime(lastSeen);
+  if (!label) return "Offline";
+  return label === "Yesterday" ? "Last seen yesterday" : `Last seen ${label}`;
 };
 
 const ChatHeader = ({
@@ -43,146 +40,123 @@ const ChatHeader = ({
   const navigate = useNavigate();
   const { user } = useUser();
   const { onlineUserIds } = usePresence();
-  const otherUser =
-    conversation.sender?.username === user?.username
-      ? conversation.receiver
-      : conversation.sender;
-  const normalizedImageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
+  const otherUser = getOtherParticipant(conversation, user?.username) || {};
   const isInCallFlow = callState !== "idle";
   const isOtherUserOnline = Boolean(
     otherUser?.is_virtual_online || (otherUser?.id && onlineUserIds?.has(otherUser.id))
   );
-  const shouldCollapseActionsForSearch = isSearchOpen;
+  const profilePath = `/people/${encodeURIComponent(otherUser.username || "")}`;
+  const statusText = isOtherUserOnline
+    ? "Online now"
+    : socketStatus === "reconnecting"
+      ? "Reconnecting chat…"
+      : lastSeenLabel(otherUser.last_seen);
 
   return (
-    <div className="mx-2 mt-2 flex items-center gap-2 rounded-[1.2rem] border border-slate-200/80 bg-white/92 px-2.5 py-2 shadow-[0_14px_32px_-24px_rgba(15,23,42,0.38)] backdrop-blur sm:mx-4 sm:gap-4 sm:rounded-[1.35rem] sm:px-5 sm:py-2.5">
+    <header className={`cv-chat-header ${isSearchOpen ? "is-searching" : ""}`}>
       <button
         type="button"
-        className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 md:hidden"
+        className="cv-icon-button is-plain cv-chat-back"
         onClick={() => navigate("/conversations")}
         aria-label="Back to conversations"
       >
-        ←
+        <ArrowBackRoundedIcon />
       </button>
-      <img
-        src={normalizedImageSrc}
-        alt={otherUser.username}
-        className="h-9 w-9 cursor-pointer rounded-full border border-white object-cover shadow-[0_8px_18px_-10px_rgba(15,23,42,0.35)] ring-1 ring-slate-200 sm:h-11 sm:w-11"
-        onError={handleAvatarError}
-        onClick={() => navigate(`/people/${encodeURIComponent(otherUser.username)}`)}
-      />
-      <div className="min-w-0 flex-1">
-        <h2
-          className="flex items-center gap-2 truncate cursor-pointer text-[0.98rem] font-semibold leading-none text-slate-800 sm:text-[1.15rem]"
-          onClick={() => navigate(`/people/${encodeURIComponent(otherUser.username)}`)}
-        >
-          {isOtherUserOnline && (
-            <span
-              className="inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]"
-              aria-label="User online"
-              title="Online"
-            />
-          )}
-          {otherUser.username}
-        </h2>
-        <p className="pt-1 text-[11px] font-medium tracking-[0.02em] text-slate-400 sm:text-xs">
-          {isOtherUserOnline
-            ? "Online now"
-            : socketStatus === "reconnecting"
-              ? "Reconnecting chat..."
-              : "Conversation"}
-        </p>
-      </div>
-      <div
-        className={`ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1.5 sm:gap-2 ${
-          shouldCollapseActionsForSearch ? "flex-1" : ""
-        }`}
-      >
+      <Link to={profilePath} className="cv-chat-identity" aria-label={`View ${otherUser.username}'s profile`}>
+        <ChatAvatar name={otherUser.username} imagePath={otherUser.profile_image_url} size={48} />
+        <span className="cv-chat-identity-text">
+          <span className="cv-chat-name" style={{ display: "block" }}>{otherUser.username}</span>
+          <span className={`cv-chat-presence ${isOtherUserOnline ? "is-online" : ""}`}>
+            {isOtherUserOnline && <span className="cv-presence-dot" aria-hidden="true" />}
+            {statusText}
+          </span>
+        </span>
+      </Link>
+      <div className="cv-chat-actions" style={isSearchOpen ? { flex: 1, justifyContent: "flex-end" } : undefined}>
         {isSearchOpen ? (
-          <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-slate-200/90 bg-slate-50/90 px-2 py-1.5 shadow-inner shadow-white/70 sm:max-w-[17rem] sm:flex-none">
-            <SearchRoundedIcon sx={{ fontSize: 17 }} className="text-slate-400" />
+          <div className="cv-chat-search" role="search">
+            <SearchRoundedIcon aria-hidden="true" />
             <input
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(event) => onSearchQueryChange?.(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
                   onSearchSubmit?.();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  onCloseSearch?.();
                 }
               }}
-              placeholder="Search"
-              className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 sm:w-36 sm:flex-none"
+              placeholder="Search messages"
+              aria-label="Search messages in this conversation"
               autoFocus
             />
-            <span className="hidden min-w-[3rem] text-center text-[11px] font-medium text-slate-400 sm:block">
-              {isSearchingMessages ? "..." : searchResultLabel}
+            <span className="cv-chat-search-count" aria-live="polite">
+              {isSearchingMessages ? "…" : searchResultLabel}
             </span>
             <button
               type="button"
-              className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600 disabled:opacity-40"
+              className="cv-icon-button"
               onClick={onSearchPrevious}
               disabled={!searchHasResults}
               aria-label="Previous result"
             >
-              <KeyboardArrowUpRoundedIcon sx={{ fontSize: 18 }} />
+              <KeyboardArrowUpRoundedIcon />
             </button>
             <button
               type="button"
-              className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600 disabled:opacity-40"
+              className="cv-icon-button"
               onClick={onSearchNext}
               disabled={!searchHasResults}
               aria-label="Next result"
             >
-              <KeyboardArrowDownRoundedIcon sx={{ fontSize: 18 }} />
+              <KeyboardArrowDownRoundedIcon />
             </button>
             <button
               type="button"
-              className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-600"
+              className="cv-icon-button"
               onClick={onCloseSearch}
               aria-label="Close search"
             >
-              <CloseRoundedIcon sx={{ fontSize: 17 }} />
+              <CloseRoundedIcon />
             </button>
           </div>
         ) : (
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="cv-icon-button"
             onClick={onToggleSearch}
             disabled={searchDisabled}
             aria-label="Search conversation"
             title="Search"
           >
-            <SearchRoundedIcon sx={{ fontSize: 18 }} />
+            <SearchRoundedIcon />
           </button>
         )}
         <button
           type="button"
-          className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10 ${
-            shouldCollapseActionsForSearch ? "hidden sm:flex" : "flex"
-          }`}
+          className="cv-icon-button cv-call-action"
           onClick={onStartAudioCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start audio call"
           title="Audio call"
         >
-          <CallRoundedIcon sx={{ fontSize: 18 }} />
+          <CallRoundedIcon />
         </button>
         <button
           type="button"
-          className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100/90 text-slate-500 transition hover:bg-slate-200/80 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10 ${
-            shouldCollapseActionsForSearch ? "hidden sm:flex" : "flex"
-          }`}
+          className="cv-icon-button cv-call-action"
           onClick={onStartVideoCall}
           disabled={callDisabled || isInCallFlow}
           aria-label="Start video call"
           title="Video call"
         >
-          <VideocamRoundedIcon sx={{ fontSize: 18 }} />
+          <VideocamRoundedIcon />
         </button>
       </div>
-    </div>
+    </header>
   );
 };
 

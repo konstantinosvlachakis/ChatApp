@@ -1657,14 +1657,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   };
 
   if (loading) {
-    return <div className="p-4 text-gray-500">Loading user info...</div>;
+    return <p className="cv-chat-status" role="status">Loading…</p>;
   }
   if (!user) {
-    return <div className="p-4 text-red-500">Failed to load user.</div>;
+    return <p className="cv-chat-status is-error" role="alert">Failed to load user.</p>;
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="cv-chat">
       <div className="flex-shrink-0">
         <ChatHeader
           conversation={conversation}
@@ -1690,31 +1690,31 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
       <div
         ref={messagesContainerRef}
-        className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-24 sm:px-4"
+        className="cv-messages"
       >
         {loadingHistory ? (
-          <div className="p-4 text-center text-sm text-gray-500">Loading chat history...</div>
+          <p className="cv-messages-status" role="status">Loading chat history…</p>
         ) : (
           <>
             {latestPinnedMessage && (
-              <div className="sticky top-0 z-20 mb-2 flex justify-center pt-1">
-                <div ref={pinnedMenuRef} className="relative w-full max-w-[30rem] px-1 sm:px-0">
+              <div className="cv-pinned">
+                <div ref={pinnedMenuRef} className="cv-pinned-inner">
                   <div
                     onClick={() => jumpToPinnedMessage(latestPinnedMessage.id)}
                     onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         jumpToPinnedMessage(latestPinnedMessage.id);
                       }
                     }}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-full border border-[rgba(214,206,184,0.7)] bg-[rgba(244,239,228,0.8)] px-2.5 py-1.5 text-left shadow-[0_10px_26px_-24px_rgba(91,77,44,0.18)] backdrop-blur-xl transition hover:bg-[rgba(244,239,228,0.9)] supports-[backdrop-filter]:bg-[rgba(239,233,219,0.66)] sm:px-3 sm:py-2"
+                    className="cv-pinned-bar"
                     role="button"
                     tabIndex={0}
+                    aria-label={`Pinned message: ${latestPinnedMessage.text?.trim() || "attachment"}. Jump to it`}
                   >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/68 text-[#8a7958] sm:h-6 sm:w-6">
-                      <PushPinRoundedIcon sx={{ fontSize: 13 }} />
-                    </span>
-                    <p className="min-w-0 flex-1 truncate text-[13px] text-[#6c6353] sm:text-sm">
+                    <PushPinRoundedIcon aria-hidden="true" />
+                    <p className="cv-pinned-text">
                       {latestPinnedMessage.text?.trim() || "Pinned attachment"}
                     </p>
                     {additionalPinnedCount > 0 && (
@@ -1724,8 +1724,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                           event.stopPropagation();
                           setShowPinnedMenu((current) => !current);
                         }}
-                        className="shrink-0 rounded-full bg-white/76 px-2 py-0.5 text-[11px] font-semibold text-[#7a705f] transition hover:bg-white sm:text-xs"
-                        aria-label="Show all pinned messages"
+                        className="cv-pinned-count"
+                        aria-expanded={showPinnedMenu}
+                        aria-label={`Show all ${additionalPinnedCount + 1} pinned messages`}
                       >
                         +{additionalPinnedCount}
                       </button>
@@ -1736,18 +1737,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                         event.stopPropagation();
                         handleTogglePinMessage(latestPinnedMessage);
                       }}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#9b8d74] transition hover:bg-white/75 hover:text-[#6c6353] sm:h-7 sm:w-7"
+                      className="cv-icon-button"
                       aria-label="Unpin message"
                     >
-                      <CloseRoundedIcon sx={{ fontSize: 15 }} />
+                      <CloseRoundedIcon />
                     </button>
                   </div>
                   {showPinnedMenu && (
-                    <div className="absolute left-1 right-1 top-[calc(100%+0.45rem)] rounded-2xl border border-[rgba(214,206,184,0.7)] bg-[rgba(248,244,236,0.94)] p-2 shadow-[0_18px_40px_-26px_rgba(91,77,44,0.18)] backdrop-blur-xl sm:left-0 sm:right-0">
-                      <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8e826e]">
-                        All pinned
-                      </div>
-                      <div className="space-y-1">
+                    <div className="cv-pinned-menu">
+                      <div className="cv-pinned-menu-title">All pinned</div>
+                      <div>
                         {pinnedMessages.map((message) => (
                           <div
                             key={`pinned-menu-${message.id}`}
@@ -1756,17 +1755,18 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                               jumpToPinnedMessage(message.id);
                             }}
                             onKeyDown={(event) => {
+                              if (event.target !== event.currentTarget) return;
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
                                 setShowPinnedMenu(false);
                                 jumpToPinnedMessage(message.id);
                               }
                             }}
-                            className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 transition hover:bg-white/75"
+                            className="cv-pinned-item"
                             role="button"
                             tabIndex={0}
                           >
-                            <p className="min-w-0 flex-1 truncate text-sm text-[#6c6353]">
+                            <p className="cv-pinned-text">
                               {message.text?.trim() || "Pinned attachment"}
                             </p>
                             <button
@@ -1775,10 +1775,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
                                 event.stopPropagation();
                                 handleTogglePinMessage(message);
                               }}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#a1937b] transition hover:bg-white hover:text-[#6c6353]"
+                              className="cv-icon-button"
+                              style={{ background: "transparent" }}
                               aria-label="Unpin message"
                             >
-                              <CloseRoundedIcon sx={{ fontSize: 14 }} />
+                              <CloseRoundedIcon />
                             </button>
                           </div>
                         ))}
@@ -1789,7 +1790,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               </div>
             )}
             {loadingOlderMessages && (
-              <div className="pb-2 text-center text-xs text-gray-400">Loading older messages...</div>
+              <p className="cv-messages-status" role="status">Loading older messages…</p>
             )}
             <Conversation
               messages={messages}
@@ -1812,9 +1813,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       </div>
 
       {isOtherUserTyping && (
-        <div className="flex items-center gap-2 px-3 py-1 text-sm text-gray-500 sm:px-4">
-          <TypingDots />
-          <span>Typing...</span>
+        <div className="cv-typing" role="status">
+          <TypingDots className="cv-typing-dots" />
+          <span>{otherUser?.username ? `${otherUser.username} is typing…` : "Typing…"}</span>
         </div>
       )}
 
@@ -1822,13 +1823,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         <button
           type="button"
           onClick={handleJumpToLatest}
-          className="absolute bottom-24 right-3 z-20 rounded-full border border-slate-200 bg-white/95 px-2.5 py-2 text-[11px] font-semibold text-slate-600 shadow-[0_12px_28px_-18px_rgba(15,23,42,0.45)] backdrop-blur transition hover:bg-white hover:text-slate-800 sm:bottom-24 sm:right-4 sm:px-3 sm:text-xs"
+          className="cv-jump-latest"
         >
-          Latest
+          Jump to latest ↓
         </button>
       )}
 
-      <div className="sticky bottom-0 z-20 flex-shrink-0 border-t bg-white">
+      <div className="cv-composer-wrap">
         <MessageInput
           conversationId={conversation.id}
           connectionStatus={socketStatus}

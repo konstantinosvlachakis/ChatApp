@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
-import { BASE_URL_IMG } from "../../../constants/constants";
-import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
 import api from "../../../lib/api";
 import { toastApiError } from "../../../components/Toast";
 import { useGetConversations } from "../api/getConversations";
 import { useMutation, useQueryClient } from "react-query";
 import TypingDots from "./TypingDots";
+import ChatAvatar from "./ChatAvatar";
+import {
+  coachMatchesQuery,
+  filterConversations,
+  formatListTime,
+  getOtherParticipant,
+} from "../utils/conversationSearch";
 import CoachAvatar from "../../../components/CoachAvatar";
 import {
   COACH_CONVERSATION_ID,
@@ -16,36 +22,26 @@ import {
   getCoachConversation,
 } from "./coachConversation";
 
-const DEFAULT_AVATAR = DEFAULT_AVATAR_URL;
-
-const resolveAvatarUrl = (path) => {
-  if (!path) return DEFAULT_AVATAR;
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
-  if (path.startsWith("media/")) return `${BASE_URL_IMG}/${path}`;
-  return `${BASE_URL_IMG}/media/${path}`;
-};
-
 const MessageStatusTicks = ({ status = "sent" }) => {
-  if (status === "read") {
-    return <span className="ml-2 text-xs font-semibold text-sky-400">✓✓</span>;
-  }
-  if (status === "delivered") {
-    return <span className="ml-2 text-xs font-semibold text-gray-400">✓✓</span>;
-  }
-  return <span className="ml-2 text-xs font-semibold text-gray-400">✓</span>;
+  const label = status === "read" ? "Seen" : status === "delivered" ? "Delivered" : "Sent";
+  return (
+    <span className={`cv-ticks ${status === "read" ? "is-read" : ""}`} title={label}>
+      <span aria-hidden="true">{status === "sent" ? "✓" : "✓✓"}</span>
+      <span className="lv-visually-hidden">{label}</span>
+    </span>
+  );
 };
 
 function ConversationList({
   onSelectConversation,
   activeConversationId,
   typingByConversation = {},
+  searchQuery = "",
 }) {
   const { data: conversations = [], error, isLoading } = useGetConversations();
   const queryClient = useQueryClient();
   const { user } = useUser();
   const { onlineUserIds, subscribeToPresenceEvents } = usePresence();
-  const navigate = useNavigate();
   const [rightClickedConversation, setRightClickedConversation] =
     useState(null);
   const [swipedConversationId, setSwipedConversationId] = useState(null);
@@ -248,77 +244,74 @@ function ConversationList({
     });
   }, [queryClient, subscribeToPresenceEvents, user?.user_id, user?.username]);
 
-  if (isLoading) return <div>Loading conversations...</div>;
+  if (isLoading) return <p className="cv-list-status" role="status">Loading conversations…</p>;
   if (error) {
-    return <div className="text-red-500">{error.message || "Something went wrong"}</div>;
+    return (
+      <p className="cv-list-status is-error" role="alert">
+        {error.message || "Something went wrong"}
+      </p>
+    );
   }
 
   const coachConversation = user ? getCoachConversation(user) : null;
+  const showCoach = Boolean(coachConversation) && coachMatchesQuery(coachConversation, searchQuery);
+  const visibleConversations = filterConversations(conversations, searchQuery, user?.username);
+  const isSearching = Boolean(searchQuery.trim());
+  const isCoachActive = activeConversationId === COACH_CONVERSATION_ID;
 
   return (
     <div>
-      {coachConversation && (
-        <div className="border-b border-slate-200/80 bg-[linear-gradient(120deg,_rgba(240,249,255,0.96),_rgba(236,253,245,0.94)_58%,_rgba(255,251,235,0.96))] px-3 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-700">
-            AI Studio
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate(`/conversations/${COACH_CONVERSATION_ID}`)}
-            className={`flex w-full items-center gap-3 rounded-3xl border px-3 py-3 text-left shadow-sm transition ${
-              activeConversationId === COACH_CONVERSATION_ID
-                ? "border-teal-200 bg-white"
-                : "border-white/70 bg-white/75 hover:border-teal-100 hover:bg-white"
-            }`}
+      {showCoach && (
+        <div className="cv-companion">
+          <p className="cv-section-label">Your practice companion</p>
+          <Link
+            to={`/conversations/${COACH_CONVERSATION_ID}`}
+            className={`cv-row is-companion ${isCoachActive ? "is-active" : ""}`}
+            aria-current={isCoachActive ? "page" : undefined}
           >
-            <CoachAvatar
-              language={coachConversation.sender?.language}
-              size={48}
-              hideBadge
-              className="rounded-[18px] border border-slate-200 shadow-md"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
-                  Lumi
-                </p>
-                <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700">
-                  AI
+            <CoachAvatar language={coachConversation.sender?.language} size={48} hideBadge />
+            <span className="cv-row-body">
+              <span className="cv-row-top">
+                <span className="cv-row-name">
+                  Lumi <span className="cv-ai-tag">AI</span>
                 </span>
-              </div>
-              {typingByConversation[COACH_CONVERSATION_ID] ? (
-                <div className="flex items-center gap-2 pt-1 text-sm text-slate-500">
-                  <TypingDots />
-                  <span>Typing...</span>
-                </div>
-              ) : (
-                <p className="truncate pt-1 text-xs text-slate-500 sm:text-sm">
-                  {coachConversation.last_message?.text || "Switch modes, change languages, and practise with Lumi."}
-                </p>
-              )}
-            </div>
-          </button>
+                {coachConversation.last_message?.timestamp && (
+                  <span className="cv-row-time">
+                    {formatListTime(coachConversation.last_message.timestamp)}
+                  </span>
+                )}
+              </span>
+              <span className="cv-row-bottom">
+                {typingByConversation[COACH_CONVERSATION_ID] ? (
+                  <span className="cv-row-typing">
+                    <TypingDots className="cv-typing-dots" />
+                    Typing…
+                  </span>
+                ) : (
+                  <span className="cv-row-preview">
+                    {coachConversation.last_message?.text ||
+                      "Switch modes, change languages, and practise with Lumi."}
+                  </span>
+                )}
+              </span>
+            </span>
+          </Link>
         </div>
       )}
-      {conversations.map((conversation) => {
-        const otherUser =
-          conversation.sender?.username === user?.username
-            ? conversation.receiver
-            : conversation.sender;
 
-        const imageSrc = resolveAvatarUrl(otherUser?.profile_image_url);
+      {conversations.length > 0 && !isSearching && <p className="cv-section-label">Chats</p>}
 
-        const lastUpdated = new Date(conversation.updated_at);
-        const formattedUpdated = Number.isNaN(lastUpdated.getTime())
-          ? ""
-          : lastUpdated.toLocaleString([], {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-        const isLastMessageFromCurrentUser =
-          conversation.last_message?.sender?.id === user?.user_id;
+      {visibleConversations.map((conversation) => {
+        const otherUser = getOtherParticipant(conversation, user?.username);
+        const otherName = otherUser?.username || "Unknown participant";
+        const lastMessage = conversation.last_message;
+        const timeLabel = formatListTime(lastMessage?.timestamp || conversation.updated_at);
+        const unreadCount = conversation.unread_count || 0;
+        const isOnline = onlineUserIds.has(otherUser?.id);
+        const isActive = String(activeConversationId) === String(conversation.id);
+        const isTyping =
+          typingByConversation[conversation.id] || presenceTypingByConversation[conversation.id];
+        const isLastMessageFromCurrentUser = lastMessage?.sender?.id === user?.user_id;
         const isDesktopDeleteVisible = rightClickedConversation === conversation.id;
         const isMobileDeleteVisible = swipedConversationId === conversation.id;
         const isDeleteVisible = isDesktopDeleteVisible || isMobileDeleteVisible;
@@ -329,115 +322,154 @@ function ConversationList({
             ? -80
             : 0;
         const isDragging = typeof liveOffset === "number";
+        const preview = lastMessage
+          ? lastMessage.text || (lastMessage.attachment_url || lastMessage.attachment ? "Attachment" : "Message")
+          : "No messages yet";
 
         return (
-          <div key={conversation.id} className="relative">
+          <div key={conversation.id} className="cv-row-wrap">
             <div
-              className={`absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-rose-500 text-white transition-all duration-200 ${
-                isDeleteVisible ? "opacity-100" : "opacity-0"
-              }`}
+              className="cv-row-delete-reveal"
+              style={{ opacity: isDeleteVisible ? 1 : 0 }}
+              aria-hidden={!isDeleteVisible}
             >
               <button
                 type="button"
+                tabIndex={isDeleteVisible ? 0 : -1}
                 onClick={(event) => {
                   event.stopPropagation();
                   requestDeleteConversation(conversation.id, otherUser?.username);
                 }}
-                className="h-full w-full text-xs font-semibold"
               >
                 Delete
               </button>
             </div>
-            {/* Conversation Container */}
-            <div
-              className={`relative z-10 flex w-full cursor-pointer items-center gap-3 p-2 sm:p-3 ${
-                isDragging ? "transition-none" : "transition-transform duration-200 ease-out"
-              }`}
-              style={{ transform: `translateX(${translateX}px)` }}
+            <Link
+              to={`/conversations/${conversation.id}`}
+              className={`cv-row ${isActive ? "is-active" : ""} ${unreadCount > 0 ? "has-unread" : ""}`}
+              aria-current={isActive ? "page" : undefined}
+              style={{
+                transform: `translateX(${translateX}px)`,
+                transition: isDragging ? "none" : "transform 0.2s ease-out",
+              }}
               onContextMenu={(e) => handleRightClick(e, conversation.id)}
               onTouchStart={(e) => handleTouchStart(e, conversation.id)}
               onTouchMove={(e) => handleTouchMove(e, conversation.id)}
               onTouchEnd={handleTouchEnd}
               onTouchCancel={handleTouchEnd}
-              onClick={() => {
+              onClick={(event) => {
                 if (isMobileDeleteVisible) {
+                  event.preventDefault();
                   setSwipedConversationId(null);
                   return;
                 }
                 if (isDesktopDeleteVisible) {
+                  event.preventDefault();
                   setRightClickedConversation(null);
                   return;
                 }
                 onSelectConversation?.(conversation);
-                navigate(`/conversations/${conversation.id}`);
               }}
             >
-              <div className="relative mr-3">
-                <img
-                  src={imageSrc}
-                  loading="lazy"
-                  decoding="async"
-                  alt={otherUser?.username || "Participant"}
-                  className="h-10 w-10 rounded-full object-cover sm:h-12 sm:w-12"
-                  onError={handleAvatarError}
-                />
-                {onlineUserIds.has(otherUser?.id) && (
-                  <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 ring-2 ring-white" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold sm:text-base">
-                  {otherUser?.username || "Unknown Participant"}
-                </p>
-                {(typingByConversation[conversation.id] ||
-                  presenceTypingByConversation[conversation.id]) ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <TypingDots />
-                    <span>Typing...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-end justify-between gap-2">
-                    <p className="truncate text-xs text-gray-500 sm:text-sm">
-                      {conversation.last_message?.text || "No messages yet"}
-                    </p>
-                    <div className="flex items-center text-[11px] text-gray-400 sm:text-xs">
+              <ChatAvatar
+                name={otherName}
+                imagePath={otherUser?.profile_image_url}
+                size={48}
+                online={isOnline}
+              />
+              <span className="cv-row-body">
+                <span className="cv-row-top">
+                  <span className="cv-row-name">{otherName}</span>
+                  {timeLabel && <span className="cv-row-time">{timeLabel}</span>}
+                </span>
+                <span className="cv-row-bottom">
+                  {isTyping ? (
+                    <span className="cv-row-typing">
+                      <TypingDots className="cv-typing-dots" />
+                      Typing…
+                    </span>
+                  ) : (
+                    <>
                       {isLastMessageFromCurrentUser && (
-                        <MessageStatusTicks
-                          status={conversation.last_message?.status}
-                        />
+                        <MessageStatusTicks status={lastMessage?.status} />
                       )}
-                      {formattedUpdated && <span className="ml-2">{formattedUpdated}</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+                      <span className="cv-row-preview">{preview}</span>
+                    </>
+                  )}
+                  {unreadCount > 0 && (
+                    <span className="cv-row-badge" aria-hidden="true">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span className="lv-visually-hidden">
+                {[isOnline ? "online" : "", unreadCount > 0 ? `${unreadCount} unread` : ""]
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
+            </Link>
+            <button
+              type="button"
+              className="cv-icon-button cv-row-more"
+              onClick={(event) => {
+                event.stopPropagation();
+                requestDeleteConversation(conversation.id, otherUser?.username);
+              }}
+              aria-label={`Delete conversation with ${otherName}`}
+            >
+              <DeleteOutlineRoundedIcon />
+            </button>
           </div>
         );
       })}
+
+      {visibleConversations.length === 0 && (
+        <div className="cv-list-empty">
+          {isSearching ? (
+            <p>No conversations match “{searchQuery.trim()}”.</p>
+          ) : (
+            <>
+              <p>No conversations yet.</p>
+              <Link to="/community" className="cv-pill-button is-primary" style={{ marginTop: 12 }}>
+                Find people
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       {conversationPendingDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Delete conversation?</h3>
-            <p className="mt-2 text-sm text-slate-600">
+        <div className="cv-confirm-backdrop">
+          <div
+            className="cv-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cv-confirm-title"
+            aria-describedby="cv-confirm-text"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setConversationPendingDelete(null);
+            }}
+          >
+            <h2 id="cv-confirm-title">Delete conversation?</h2>
+            <p id="cv-confirm-text">
               This will permanently remove your conversation with{" "}
-              <span className="font-semibold text-slate-800">
-                {conversationPendingDelete.username}
-              </span>
-              .
+              <strong>{conversationPendingDelete.username}</strong>.
             </p>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="cv-confirm-actions">
               <button
                 type="button"
+                // Focus the safe choice first.
+                autoFocus
                 onClick={() => setConversationPendingDelete(null)}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="cv-pill-button"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => handleDelete(conversationPendingDelete.id)}
-                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                className="cv-pill-button is-danger"
               >
                 Delete
               </button>

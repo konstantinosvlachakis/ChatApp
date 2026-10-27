@@ -71,12 +71,12 @@ native build). Web: single API client `lib/api.ts` (timeouts, GET-only retries, 
 banner, route error boundaries, logger. Mobile: same ApiError/retry policy, ToastHost banner + toasts.
 Follow-up: drop the legacy `message`/`detail` error keys after the next mobile release.
 
-## Web redesign (`feat/people-redesign`, stacked on `feat/api-resilience`, 2026-10-27)
+## Web redesign (`feat/people-redesign` → `feat/conversations-redesign`, stacked on `feat/api-resilience`, 2026-10-27)
 Design direction: the user's warm exchange redesign (mockups + their People implementation) — navy
 brand header with the existing CoachAvatar + "LangVoyage" logo (keep it), warm cream/paper surfaces, peach accents,
 teal actions, round portraits, pill controls; shared tokens in `frontend/src/styles/tokens.css`; AA contrast and
->=12px text. Done: app-wide header + phone tab bar, People page + phone filter sheet. Conversations redesign follows
-on `feat/conversations-redesign`.
+>=12px text. Done: app-wide header + phone tab bar, People page + phone filter sheet; Conversations redesign
+(`feat/conversations-redesign`, stacked: grouped messages, list search, pinned Lumi, translate chip, pill composer).
 Follow-ups: Profile page restyle; Practice / Premium / Settings restyle; Expo People screen + filter sheet (mockup);
 corrections / phrasebook UI (with the roadmap features below).
 

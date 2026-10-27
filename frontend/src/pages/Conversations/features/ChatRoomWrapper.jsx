@@ -41,8 +41,8 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
     );
   }
 
-  if (error) return <div className="h-full p-4 text-red-500">{error}</div>;
-  if (!conversation) return <div className="h-full p-4 text-gray-500">Loading chat...</div>;
+  if (error) return <p className="cv-chat-status is-error" role="alert">{error}</p>;
+  if (!conversation) return <p className="cv-chat-status" role="status">Loading chat…</p>;
 
   return (
     <div className="h-full min-h-0">

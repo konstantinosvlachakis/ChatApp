@@ -1,7 +1,9 @@
 import { useCallback, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import Sidebar from "./features/Sidebar";
 import ChatRoomWrapper from "./features/ChatRoomWrapper";
+import "./conversations.css";
 
 const noop = () => {};
 
@@ -25,35 +27,31 @@ const ConversationsPage = () => {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-x-hidden">
-      <div
-        className={`min-h-0 w-full border-r bg-white md:w-[320px] lg:w-[360px] xl:w-[400px] 2xl:w-[440px] ${
-          hasSelectedConversation ? "hidden md:block" : "block"
-        }`}
-      >
+    <div className={`cv-page ${hasSelectedConversation ? "has-selection" : ""}`}>
+      <section className="cv-panel cv-list-slot" aria-label="Conversations">
         <Sidebar
           onSelectConversation={noop}
           activeConversationId={hasSelectedConversation ? activeConversationId : null}
           typingByConversation={typingByConversation}
         />
-      </div>
+      </section>
 
-      {/* Main Content */}
-      <div
-        className={`relative min-h-0 flex-1 ${hasSelectedConversation ? "block" : "hidden md:block"}`}
-      >
+      <section className="cv-panel cv-chat-slot" aria-label="Chat">
         {hasSelectedConversation ? (
-          <div className="flex h-full min-h-0 flex-col">
-            <ChatRoomWrapper
-              onConversationTypingChange={handleConversationTypingChange}
-            />
-          </div>
+          <ChatRoomWrapper onConversationTypingChange={handleConversationTypingChange} />
         ) : (
-          <div className="p-4 text-center text-gray-500 sm:p-6">
-            Select a conversation to start chatting.
+          <div className="cv-empty-state">
+            <span className="cv-empty-state-icon" aria-hidden="true">
+              <ChatBubbleOutlineRoundedIcon />
+            </span>
+            <h2>Pick a conversation</h2>
+            <p>Choose someone on the left to keep practising, or meet a new exchange partner.</p>
+            <Link to="/community" className="cv-pill-button is-primary">
+              Find people
+            </Link>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 };
