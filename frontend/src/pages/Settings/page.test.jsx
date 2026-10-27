@@ -1,17 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import SettingsPage from "./page";
 import api from "../../lib/api";
+import { clearToasts, getToasts } from "../../components/Toast/toastStore";
 
+const mockSetUser = jest.fn();
 const mockRefreshUserProfile = jest.fn(() => Promise.resolve());
-const mockUser = {
-  base_translate_language: "english",
-  native_language: "english",
-  languages_practicing: ["greek"],
-};
+let mockUser;
 
 jest.mock("../../context/UserContext", () => ({
   useUser: () => ({
     user: mockUser,
+    setUser: mockSetUser,
     refreshUserProfile: mockRefreshUserProfile,
   }),
 }));
@@ -25,54 +25,183 @@ jest.mock("../../lib/api", () => {
     default: client,
     api: client,
     getErrorMessage: actual.getErrorMessage,
+    isAbortError: actual.isAbortError,
   };
 });
 
-describe("SettingsPage safety history", () => {
+const moderationPayload = {
+  blocked_profiles: [
+    {
+      username: "blocked-user",
+      profile_image_url: "/media/profile_images/blocked.jpg",
+      created_at: "2026-03-10T12:00:00Z",
+    },
+  ],
+  reported_profiles: [
+    {
+      username: "reported-user",
+      profile_image_url: "",
+      reason: "spam",
+      details: "Sent links",
+      created_at: "2026-03-11T12:00:00Z",
+    },
+  ],
+};
+
+const renderPage = async (onLogout = jest.fn(() => Promise.resolve())) => {
+  render(
+    <MemoryRouter initialEntries={["/settings"]}>
+      <Routes>
+        <Route element={<Outlet context={{ onLogout }} />}>
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  );
+  // Let the moderation fetch settle so its state updates happen inside the test.
+  await waitFor(() => expect(screen.queryByText(/loading blocked profiles/i)).not.toBeInTheDocument());
+  return { onLogout };
+};
+
+describe("SettingsPage", () => {
   beforeEach(() => {
-    mockRefreshUserProfile.mockClear();
-    api.get.mockImplementation((path) => {
-      if (String(path).includes("/api/profile/moderation/")) {
-        return Promise.resolve({
-          blocked_profiles: [
-            {
-              username: "blocked-user",
-              profile_image_url: "/media/profile_images/blocked.jpg",
-              created_at: "2026-03-10T12:00:00Z",
-            },
-          ],
-          reported_profiles: [],
-        });
-      }
-      return Promise.resolve({});
-    });
-    api.delete.mockResolvedValue({ message: "Unblocked" });
-    api.patch.mockResolvedValue({});
+    mockUser = {
+      username: "kostas",
+      email: "kostas@example.com",
+      base_translate_language: "english",
+      native_language: "english",
+      languages_practicing: ["Greek"],
+      practice_language_levels: { Greek: "intermediate" },
+      support_email: "help@example.com",
+    };
+    api.get.mockImplementation((path) =>
+      Promise.resolve(String(path).includes("/api/profile/moderation/") ? moderationPayload : {})
+    );
+    api.delete.mockResolvedValue({ message: "ok" });
+    api.patch.mockResolvedValue({ updated_profile: { base_translate_language: "spanish" } });
+    api.post.mockResolvedValue({ message: "ok" });
   });
 
   afterEach(() => {
     jest.resetAllMocks();
+    act(() => clearToasts());
   });
 
-  test("renders blocked profile avatar and can unblock from safety history", async () => {
-    render(<SettingsPage />);
+  test("renders every section, account details, learning chips and footer links", async () => {
+    await renderPage();
 
-    const avatar = await screen.findByAltText("blocked-user");
-    expect(avatar).toBeInTheDocument();
-    expect(avatar).toHaveAttribute("src", expect.stringContaining("/media/profile_images/blocked.jpg"));
+    for (const name of ["Account", "Language & translation", "Notifications", "Privacy & safety", "Danger zone"]) {
+      expect(screen.getByRole("heading", { level: 2, name })).toBeInTheDocument();
+    }
+    expect(screen.getByText("kostas@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /edit profile/i })).toHaveAttribute("href", "/profile/edit");
+    expect(screen.getByRole("link", { name: /view my profile/i })).toHaveAttribute("href", "/profile");
 
-    const unblockButton = await screen.findByRole("button", { name: /unblock/i });
-    fireEvent.click(unblockButton);
+    const learning = screen.getByRole("list", { name: /languages you're learning/i });
+    expect(within(learning).getByText(/Greek/)).toBeInTheDocument();
+    expect(within(learning).getByText(/Intermediate/)).toBeInTheDocument();
+    // Languages are read-only here (Edit profile owns them).
+    expect(screen.queryByText(/select practicing languages/i)).not.toBeInTheDocument();
 
-    await waitFor(() =>
-      expect(api.delete).toHaveBeenCalledWith(
-        expect.stringContaining("/api/profile/public/blocked-user/block/")
-      )
+    expect(screen.getByRole("link", { name: "Contact support" })).toHaveAttribute("href", "mailto:help@example.com");
+    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy-policy");
+
+    expect(await screen.findByText("Spam")).toBeInTheDocument();
+    expect(screen.getByText("Sent links")).toBeInTheDocument();
+  });
+
+  test("saves only the translate language and merges it into the shared user", async () => {
+    await renderPage();
+    const save = screen.getByRole("button", { name: "Save changes" });
+    expect(save).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Translate messages into"), { target: { value: "spanish" } });
+    expect(screen.getByTestId("translate-example")).toHaveTextContent("¿Quieres practicar mañana?");
+    expect(save).toBeEnabled();
+
+    fireEvent.click(save);
+    fireEvent.click(save); // in-flight guard
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1));
+    expect(api.patch).toHaveBeenCalledWith("/api/profile/edit/", { base_translate_language: "spanish" });
+    await waitFor(() => expect(mockSetUser).toHaveBeenCalled());
+    const merge = mockSetUser.mock.calls[0][0];
+    expect(merge(mockUser)).toEqual({ ...mockUser, base_translate_language: "spanish" });
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
+  test("unblocks a profile once and removes it from the list", async () => {
+    await renderPage();
+
+    const avatarRow = (await screen.findByRole("link", { name: "blocked-user" })).closest("li");
+    expect(screen.getByRole("link", { name: "blocked-user" })).toHaveAttribute("href", "/people/blocked-user");
+    expect(avatarRow.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("/media/profile_images/blocked.jpg")
     );
 
-    await waitFor(() => expect(mockRefreshUserProfile).toHaveBeenCalled());
+    const unblock = screen.getByRole("button", { name: "Unblock blocked-user" });
+    fireEvent.click(unblock);
+    fireEvent.click(unblock);
+
     await waitFor(() =>
-      expect(screen.queryByText("blocked-user")).not.toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: "blocked-user" })).not.toBeInTheDocument()
     );
+    expect(api.delete).toHaveBeenCalledTimes(1);
+    expect(api.delete).toHaveBeenCalledWith("/api/profile/public/blocked-user/block/");
+    expect(getToasts().some((t) => t.message.startsWith("Unblocked blocked-user"))).toBe(true);
+    expect(screen.getByText(/haven't blocked anyone/i)).toBeInTheDocument();
+  });
+
+  test("change password asks first, then sends the reset link to the account email", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /change password/i }));
+    const dialog = screen.getByRole("dialog", { name: "Change password?" });
+    expect(api.post).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send link" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/auth/password-reset/", { email: "kostas@example.com" })
+    );
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("We sent a link to kostas@example.com")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  test("password dialog closes on Escape without sending", async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /change password/i }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  test("delete account requires typing the username, then deletes and logs out", async () => {
+    const { onLogout } = await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete account/i }));
+    const dialog = screen.getByRole("dialog", { name: "Delete your account?" });
+    const confirm = within(dialog).getByRole("button", { name: "Delete account" });
+    const input = within(dialog).getByLabelText(/to confirm/i);
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: "kost" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.submit(confirm.closest("form"));
+    expect(api.delete).not.toHaveBeenCalledWith("/api/profile/delete/");
+
+    fireEvent.change(input, { target: { value: "kostas" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/profile/delete/"));
+    await waitFor(() => expect(onLogout).toHaveBeenCalledWith({ accountDeleted: true }));
+  });
+
+  test("log out uses the layout's logout", async () => {
+    const { onLogout } = await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
   });
 });

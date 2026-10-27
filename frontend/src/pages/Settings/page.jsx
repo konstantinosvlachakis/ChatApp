@@ -1,427 +1,641 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BASE_URL } from "../../constants/constants";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
+import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
+import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import LockResetRoundedIcon from "@mui/icons-material/LockResetRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
-import api, { getErrorMessage } from "../../lib/api";
+import api, { isAbortError } from "../../lib/api";
 import { avatarImage } from "../../lib/media";
-import { toastApiError } from "../../components/Toast";
+import { toast, toastApiError } from "../../components/Toast";
+import { clearClientSessionData } from "../../utils/auth";
+import { getNotificationPermission, requestNotificationPermission } from "../../utils/notifications";
+import {
+  LANGUAGE_KEYS,
+  describeLanguage,
+  learningLanguages,
+  levelFor,
+  normalizeLanguage,
+  resolveMediaUrl,
+  titleCase,
+  validRingColor,
+} from "../Profile/features/profileUtils";
+import ConfirmDialog from "./ConfirmDialog";
+import "../Profile/features/profile.css";
+import "./settings.css";
 
-const LANGUAGE_OPTIONS = [
-  { value: "english", label: "English", flag: "gb" },
-  { value: "spanish", label: "Spanish", flag: "es" },
-  { value: "french", label: "French", flag: "fr" },
-  { value: "german", label: "German", flag: "de" },
-  { value: "italian", label: "Italian", flag: "it" },
-  { value: "portuguese", label: "Portuguese", flag: "pt" },
-  { value: "greek", label: "Greek", flag: "gr" },
-  { value: "japanese", label: "Japanese", flag: "jp" },
-  { value: "korean", label: "Korean", flag: "kr" },
-  { value: "chinese", label: "Chinese", flag: "cn" },
-  { value: "arabic", label: "Arabic", flag: "sa" },
-  { value: "russian", label: "Russian", flag: "ru" },
-  { value: "turkish", label: "Turkish", flag: "tr" },
-  { value: "hindi", label: "Hindi", flag: "in" },
+// Rendered sizes from settings.css.
+const ACCOUNT_AVATAR_PX = 72;
+const LIST_AVATAR_PX = 44;
+
+const SECTIONS = [
+  { id: "st-account", label: "Account", icon: PersonOutlineRoundedIcon },
+  { id: "st-language", label: "Language & translation", icon: TranslateRoundedIcon },
+  { id: "st-notifications", label: "Notifications", icon: NotificationsNoneRoundedIcon },
+  { id: "st-privacy", label: "Privacy & safety", icon: ShieldOutlinedIcon },
+  { id: "st-danger", label: "Danger zone", icon: WarningAmberRoundedIcon },
 ];
 
-const normalizeLanguageValue = (value) => {
-  if (!value) return "";
-  const normalized = String(value).trim().toLowerCase();
-  const directMatch = LANGUAGE_OPTIONS.find((language) => language.value === normalized);
-  if (directMatch) return directMatch.value;
-  const labelMatch = LANGUAGE_OPTIONS.find(
-    (language) => language.label.toLowerCase() === normalized
-  );
-  return labelMatch ? labelMatch.value : "";
+// "Want to practise tomorrow?" in every language the app offers, for the live translation example.
+const EXAMPLE_LINES = {
+  english: "Want to practise tomorrow?",
+  spanish: "¿Quieres practicar mañana?",
+  french: "Tu veux pratiquer demain ?",
+  german: "Willst du morgen üben?",
+  italian: "Vuoi fare pratica domani?",
+  portuguese: "Quer praticar amanhã?",
+  greek: "Θέλεις να εξασκηθούμε αύριο;",
+  japanese: "明日練習しませんか？",
+  korean: "내일 연습할래요?",
+  chinese: "明天想练习吗？",
+  arabic: "هل تريد أن تتدرب غدًا؟",
+  russian: "Хочешь попрактиковаться завтра?",
+  turkish: "Yarın pratik yapmak ister misin?",
+  hindi: "क्या आप कल अभ्यास करना चाहेंगे?",
 };
 
-const resolveProfileImage = (path) => {
-  if (!path) return "";
-  if (String(path).startsWith("http")) return path;
-  if (String(path).startsWith("/media/")) return `${BASE_URL}${path}`;
-  return `${BASE_URL}/media/${path}`;
+const NOTIFICATION_STATES = {
+  granted: { label: "On", text: "You'll get a desktop notification for new messages while LangVoyage is open." },
+  default: { label: "Off", text: "Allow notifications to hear about new messages while you're in another tab." },
+  denied: {
+    label: "Blocked",
+    text: "Your browser is blocking notifications for this site. Allow them in the site settings, then reload.",
+  },
+  unsupported: { label: "Unavailable", text: "This browser doesn't support desktop notifications." },
+};
+
+const savedTranslateLanguage = (user) =>
+  normalizeLanguage(user?.base_translate_language || user?.native_language || "english") || "english";
+
+const formatHistoryDate = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+};
+
+const reasonLabel = (reason) => {
+  const text = String(reason || "").replace(/_/g, " ").trim();
+  return text ? titleCase(text) : "";
+};
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const SectionCard = ({ id, title, description, icon: Icon, tone = "", children }) => (
+  <section id={id} className={`pf-card st-section ${tone}`} aria-labelledby={`${id}-title`} tabIndex={-1}>
+    <div className="st-section-head">
+      <h2 id={`${id}-title`} className="pf-card-title">
+        {Icon && <Icon aria-hidden="true" />}
+        {title}
+      </h2>
+      {description && <p>{description}</p>}
+    </div>
+    {children}
+  </section>
+);
+
+const ListAvatar = ({ entry }) => {
+  const src = avatarImage(resolveMediaUrl(entry.profile_image_url), LIST_AVATAR_PX);
+  return src ? (
+    <img className="st-person-avatar" src={src} alt="" loading="lazy" decoding="async" onError={handleAvatarError} />
+  ) : (
+    <span className="st-person-avatar is-initial" aria-hidden="true">
+      {entry.username?.slice(0, 1)?.toUpperCase() || "?"}
+    </span>
+  );
 };
 
 const SettingsPage = () => {
-  const { user, refreshUserProfile } = useUser();
-  const languagesDropdownRef = useRef(null);
+  const { user, setUser } = useUser();
+  const outlet = useOutletContext();
+  const onLogout = outlet?.onLogout;
+  const navigate = useNavigate();
+
+  const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
+
+  // Translate language: a draft only while the user has changed it.
+  const savedLanguage = savedTranslateLanguage(user);
+  const [draftLanguage, setDraftLanguage] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const translateLanguage = draftLanguage ?? savedLanguage;
+  const isDirty = draftLanguage !== null && draftLanguage !== savedLanguage;
+
   const [moderationLoading, setModerationLoading] = useState(true);
-  const [moderation, setModeration] = useState({
-    blocked_profiles: [],
-    reported_profiles: [],
-  });
+  const [moderationError, setModerationError] = useState(false);
+  const [moderation, setModeration] = useState({ blocked_profiles: [], reported_profiles: [] });
   const [unblockingUsername, setUnblockingUsername] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [isLanguagesDropdownOpen, setIsLanguagesDropdownOpen] = useState(false);
 
-  const [baseTranslateLanguage, setBaseTranslateLanguage] = useState(
-    normalizeLanguageValue(
-      user?.base_translate_language || user?.native_language || "english"
-    ) || "english"
-  );
-  const [languagesPracticing, setLanguagesPracticing] = useState(
-    (user?.languages_practicing || [])
-      .map((value) => normalizeLanguageValue(value))
-      .filter(Boolean)
-  );
+  const [notificationState, setNotificationState] = useState(() => getNotificationPermission());
+  const [requestingNotifications, setRequestingNotifications] = useState(false);
+
+  const [dialog, setDialog] = useState(null); // "password" | "delete" | null
+  const [resetSending, setResetSending] = useState(false);
+  const [resetSentTo, setResetSentTo] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const deleteInputRef = useRef(null);
+  const inFlightRef = useRef({ save: false, reset: false, delete: false, unblock: new Set() });
 
   useEffect(() => {
-    setBaseTranslateLanguage(
-      normalizeLanguageValue(
-        user?.base_translate_language || user?.native_language || "english"
-      ) || "english"
-    );
-    setLanguagesPracticing(
-      (user?.languages_practicing || [])
-        .map((value) => normalizeLanguageValue(value))
-        .filter(Boolean)
-    );
-  }, [user]);
-
-  useEffect(() => {
-    const loadModeration = async () => {
+    const controller = new AbortController();
+    (async () => {
       try {
         setModerationLoading(true);
-        const payload = await api.get("/api/profile/moderation/");
+        const payload = await api.get("/api/profile/moderation/", { signal: controller.signal });
         setModeration({
-          blocked_profiles: Array.isArray(payload.blocked_profiles) ? payload.blocked_profiles : [],
-          reported_profiles: Array.isArray(payload.reported_profiles) ? payload.reported_profiles : [],
+          blocked_profiles: Array.isArray(payload?.blocked_profiles) ? payload.blocked_profiles : [],
+          reported_profiles: Array.isArray(payload?.reported_profiles) ? payload.reported_profiles : [],
         });
-      } catch {
-        setModeration({
-          blocked_profiles: [],
-          reported_profiles: [],
-        });
+        setModerationError(false);
+      } catch (err) {
+        if (isAbortError(err) || controller.signal.aborted) return;
+        setModerationError(true);
       } finally {
-        setModerationLoading(false);
+        if (!controller.signal.aborted) setModerationLoading(false);
       }
-    };
-
-    loadModeration();
+    })();
+    return () => controller.abort();
   }, []);
 
-  const selectedLanguageLabel = useMemo(() => {
-    return LANGUAGE_OPTIONS.find((lang) => lang.value === baseTranslateLanguage);
-  }, [baseTranslateLanguage]);
-
-  const languageMap = useMemo(
-    () =>
-      LANGUAGE_OPTIONS.reduce((acc, language) => {
-        acc[language.value] = language;
-        return acc;
-      }, {}),
-    []
-  );
-
-  const selectedPracticingLanguages = useMemo(
-    () =>
-      languagesPracticing
-        .map((value) => languageMap[value])
-        .filter(Boolean),
-    [languageMap, languagesPracticing]
-  );
-
+  // Highlight the section in view in the desktop nav.
   useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (
-        languagesDropdownRef.current &&
-        !languagesDropdownRef.current.contains(event.target)
-      ) {
-        setIsLanguagesDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
+    if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting);
+        if (visible.length) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: "-20% 0px -65% 0px" }
+    );
+    SECTIONS.forEach(({ id }) => {
+      const node = document.getElementById(id);
+      if (node) observer.observe(node);
+    });
+    return () => observer.disconnect();
   }, []);
 
-  const togglePracticingLanguage = (value) => {
-    setLanguagesPracticing((prev) =>
-      prev.includes(value)
-        ? prev.filter((language) => language !== value)
-        : [...prev, value]
-    );
+  const scrollToSection = (event, id) => {
+    event.preventDefault();
+    const node = document.getElementById(id);
+    if (!node) return;
+    setActiveSection(id);
+    node.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+    node.focus({ preventScroll: true });
   };
 
-  const formatHistoryDate = (value) => {
-    if (!value) return "";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toLocaleDateString([], {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+  const handleSave = async (event) => {
+    event?.preventDefault();
+    if (!isDirty || inFlightRef.current.save) return;
+    inFlightRef.current.save = true;
+    setSaving(true);
+    const value = draftLanguage;
+    try {
+      // Only the field this page owns; Edit profile owns languages and levels.
+      const payload = await api.patch("/api/profile/edit/", { base_translate_language: value });
+      const saved = payload?.updated_profile?.base_translate_language || value;
+      setUser((prev) => (prev ? { ...prev, base_translate_language: saved } : prev));
+      setDraftLanguage(null);
+      setJustSaved(true);
+    } catch (err) {
+      toastApiError(err, "Couldn't save your settings");
+    } finally {
+      inFlightRef.current.save = false;
+      setSaving(false);
+    }
   };
 
   const handleUnblock = async (username) => {
+    const pending = inFlightRef.current.unblock;
+    if (pending.has(username)) return;
+    pending.add(username);
+    setUnblockingUsername(username);
     try {
-      setUnblockingUsername(username);
       await api.delete(`/api/profile/public/${encodeURIComponent(username)}/block/`);
       setModeration((prev) => ({
         ...prev,
         blocked_profiles: prev.blocked_profiles.filter((entry) => entry.username !== username),
       }));
-      setSuccess(`${username} has been unblocked.`);
-      await refreshUserProfile().catch(() => {});
+      toast.success(`Unblocked ${username}. You can see each other in People again.`);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to unblock user."));
-      toastApiError(err, "Couldn't unblock " + username);
+      toastApiError(err, `Couldn't unblock ${username}`);
     } finally {
-      setUnblockingUsername("");
+      pending.delete(username);
+      setUnblockingUsername((current) => (current === username ? "" : current));
     }
   };
 
-  const handleSave = async () => {
+  const handleEnableNotifications = async () => {
+    if (requestingNotifications) return;
+    setRequestingNotifications(true);
+    const result = await requestNotificationPermission();
+    setNotificationState(result);
+    setRequestingNotifications(false);
+  };
+
+  const handleSendReset = async () => {
+    const email = String(user?.email || "").trim();
+    if (!email || inFlightRef.current.reset) return;
+    inFlightRef.current.reset = true;
+    setResetSending(true);
     try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
-      await api.patch("/api/profile/edit/", {
-        base_translate_language: baseTranslateLanguage,
-        languages_practicing: languagesPracticing.map(
-          (value) => languageMap[value]?.label || value
-        ),
-      });
-
-      await refreshUserProfile();
-      setSuccess("Settings saved.");
+      await api.post("/api/auth/password-reset/", { email });
+      setResetSentTo(email);
+      setDialog(null);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to save settings."));
-      toastApiError(err, "Couldn't save your settings");
+      toastApiError(err, "Couldn't send the reset link");
     } finally {
-      setSaving(false);
+      inFlightRef.current.reset = false;
+      setResetSending(false);
     }
   };
+
+  const handleLogout = async () => {
+    if (!onLogout || loggingOut) return;
+    setLoggingOut(true);
+    await onLogout();
+  };
+
+  const deleteConfirmWord = user?.username || "DELETE";
+  const deleteConfirmed = deleteConfirmText.trim() === deleteConfirmWord;
+
+  const handleDeleteAccount = async () => {
+    if (!deleteConfirmed || inFlightRef.current.delete) return;
+    inFlightRef.current.delete = true;
+    setDeleting(true);
+    try {
+      await api.delete("/api/profile/delete/");
+    } catch (err) {
+      toastApiError(err, "Couldn't delete your account");
+      inFlightRef.current.delete = false;
+      setDeleting(false);
+      return;
+    }
+    toast.success("Your account was deleted.");
+    if (onLogout) {
+      // Same teardown as the header's Log out (sockets, caches, cookies, user), minus presence.
+      await onLogout({ accountDeleted: true });
+    } else {
+      clearClientSessionData();
+      setUser(null);
+      navigate("/login");
+    }
+  };
+
+  const openDialog = (name) => {
+    if (name === "delete") setDeleteConfirmText("");
+    setDialog(name);
+  };
+
+  const closeDialog = useCallback(() => setDialog(null), []);
+
+  if (!user) {
+    return <div className="pf-state">Loading settings…</div>;
+  }
+
+  const email = String(user.email || "").trim();
+  const learning = learningLanguages(user);
+  const exampleSource = translateLanguage === "spanish" ? "english" : "spanish";
+  const notification = NOTIFICATION_STATES[notificationState] || NOTIFICATION_STATES.unsupported;
+  const accountAvatar = avatarImage(resolveMediaUrl(user.profile_image_url), ACCOUNT_AVATAR_PX) || DEFAULT_AVATAR_URL;
+  const saveStatus = isDirty ? "Unsaved change" : justSaved ? "Saved" : "";
 
   return (
-    <div className="min-h-full bg-gray-50 p-3 sm:p-5 md:p-8">
-      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Settings</h1>
-        <p className="text-gray-600 mt-2">
-          Choose your base language for message translation.
-        </p>
+    <div className="pf-page st-page">
+      <header className="st-head">
+        <h1>Settings</h1>
+        <p>Manage your account, translation language and safety.</p>
+      </header>
 
-        <div className="mt-6">
-          <label
-            htmlFor="base-translate-language"
-            className="block text-sm font-medium text-gray-700 mb-2"
-          >
-            Base Translate Language
-          </label>
-          <select
-            id="base-translate-language"
-            value={baseTranslateLanguage}
-            onChange={(e) => setBaseTranslateLanguage(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {LANGUAGE_OPTIONS.map((language) => (
-              <option key={language.value} value={language.value}>
-                {language.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-gray-500 mt-2">
-            Current: {selectedLanguageLabel?.label || baseTranslateLanguage}
-          </p>
-        </div>
-
-        <div className="mt-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Languages Practicing
-          </label>
-          <div className="relative" ref={languagesDropdownRef}>
-            <button
-              type="button"
-              onClick={() =>
-                setIsLanguagesDropdownOpen((isOpen) => !isOpen)
-              }
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-blue-500"
+      <div className="st-layout">
+        <nav className="pf-card st-nav" aria-label="Settings sections">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className={activeSection === id ? "is-active" : ""}
+              aria-current={activeSection === id ? "true" : undefined}
+              onClick={(event) => scrollToSection(event, id)}
             >
-              {selectedPracticingLanguages.length > 0
-                ? `${selectedPracticingLanguages.length} selected`
-                : "Select practicing languages"}
-            </button>
+              <Icon aria-hidden="true" />
+              {label}
+            </a>
+          ))}
+        </nav>
 
-            {isLanguagesDropdownOpen && (
-              <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
-                <div className="max-h-64 overflow-y-auto p-1">
-                  {LANGUAGE_OPTIONS.map((language) => {
-                    const isSelected = languagesPracticing.includes(language.value);
+        <div className="st-main">
+          <SectionCard id="st-account" title="Account" icon={PersonOutlineRoundedIcon}>
+            <div className="st-account">
+              <span className="st-account-avatar" style={{ background: validRingColor(user.avatar_ring_color) }}>
+                <img src={accountAvatar} alt="" onError={handleAvatarError} />
+              </span>
+              <div className="st-account-text">
+                <strong>{user.username}</strong>
+                {email && <span>{email}</span>}
+              </div>
+              <div className="st-account-links">
+                <Link to="/profile/edit" className="st-btn">
+                  <EditOutlinedIcon aria-hidden="true" />
+                  Edit profile
+                </Link>
+                <Link to="/profile" className="st-btn">
+                  <VisibilityOutlinedIcon aria-hidden="true" />
+                  View my profile
+                </Link>
+              </div>
+            </div>
+
+            <div className="st-row">
+              <div className="st-row-text">
+                <h3>Password</h3>
+                <p>We'll email you a link to choose a new password.</p>
+                {resetSentTo && (
+                  <p className="st-note is-success" role="status">
+                    <CheckRoundedIcon aria-hidden="true" />
+                    We sent a link to {resetSentTo}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                className="st-btn"
+                onClick={() => openDialog("password")}
+                disabled={!email || resetSending}
+              >
+                <LockResetRoundedIcon aria-hidden="true" />
+                Change password
+              </button>
+            </div>
+
+            {onLogout && (
+              <div className="st-row">
+                <div className="st-row-text">
+                  <h3>Log out</h3>
+                  <p>Sign out of LangVoyage on this browser.</p>
+                </div>
+                <button type="button" className="st-btn" onClick={handleLogout} disabled={loggingOut}>
+                  <LogoutRoundedIcon aria-hidden="true" />
+                  {loggingOut ? "Logging out…" : "Log out"}
+                </button>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            id="st-language"
+            title="Language & translation"
+            icon={TranslateRoundedIcon}
+            description="Translations in chat and in Practice use this language."
+          >
+            <form className="st-form" onSubmit={handleSave}>
+              <div className="st-field">
+                <label htmlFor="base-translate-language">Translate messages into</label>
+                <select
+                  id="base-translate-language"
+                  className="st-select"
+                  value={translateLanguage}
+                  onChange={(event) => {
+                    setDraftLanguage(event.target.value);
+                    setJustSaved(false);
+                  }}
+                >
+                  {LANGUAGE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {describeLanguage(key).name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="st-example" aria-label="Example translation">
+                <span className="st-example-label">Example</span>
+                <span className="st-chip is-source" dir="auto">
+                  {EXAMPLE_LINES[exampleSource]}
+                </span>
+                <ArrowForwardRoundedIcon className="st-example-arrow" aria-hidden="true" />
+                <span className="st-chip is-target" dir="auto" data-testid="translate-example">
+                  {EXAMPLE_LINES[translateLanguage] || EXAMPLE_LINES.english}
+                </span>
+              </div>
+              <div className="st-save">
+                <span className={`st-status ${isDirty ? "is-dirty" : ""}`} role="status">
+                  {justSaved && !isDirty && <CheckRoundedIcon aria-hidden="true" />}
+                  {saveStatus}
+                </span>
+                <button type="submit" className="st-btn is-teal" disabled={!isDirty || saving}>
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </form>
+
+            <div className="st-divider" />
+
+            <div className="st-subsection">
+              <div className="st-row-text">
+                <h3>Languages you're learning</h3>
+                <p>Change languages and levels in Edit profile.</p>
+              </div>
+              {learning.length ? (
+                <ul className="st-chips" aria-label="Languages you're learning">
+                  {learning.map((lang) => {
+                    const level = levelFor(user.practice_language_levels, lang);
                     return (
-                      <button
-                        key={language.value}
-                        type="button"
-                        onClick={() => togglePracticingLanguage(language.value)}
-                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition ${
-                          isSelected ? "bg-blue-50 text-blue-700" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <img
-                            src={`https://flagcdn.com/w20/${language.flag}.png`}
-                            loading="lazy"
-                            decoding="async"
-                            alt={language.label}
-                            className="h-5 w-5 rounded-full object-cover"
-                          />
-                          <span>{language.label}</span>
+                      <li key={lang} className="st-chip is-learning">
+                        <span className="pf-lang-code is-learning" aria-hidden="true">
+                          {describeLanguage(lang).code}
                         </span>
-                        <span>{isSelected ? "✓" : ""}</span>
-                      </button>
+                        {describeLanguage(lang).name}
+                        {level && <span className="st-chip-level">· {titleCase(level)}</span>}
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
+              ) : (
+                <p className="st-empty">You haven't added a language to learn yet.</p>
+              )}
+              <Link to="/profile/edit" className="pf-link">
+                Edit languages and levels
+              </Link>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            id="st-notifications"
+            title="Notifications"
+            icon={NotificationsNoneRoundedIcon}
+            description="Desktop notifications for new messages on this browser."
+          >
+            <div className="st-row">
+              <div className="st-row-text">
+                <h3>
+                  Desktop notifications{" "}
+                  <span className={`st-pill is-${notificationState}`}>{notification.label}</span>
+                </h3>
+                <p>{notification.text}</p>
               </div>
-            )}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {selectedPracticingLanguages.length > 0 ? (
-              selectedPracticingLanguages.map((language) => (
-                <span
-                  key={language.value}
-                  className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700"
+              {notificationState === "default" && (
+                <button
+                  type="button"
+                  className="st-btn is-teal"
+                  onClick={handleEnableNotifications}
+                  disabled={requestingNotifications}
                 >
-                  <img
-                    src={`https://flagcdn.com/w20/${language.flag}.png`}
-                    loading="lazy"
-                    decoding="async"
-                    alt={language.label}
-                    className="h-4 w-4 rounded-full object-cover"
-                  />
-                  {language.label}
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-gray-500">
-                No practicing languages selected.
-              </span>
-            )}
-          </div>
-        </div>
+                  Enable desktop notifications
+                </button>
+              )}
+            </div>
+          </SectionCard>
 
-        {error && <p className="text-red-500 mt-4">{error}</p>}
-        {success && <p className="text-green-600 mt-4">{success}</p>}
-
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:bg-blue-300 sm:w-auto"
-        >
-          {saving ? "Saving..." : "Save Settings"}
-        </button>
-
-        <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Safety history</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              Review who you have blocked and which profiles you have reported.
-            </p>
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Blocked profiles
-              </h3>
-              <div className="mt-3 space-y-2">
-                {moderationLoading ? (
-                  <p className="text-sm text-gray-500">Loading blocked profiles...</p>
-                ) : moderation.blocked_profiles.length > 0 ? (
-                  moderation.blocked_profiles.map((entry) => (
-                    <div
-                      key={`blocked-${entry.username}-${entry.created_at}`}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        {resolveProfileImage(entry.profile_image_url) ? (
-                          <img
-                            src={avatarImage(resolveProfileImage(entry.profile_image_url), 44)}
-                            loading="lazy"
-                            decoding="async"
-                            alt={entry.username}
-                            className="h-11 w-11 rounded-full border border-gray-200 object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-400">
-                            {entry.username?.slice(0, 1)?.toUpperCase() || "?"}
-                          </div>
+          <SectionCard
+            id="st-privacy"
+            title="Privacy & safety"
+            icon={ShieldOutlinedIcon}
+            description="People you've blocked can't see you or message you, and you won't see them."
+          >
+            <div className="st-subsection">
+              <h3>Blocked profiles</h3>
+              {moderationLoading ? (
+                <p className="st-empty">Loading blocked profiles…</p>
+              ) : moderationError ? (
+                <p className="st-empty">Couldn't load your safety history. Try again later.</p>
+              ) : moderation.blocked_profiles.length ? (
+                <ul className="st-people">
+                  {moderation.blocked_profiles.map((entry) => (
+                    <li key={`blocked-${entry.username}`} className="st-person">
+                      <ListAvatar entry={entry} />
+                      <span className="st-person-text">
+                        <Link to={`/people/${encodeURIComponent(entry.username)}`}>{entry.username}</Link>
+                        {formatHistoryDate(entry.created_at) && (
+                          <small>Blocked {formatHistoryDate(entry.created_at)}</small>
                         )}
-                        <div>
-                          <p className="font-medium text-gray-800">{entry.username}</p>
-                          <p className="text-xs uppercase tracking-wide text-gray-500">
-                            Blocked {formatHistoryDate(entry.created_at)}
-                          </p>
-                        </div>
-                      </div>
+                      </span>
                       <button
                         type="button"
+                        className="st-btn is-small"
                         onClick={() => handleUnblock(entry.username)}
                         disabled={unblockingUsername === entry.username}
-                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label={`Unblock ${entry.username}`}
                       >
-                        {unblockingUsername === entry.username ? "Unblocking..." : "Unblock"}
+                        {unblockingUsername === entry.username ? "Unblocking…" : "Unblock"}
                       </button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500">You have not blocked anyone yet.</p>
-                )}
-              </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="st-empty">You haven't blocked anyone. Nice!</p>
+              )}
             </div>
 
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                Reported profiles
-              </h3>
-              <div className="mt-3 space-y-2">
-                {moderationLoading ? (
-                  <p className="text-sm text-gray-500">Loading reports...</p>
-                ) : moderation.reported_profiles.length > 0 ? (
-                  moderation.reported_profiles.map((entry, index) => (
-                    <div
-                      key={`reported-${entry.username}-${entry.created_at}-${index}`}
-                      className="rounded-xl border border-gray-200 bg-white px-4 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          {resolveProfileImage(entry.profile_image_url) ? (
-                            <img
-                              src={avatarImage(resolveProfileImage(entry.profile_image_url), 44)}
-                              loading="lazy"
-                              decoding="async"
-                              alt={entry.username}
-                              className="h-11 w-11 rounded-full border border-gray-200 object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-400">
-                              {entry.username?.slice(0, 1)?.toUpperCase() || "?"}
-                            </div>
-                          )}
-                          <div>
-                            <p className="font-medium text-gray-800">{entry.username}</p>
-                            <p className="text-xs uppercase tracking-wide text-gray-500">
-                              Reported {formatHistoryDate(entry.created_at)}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-600">
-                          {String(entry.reason || "").replace(/_/g, " ")}
-                        </span>
-                      </div>
-                      {entry.details ? (
-                        <p className="mt-3 text-sm leading-6 text-gray-600">{entry.details}</p>
-                      ) : null}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500">You have not reported any profiles yet.</p>
-                )}
-              </div>
+            <div className="st-divider" />
+
+            <div className="st-subsection">
+              <h3>Reported profiles</h3>
+              {moderationLoading ? (
+                <p className="st-empty">Loading reports…</p>
+              ) : moderationError ? (
+                <p className="st-empty">Couldn't load your reports.</p>
+              ) : moderation.reported_profiles.length ? (
+                <ul className="st-people">
+                  {moderation.reported_profiles.map((entry, index) => (
+                    <li key={`reported-${entry.username}-${entry.created_at}-${index}`} className="st-person is-report">
+                      <ListAvatar entry={entry} />
+                      <span className="st-person-text">
+                        <strong>{entry.username}</strong>
+                        {formatHistoryDate(entry.created_at) && (
+                          <small>Reported {formatHistoryDate(entry.created_at)}</small>
+                        )}
+                        {entry.details && <span className="st-person-details">{entry.details}</span>}
+                      </span>
+                      {reasonLabel(entry.reason) && <span className="st-pill is-report">{reasonLabel(entry.reason)}</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="st-empty">You haven't reported anyone.</p>
+              )}
             </div>
-          </div>
+          </SectionCard>
+
+          <SectionCard id="st-danger" title="Danger zone" icon={WarningAmberRoundedIcon} tone="is-danger">
+            <div className="st-row">
+              <div className="st-row-text">
+                <h3>Delete account</h3>
+                <p>Permanently removes your profile, conversations and practice progress.</p>
+              </div>
+              <button type="button" className="st-btn is-danger-outline" onClick={() => openDialog("delete")}>
+                <DeleteOutlineRoundedIcon aria-hidden="true" />
+                Delete account
+              </button>
+            </div>
+          </SectionCard>
+
+          <footer className="st-footer">
+            <Link to="/privacy-policy">Privacy Policy</Link>
+            <Link to="/terms-and-conditions">Terms</Link>
+            {user.support_email && <a href={`mailto:${user.support_email}`}>Contact support</a>}
+          </footer>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={dialog === "password"}
+        title="Change password?"
+        confirmLabel="Send link"
+        busyLabel="Sending…"
+        busy={resetSending}
+        onConfirm={handleSendReset}
+        onClose={closeDialog}
+      >
+        <p>
+          We'll send a password reset link to <strong>{email}</strong>. The link works for one hour.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={dialog === "delete"}
+        title="Delete your account?"
+        confirmLabel="Delete account"
+        busyLabel="Deleting…"
+        busy={deleting}
+        tone="danger"
+        confirmDisabled={!deleteConfirmed}
+        onConfirm={handleDeleteAccount}
+        onClose={closeDialog}
+        initialFocusRef={deleteInputRef}
+      >
+        <p>This can't be undone. Deleting your account permanently removes:</p>
+        <ul className="st-dialog-list">
+          <li>your profile, languages and profile photos</li>
+          <li>all your conversations and messages (for both people in each chat)</li>
+          <li>your practice progress, blocks and reports</li>
+        </ul>
+        <label htmlFor="delete-confirm" className="st-dialog-label">
+          Type <strong>{deleteConfirmWord}</strong> to confirm
+        </label>
+        <input
+          id="delete-confirm"
+          ref={deleteInputRef}
+          className="st-select"
+          value={deleteConfirmText}
+          onChange={(event) => setDeleteConfirmText(event.target.value)}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          disabled={deleting}
+        />
+      </ConfirmDialog>
     </div>
   );
 };
