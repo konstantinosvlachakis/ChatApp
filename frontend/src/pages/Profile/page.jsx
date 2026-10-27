@@ -1,25 +1,168 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { BASE_URL_IMG } from "../../constants/constants";
+import { Link, useNavigate } from "react-router-dom";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { getUserLocation } from "./utils/getUserLocation";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
-import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
-import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import api, { getErrorMessage, isApiError } from "../../lib/api";
+import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
+import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import api, { getErrorMessage, isAbortError, isApiError } from "../../lib/api";
 import { logger } from "../../lib/logger";
 import { toast, toastApiError } from "../../components/Toast";
 import PhotoViewer, { buildPhotoGallery, usePhotoViewer } from "../../components/PhotoViewer";
+import { AboutCard, LanguagesCard, PhotosCard, ProfileCard, ProfileHero } from "./features/ProfileParts";
+import {
+  describeLanguage,
+  formatViewedAt,
+  learningLanguages,
+  normalizeLanguage,
+  profileStrength,
+  resolveMediaUrl,
+  validRingColor,
+} from "./features/profileUtils";
+import { shareProfileLink } from "./features/shareProfile";
+
+const VISITORS_PREVIEW = 3;
+
+const PracticeCard = ({ practice }) => {
+  if (!practice?.stats) return null;
+  const { level = 1, xp = 0, accuracy = 0, correct_answers: correct = 0 } = practice.stats;
+  const levelStart = (level - 1) * 100;
+  const progress = Math.min(100, Math.max(0, xp - levelStart));
+  const language = practice.language ? describeLanguage(practice.language).name : "";
+  return (
+    <ProfileCard icon={BoltRoundedIcon} title="Practice progress">
+      <div className="pf-progress">
+        <div className="pf-level">
+          <small>LEVEL</small>
+          <strong>{level}</strong>
+        </div>
+        <div className="pf-progress-bar">
+          <div>
+            <span>{xp} XP</span>
+            <span>
+              {100 - progress} to level {level + 1}
+            </span>
+          </div>
+          <div
+            className="pf-meter"
+            role="progressbar"
+            aria-label={`Progress to level ${level + 1}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
+          >
+            <span style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+      <dl className="pf-stats">
+        <div>
+          <dt>Accuracy</dt>
+          <dd>{Math.round(accuracy)}%</dd>
+        </div>
+        <div>
+          <dt>Correct</dt>
+          <dd>{correct}</dd>
+        </div>
+        {practice.current_rank ? (
+          <div>
+            <dt>{language ? `${language} rank` : "Rank"}</dt>
+            <dd>#{practice.current_rank}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <Link to="/practice" className="pf-link">
+        Keep practising →
+      </Link>
+    </ProfileCard>
+  );
+};
+
+const VisitorsCard = ({ user }) => {
+  const [showAll, setShowAll] = useState(false);
+  const visitors = user.recent_profile_viewers || [];
+  if (!visitors.length) return null;
+  const learning = learningLanguages(user);
+  const shown = showAll ? visitors : visitors.slice(0, VISITORS_PREVIEW);
+  return (
+    <ProfileCard icon={VisibilityOutlinedIcon} title="Recently viewed you">
+      <ul className="pf-people">
+        {shown.map((visitor) => {
+          const native = visitor.native_language ? describeLanguage(visitor.native_language).name : "";
+          const teachesMe = learning.includes(normalizeLanguage(visitor.native_language));
+          const when = formatViewedAt(visitor.viewed_at);
+          return (
+            <li key={visitor.user_id || visitor.username}>
+              <Link to={`/people/${encodeURIComponent(visitor.username)}`} className="pf-person">
+                <img
+                  src={resolveMediaUrl(visitor.profile_image_url) || DEFAULT_AVATAR_URL}
+                  alt=""
+                  loading="lazy"
+                  onError={handleAvatarError}
+                />
+                <span>
+                  <strong>{visitor.username}</strong>
+                  <small>{[native && `Speaks ${native}`, when].filter(Boolean).join(" · ")}</small>
+                </span>
+                {teachesMe && <span className="pf-match-badge" style={{ marginLeft: "auto" }}>Can teach you</span>}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {visitors.length > VISITORS_PREVIEW && (
+        <button type="button" className="pf-link" onClick={() => setShowAll((value) => !value)}>
+          {showAll ? "Show fewer" : `See all ${visitors.length} visitors →`}
+        </button>
+      )}
+    </ProfileCard>
+  );
+};
+
+const StrengthCard = ({ user, onStep }) => {
+  const { percent, todo } = profileStrength(user);
+  if (!todo.length) return null;
+  return (
+    <ProfileCard className="pf-strength">
+      <h2 className="pf-card-title">
+        Profile strength <strong>{percent}%</strong>
+      </h2>
+      <div
+        className="pf-meter"
+        role="progressbar"
+        aria-label="Profile strength"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      <p>Complete profiles get more replies from partners. Quick wins left:</p>
+      <ul className="pf-strength-steps">
+        {todo.slice(0, 3).map((step) => (
+          <li key={step.key}>
+            <button type="button" className="pf-strength-step" onClick={() => onStep(step.key)}>
+              <AddRoundedIcon aria-hidden="true" />
+              {step.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </ProfileCard>
+  );
+};
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
+  const [practice, setPractice] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploadingSlot, setUploadingSlot] = useState("");
   const navigate = useNavigate();
   const isDetectingLocationRef = useRef(false);
+  const photosRef = useRef(null);
   const viewer = usePhotoViewer();
   // Photos whose thumbnail failed to load aren't offered in the viewer.
   const [failedPhotoKeys, setFailedPhotoKeys] = useState(() => new Set());
@@ -46,6 +189,18 @@ const ProfilePage = () => {
 
     fetchUser();
   }, [navigate]);
+
+  // ---- Practice stats (optional card; the profile renders without them) ----
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .get("/api/practice/state/", { signal: controller.signal })
+      .then(setPractice)
+      .catch((err) => {
+        if (!isAbortError(err)) logger.warn("Could not load practice stats:", err);
+      });
+    return () => controller.abort();
+  }, []);
 
   // ---- Detect and Save User Location ----
   useEffect(() => {
@@ -81,16 +236,9 @@ const ProfilePage = () => {
     detectLocation();
   }, [user]);
 
-  if (loading) return <div className="p-8 text-gray-500">Loading profile...</div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
+  if (loading) return <div className="pf-state">Loading profile…</div>;
+  if (error) return <div className="pf-state" role="alert">{error}</div>;
   if (!user) return null;
-
-  const resolveMediaUrl = (path) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
-    return `${BASE_URL_IMG}/media/${path}`;
-  };
 
   const uploadPhoto = async (slot, file) => {
     if (!file || !file.type.startsWith("image/")) {
@@ -115,7 +263,11 @@ const ProfilePage = () => {
         complementary_image_2_url:
           payload.complementary_image_2_url || prev.complementary_image_2_url,
       }));
-      setError(null);
+      setFailedPhotoKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(slot);
+        return next;
+      });
       toast.success("Photo updated.");
     } catch (err) {
       // A toast instead of the page-level error, which would replace the whole profile.
@@ -125,254 +277,114 @@ const ProfilePage = () => {
     }
   };
 
-  const imageUrl = resolveMediaUrl(user.profile_image_url) || DEFAULT_AVATAR_URL;
-  const avatarRingColor = /^#[0-9a-fA-F]{6}$/.test(user.avatar_ring_color || "")
-    ? user.avatar_ring_color
-    : "#1b7f79";
-  const photoCards = [
-    {
-      key: "profile",
-      label: "Profile Picture",
-      image: resolveMediaUrl(user.profile_image_url),
-    },
-    {
-      key: "complementary_1",
-      label: "Complementary 1",
-      image: resolveMediaUrl(user.complementary_image_1_url),
-    },
-    {
-      key: "complementary_2",
-      label: "Complementary 2",
-      image: resolveMediaUrl(user.complementary_image_2_url),
-    },
-  ];
-  const practicingLanguages = user.languages_practicing || user.languages || [];
+  const photoSlots = [
+    { key: "profile", label: "Profile photo", image: resolveMediaUrl(user.profile_image_url) },
+    { key: "complementary_1", label: "Photo 2", image: resolveMediaUrl(user.complementary_image_1_url) },
+    { key: "complementary_2", label: "Photo 3", image: resolveMediaUrl(user.complementary_image_2_url) },
+  ].map((slot) => ({ ...slot, uploading: uploadingSlot === slot.key }));
   // Only real photos are viewable (no chameleon default / empty slots).
   const gallery = buildPhotoGallery(
-    photoCards
-      .filter((card) => !failedPhotoKeys.has(card.key))
-      .map((card) => ({ key: card.key, src: card.image, alt: `Your ${card.label.toLowerCase()}` }))
+    photoSlots
+      .filter((slot) => !failedPhotoKeys.has(slot.key))
+      .map((slot) => ({ key: slot.key, src: slot.image, alt: `Your ${slot.label.toLowerCase()}` }))
   );
   const galleryIndex = (key) => gallery.findIndex((photo) => photo.key === key);
   const viewLabel = (key) => `View photo ${galleryIndex(key) + 1} of ${gallery.length}`;
   const mainPhotoIndex = galleryIndex("profile");
 
+  const uploadInput = (slot) => (
+    <input
+      type="file"
+      accept="image/*"
+      className="sr-only"
+      disabled={slot.uploading}
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) uploadPhoto(slot.key, file);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  const localTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const statusItems = [
+    user.location
+      ? { key: "place", icon: "place", text: user.location }
+      : { key: "place", icon: "place", text: "Detecting location…" },
+    { key: "time", icon: "time", text: `${localTime} local time` },
+  ];
+
+  const handleStrengthStep = (key) => {
+    if (key === "photo" || key === "photos") {
+      photosRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      photosRef.current?.querySelector(".pf-photo-add input:not(:disabled)")?.focus({ preventScroll: true });
+      return;
+    }
+    navigate("/profile/edit");
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50 to-blue-50/40 p-3 sm:p-5 md:p-8">
-      <div className="mx-auto max-w-5xl 2xl:max-w-6xl">
-        {/* Header */}
-        <div className="flex flex-col items-center gap-4 rounded-3xl border border-slate-200/80 bg-white/95 p-5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] backdrop-blur sm:p-6 md:p-8">
-          <div
-            className="group h-28 w-28 overflow-hidden rounded-full border-4 shadow-sm sm:h-32 sm:w-32 md:h-36 md:w-36"
-            style={{ borderColor: avatarRingColor }}
-          >
-            {mainPhotoIndex >= 0 ? (
-              <button
-                type="button"
-                className="lv-photo-thumb"
-                onClick={(event) => viewer.open(mainPhotoIndex, event)}
-                aria-label={viewLabel("profile")}
-              >
-                <img
-                  src={imageUrl}
-                  alt=""
-                  onError={(event) => {
-                    handleAvatarError(event);
-                    markPhotoFailed("profile");
-                  }}
-                  className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
-                />
-              </button>
-            ) : (
-              <img
-                src={imageUrl}
-                alt="Profile"
-                onError={handleAvatarError}
-                className="h-full w-full scale-110 object-cover transition-transform duration-300 ease-out group-hover:scale-125"
-              />
-            )}
-          </div>
-          <h1 className="text-center text-xl font-bold text-slate-800 sm:text-2xl">
-            {user.username}, {user.age}
-          </h1>
-          <button
-            className="inline-flex items-center gap-2 rounded-full bg-slate-700 px-4 py-2 text-sm text-white transition hover:bg-slate-800 sm:text-base"
-            onClick={() => navigate("/profile/edit")}
-          >
-            <EditOutlinedIcon fontSize="small" />
-            Edit Profile
-          </button>
+    <div className="pf-page">
+      <ProfileHero
+        profile={user}
+        avatarUrl={resolveMediaUrl(user.profile_image_url)}
+        ringColor={validRingColor(user.avatar_ring_color)}
+        statusItems={statusItems}
+        onOpenAvatar={mainPhotoIndex >= 0 ? (event) => viewer.open(mainPhotoIndex, event) : undefined}
+        avatarLabel={viewLabel("profile")}
+        onAvatarError={() => markPhotoFailed("profile")}
+      >
+        <button type="button" className="pf-btn is-primary" onClick={() => navigate("/profile/edit")}>
+          <EditOutlinedIcon aria-hidden="true" />
+          Edit profile
+        </button>
+        <button type="button" className="pf-btn" onClick={() => shareProfileLink(user.username)}>
+          <IosShareRoundedIcon aria-hidden="true" />
+          Share profile
+        </button>
+        <Link to={`/people/${encodeURIComponent(user.username)}`} className="pf-btn">
+          <VisibilityOutlinedIcon aria-hidden="true" />
+          View as others see it
+        </Link>
+      </ProfileHero>
+
+      <div className="pf-grid">
+        <div className="pf-col">
+          <LanguagesCard profile={user} emptyText="Add your languages in Edit profile." />
+          <AboutCard
+            profile={user}
+            emptyBio="Tell partners a little about yourself in Edit profile."
+            emptyGoal="What do you want to achieve? Add it in Edit profile."
+          />
         </div>
-
-        {/* Info Sections */}
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:grid-cols-2 md:gap-8">
-          {/* Personal Info */}
-          <div className="rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:p-5 md:p-6">
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
-              <PersonOutlineIcon fontSize="small" className="text-slate-600" />
-              Personal Information
-            </h2>
-            <div className="space-y-3 text-slate-700">
-              <p>
-                <strong>Name:</strong> {user.username || "N/A"}
-              </p>
-              <p>
-                <strong>Age:</strong> {user.age || "Not provided"}
-              </p>
-              <p>
-                <strong>Location:</strong>{" "}
-                {user.location ? (
-                  <span className="text-slate-800">{user.location}</span>
-                ) : (
-                  <span className="text-slate-500">Detecting...</span>
-                )}
-              </p>
-              <p>
-                <strong>Bio:</strong>{" "}
-                {user.bio ||
-                  "Passionate about learning new languages and connecting with people from different cultures."}
-              </p>
-            </div>
-          </div>
-
-          {/* Languages */}
-          <div className="rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:p-5 md:p-6">
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
-              <PublicOutlinedIcon fontSize="small" className="text-slate-600" />
-              Languages
-            </h2>
-            <div className="space-y-3 text-slate-700">
-              <p>
-                <strong>Native Language:</strong>{" "}
-                <span className="inline-block rounded-full bg-sky-100 px-3 py-1 text-sm text-sky-700">
-                  {user.native_language || "N/A"}
-                </span>
-              </p>
-              <p>
-                <strong>Languages Practicing:</strong>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(practicingLanguages.length
-                  ? practicingLanguages
-                  : ["English", "Spanish", "French"]
-                ).map((lang, i) => (
-                    <span
-                      key={i}
-                      className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
-                    >
-                      {lang}
-                    </span>
-                  )
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="pf-col">
+          <PracticeCard practice={practice} />
+          <VisitorsCard user={user} />
         </div>
-
-        {/* Learning Goals */}
-        <div className="mt-4 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:mt-6 sm:p-5 md:mt-8 md:p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
-            <FlagOutlinedIcon fontSize="small" className="text-slate-600" />
-            Learning Goals
-          </h2>
-          <p className="text-slate-700">
-            {user.learningGoal ||
-              "My goal is to become fluent and confident in new languages for both travel and communication."}
-          </p>
-        </div>
-
-        {/* Photos */}
-        <div className="mt-4 rounded-3xl border border-slate-200/80 bg-white/95 p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.45)] sm:mt-6 sm:p-5 md:mt-8 md:p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-800 sm:text-xl">
-            <PhotoLibraryOutlinedIcon fontSize="small" className="text-slate-600" />
-            Photos
-          </h2>
-          <p className="mb-5 text-sm text-slate-500">
-            Add one profile photo and two complementary photos.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {photoCards.map((card) => {
-              const uploadInput = (
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={uploadingSlot === card.key}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      uploadPhoto(card.key, file);
-                    }
-                    e.target.value = "";
-                  }}
-                />
-              );
-              const uploadingOverlay = uploadingSlot === card.key && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white">
-                  Uploading...
-                </div>
-              );
-
-              if (card.image && galleryIndex(card.key) >= 0) {
-                // Viewing and replacing are separate controls, so opening the viewer never uploads.
-                return (
-                  <div key={card.key} className="rounded-2xl border-2 border-slate-200 p-2">
-                    <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-slate-100">
-                      <button
-                        type="button"
-                        className="lv-photo-thumb"
-                        onClick={(event) => viewer.open(galleryIndex(card.key), event)}
-                        aria-label={viewLabel(card.key)}
-                      >
-                        <img
-                          src={card.image}
-                          loading="lazy"
-                          decoding="async"
-                          alt=""
-                          onError={() => markPhotoFailed(card.key)}
-                        />
-                      </button>
-                      {uploadingOverlay}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <p className="min-w-0 truncate text-sm font-medium text-slate-700">{card.label}</p>
-                      <label className="relative inline-flex min-h-[44px] flex-shrink-0 cursor-pointer items-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-sky-400 focus-within:ring-2 focus-within:ring-sky-600">
-                        {uploadInput}
-                        Change<span className="sr-only"> {card.label.toLowerCase()}</span>
-                      </label>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <label
-                  key={card.key}
-                  className="relative cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 p-2 transition hover:border-sky-400 focus-within:ring-2 focus-within:ring-sky-600"
-                >
-                  {uploadInput}
-                  <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
-                    {card.image ? (
-                      <img
-                        src={card.image}
-                        loading="lazy"
-                        decoding="async"
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-4xl text-slate-400" aria-hidden="true">+</span>
-                    )}
-                    {uploadingOverlay}
-                  </div>
-                  <p className="mt-2 text-center text-sm font-medium text-slate-700">
-                    <span className="sr-only">{card.image ? "Change " : "Add "}</span>
-                    {card.label}
-                  </p>
+        <div className="pf-col">
+          <StrengthCard user={user} onStep={handleStrengthStep} />
+          <div ref={photosRef}>
+            <PhotosCard
+              slots={photoSlots}
+              galleryIndex={galleryIndex}
+              onOpen={viewer.open}
+              viewLabel={viewLabel}
+              onPhotoError={markPhotoFailed}
+              hint="One profile photo and two more. Click a photo to view it full size."
+              renderAdd={(slot) => (
+                <label className="pf-photo-add">
+                  {uploadInput(slot)}
+                  <AddRoundedIcon aria-hidden="true" />
+                  Add<span className="sr-only"> {slot.label.toLowerCase()}</span>
                 </label>
-              );
-            })}
+              )}
+              renderChange={(slot) => (
+                <label className="pf-photo-change">
+                  {uploadInput(slot)}
+                  Change<span className="sr-only"> {slot.label.toLowerCase()}</span>
+                </label>
+              )}
+            />
           </div>
         </div>
       </div>

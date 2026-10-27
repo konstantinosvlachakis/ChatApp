@@ -1,25 +1,55 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BASE_URL_IMG } from "../../constants/constants";
-import { DEFAULT_AVATAR_URL } from "../../constants/avatar";
+import React, { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { createOrGetConversation } from "../Community/api/conversation";
-import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
-import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
-import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { toastApiError } from "../../components/Toast";
 import PhotoViewer, { buildPhotoGallery, usePhotoViewer } from "../../components/PhotoViewer";
+import { useUser } from "../../context/UserContext";
+import { usePresence } from "../../context/PresenceContext";
+import { AboutCard, LanguagesCard, PhotosCard, ProfileHero } from "../Profile/features/ProfileParts";
+import { describeLanguage, exchangeMatch, resolveMediaUrl, validRingColor } from "../Profile/features/profileUtils";
+import { shareProfileLink } from "../Profile/features/shareProfile";
+
+const ExchangeStrip = ({ me, profile, match }) => {
+  if (!match.teachesMe && !match.learnsMine) return null;
+  const theirNative = describeLanguage(profile.native_language).name;
+  const myNative = describeLanguage(me.native_language).name;
+  return (
+    <div className="pf-exchange">
+      <span className="pf-eyebrow">Your exchange</span>
+      <span>
+        {match.teachesMe && (
+          <>
+            You learn <strong>{theirNative}</strong>
+          </>
+        )}
+        {match.reciprocal && " · "}
+        {match.learnsMine && (
+          <>
+            {profile.username} learns <strong>{myNative}</strong>
+          </>
+        )}
+      </span>
+    </div>
+  );
+};
 
 const PublicProfilePage = () => {
   const { username } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { user: me } = useUser();
+  const { onlineUserIds } = usePresence();
   const stateProfile = location.state?.profile;
 
   const [profile, setProfile] = useState(stateProfile || null);
   const [loading, setLoading] = useState(!stateProfile);
   const [error, setError] = useState("");
+  const viewer = usePhotoViewer();
 
   useEffect(() => {
     let isMounted = true;
@@ -52,46 +82,6 @@ const PublicProfilePage = () => {
     };
   }, [stateProfile, username]);
 
-  const resolveMediaUrl = (path) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
-    return `${BASE_URL_IMG}/media/${path}`;
-  };
-
-  const imageUrl = useMemo(
-    () =>
-      resolveMediaUrl(profile?.profile_image_url) || DEFAULT_AVATAR_URL,
-    [profile]
-  );
-
-  const photoCards = [
-    {
-      key: "profile",
-      label: "Profile Picture",
-      image: resolveMediaUrl(profile?.profile_image_url),
-    },
-    {
-      key: "complementary_1",
-      label: "Complementary 1",
-      image: resolveMediaUrl(profile?.complementary_image_1_url),
-    },
-    {
-      key: "complementary_2",
-      label: "Complementary 2",
-      image: resolveMediaUrl(profile?.complementary_image_2_url),
-    },
-  ];
-
-  const reviews = profile?.reviews || [];
-  const ownerName = profile?.username || "this person";
-  // Only real photos are viewable (no chameleon default / empty slots).
-  const gallery = buildPhotoGallery(
-    photoCards.map((card) => ({ key: card.key, src: card.image, alt: `${card.label} of ${ownerName}` }))
-  );
-  const galleryIndex = (key) => gallery.findIndex((photo) => photo.key === key);
-  const viewer = usePhotoViewer();
-
   const handleStartConversation = async () => {
     if (!profile?.username) return;
     try {
@@ -103,177 +93,94 @@ const PublicProfilePage = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-gray-500">Loading profile...</div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
-  if (!profile) return <div className="p-8 text-gray-500">Profile not found.</div>;
+  if (loading && !profile) return <div className="pf-state">Loading profile…</div>;
+  if (error) return <div className="pf-state" role="alert">{error}</div>;
+  if (!profile) return <div className="pf-state">Profile not found.</div>;
+
+  const ownerName = profile.username || "this person";
+  const isOwnProfile =
+    Boolean(me?.username) && me.username.toLowerCase() === String(profile.username || "").toLowerCase();
+  const isOnline = !isOwnProfile && profile.user_id != null && onlineUserIds?.has?.(profile.user_id);
+  const match = isOwnProfile ? { teachesMe: false, learnsMine: false, reciprocal: false } : exchangeMatch(me, profile);
+
+  const photoSlots = [
+    { key: "profile", label: "Profile photo", image: resolveMediaUrl(profile.profile_image_url) },
+    { key: "complementary_1", label: "Photo 2", image: resolveMediaUrl(profile.complementary_image_1_url) },
+    { key: "complementary_2", label: "Photo 3", image: resolveMediaUrl(profile.complementary_image_2_url) },
+  ];
+  // Only real photos are viewable (no chameleon default / empty slots).
+  const gallery = buildPhotoGallery(
+    photoSlots.map((slot) => ({ key: slot.key, src: slot.image, alt: `${slot.label} of ${ownerName}` }))
+  );
+  const galleryIndex = (key) => gallery.findIndex((photo) => photo.key === key);
+  const viewLabel = (key) => `View photo ${galleryIndex(key) + 1} of ${gallery.length}`;
+  const mainPhotoIndex = galleryIndex("profile");
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 pb-28 sm:p-5 sm:pb-5 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="bg-white rounded-2xl shadow p-5 sm:p-6 md:p-8 flex flex-col items-center gap-4">
-          {galleryIndex("profile") >= 0 ? (
-            <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32">
-              <button
-                type="button"
-                className="lv-photo-thumb"
-                onClick={(event) => viewer.open(galleryIndex("profile"), event)}
-                aria-label={`View photo ${galleryIndex("profile") + 1} of ${gallery.length}`}
-              >
-                <img src={imageUrl} alt="" />
-              </button>
-            </div>
-          ) : (
-            <img
-              src={imageUrl}
-              alt="Profile"
-              className="h-24 w-24 rounded-full object-cover border-4 border-blue-300 sm:h-28 sm:w-28 md:h-32 md:w-32"
-            />
-          )}
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 text-center">
-            {profile.username}, {profile.age || "—"}
-          </h1>
-          <button
-            type="button"
-            onClick={handleStartConversation}
-            className="hidden rounded-full bg-blue-500 px-4 py-2 text-white transition hover:bg-blue-600 sm:inline-flex"
-          >
-            Start Conversation
-          </button>
-        </div>
+    <div className="pf-page">
+      {isOwnProfile && (
+        <p className="pf-self-note">
+          This is how other people see your profile.
+          <Link to="/profile" className="pf-link">
+            Back to your profile
+          </Link>
+        </p>
+      )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-4 sm:mt-6 md:mt-8">
-          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <PersonOutlineIcon fontSize="small" />
-              Personal Information
-            </h2>
-            <div className="space-y-3 text-gray-700">
-              <p>
-                <strong>Name:</strong> {profile.username || "N/A"}
-              </p>
-              <p>
-                <strong>Age:</strong> {profile.age || "Not provided"}
-              </p>
-              <p>
-                <strong>Bio:</strong>{" "}
-                {profile.bio ||
-                  "Passionate about learning new languages and connecting with people from different cultures."}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6">
-            <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-              <PublicOutlinedIcon fontSize="small" />
-              Languages
-            </h2>
-            <div className="space-y-3 text-gray-700">
-              <p>
-                <strong>Native Language:</strong>{" "}
-                <span className="inline-block bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
-                  {profile.native_language || profile.nativeLanguage || "N/A"}
-                </span>
-              </p>
-              <p>
-                <strong>Languages Practicing:</strong>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(profile.languages_practicing || []).length > 0 ? (
-                  profile.languages_practicing.map((lang, i) => (
-                    <span
-                      key={`${lang}-${i}`}
-                      className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm"
-                    >
-                      {lang}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-gray-500 text-sm">Not provided</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <FlagOutlinedIcon fontSize="small" />
-            Learning Goals
-          </h2>
-          <p className="text-gray-700">
-            {profile.learning_goal ||
-              "I want to improve fluency and become more confident in real conversations."}
-          </p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <PhotoLibraryOutlinedIcon fontSize="small" />
-            Photos
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {photoCards.map((card) => (
-              <div
-                key={card.key}
-                className="rounded-2xl border border-gray-200 p-2 bg-white"
-              >
-                <div className="w-full aspect-square rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
-                  {galleryIndex(card.key) >= 0 ? (
-                    <button
-                      type="button"
-                      className="lv-photo-thumb"
-                      onClick={(event) => viewer.open(galleryIndex(card.key), event)}
-                      aria-label={`View photo ${galleryIndex(card.key) + 1} of ${gallery.length}`}
-                    >
-                      <img src={card.image} loading="lazy" decoding="async" alt="" />
-                    </button>
-                  ) : (
-                    <span className="text-sm text-gray-400">No photo</span>
-                  )}
-                </div>
-                <p className="mt-2 text-sm font-medium text-gray-700 text-center">
-                  {card.label}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow p-4 sm:p-5 md:p-6 mt-4 sm:mt-6 md:mt-8 mb-6 sm:mb-8">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2">
-            <span role="img" aria-label="reviews">
-              ⭐
+      <ProfileHero
+        profile={profile}
+        avatarUrl={resolveMediaUrl(profile.profile_image_url)}
+        ringColor={validRingColor(profile.avatar_ring_color)}
+        isOnline={isOnline}
+        statusItems={isOnline ? [{ key: "online", dot: true, text: "Active now" }] : []}
+        badge={
+          match.reciprocal ? (
+            <span className="pf-match-badge">
+              <CheckRoundedIcon aria-hidden="true" />
+              Perfect match
             </span>
-            Reviews
-          </h2>
-          {reviews.length === 0 ? (
-            <p className="text-gray-500">No reviews yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {reviews.map((review, index) => (
-                <div key={`${review.author || "review"}-${index}`} className="border rounded-lg p-3">
-                  <p className="text-sm text-gray-800 font-medium">
-                    {review.author || "Anonymous"} • {review.rating || 5}/5
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">{review.comment}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        // Sits above the phone tab bar (layout/BottomTabBar).
-        style={{ bottom: "calc(var(--lv-tabbar-height) + env(safe-area-inset-bottom, 0px))" }}
-        className="fixed inset-x-0 z-30 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-10px_30px_-20px_rgba(15,23,42,0.5)] backdrop-blur sm:hidden">
-        <button
-          type="button"
-          onClick={handleStartConversation}
-          className="w-full rounded-full bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-600"
-        >
-          Start Conversation
+          ) : null
+        }
+        onOpenAvatar={mainPhotoIndex >= 0 ? (event) => viewer.open(mainPhotoIndex, event) : undefined}
+        avatarLabel={viewLabel("profile")}
+      >
+        {isOwnProfile ? (
+          <Link to="/profile/edit" className="pf-btn is-primary">
+            <EditOutlinedIcon aria-hidden="true" />
+            Edit profile
+          </Link>
+        ) : (
+          <button type="button" className="pf-btn is-primary" onClick={handleStartConversation}>
+            <ChatBubbleOutlineRoundedIcon aria-hidden="true" />
+            Message
+          </button>
+        )}
+        <button type="button" className="pf-btn" onClick={() => shareProfileLink(profile.username)}>
+          <IosShareRoundedIcon aria-hidden="true" />
+          Share
         </button>
+      </ProfileHero>
+
+      <div className="pf-grid">
+        <div className="pf-col">
+          {me && !isOwnProfile && <ExchangeStrip me={me} profile={profile} match={match} />}
+          <LanguagesCard profile={profile} emptyText="Not added yet." />
+        </div>
+        <div className="pf-col">
+          <AboutCard
+            profile={profile}
+            emptyBio={`${ownerName} hasn't written a bio yet.`}
+            emptyGoal="No learning goal shared yet."
+          />
+        </div>
+        <div className="pf-col">
+          <PhotosCard
+            slots={photoSlots}
+            galleryIndex={galleryIndex}
+            onOpen={viewer.open}
+            viewLabel={viewLabel}
+          />
+        </div>
       </div>
 
       <PhotoViewer

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
@@ -332,12 +332,29 @@ const Layout = () => {
           </div>
         </main>
 
-        <footer
-          className={`lv-footer py-3 text-center text-xs sm:text-sm ${
-            isChatRoute ? "hidden" : "hidden md:block"
-          }`}
-        >
-          © {new Date().getFullYear()} LangVoyage. All rights reserved.
+        <footer className={`lv-footer ${isChatRoute ? "hidden" : "hidden md:block"}`}>
+          <div className="lv-footer-inner">
+            <nav className="lv-footer-col" aria-label="Explore">
+              <strong>Explore</strong>
+              <Link to="/community">People</Link>
+              <Link to="/practice">Practice</Link>
+              <Link to="/premium">Premium</Link>
+            </nav>
+            <nav className="lv-footer-col" aria-label="Help">
+              <strong>Help</strong>
+              <Link to="/settings">Settings</Link>
+              {user?.support_email && <a href={`mailto:${user.support_email}`}>Contact support</a>}
+              {user?.support_email && (
+                <a href={`mailto:${user.support_email}?subject=${encodeURIComponent("Bug report")}`}>Report a bug</a>
+              )}
+            </nav>
+            <nav className="lv-footer-col" aria-label="Legal">
+              <strong>Legal</strong>
+              <Link to="/terms-and-conditions">Terms of Service</Link>
+              <Link to="/privacy-policy">Privacy</Link>
+            </nav>
+          </div>
+          <p className="lv-footer-copy">© {new Date().getFullYear()} LangVoyage. All rights reserved.</p>
         </footer>
 
         <BottomTabBar unreadCount={unreadConversationCount} />

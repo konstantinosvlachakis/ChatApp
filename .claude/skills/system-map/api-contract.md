@@ -108,7 +108,7 @@ Columns: **Auth/thr** = authentication and throttle. "dflt" = default auth (Bear
 
 | Method | Path | View | Auth/thr | Request | Response | Web callers | Mobile callers | Depends on / gotchas |
 |---|---|---|---|---|---|---|---|---|
-| GET | /api/practice/state/ | practice_state_view | dflt | `?language=` | `{language, stats: PracticeStats, leaderboard[], current_rank}` | pages/PracticePage.jsx:fetchState | services/api/practice.ts:fetchPracticeState (PracticeScreen) | Creates PracticeStats on the first call |
+| GET | /api/practice/state/ | practice_state_view | dflt | `?language=` | `{language, stats: PracticeStats, leaderboard[], current_rank}` | pages/PracticePage.jsx:fetchState; pages/Profile/page.jsx (Practice progress card) | services/api/practice.ts:fetchPracticeState (PracticeScreen) | Creates PracticeStats on the first call |
 | GET | /api/practice/challenge/ | practice_challenge_view | dflt | `?language=` | `{language, challenge: Challenge, stats}`; 500 `{error}` if no templates | PracticePage.jsx:fetchChallenge | fetchPracticeChallenge | The answer stays server-side (cache/library) |
 | POST | /api/practice/submit/ | practice_submit_view | dflt | `{challenge_id, selected_word, language}` | `{correct, correct_answer, awarded_xp, awarded_points, language, stats, leaderboard, current_rank}` | PracticePage.jsx | submitPracticeAnswer | Replaying the same id farms XP (known issue). XP +15/+3, points +10/+1, level = xp//100+1 |
 
