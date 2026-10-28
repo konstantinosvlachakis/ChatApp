@@ -1,5 +1,13 @@
-import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet } from "react-native";
+import React, { useEffect } from "react";
+import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
+import Animated, {
+  Easing,
+  interpolate,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import type { WarmColors } from "../../theme/warm";
 import { useReducedMotion } from "./useReducedMotion";
@@ -19,34 +27,27 @@ type SendButtonProps = {
 /** Round navy send button that animates in when the draft has content (instant with reduced motion). */
 export function SendButton({ warm, visible, disabled = false, busy = false, accessibilityLabel, onPress }: SendButtonProps) {
   const reduceMotion = useReducedMotion();
-  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const progress = useSharedValue(visible ? 1 : 0);
 
+  // Runs on the UI thread (Reanimated); instant with the OS reduce-motion setting.
   useEffect(() => {
     const toValue = visible ? 1 : 0;
-    if (reduceMotion) {
-      progress.setValue(toValue);
-      return;
-    }
-    // Width is animated, so this can't use the native driver; it only runs when `visible` flips.
-    const animation = Animated.timing(progress, {
-      toValue,
-      duration: 160,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
+    progress.value = reduceMotion
+      ? toValue
+      : withTiming(toValue, { duration: 160, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System });
   }, [progress, reduceMotion, visible]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [0, SEND_BUTTON_SIZE]),
+    marginLeft: interpolate(progress.value, [0, 1], [0, 8]),
+    opacity: progress.value,
+    transform: [{ scale: interpolate(progress.value, [0, 1], [0.6, 1]) }],
+  }));
 
   return (
     <Animated.View
       pointerEvents={visible ? "auto" : "none"}
-      style={{
-        width: progress.interpolate({ inputRange: [0, 1], outputRange: [0, SEND_BUTTON_SIZE] }),
-        marginLeft: progress.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
-        opacity: progress,
-        transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
-      }}
+      style={animatedStyle}
       accessibilityElementsHidden={!visible}
       importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
     >

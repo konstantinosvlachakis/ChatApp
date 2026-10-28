@@ -34,7 +34,7 @@ type ChatHeaderProps = {
 };
 
 /** Chat room header: back, avatar + presence (opens the profile), search toggle and options. */
-export function ChatHeader({
+function ChatHeaderBase({
   warm,
   otherUser,
   isOnline,
@@ -274,3 +274,6 @@ const createStyles = (warm: WarmColors) =>
       justifyContent: "center",
     },
   });
+
+/** Memoized: typing/presence/search changes elsewhere in the chat don't re-render it. */
+export const ChatHeader = React.memo(ChatHeaderBase);

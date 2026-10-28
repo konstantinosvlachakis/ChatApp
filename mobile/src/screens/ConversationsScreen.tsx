@@ -3,17 +3,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   AppState,
   DeviceEventEmitter,
-  Easing,
   FlatList,
   NativeScrollEvent,
   NativeSyntheticEvent,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  type LayoutChangeEvent,
 } from "react-native";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -28,10 +26,22 @@ import { getMessageGroupFlags } from "../components/chat/messageGroups";
 import {
   buildPinnedMessages,
   countIncomingAfter,
+  createFreshMessageTracker,
   findFirstUnreadMessageId,
+  isFreshMessage,
   mergeMessagesById,
+  trackFreshMessages,
   withCurrentUserReaction,
 } from "../components/chat/messageState";
+import {
+  canTranslateMessage,
+  nextTranslateAction,
+  translationFromError,
+  translationRowState,
+  withTranslation,
+  type TranslationEntry,
+  type TranslationMap,
+} from "../components/chat/translation";
 import { useReducedMotion } from "../components/chat/useReducedMotion";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
@@ -58,13 +68,14 @@ import {
   translateConversationMessage,
 } from "../services/api/conversations";
 import { getErrorMessage } from "../services/api/errors";
-import { toastApiError } from "../services/toast";
+import { hapticLight, hapticSelection, hapticSuccess } from "../services/haptics";
+import { showToast, toastApiError } from "../services/toast";
 import { setOpenConversationId } from "../services/push";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
 import type { ChatMessage, Conversation } from "../types";
 import { ChatOptionsSheet, type ChatOptionsState } from "./chat/ChatOptionsSheet";
-import { ChatRoomView } from "./chat/ChatRoomView";
+import { ChatRoomView, type ChatContentInsets } from "./chat/ChatRoomView";
 import { ConversationListView } from "./chat/ConversationListView";
 import {
   MessageActionsSheet,
@@ -122,7 +133,11 @@ export function ConversationsScreen() {
   const [typingByConversation, setTypingByConversation] = useState<Record<number, boolean>>({});
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  // Jump highlight: the row pulses whenever `nonce` changes (Reanimated, in MessageRow).
+  const [highlight, setHighlight] = useState<{ messageId: number; nonce: number } | null>(null);
+  // Inline translations of the open chat, cached per message id for the session.
+  const [translations, setTranslationsState] = useState<TranslationMap>({});
+  const translationsRef = useRef<TranslationMap>(translations);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResultIds, setSearchResultIds] = useState<number[]>([]);
@@ -144,15 +159,8 @@ export function ConversationsScreen() {
   const chatSocketRef = useRef<WebSocket | null>(null);
   const composerRef = useRef<ComposerHandle | null>(null);
   const searchInputRef = useRef<TextInputInstance | null>(null);
-  const messageHighlightOpacity = useRef(new Animated.Value(0)).current;
-  const messageHighlightScale = useRef(new Animated.Value(0.985)).current;
   const ignoreNextOutsideTapRef = useRef(false);
   const replyActivatedAtRef = useRef(0);
-  const lastTapRef = useRef<{ messageId: number | null; at: number }>({
-    messageId: null,
-    at: 0,
-  });
-  const singleTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLocalUserTypingRef = useRef(false);
   const remoteTypingTimeoutsRef = useRef<Record<number, ReturnType<typeof setTimeout> | null>>({});
   const messageListRef = useRef<FlatList<ChatMessage> | null>(null);
@@ -180,6 +188,22 @@ export function ConversationsScreen() {
   const [jumpAnchorMessageId, setJumpAnchorMessageId] = useState<number | null>(null);
   const latestMessageRef = useRef<ChatMessage | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // List metrics for an inset-aware scroll-to-bottom: keyboard-controller adds the keyboard
+  // height as a bottom content inset that FlatList.scrollToEnd doesn't know about.
+  const listContentHeightRef = useRef(0);
+  const listLayoutHeightRef = useRef(0);
+  const listBottomInsetRef = useRef(0);
+  // Conversation whose open-time auto-scroll (bottom or unread divider) already ran.
+  const autoScrolledConversationRef = useRef<number | null>(null);
+  // Rows of messages that arrived while the chat is open animate in once.
+  const freshTrackerRef = useRef(createFreshMessageTracker());
+  const highlightNonceRef = useRef(0);
+
+  const setTranslations = useCallback((update: (prev: TranslationMap) => TranslationMap) => {
+    const next = update(translationsRef.current);
+    translationsRef.current = next;
+    setTranslationsState(next);
+  }, []);
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversation?.id ?? null;
@@ -212,7 +236,9 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     setReactionPickerMessageId(null);
-    setHighlightedMessageId(null);
+    setHighlight(null);
+    translationsRef.current = {};
+    setTranslationsState({});
     setSearchOpen(false);
     setSearchQuery("");
     setSearchResultIds([]);
@@ -227,9 +253,6 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     return () => {
-      if (singleTapTimeoutRef.current) {
-        clearTimeout(singleTapTimeoutRef.current);
-      }
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
@@ -365,9 +388,15 @@ export function ConversationsScreen() {
         const response = await fetchConversation(conversationId);
         if (selectedConversationIdRef.current === conversationId) {
           initialUnreadCountRef.current = response.unread_count || 0;
-          // No unread anchor on open: the chat used to stay behind the spinner until mark-read
-          // cleared it, so it opened at the bottom; keep that now that it shows immediately.
-          setUnreadAnchorMessageId(null);
+          // Unread divider above the first unread message; the open-time effect scrolls to it.
+          // It stays after mark-read until the user sends, refreshes or a new message arrives.
+          const sortedOpenMessages = [...(response.messages || [])].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          setUnreadAnchorMessageId(
+            findFirstUnreadMessageId(sortedOpenMessages, response.unread_count || 0, currentUserId)
+          );
+          autoScrolledConversationRef.current = null;
           setSelectedConversation(response);
           previousMessageCountRef.current = response.messages?.length || 0;
           resetOlderPaging(response.messages?.length || 0);
@@ -377,7 +406,6 @@ export function ConversationsScreen() {
             .then(() => {
               if (selectedConversationIdRef.current === conversationId) {
                 initialUnreadCountRef.current = 0;
-                setUnreadAnchorMessageId(null);
               }
               DeviceEventEmitter.emit("conversations_refresh");
               return loadConversations(true);
@@ -394,7 +422,7 @@ export function ConversationsScreen() {
         }
       }
     },
-    [loadConversations, resetOlderPaging]
+    [currentUserId, loadConversations, resetOlderPaging]
   );
 
   useEffect(() => {
@@ -477,8 +505,11 @@ export function ConversationsScreen() {
       sendInFlightRef.current = true;
       setSending(true);
       if (attachment && optimisticId !== null) {
+        isNearBottomRef.current = true;
+        userScrolledRef.current = false;
         const optimistic: ChatMessage = {
           id: optimisticId,
+          local_key: String(optimisticId),
           text: trimmed,
           sender: { id: currentUserId, username: currentUsername },
           status: "sent",
@@ -522,7 +553,10 @@ export function ConversationsScreen() {
             optimisticId === null ? prev.messages : prev.messages.filter((m) => m.id !== optimisticId);
           const hasMessage = withoutOptimistic.some((m) => m.id === savedMessage.id);
           if (hasMessage && withoutOptimistic === prev.messages) return prev;
-          const nextMessages = hasMessage ? withoutOptimistic : [...withoutOptimistic, savedMessage];
+          // Reuse the optimistic bubble's list cell (same key) for the saved photo message.
+          const listed: ChatMessage =
+            optimisticId === null ? savedMessage : { ...savedMessage, local_key: String(optimisticId) };
+          const nextMessages = hasMessage ? withoutOptimistic : [...withoutOptimistic, listed];
           return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
         });
         if (selectedConversationIdRef.current === conversationId) {
@@ -530,7 +564,12 @@ export function ConversationsScreen() {
           initialUnreadCountRef.current = 0;
           setUnreadAnchorMessageId(null);
           emitTypingStopped();
+          // Sending always brings the list back to the newest message.
+          isNearBottomRef.current = true;
+          userScrolledRef.current = false;
+          scrollToBottom(!reduceMotion);
         }
+        hapticSuccess();
         bumpConversationToTop({
           conversationId,
           lastMessage: savedMessage,
@@ -681,6 +720,7 @@ export function ConversationsScreen() {
 
   const handleReactionSelect = useCallback(
     async (message: ChatMessage, emoji: string) => {
+      hapticSelection();
       try {
         const nextEmoji = message.current_user_reaction === emoji ? "" : emoji;
         const updated = await reactToMessage(message.id, nextEmoji);
@@ -729,12 +769,14 @@ export function ConversationsScreen() {
     );
   }, [conversations]);
 
+  // Keyed on the messages array only: other conversation fields don't re-sort or regroup.
+  const selectedMessages = selectedConversation?.messages;
   const sortedMessages = useMemo(() => {
-    if (!selectedConversation) return [];
-    return [...(selectedConversation.messages || [])].sort(
+    if (!selectedMessages) return [];
+    return [...selectedMessages].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
-  }, [selectedConversation]);
+  }, [selectedMessages]);
 
   const pinnedMessages = useMemo(
     () => buildPinnedMessages(selectedConversation?.pinned_messages || selectedConversation?.messages || []),
@@ -792,76 +834,45 @@ export function ConversationsScreen() {
     clearReplyTarget();
   }, [clearReplyTarget, replyTarget]);
 
-  const jumpToMessage = useCallback(
-    (messageId: number) => {
-      const index = messageIndexById[messageId];
-      if (index === undefined) return;
-      userScrolledRef.current = true;
-      messageListRef.current?.scrollToIndex({ index, animated: !reduceMotion, viewPosition: 0.5 });
-      setHighlightedMessageId(messageId);
-      messageHighlightOpacity.stopAnimation();
-      messageHighlightScale.stopAnimation();
-      if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
-        highlightTimeoutRef.current = null;
-      }
-      if (reduceMotion) {
-        // Static outline instead of the fade/scale pulse.
-        messageHighlightOpacity.setValue(1);
-        messageHighlightScale.setValue(1);
-        highlightTimeoutRef.current = setTimeout(() => {
-          highlightTimeoutRef.current = null;
-          messageHighlightOpacity.setValue(0);
-          setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
-        }, 1200);
-        return;
-      }
-      messageHighlightOpacity.setValue(0);
-      messageHighlightScale.setValue(0.985);
+  // Scroll to a message (search, pinned, reply quote, unread divider). Stable identity so effects
+  // that call it don't re-run on every new message.
+  const jumpToMessage = useStableCallback((messageId: number, options?: { highlight?: boolean }) => {
+    const index = messageIndexById[messageId];
+    if (index === undefined) return;
+    userScrolledRef.current = true;
+    messageListRef.current?.scrollToIndex({ index, animated: !reduceMotion, viewPosition: 0.5 });
+    if (options?.highlight === false) return;
+    // MessageRow runs the pulse on the UI thread (static outline with reduced motion).
+    highlightNonceRef.current += 1;
+    setHighlight({ messageId, nonce: highlightNonceRef.current });
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => {
+      highlightTimeoutRef.current = null;
+      setHighlight((prev) => (prev?.messageId === messageId ? null : prev));
+    }, 1300);
+  });
 
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(messageHighlightOpacity, {
-            toValue: 1,
-            duration: 170,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(messageHighlightOpacity, {
-            toValue: 0,
-            duration: 1050,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(messageHighlightScale, {
-            toValue: 1,
-            duration: 220,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(messageHighlightScale, {
-            toValue: 1,
-            duration: 1000,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]).start(() => {
-        setHighlightedMessageId((prev) => (prev === messageId ? null : prev));
-      });
-    },
-    [messageHighlightOpacity, messageHighlightScale, messageIndexById, reduceMotion]
-  );
-
+  // Inset-aware: with the keyboard open the list has an extra bottom inset (keyboard-controller)
+  // that FlatList.scrollToEnd ignores, which would leave the last message under the composer.
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
-      messageListRef.current?.scrollToEnd({ animated });
+      const list = messageListRef.current;
+      if (!list) return;
+      const inset = listBottomInsetRef.current;
+      if (inset > 0 && listLayoutHeightRef.current > 0 && listContentHeightRef.current > 0) {
+        list.scrollToOffset({
+          offset: Math.max(0, listContentHeightRef.current + inset - listLayoutHeightRef.current),
+          animated,
+        });
+        return;
+      }
+      list.scrollToEnd({ animated });
     });
   }, []);
 
   const jumpToLatest = useCallback(() => {
+    isNearBottomRef.current = true;
+    userScrolledRef.current = false;
     scrollToBottom(!reduceMotion);
   }, [reduceMotion, scrollToBottom]);
 
@@ -903,45 +914,17 @@ export function ConversationsScreen() {
     [jumpToMessage]
   );
 
-  const handleSingleMessageTap = useCallback(
-    (message: ChatMessage) => {
-      if (message.reply_to?.id) {
-        jumpToMessage(message.reply_to.id);
-        return;
-      }
-      if (reactionPickerMessageId) {
-        setReactionPickerMessageId(null);
-      }
-    },
-    [jumpToMessage, reactionPickerMessageId]
-  );
-
-  const handleMessageTap = useStableCallback(
-    (message: ChatMessage) => {
-      const now = Date.now();
-      const isDoubleTap =
-        lastTapRef.current.messageId === message.id && now - lastTapRef.current.at <= 280;
-
-      if (isDoubleTap) {
-        if (singleTapTimeoutRef.current) {
-          clearTimeout(singleTapTimeoutRef.current);
-          singleTapTimeoutRef.current = null;
-        }
-        lastTapRef.current = { messageId: null, at: 0 };
-        handleSwipe(message);
-        return;
-      }
-
-      lastTapRef.current = { messageId: message.id, at: now };
-      if (singleTapTimeoutRef.current) {
-        clearTimeout(singleTapTimeoutRef.current);
-      }
-      singleTapTimeoutRef.current = setTimeout(() => {
-        handleSingleMessageTap(message);
-        singleTapTimeoutRef.current = null;
-      }, 240);
+  // Single tap on a bubble (recognised natively by MessageRow; it waits for a double tap only on
+  // translatable received messages): reply quote -> jump to the original, else close the picker.
+  const handleMessageTap = useStableCallback((message: ChatMessage) => {
+    if (message.reply_to?.id) {
+      jumpToMessage(message.reply_to.id);
+      return;
     }
-  );
+    if (reactionPickerMessageId) {
+      setReactionPickerMessageId(null);
+    }
+  });
 
   const handleComposerFocus = useCallback(() => {
     setReactionPickerMessageId(null);
@@ -969,30 +952,57 @@ export function ConversationsScreen() {
     [loadConversations]
   );
 
-  const translateMessage = useCallback(
-    async (message: ChatMessage) => {
-      try {
-        const result = await translateConversationMessage(
-          message.id,
-          user?.base_translate_language || "english"
-        );
-        const translatedText = result?.translated_text || "";
+  const setTranslationEntry = useCallback(
+    (messageId: number, entry: TranslationEntry | null) => {
+      setTranslations((prev) => withTranslation(prev, messageId, entry));
+    },
+    [setTranslations]
+  );
+
+  // Double-tap (or the menu's Translate, `forceShow`): show the translation inline under the
+  // original, or toggle a cached one. One request per message per session; results for a chat
+  // that is no longer open are dropped.
+  const toggleTranslation = useStableCallback((message: ChatMessage, forceShow = false) => {
+    if (!canTranslateMessage(message, currentUserId)) return;
+    const action = nextTranslateAction(translationsRef.current[message.id], message.translated_text, forceShow);
+    if (action.kind === "busy") return;
+    hapticSelection();
+    if (action.kind === "toggle") {
+      setTranslationEntry(message.id, action.next);
+      return;
+    }
+    const conversationId = selectedConversationIdRef.current;
+    setTranslationEntry(message.id, { status: "loading" });
+    translateConversationMessage(message.id, user?.base_translate_language || "english")
+      .then((result) => {
+        if (selectedConversationIdRef.current !== conversationId) return;
+        const translatedText = String(result?.translated_text || "").trim();
         if (translatedText) {
-          Alert.alert("Translation", translatedText);
-        } else {
-          Alert.alert("Translation", "No translation returned.");
-        }
-      } catch (error: any) {
-        const translatedText = error?.response?.data?.translated_text;
-        if (translatedText) {
-          Alert.alert("Translation", translatedText);
+          setTranslationEntry(message.id, { status: "done", text: translatedText, visible: true });
           return;
         }
-        toastApiError(error, "Could not translate this message.", "Translation failed");
-      }
-    },
-    [user?.base_translate_language]
-  );
+        setTranslationEntry(message.id, null);
+        showToast("No translation came back for this message.", { title: "Translation" });
+      })
+      .catch((error: any) => {
+        if (selectedConversationIdRef.current !== conversationId) return;
+        const fromError = translationFromError(error?.data ?? error?.response?.data);
+        if (fromError.text) {
+          setTranslationEntry(message.id, { status: "done", text: fromError.text, visible: true });
+          return;
+        }
+        setTranslationEntry(message.id, null);
+        if (fromError.sameLanguage) {
+          showToast("This message is already in your language.", { title: "Nothing to translate" });
+          return;
+        }
+        toastApiError(error, "Couldn't translate this message. Please try again.", "Translation failed");
+      });
+  });
+
+  const handleToggleTranslation = useStableCallback((message: ChatMessage) => {
+    toggleTranslation(message);
+  });
 
   const closeMessageMenu = useCallback(() => {
     setMessageMenu(null);
@@ -1021,14 +1031,17 @@ export function ConversationsScreen() {
         },
       ];
 
-      if (!isMine && (message.text || "").trim()) {
+      if (!isMine && canTranslateMessage(message, currentUserId)) {
+        const entry = translationsRef.current[message.id];
+        const showing = entry?.status === "done" && entry.visible;
         actions.push({
           key: "translate",
-          label: "Translate",
+          label: showing ? "Show original" : "Translate",
           icon: "language-outline",
-          onPress: async () => {
+          onPress: () => {
             closeMessageMenu();
-            await translateMessage(message);
+            if (showing) toggleTranslation(message);
+            else toggleTranslation(message, true);
           },
         });
       }
@@ -1057,23 +1070,21 @@ export function ConversationsScreen() {
       }
       return actions;
     },
-    [closeMessageMenu, deleteMessage, handleSwipe, togglePinnedMessage, translateMessage]
+    [closeMessageMenu, currentUserId, deleteMessage, handleSwipe, togglePinnedMessage, toggleTranslation]
   );
 
-  // Rows pass the touch's pageY; the menu is a bottom sheet now, so it isn't needed.
-  const openMessageMenu = useStableCallback((message: ChatMessage, isMine: boolean, _pageY: number) => {
+  // Long press (bubble or attachment): bottom-sheet menu with a light haptic.
+  const openMessageMenu = useStableCallback((message: ChatMessage, isMine: boolean) => {
+    hapticLight();
     setMessageMenu({ message, isMine });
   });
 
   const messageMenuActions = useMemo(
     () => (messageMenu ? buildMessageMenuActions(messageMenu.message, messageMenu.isMine) : []),
-    [buildMessageMenuActions, messageMenu]
+    // `translations` only so the Translate/Show original label is current while the sheet is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [buildMessageMenuActions, messageMenu, translations]
   );
-
-  // Same request and result alert as the menu's Translate action.
-  const handleTranslateChip = useStableCallback((message: ChatMessage) => {
-    translateMessage(message);
-  });
 
   const openImageViewer = useCallback((url: string) => {
     setViewerImageUrl(url);
@@ -1101,6 +1112,12 @@ export function ConversationsScreen() {
     [sortedMessages, unreadAnchorMessageId]
   );
 
+  // Messages that arrived since the chat opened (see trackFreshMessages): their rows animate in.
+  useMemo(
+    () => trackFreshMessages(freshTrackerRef.current, selectedConversation?.id ?? null, sortedMessages, Date.now()),
+    [selectedConversation?.id, sortedMessages]
+  );
+
   latestMessageRef.current = sortedMessages[sortedMessages.length - 1] ?? null;
   const jumpUnreadCount = useMemo(
     () => countIncomingAfter(sortedMessages, jumpAnchorMessageId, currentUserId),
@@ -1119,12 +1136,18 @@ export function ConversationsScreen() {
   const normalizedSearchQuery = searchQuery.trim();
   const activeSearchMessageId =
     activeSearchIndex < searchResultIds.length ? searchResultIds[activeSearchIndex] : null;
+  const highlightedMessageId = highlight?.messageId ?? null;
+  const highlightNonce = highlight?.nonce ?? 0;
 
+  // Re-created only when list-wide row inputs change (messages, picker, reply target, search,
+  // highlight, translations). Typing, presence and composer keystrokes don't touch it, and each
+  // memoized MessageRow re-renders only if its own primitive props changed.
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isMine = item.sender?.id === currentUserId;
       const isSearchMatch = Boolean(normalizedSearchQuery) && searchResultIdSet.has(item.id);
       const flags = groupFlagsById[item.id];
+      const translation = translationRowState(translations[item.id]);
       return (
         <MessageRow
           item={item}
@@ -1138,26 +1161,22 @@ export function ConversationsScreen() {
           avatarPath={otherAvatarPath}
           isReplyActive={replyTarget?.id === item.id}
           showReactionPicker={reactionPickerMessageId === item.id}
-          isHighlighted={highlightedMessageId === item.id}
+          highlightNonce={highlightedMessageId === item.id ? highlightNonce : 0}
           searchHighlight={isSearchMatch ? normalizedSearchQuery : null}
           isActiveSearchMatch={isSearchMatch && activeSearchMessageId === item.id}
           replyPreview={replyPreviewById[item.id] ?? null}
-          showTranslate={
-            !isMine &&
-            item.local_status !== "sending" &&
-            item.can_translate !== false &&
-            Boolean((item.text || "").trim())
-          }
+          canTranslate={!isMine && canTranslateMessage(item, currentUserId)}
+          translatedText={translation.translatedText}
+          translating={translation.translating}
+          animateIn={isFreshMessage(freshTrackerRef.current, item.id, Date.now())}
           styles={chatStyles}
           warm={warm}
-          highlightOpacity={messageHighlightOpacity}
-          highlightScale={messageHighlightScale}
           onSwipeReply={handleSwipe}
           onReactionSelect={handleReactionSelect}
           onOpenMenu={openMessageMenu}
           onTap={handleMessageTap}
+          onToggleTranslation={handleToggleTranslation}
           onOpenImage={openImageViewer}
-          onTranslate={handleTranslateChip}
         />
       );
     },
@@ -1169,10 +1188,9 @@ export function ConversationsScreen() {
       handleMessageTap,
       handleReactionSelect,
       handleSwipe,
-      handleTranslateChip,
+      handleToggleTranslation,
+      highlightNonce,
       highlightedMessageId,
-      messageHighlightOpacity,
-      messageHighlightScale,
       normalizedSearchQuery,
       openImageViewer,
       openMessageMenu,
@@ -1182,6 +1200,7 @@ export function ConversationsScreen() {
       replyPreviewById,
       replyTarget?.id,
       searchResultIdSet,
+      translations,
       unreadAnchorMessageId,
       warm,
     ]
@@ -1275,14 +1294,21 @@ export function ConversationsScreen() {
     }
   }, [selectedConversation?.id, selectedConversation?.messages]);
 
+  // Open-time scroll: to the unread divider when there is one (no pulse), else to the bottom. A
+  // later anchor (pull-to-refresh) scrolls to it again; clearing it never yanks the list.
   useEffect(() => {
-    if (!selectedConversation?.id) return;
+    const conversationId = selectedConversation?.id;
+    if (!conversationId || loadingConversation) return;
     if (unreadAnchorMessageId != null) {
-      requestAnimationFrame(() => jumpToMessage(unreadAnchorMessageId));
+      autoScrolledConversationRef.current = conversationId;
+      requestAnimationFrame(() => jumpToMessage(unreadAnchorMessageId, { highlight: false }));
       return;
     }
-    scrollToBottom(false);
-  }, [jumpToMessage, scrollToBottom, selectedConversation?.id, unreadAnchorMessageId]);
+    if (autoScrolledConversationRef.current !== conversationId) {
+      autoScrolledConversationRef.current = conversationId;
+      scrollToBottom(false);
+    }
+  }, [jumpToMessage, loadingConversation, scrollToBottom, selectedConversation?.id, unreadAnchorMessageId]);
 
   useEffect(() => {
     if (!selectedConversation?.id) return;
@@ -1298,12 +1324,21 @@ export function ConversationsScreen() {
     previousMessageCountRef.current = messageCount;
   }, [currentUserId, selectedConversation?.id, selectedConversation?.messages?.length, scrollToBottom]);
 
-  const handleMessageListContentSizeChange = useCallback(() => {
+  const handleMessageListContentSizeChange = useCallback((_width: number, height: number) => {
+    listContentHeightRef.current = height;
     if (skipAutoScrollRef.current) return;
     if (unreadAnchorMessageId == null && isNearBottomRef.current) {
       scrollToBottom(false);
     }
   }, [scrollToBottom, unreadAnchorMessageId]);
+
+  const handleMessageListLayout = useCallback((event: LayoutChangeEvent) => {
+    listLayoutHeightRef.current = event.nativeEvent.layout.height;
+  }, []);
+
+  const handleContentInsetChange = useCallback((insets: ChatContentInsets) => {
+    listBottomInsetRef.current = insets.bottom;
+  }, []);
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -1330,8 +1365,9 @@ export function ConversationsScreen() {
   const handleMessageListScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      // The keyboard inset extends the scroll range past the content (see scrollToBottom).
       const distanceFromBottom =
-        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+        contentSize.height + listBottomInsetRef.current - (contentOffset.y + layoutMeasurement.height);
       const isAway = distanceFromBottom > 140;
       if (!isAway) {
         isNearBottomRef.current = true;
@@ -1341,7 +1377,7 @@ export function ConversationsScreen() {
         // render (or programmatic scrollToEnd) must not stop the list from following new content.
         isNearBottomRef.current = false;
       }
-      setShowJumpToLatest(isAway);
+      setShowJumpToLatest((prev) => (prev === isAway ? prev : isAway));
       setJumpAnchorMessageId((prev) => (isAway ? prev ?? latestMessageRef.current?.id ?? null : null));
       if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
         loadOlderMessages();
@@ -1397,6 +1433,14 @@ export function ConversationsScreen() {
   );
 
   const openPinnedList = useCallback(() => setShowPinnedModal(true), []);
+  // Stable header callbacks (ChatHeader is memoized).
+  const otherUsernameForActions = otherParticipant?.username ?? "";
+  const handleOpenOtherProfile = useCallback(() => {
+    if (otherUsernameForActions) openOtherUserProfile(otherUsernameForActions);
+  }, [openOtherUserProfile, otherUsernameForActions]);
+  const handleOpenChatOptions = useCallback(() => {
+    if (otherUsernameForActions) openChatActions(otherUsernameForActions);
+  }, [openChatActions, otherUsernameForActions]);
   const closePinnedList = useCallback(() => setShowPinnedModal(false), []);
 
   const handleReportSubmit = useCallback(
@@ -1444,8 +1488,8 @@ export function ConversationsScreen() {
           isTyping={Boolean(typingByConversation[selectedConversation.id])}
           optionsLoading={chatActionLoading}
           onBack={closeConversation}
-          onOpenProfile={() => openOtherUserProfile(otherUser.username)}
-          onOpenOptions={() => openChatActions(otherUser.username)}
+          onOpenProfile={handleOpenOtherProfile}
+          onOpenOptions={handleOpenChatOptions}
           searchOpen={searchOpen}
           searchInputRef={searchInputRef}
           searchQuery={searchQuery}
@@ -1473,6 +1517,8 @@ export function ConversationsScreen() {
           refreshingConversation={refreshingConversation}
           onRefresh={onMessageListRefresh}
           onContentSizeChange={handleMessageListContentSizeChange}
+          onListLayout={handleMessageListLayout}
+          onContentInsetChange={handleContentInsetChange}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           onScrollBeginDrag={handleMessageListScrollBeginDrag}
           onScroll={handleMessageListScroll}

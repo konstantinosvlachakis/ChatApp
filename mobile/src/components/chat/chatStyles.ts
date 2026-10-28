@@ -4,6 +4,9 @@ import type { WarmColors } from "../../theme/warm";
 
 /** Rendered size (dp) of the avatar beside a received group (also passed to avatarImage). */
 export const MESSAGE_AVATAR_SIZE = 28;
+/** Bubble padding; touch areas inside the bubble extend over it with negative margins. */
+export const BUBBLE_PADDING_X = 14;
+export const BUBBLE_PADDING_Y = 10;
 const BUBBLE_RADIUS = 20;
 const JOINED_RADIUS = 6;
 
@@ -91,7 +94,7 @@ export const createChatStyles = (warm: WarmColors) =>
       maxWidth: "100%",
     },
     replySwipeAction: {
-      width: 32,
+      width: 44,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -139,8 +142,21 @@ export const createChatStyles = (warm: WarmColors) =>
     messageBubble: {
       maxWidth: "100%",
       borderRadius: BUBBLE_RADIUS,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingHorizontal: BUBBLE_PADDING_X,
+      paddingVertical: BUBBLE_PADDING_Y,
+    },
+    // Gesture areas (tap / double-tap / long-press) cover the bubble padding too.
+    bubbleTouch: {
+      marginHorizontal: -BUBBLE_PADDING_X,
+      paddingHorizontal: BUBBLE_PADDING_X,
+    },
+    bubbleTouchTop: {
+      marginTop: -BUBBLE_PADDING_Y,
+      paddingTop: BUBBLE_PADDING_Y,
+    },
+    bubbleTouchBottom: {
+      marginBottom: -BUBBLE_PADDING_Y,
+      paddingBottom: BUBBLE_PADDING_Y,
     },
     messageMine: {
       backgroundColor: warm.bubbleOut,
@@ -287,21 +303,51 @@ export const createChatStyles = (warm: WarmColors) =>
       color: warm.inkSoft,
       fontFamily: fontFamilies.bodyBold,
     },
-    translateChip: {
-      marginTop: 4,
-      minHeight: 32,
+
+    // ---- Inline translation (double-tap a received message)
+    translationLoading: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 6,
+      minHeight: 20,
+    },
+    translationBlock: {
+      marginTop: 6,
+    },
+    translationDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: warm.lineWarm,
+      marginBottom: 6,
+    },
+    translationText: {
+      color: warm.ink,
+      fontSize: 15,
+      lineHeight: 22,
+      flexShrink: 1,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    translationFooter: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      borderWidth: 1,
-      borderColor: warm.line,
-      backgroundColor: warm.paper,
+      marginHorizontal: -BUBBLE_PADDING_X,
+      marginBottom: -BUBBLE_PADDING_Y,
+      paddingHorizontal: BUBBLE_PADDING_X,
+      paddingTop: 6,
+      paddingBottom: BUBBLE_PADDING_Y,
+      minHeight: 32,
     },
-    translateChipText: {
-      color: warm.teal,
+    translationFooterPressed: {
+      opacity: 0.7,
+    },
+    translationMeta: {
+      color: warm.mutedInk,
       fontSize: 12,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    translationShowOriginal: {
+      color: warm.teal,
       fontFamily: fontFamilies.bodyBold,
     },
 

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DISMISS_DISTANCE = 120;
@@ -83,9 +83,16 @@ export function ImageViewer({ url, onClose }: ImageViewerProps) {
           <Image
             source={{ uri: url }}
             style={viewerStyles.image}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={url}
+            transition={150}
+            priority="high"
             onLoadEnd={() => setLoading(false)}
-            onError={() => setFailed(true)}
+            onError={() => {
+              setFailed(true);
+              setLoading(false);
+            }}
             accessible
             accessibilityRole="image"
             accessibilityLabel="Photo, full screen. Swipe down to close"

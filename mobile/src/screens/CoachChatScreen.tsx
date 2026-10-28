@@ -1,9 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +13,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../components/CoachAvatar";
 import { useAuth } from "../context/AuthContext";
@@ -40,6 +40,75 @@ import { useReducedMotion } from "../components/chat/useReducedMotion";
 import type { ChatMessage } from "../types";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
+import {
+  useChatScrollComponent,
+  useInsetAwareScrollToEnd,
+  useStickyOffset,
+  useTabBarOffset,
+} from "./chat/chatKeyboard";
+
+const coachKeyExtractor = (item: ChatMessage) => String(item.id);
+
+type CoachStyles = ReturnType<typeof createStyles>;
+
+type CoachMessageRowProps = {
+  text: string;
+  isMine: boolean;
+  startsGroup: boolean;
+  endsGroup: boolean;
+  dayLabel: string | null;
+  language: string;
+  styles: CoachStyles;
+};
+
+/** One Lumi chat row; memoized so the reply "typing" animation re-renders only its own row. */
+const CoachMessageRow = React.memo(function CoachMessageRow({
+  text,
+  isMine,
+  startsGroup,
+  endsGroup,
+  dayLabel,
+  language,
+  styles,
+}: CoachMessageRowProps) {
+  return (
+    <>
+      {dayLabel ? (
+        <View style={styles.daySeparatorRow} accessibilityRole="header">
+          <View style={styles.daySeparatorPill}>
+            <Text style={styles.daySeparatorText}>{dayLabel}</Text>
+          </View>
+        </View>
+      ) : null}
+      <View
+        style={[
+          styles.messageRow,
+          startsGroup && styles.messageRowStartsGroup,
+          isMine ? styles.messageRowMine : styles.messageRowOther,
+        ]}
+      >
+        {!isMine ? (
+          <View style={styles.avatarSlot}>
+            {endsGroup ? <CoachAvatar language={language} size={28} hideBadge /> : null}
+          </View>
+        ) : null}
+        <View
+          style={[
+            styles.messageBubble,
+            isMine ? styles.messageBubbleMine : styles.messageBubbleOther,
+            !startsGroup && (isMine ? styles.messageMineJoinedTop : styles.messageOtherJoinedTop),
+          ]}
+          accessible
+          accessibilityLabel={`${isMine ? "You" : "Lumi"}: ${text}`}
+        >
+          <Text style={styles.messageText} textBreakStrategy="highQuality" lineBreakStrategyIOS="standard">
+            {text}
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+});
 
 export function CoachChatScreen() {
   const replyAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,7 +120,15 @@ export function CoachChatScreen() {
   const reduceMotion = useReducedMotion();
   const languageOptions = useMemo(() => getCoachLanguageOptions(user), [user]);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
-  const menuTranslateX = useRef(new Animated.Value(320)).current;
+  // Tools panel slide (Reanimated, UI thread).
+  const menuTranslateX = useSharedValue(320);
+  const menuPanelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: menuTranslateX.value }] }));
+  // Keyboard: same wiring as the people chat (see screens/chat/chatKeyboard.tsx).
+  const tabBarOffset = useTabBarOffset();
+  const stickyOffset = useStickyOffset(tabBarOffset);
+  const listKeyboard = useInsetAwareScrollToEnd(listRef);
+  const renderScrollComponent = useChatScrollComponent(tabBarOffset, listKeyboard.onContentInsetChange);
+  const { scrollToEnd: scrollListToEnd } = listKeyboard;
 
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -155,23 +232,32 @@ export function CoachChatScreen() {
 
   useEffect(() => {
     if (!messages.length) return;
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [animatedReplyText, isCoachTyping, messages]);
+    // Instant while the reply "types" (one call per tick), animated otherwise.
+    scrollListToEnd(!reduceMotion && animatedReplyMessageId == null);
+  }, [animatedReplyMessageId, animatedReplyText, isCoachTyping, messages, reduceMotion, scrollListToEnd]);
 
   useEffect(() => {
     const toValue = isMenuOpen ? 0 : 320;
-    if (reduceMotion) {
-      menuTranslateX.setValue(toValue);
-      return;
-    }
-    Animated.timing(menuTranslateX, {
-      toValue,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
+    menuTranslateX.value = reduceMotion ? toValue : withTiming(toValue, { duration: 220 });
   }, [isMenuOpen, menuTranslateX, reduceMotion]);
+
+  const renderCoachMessage = useCallback(
+    ({ item }: { item: ChatMessage }) => {
+      const flags = groupFlags[item.id];
+      return (
+        <CoachMessageRow
+          text={animatedReplyMessageId === item.id ? animatedReplyText : item.text || ""}
+          isMine={item.sender.id !== COACH_BOT_ID}
+          startsGroup={flags?.startsGroup ?? true}
+          endsGroup={flags?.endsGroup ?? true}
+          dayLabel={flags?.dayLabel ?? null}
+          language={selectedLanguage}
+          styles={styles}
+        />
+      );
+    },
+    [animatedReplyMessageId, animatedReplyText, groupFlags, selectedLanguage, styles]
+  );
 
   const handlePreferenceChange = async (partial: Partial<CoachPreferences>) => {
     const nextPreferences: CoachPreferences = {
@@ -336,11 +422,7 @@ export function CoachChatScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
-      >
+      <View style={styles.flex}>
         <View style={styles.header}>
           <View style={styles.topBar}>
             <Pressable
@@ -401,7 +483,16 @@ export function CoachChatScreen() {
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={coachKeyExtractor}
+          renderScrollComponent={renderScrollComponent}
+          onContentSizeChange={listKeyboard.onContentSizeChange}
+          onLayout={listKeyboard.onLayout}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          initialNumToRender={14}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          removeClippedSubviews={Platform.OS === "android"}
           style={styles.messageList}
           contentContainerStyle={styles.messageListContent}
           ListHeaderComponent={
@@ -444,49 +535,10 @@ export function CoachChatScreen() {
               </View>
             ) : undefined
           }
-          renderItem={({ item }) => {
-            const isMine = item.sender.id !== COACH_BOT_ID;
-            const flags = groupFlags[item.id];
-            const startsGroup = flags?.startsGroup ?? true;
-            const endsGroup = flags?.endsGroup ?? true;
-            return (
-              <>
-                {flags?.dayLabel ? (
-                  <View style={styles.daySeparatorRow}>
-                    <View style={styles.daySeparatorPill}>
-                      <Text style={styles.daySeparatorText}>{flags.dayLabel}</Text>
-                    </View>
-                  </View>
-                ) : null}
-                <View
-                  style={[
-                    styles.messageRow,
-                    startsGroup && styles.messageRowStartsGroup,
-                    isMine ? styles.messageRowMine : styles.messageRowOther,
-                  ]}
-                >
-                  {!isMine ? (
-                    <View style={styles.avatarSlot}>
-                      {endsGroup ? <CoachAvatar language={selectedLanguage} size={28} hideBadge /> : null}
-                    </View>
-                  ) : null}
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      isMine ? styles.messageBubbleMine : styles.messageBubbleOther,
-                      !startsGroup && (isMine ? styles.messageMineJoinedTop : styles.messageOtherJoinedTop),
-                    ]}
-                  >
-                    <Text style={styles.messageText}>
-                      {animatedReplyMessageId === item.id ? animatedReplyText : item.text}
-                    </Text>
-                  </View>
-                </View>
-              </>
-            );
-          }}
+          renderItem={renderCoachMessage}
         />
 
+        <KeyboardStickyView offset={stickyOffset}>
         <View style={styles.composer}>
           <View style={styles.composerPill}>
             <TextInput
@@ -508,6 +560,7 @@ export function CoachChatScreen() {
             onPress={() => handleSend()}
           />
         </View>
+        </KeyboardStickyView>
 
         <Modal
           visible={isMenuOpen}
@@ -521,14 +574,7 @@ export function CoachChatScreen() {
             accessibilityRole="button"
             accessibilityLabel="Close Lumi tools"
           >
-            <Animated.View
-              style={[
-                styles.menuPanel,
-                {
-                  transform: [{ translateX: menuTranslateX }],
-                },
-              ]}
-            >
+            <Animated.View style={[styles.menuPanel, menuPanelStyle]}>
               <Pressable style={styles.menuPanelInner} onPress={() => {}} accessible={false}>
               <View style={styles.menuHeader}>
                 <View style={styles.menuHeaderTextWrap}>
@@ -656,7 +702,7 @@ export function CoachChatScreen() {
             </Animated.View>
           </Pressable>
         </Modal>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

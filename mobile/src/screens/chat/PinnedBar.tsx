@@ -20,7 +20,7 @@ type PinnedBarProps = {
 };
 
 /** Latest pinned message as a pill under the header, plus the "all pinned" bottom sheet. */
-export function PinnedBar({
+function PinnedBarBase({
   warm,
   pinnedMessages,
   showList,
@@ -227,3 +227,6 @@ const createStyles = (warm: WarmColors) =>
       fontFamily: fontFamilies.bodyMedium,
     },
   });
+
+/** Memoized: typing/presence/search changes elsewhere in the chat don't re-render it. */
+export const PinnedBar = React.memo(PinnedBarBase);

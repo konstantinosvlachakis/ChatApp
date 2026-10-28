@@ -1,6 +1,7 @@
 import type { TextInputInstance } from "react-native";
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { Image, Keyboard, Pressable, Text, TextInput, View } from "react-native";
+import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { showToast } from "../../services/toast";
@@ -235,6 +236,10 @@ export const Composer = React.memo(
             <Image
               source={{ uri: attachment.uri }}
               style={styles.composerChipThumb}
+              contentFit="cover"
+              cachePolicy="memory"
+              recyclingKey={attachment.uri}
+              transition={150}
               accessibilityIgnoresInvertColors
             />
             <View style={styles.composerChipTextWrap}>
