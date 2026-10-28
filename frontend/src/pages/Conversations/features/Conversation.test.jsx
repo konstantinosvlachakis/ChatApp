@@ -7,7 +7,10 @@ jest.mock("../../../lib/api", () => {
   return { __esModule: true, default: client, api: client, getErrorMessage: actual.getErrorMessage, isApiError: actual.isApiError };
 });
 
-const at = (minutes) => new Date(2026, 9, 27, 10, minutes).toISOString();
+// Messages are from today (just after midnight, never in the future) so the day label is "Today".
+const today = new Date();
+const at = (minutes) =>
+  new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, minutes).toISOString();
 const partner = { id: 2, username: "konstantinos" };
 const me = { id: 1, username: "kostas" };
 
