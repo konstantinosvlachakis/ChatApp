@@ -55,3 +55,51 @@ export function countIncomingAfter(
   }
   return count;
 }
+
+/** Per-chat bookkeeping for `trackFreshMessages` (kept in a ref by the screen). */
+export type FreshMessageTracker = {
+  conversationId: number | null;
+  knownIds: Set<number>;
+  newestTime: number;
+  /** Message id -> time (ms) until which its row may play the entry animation. */
+  freshUntil: Map<number, number>;
+};
+
+export function createFreshMessageTracker(): FreshMessageTracker {
+  return { conversationId: null, knownIds: new Set(), newestTime: -Infinity, freshUntil: new Map() };
+}
+
+/**
+ * Marks messages that arrived after the chat was opened (sent, optimistic or received live) as
+ * "fresh" for `windowMs`, so only those rows animate in. The first list of a chat, older pages
+ * (older than the newest known message) and refreshes of known ids are never fresh.
+ */
+export function trackFreshMessages(
+  tracker: FreshMessageTracker,
+  conversationId: number | null,
+  sortedMessages: ChatMessage[],
+  now: number,
+  windowMs = 1500
+) {
+  const timeOf = (message: ChatMessage) => new Date(message.timestamp).getTime() || 0;
+  if (tracker.conversationId !== conversationId) {
+    tracker.conversationId = conversationId;
+    tracker.knownIds = new Set(sortedMessages.map((message) => message.id));
+    tracker.freshUntil.clear();
+    tracker.newestTime = sortedMessages.length ? timeOf(sortedMessages[sortedMessages.length - 1]) : -Infinity;
+    return;
+  }
+  for (const message of sortedMessages) {
+    if (tracker.knownIds.has(message.id)) continue;
+    tracker.knownIds.add(message.id);
+    const time = timeOf(message);
+    if (time >= tracker.newestTime) tracker.freshUntil.set(message.id, now + windowMs);
+  }
+  if (sortedMessages.length) {
+    tracker.newestTime = Math.max(tracker.newestTime, timeOf(sortedMessages[sortedMessages.length - 1]));
+  }
+}
+
+export function isFreshMessage(tracker: FreshMessageTracker, messageId: number, now: number) {
+  return (tracker.freshUntil.get(messageId) ?? 0) > now;
+}

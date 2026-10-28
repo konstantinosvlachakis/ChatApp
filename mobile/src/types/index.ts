@@ -77,6 +77,11 @@ export interface ChatMessage {
   local_status?: "sending";
   /** Client-only: content type of a locally picked attachment (optimistic bubble). */
   local_mime_type?: string | null;
+  /**
+   * Client-only list key: the optimistic bubble's key, carried over to the saved message that
+   * replaces it so the FlatList cell is reused (no remount / image flash).
+   */
+  local_key?: string;
 }
 
 export interface Conversation {

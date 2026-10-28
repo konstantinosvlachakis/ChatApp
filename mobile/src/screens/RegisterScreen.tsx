@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +9,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+// keyboard-controller KAV: the KeyboardProvider (App.tsx) stops Android from resizing the window.
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { register } from "../services/api/auth";
@@ -58,7 +58,7 @@ export function RegisterScreen() {
       <View style={styles.bgBlobOne} />
       <View style={styles.bgBlobTwo} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">

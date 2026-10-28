@@ -1,11 +1,17 @@
 import React, { useMemo, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { API_BASE_URL } from "../../config/api";
 import { useTheme } from "../../context/ThemeContext";
 import { fontFamilies } from "../../theme/typography";
 import { warmColors } from "../../theme/warm";
 import { avatarImage } from "../../utils/media";
 import { initialsFor } from "./conversationList";
+
+/** Avatar URL as ChatAvatar requests it (same Cloudinary sizing), for `Image.prefetch`. */
+export function chatAvatarUri(path: string | null | undefined, size: number) {
+  return avatarImage(resolveChatMediaUrl(path), size);
+}
 
 /** Absolute URL for a profile image path, or undefined (initials are shown instead). */
 export function resolveChatMediaUrl(path?: string | null) {
@@ -30,7 +36,7 @@ type ChatAvatarProps = {
 function ChatAvatarBase({ name, imagePath, size, online = false, ringColor }: ChatAvatarProps) {
   const { isDark } = useTheme();
   const warm = warmColors(isDark);
-  const uri = useMemo(() => avatarImage(resolveChatMediaUrl(imagePath), size), [imagePath, size]);
+  const uri = useMemo(() => chatAvatarUri(imagePath, size), [imagePath, size]);
   // Remember which URL failed so a new photo is tried again.
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const showImage = Boolean(uri) && failedUri !== uri;
@@ -48,6 +54,10 @@ function ChatAvatarBase({ name, imagePath, size, online = false, ringColor }: Ch
           <Image
             source={{ uri }}
             style={styles.image}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={uri}
+            transition={150}
             onError={() => setFailedUri(uri)}
             accessibilityIgnoresInvertColors
           />

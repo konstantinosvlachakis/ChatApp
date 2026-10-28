@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -10,9 +11,10 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../../components/CoachAvatar";
-import { ChatAvatar } from "../../components/chat/ChatAvatar";
+import { ChatAvatar, chatAvatarUri } from "../../components/chat/ChatAvatar";
 import {
   coachMatchesQuery,
   conversationPreview,
@@ -52,6 +54,11 @@ type ConversationListViewProps = {
 
 const conversationKeyExtractor = (item: Conversation) => String(item.id);
 
+// Avatars of the first screenful of chats are warmed into expo-image's memory/disk cache once per
+// session (same sized URL as ChatAvatar requests), so rows and the chat header render without a pop.
+const PREFETCH_AVATAR_COUNT = 12;
+const prefetchedAvatarUris = new Set<string>();
+
 export function ConversationListView({
   warm,
   conversations,
@@ -85,6 +92,19 @@ export function ConversationListView({
   const canStartChat =
     isSearching && !/\s/.test(trimmedQuery) && !hasConversationWith(conversations, trimmedQuery, currentUsername);
   const showSkeleton = loadingList && conversations.length === 0 && !isSearching;
+
+  useEffect(() => {
+    const uris: string[] = [];
+    for (const conversation of conversations.slice(0, PREFETCH_AVATAR_COUNT)) {
+      const path = getOtherParticipant(conversation, currentUsername).profile_image_url;
+      const uri = chatAvatarUri(path, LIST_AVATAR_SIZE);
+      if (uri && !prefetchedAvatarUris.has(uri)) {
+        prefetchedAvatarUris.add(uri);
+        uris.push(uri);
+      }
+    }
+    if (uris.length) Image.prefetch(uris, "memory-disk").catch(() => {});
+  }, [conversations, currentUsername]);
 
   const handleRefresh = useCallback(async () => {
     setPullRefreshing(true);
@@ -261,6 +281,10 @@ export function ConversationListView({
         ListEmptyComponent={listEmpty ?? undefined}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={11}
+        removeClippedSubviews={Platform.OS === "android"}
         refreshControl={
           <RefreshControl
             refreshing={pullRefreshing}
@@ -538,12 +562,14 @@ const createStyles = (warm: WarmColors) =>
       fontSize: 12,
       fontFamily: fontFamilies.bodyExtraBold,
     },
+    // Same box as a conversation row (minHeight 72) so the list doesn't jump when data arrives.
     skeletonRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
+      minHeight: 72,
       paddingHorizontal: 10,
-      paddingVertical: 12,
+      paddingVertical: 10,
     },
     skeletonAvatar: {
       width: LIST_AVATAR_SIZE,

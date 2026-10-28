@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Linking, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { showToast } from "../../services/toast";
 import type { WarmColors } from "../../theme/warm";
@@ -20,6 +21,11 @@ export const CHAT_IMAGE_BOX_HEIGHT = 240;
 
 type AttachmentProps = {
   messageId: number;
+  /**
+   * Stable view key (the row key): kept when the optimistic photo is replaced by the saved message,
+   * so expo-image keeps showing the local photo until the uploaded one has loaded (no flash).
+   */
+  recyclingKey?: string;
   url: string;
   kind: AttachmentKind;
   isPending: boolean;
@@ -39,7 +45,7 @@ function openExternally(url: string) {
   });
 }
 
-function ImageAttachment({ url, isPending, styles, warm, onOpenImage, onLongPress }: AttachmentProps) {
+function ImageAttachment({ messageId, recyclingKey, url, isPending, styles, warm, onOpenImage, onLongPress }: AttachmentProps) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   // Cloudinary resize to the box width (× pixel ratio, capped at 3); other URLs unchanged.
@@ -47,6 +53,10 @@ function ImageAttachment({ url, isPending, styles, warm, onOpenImage, onLongPres
     () => ({ uri: cloudinaryImage(url, { width: CHAT_IMAGE_BOX_WIDTH, crop: "limit" }) }),
     [url]
   );
+  // A new source (optimistic local file -> uploaded URL) may fail independently.
+  useEffect(() => {
+    setFailed(false);
+  }, [source.uri]);
 
   return (
     <Pressable
@@ -65,7 +75,10 @@ function ImageAttachment({ url, isPending, styles, warm, onOpenImage, onLongPres
         <Image
           source={source}
           style={styles.attachmentImage}
-          resizeMode="contain"
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          recyclingKey={recyclingKey ?? String(messageId)}
+          transition={150}
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
           accessibilityIgnoresInvertColors
