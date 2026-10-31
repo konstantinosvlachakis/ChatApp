@@ -59,6 +59,8 @@ from django.core.cache import cache
 from django.core.paginator import EmptyPage, Paginator
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from core.cache import cache_degraded
+from core.realtime import broadcast
 from django.utils import timezone
 from django.db import transaction
 from .gemini import (
@@ -1055,10 +1057,8 @@ def broadcast_message_status_update(
 ):
     if not message_ids:
         return
-    channel_layer = get_channel_layer()
-    if not channel_layer:
-        return
-    async_to_sync(channel_layer.group_send)(
+    # Best effort: a channel-layer outage is logged, never raised (core/realtime).
+    broadcast(
         str(conversation_id),
         {
             "type": "message_status_event",
@@ -1070,13 +1070,10 @@ def broadcast_message_status_update(
 
 
 def broadcast_chat_room_event(conversation_id, event_type, **fields):
-    """Send a server-originated event to every socket in the conversation's room."""
-    channel_layer = get_channel_layer()
-    if not channel_layer:
-        return
-    async_to_sync(channel_layer.group_send)(
-        str(conversation_id), {"type": event_type, **fields}
-    )
+    """Send a server-originated event to every socket in the conversation's room.
+
+    Best effort: if the channel layer is down the request still succeeds."""
+    broadcast(str(conversation_id), {"type": event_type, **fields})
 
 
 def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=None):
@@ -1095,7 +1092,7 @@ def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=N
         "actor_id": actor_id,
     }
     for user_id in normalized_user_ids:
-        async_to_sync(channel_layer.group_send)(f"presence_user_{user_id}", payload)
+        broadcast(f"presence_user_{user_id}", payload, channel_layer=channel_layer)
 
 
 def broadcast_presence_update(user_id, is_online):
@@ -3363,6 +3360,10 @@ def consume_practice_generator_budget():
 
     cache_key = practice_generator_daily_budget_cache_key()
     current_value = cache.get(cache_key)
+    if cache_degraded():
+        # Redis is down, so this paid budget can't be counted: fail closed
+        # (callers fall back to the pool / static library) instead of open.
+        return False
     if current_value is None:
         cache.set(cache_key, 1, timeout=60 * 60 * 36)
         return True

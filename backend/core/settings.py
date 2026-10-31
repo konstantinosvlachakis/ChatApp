@@ -132,13 +132,16 @@ if use_redis_realtime and redis_url:
             },
         },
     }
+    # ResilientRedisCache fails open (core/cache.py): a Redis outage degrades
+    # throttles/counters to "allowed" and caches to misses instead of 500s.
+    # Short socket timeouts + its circuit breaker keep requests fast meanwhile.
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "BACKEND": "core.cache.ResilientRedisCache",
             "LOCATION": os.environ.get("REDIS_CACHE_URL", redis_url),
             "OPTIONS": {
-                "socket_connect_timeout": 2,
-                "socket_timeout": 2,
+                "socket_connect_timeout": 0.5,
+                "socket_timeout": 0.5,
             },
         }
     }
@@ -154,6 +157,19 @@ else:
             "LOCATION": "chatapp-default-cache",
         }
     }
+
+
+# Redis failure handling (core/cache.py, core/realtime.py): after a failure the
+# cache / channel layer is skipped for this many seconds (per process), and a
+# failure WARNING is logged at most once per interval.
+CACHE_BREAKER_COOLDOWN_SECONDS = float(os.environ.get("CACHE_BREAKER_COOLDOWN_SECONDS", "5"))
+CHANNEL_LAYER_BREAKER_COOLDOWN_SECONDS = float(
+    os.environ.get("CHANNEL_LAYER_BREAKER_COOLDOWN_SECONDS", "5")
+)
+CHANNEL_LAYER_TIMEOUT_SECONDS = float(os.environ.get("CHANNEL_LAYER_TIMEOUT_SECONDS", "2"))
+CACHE_FAILURE_LOG_INTERVAL_SECONDS = float(
+    os.environ.get("CACHE_FAILURE_LOG_INTERVAL_SECONDS", "60")
+)
 
 
 # Application definition

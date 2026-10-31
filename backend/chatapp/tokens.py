@@ -23,13 +23,12 @@ import logging
 import uuid
 from datetime import timedelta
 
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
+from core.realtime import broadcast
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import TokenError
@@ -214,20 +213,16 @@ def broadcast_session_revoked(user_id, token_version, keep_session_id=None):
     Sockets authenticated by an older token close with 4401, except the ones
     from keep_session_id (the session that asked for the change).
     """
-    channel_layer = get_channel_layer()
-    if channel_layer is None:
-        return
-    try:
-        async_to_sync(channel_layer.group_send)(
-            user_session_group_name(user_id),
-            {
-                "type": "session_revoked_event",
-                "token_version": token_version,
-                "keep_session_id": keep_session_id,
-            },
-        )
-    except Exception:
-        logger.warning("Could not broadcast session revocation for user_id=%s", user_id)
+    # Best effort (core/realtime): an outage is logged, never raised; the
+    # revoked tokens are rejected by HTTP auth and on the next ws connect anyway.
+    broadcast(
+        user_session_group_name(user_id),
+        {
+            "type": "session_revoked_event",
+            "token_version": token_version,
+            "keep_session_id": keep_session_id,
+        },
+    )
 
 
 def revoke_user_tokens(user, keep_session_id=None, broadcast=True, deactivate_push=False):
