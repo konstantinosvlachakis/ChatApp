@@ -21,7 +21,7 @@
       "icon": "./assets/icon.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0d1c2b"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -54,7 +54,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#f7f6f2"
         }
       ]
     ]

@@ -73,6 +73,9 @@ frontend/build/
 *.heic
 *.heif
 !frontend/public/og-image.png
+!mobile/assets/icon.png
+!mobile/assets/adaptive-icon.png
+!mobile/assets/splash.png
 
 # Ignore Redis dumps and user-uploaded media
 *.rdb
