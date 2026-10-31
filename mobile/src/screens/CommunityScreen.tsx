@@ -15,6 +15,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ExchangeCard } from "../components/people/ExchangeCard";
 import { PeopleFilterSheet } from "../components/people/PeopleFilterSheet";
+import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -420,6 +421,7 @@ export function CommunityScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <VerifyEmailBanner />
       <FlatList
         data={morePeople}
         keyExtractor={(item) => item.username}

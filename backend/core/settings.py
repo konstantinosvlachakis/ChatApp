@@ -473,6 +473,12 @@ REST_FRAMEWORK = {
             "report": "20/hour",
             "push_devices": "30/hour",
             "logout_all": "10/hour",
+            # Email verification codes ("3/10m" = 3 per 10 minutes, see
+            # chatapp/throttles.py MultiWindowRateMixin).
+            "email_verify_send": "3/10m",
+            "email_verify_send_daily": "10/day",
+            "email_verify_send_ip": "30/hour",
+            "email_verify_confirm": "30/hour",
         }.items()
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets
@@ -508,6 +514,15 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 # stop working once the password changes.
 PASSWORD_RESET_URL_BASE = os.environ.get("PASSWORD_RESET_URL_BASE", "").rstrip("/")
 PASSWORD_RESET_TIMEOUT = 60 * 60
+
+# Email verification (chatapp/email_verification.py): 6-digit codes valid 15
+# minutes, 5 wrong attempts per code; the email also carries a 24 h link
+# <PASSWORD_RESET_URL_BASE or BASE_URL>/verify-email?token=<signed token>.
+EMAIL_VERIFICATION_CODE_TTL_SECONDS = 15 * 60
+EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
+EMAIL_VERIFICATION_LINK_MAX_AGE_SECONDS = 24 * 60 * 60
+# Sent on a background thread (SMTP can take seconds); synchronous under tests.
+EMAIL_VERIFICATION_EMAIL_ASYNC = not RUNNING_TESTS
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"

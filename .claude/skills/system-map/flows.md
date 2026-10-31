@@ -1,6 +1,8 @@
 # End-to-end flows — system map
 
 Purpose: the request and event sequences for the main user flows, with the exact files and functions involved. Event details are in `realtime-events.md`.
+
+Email verification verified 2026-10-31 on `security/email-verification`, based on `77b0f5f`: signup creates an unverified account and emails a 6-digit, 15-minute code via the existing SMTP/Brevo settings. Web and mobile auto-login, then show Check your email with paste/autofill, resend countdown and Do this later. Delivery failure never undoes signup. Unverified users can browse People/profiles, use Practice and edit profile/Settings; backend gates chat creation, message/photo sends/edits, reactions, calls and Lumi. Both clients show reminders and verification prompts. Code confirmation updates the current account; the email's 24-hour signed link verifies its bound account without signing in. Clients refresh on link completion/return and presence notification. Email changes clear verification and send to the new address while retaining #47's session rotation. Migration 0035 grandfathers existing users. Codes, guess counters and mail budgets survive Redis loss.
 Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `perf/list-refetch` (#32), `feat/mobile-matching` (#36), `feat/password-reset` (#37, §2b), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending: §5 push step, §14). Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp backend/core frontend/src mobile/src`.
 Paths: backend `backend/chatapp/…`, web `frontend/src/…`, mobile `mobile/src/…`. API prefix `/api/`.
 

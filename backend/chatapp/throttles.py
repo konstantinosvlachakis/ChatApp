@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 from rest_framework.exceptions import Throttled
 from rest_framework.settings import api_settings
@@ -140,6 +141,47 @@ CONVERSATION_CREATE_THROTTLES = (
     ConversationCreateDailyRateThrottle,
 )
 UPLOAD_THROTTLES = (UploadRateThrottle, UploadDailyRateThrottle)
+
+
+class MultiWindowRateMixin:
+    """Accept rates like "3/10m" (3 per 10 minutes) as well as DRF's
+    "3/minute" (DRF only reads the unit's first letter)."""
+
+    def parse_rate(self, rate):
+        if rate is None:
+            return (None, None)
+        num, period = rate.split("/")
+        match = re.fullmatch(r"\s*(\d*)\s*([smhd])\w*\s*", period)
+        if not match:
+            return super().parse_rate(rate)
+        multiplier = int(match.group(1) or 1)
+        unit = {"s": 1, "m": 60, "h": 3600, "d": 86400}[match.group(2)]
+        return (int(num), multiplier * unit)
+
+
+class EmailVerifySendRateThrottle(MultiWindowRateMixin, ScopedUserThrottle):
+    scope = "email_verify_send"
+
+
+class EmailVerifySendDailyRateThrottle(MultiWindowRateMixin, ScopedUserThrottle):
+    scope = "email_verify_send_daily"
+
+
+class EmailVerifySendIPThrottle(MultiWindowRateMixin, AuthRateThrottle):
+    """Per IP, even when authenticated (many accounts behind one client)."""
+
+    scope = "email_verify_send_ip"
+
+
+class EmailVerifyConfirmRateThrottle(MultiWindowRateMixin, ScopedUserThrottle):
+    scope = "email_verify_confirm"
+
+
+EMAIL_VERIFY_SEND_THROTTLES = (
+    EmailVerifySendRateThrottle,
+    EmailVerifySendDailyRateThrottle,
+    EmailVerifySendIPThrottle,
+)
 
 
 class PasswordResetIPThrottle(AuthRateThrottle):

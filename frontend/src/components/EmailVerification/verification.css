@@ -1,0 +1,14 @@
+.ev-form { color: var(--lv-ink, #16324f); padding: 24px; max-width: 460px; margin: auto; }
+.ev-form h1 { font-size: 26px; font-weight: 700; margin-bottom: 12px; }
+.ev-form p { margin: 12px 0; line-height: 1.6; }
+.ev-form label { display: block; font-weight: 600; }
+.ev-code { display: block; width: 100%; margin: 12px 0; padding: 14px; border: 2px solid var(--lv-muted-ink); border-radius: 12px; background: var(--lv-paper); color: var(--lv-ink); font-size: 26px; letter-spacing: .45em; text-align: center; }
+.ev-primary { display: block; width: 100%; border-radius: 12px; background: var(--lv-ink); color: var(--lv-on-navy); padding: 12px 18px; font-weight: 700; }
+.ev-link, .ev-form a { color: var(--lv-teal); text-decoration: underline; }
+.ev-link { display: block; margin: 16px auto 0; padding: 8px; }
+.ev-form button:disabled { opacity: .6; cursor: default; }
+.ev-error { color: var(--lv-badge); }
+.ev-banner { display: flex; flex-wrap: wrap; flex-shrink: 0; justify-content: center; gap: 12px; align-items: center; padding: 10px 16px; background: var(--lv-peach); color: var(--lv-ink); font-size: 14px; }
+.ev-banner button { font-weight: 700; text-decoration: underline; padding: 4px 8px; }
+.ev-dialog { width: min(500px, calc(100% - 32px)); max-height: 90dvh; padding: 0; border: 0; border-radius: 20px; background: var(--lv-paper); }
+.ev-dialog::backdrop { background: var(--lv-scrim-strong); }

@@ -25,6 +25,8 @@ import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
 import { toastApiError } from "../services/toast";
+import { RESEND_COOLDOWN_SECONDS } from "../features/emailVerification";
+import { setResendAvailableIn } from "../services/emailVerification";
 import { ApiError, getErrorMessage } from "../services/api/errors";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
@@ -241,7 +243,7 @@ function formatViewedAtLabel(value?: string | null) {
 }
 
 export function ProfileScreen() {
-  const { user: authUser, refreshProfile } = useAuth();
+  const { user: authUser, refreshProfile, setEmailVerified } = useAuth();
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
@@ -567,6 +569,21 @@ export function ProfileScreen() {
       setUser(mergedProfile);
       refreshProfile().catch(() => {});
       setIsEditProfileOpen(false);
+      if (emailChanged && payload.email_verified === false) {
+        // The server mailed a code to the new address; chatting waits until it is verified.
+        setEmailVerified(false);
+        setResendAvailableIn(RESEND_COOLDOWN_SECONDS);
+        const newEmail = payload.email || editForm.email.trim().toLowerCase();
+        Alert.alert(
+          "Verify your new email",
+          `We sent a 6-digit code to ${newEmail}. Other devices were signed out because your email changed.`,
+          [
+            { text: "Later", style: "cancel" },
+            { text: "Enter code", onPress: () => navigation.navigate("VerifyEmail", { codeSent: true }) },
+          ]
+        );
+        return;
+      }
       Alert.alert(
         "Profile updated",
         emailChanged

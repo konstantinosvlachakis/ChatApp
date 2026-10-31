@@ -96,6 +96,7 @@ from .tokens import (
     issue_token_pair,
     revoke_user_tokens,
 )
+from .email_verification import RequireVerifiedEmail, send_verification_email
 
 logger = logging.getLogger(__name__)
 
@@ -1246,7 +1247,7 @@ def coach_error(message, code, status_code, retry_after=None):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequireVerifiedEmail])
 def coach_chat_view(request):
     message = str(request.data.get("message") or "").strip()
     if not message:
@@ -1396,7 +1397,7 @@ def register_view(request):
                 )
 
             # Create the new user
-            Profile.objects.create_user(
+            user = Profile.objects.create_user(
                 username=username,
                 password=str(password),
                 native_language=native_language,
@@ -1405,7 +1406,9 @@ def register_view(request):
             )
             # No community-list bump: new users appear within its 30 s TTL.
 
-            return JsonResponse({"message": "User registered successfully"}, status=201)
+            sent = send_verification_email(user)
+            return JsonResponse({"message": "User registered successfully", "email_verified": False,
+                                 "verification_email_sent": sent}, status=201)
 
         except (json.JSONDecodeError, AttributeError):
             return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
@@ -1449,6 +1452,7 @@ def profile_view(request):
         "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
+        "email_verified": user.email_verified,
         "bio": user.bio or "",
         "learning_goal": user.learning_goal or "",
         "recent_profile_viewers": build_recent_profile_viewers(request, user),
@@ -1830,6 +1834,10 @@ def profile_edit_view(request):
                 status=400,
             )
 
+        # Save the address and its unverified state together. Never retain a
+        # verification timestamp belonging to the previous address.
+        if email_changed:
+            user.email_verified_at = None
         # Save the updated user object
         user.save()
         # The community list is not re-versioned for profile edits (a global
@@ -1850,6 +1858,7 @@ def profile_edit_view(request):
                 session_id=session_id,
             )
             logger.info("Email changed; other sessions revoked for user_id=%s", user.id)
+            send_verification_email(user)
 
         # Return the updated user data
         response = JsonResponse(
@@ -1862,6 +1871,7 @@ def profile_edit_view(request):
                     "languages_practicing": user.languages_practicing or [],
                     "practice_language_levels": user.practice_language_levels or {},
                     "email": user.email,
+                    "email_verified": user.email_verified,
                     "date_of_birth": user.date_of_birth,
                     "location": user.location or "",
                     "location_updated_at": user.location_updated_at,
@@ -2118,6 +2128,8 @@ def mark_messages_delivered(messages_qs, user):
 
 
 class MessageListView(APIView):
+    permission_classes = [IsAuthenticated, RequireVerifiedEmail]
+
     def get(self, request, conversation_id):
         conversation = get_object_or_404(
             Conversation,
@@ -2353,6 +2365,8 @@ class MessageDeleteView(APIView):
 
 
 class MessageEditView(APIView):
+    permission_classes = [IsAuthenticated, RequireVerifiedEmail]
+
     def patch(self, request, message_id):
         message = get_object_or_404(
             Message.objects.select_related("conversation"),
@@ -2449,7 +2463,7 @@ class ConversationDetailView(APIView):
 
 
 class ConversationListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireVerifiedEmail]
 
     def get(self, request):
         user = request.user
@@ -2979,7 +2993,7 @@ def translate_message_view(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, RequireVerifiedEmail])
 @throttle_classes(with_default_throttles(ReactionRateThrottle))
 def react_to_message_view(request, message_id):
     message = get_object_or_404(

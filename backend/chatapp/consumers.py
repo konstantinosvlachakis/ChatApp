@@ -370,9 +370,20 @@ class PresenceTrackingMixin:
         older token, except the session that made the change."""
         keep = event.get("keep_session_id")
         if keep and keep == getattr(self, "session_id", None):
+            self.email_verified = False
             return
         if getattr(self, "token_version", 0) < int(event.get("token_version") or 0):
             await self.close(code=SESSION_REVOKED_CLOSE_CODE)
+
+    async def email_verified_event(self, event):
+        self.email_verified = True
+        await self.send(text_data=json.dumps({"type": "email_verified"}))
+
+    @db_async
+    def has_verified_email(self):
+        # Read current state: an email change can keep this socket alive and a
+        # Redis outage can drop the verification notification.
+        return Profile.objects.filter(pk=self.user_id, email_verified_at__isnull=False).exists()
 
     def _origin_is_allowed(self):
         raw_headers = dict(self.scope.get("headers", []))
@@ -499,6 +510,8 @@ class PresenceTrackingMixin:
                 "receiver__username",
                 "sender__token_version",
                 "receiver__token_version",
+                "sender__email_verified_at",
+                "receiver__email_verified_at",
             )
             .first()
         )
@@ -511,10 +524,12 @@ class PresenceTrackingMixin:
             receiver_username,
             sender_version,
             receiver_version,
+            sender_verified,
+            receiver_verified,
         ) = row
         if sender_id == user_id:
-            return sender_username, receiver_id, sender_version
-        return receiver_username, sender_id, receiver_version
+            return sender_username, receiver_id, sender_version, sender_verified is not None
+        return receiver_username, sender_id, receiver_version, receiver_verified is not None
 
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
@@ -539,7 +554,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             # Deleted accounts have no conversations, so this rejects them too.
             details = await self.get_participant_details(conversation_id, self.user_id)
             if details:
-                username, other_user_id, current_version = details
+                username, other_user_id, current_version, self.email_verified = details
                 if self.token_version != int(current_version or 0):
                     # Revoked token (password reset, log out everywhere, ...).
                     self.user_id = None
@@ -644,6 +659,19 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             "webrtc_answer",
             "webrtc_ice_candidate",
         }
+
+        if message_type in call_event_types:
+            self.email_verified = await self.has_verified_email()
+            if not self.email_verified:
+                await self.send(text_data=json.dumps({
+                    "type": "email_unverified", "code": "email_unverified",
+                    "error": "Verify your email to make calls.",
+                }))
+                return
+        elif message_type in {"user_typing", "user_stopped_typing"} and not self.email_verified:
+            # The high-frequency typing path stays query-free. Calls always
+            # re-check the database even if a Redis invalidation was lost.
+            return
 
         # Messages and deletions are broadcast by the REST views from the
         # database (message_created / message_deleted); client-originated

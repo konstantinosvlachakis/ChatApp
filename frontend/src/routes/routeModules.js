@@ -8,6 +8,7 @@ export const TermsAndConditionsPage = lazyWithPreload(() =>
 );
 export const ForgotPasswordPage = lazyWithPreload(() => import("../pages/ForgotPasswordPage"));
 export const ResetPasswordPage = lazyWithPreload(() => import("../pages/ResetPasswordPage"));
+export const VerifyEmailPage = lazyWithPreload(() => import("../pages/VerifyEmailPage"));
 export const ConversationsPage = lazyWithPreload(() => import("../pages/Conversations/page"));
 export const ProfilePage = lazyWithPreload(() => import("../pages/Profile/page"));
 export const EditProfilePage = lazyWithPreload(() => import("../pages/Profile/EditProfilePage"));
@@ -27,6 +28,7 @@ const ROUTE_COMPONENTS = [
   [exact("/privacy-policy"), PrivacyPolicyPage],
   [exact("/terms-and-conditions"), TermsAndConditionsPage],
   [exact("/forgot-password"), ForgotPasswordPage],
+  [exact("/verify-email"), VerifyEmailPage],
   [prefix("/reset-password/"), ResetPasswordPage],
   [section("/conversations"), ConversationsPage],
   [exact("/profile/edit"), EditProfilePage],

@@ -16,6 +16,7 @@ export interface User {
     native_language?: string;
     base_translate_language?: string;
     email?: string;
+    email_verified?: boolean;
     profile_image_url?: string;
     complementary_image_1_url?: string;
     complementary_image_2_url?: string;

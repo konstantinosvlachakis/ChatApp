@@ -66,6 +66,10 @@ class Profile(AbstractBaseUser):
     # Embedded as the "tv" claim in every JWT (chatapp/tokens.py); bumping it
     # revokes all of the user's access and refresh tokens.
     token_version = models.PositiveIntegerField(default=0)
+    # Set when the user proves control of ``email`` (6-digit code or link,
+    # chatapp/email_verification.py); cleared when the email changes. New
+    # accounts start unverified and can't message people or use the coach.
+    email_verified_at = models.DateTimeField(null=True, blank=True)
 
     objects = ProfileManager()
 
@@ -92,6 +96,29 @@ class Profile(AbstractBaseUser):
                 )
             )
         return None
+
+    @property
+    def email_verified(self):
+        return self.email_verified_at is not None
+
+
+class EmailVerificationCode(models.Model):
+    """The current email verification code of a user (at most one).
+
+    Only an HMAC of the code is stored, bound to the address it was sent to,
+    so a code mailed to an old address can't verify a new one. Kept in the
+    database (not the cache) so codes survive Redis outages.
+    """
+
+    user = models.OneToOneField(
+        Profile, on_delete=models.CASCADE, related_name="email_verification_code"
+    )
+    email = models.EmailField(max_length=255)
+    code_hash = models.CharField(max_length=64)
+    send_history = models.JSONField(default=list, blank=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
 
 
 class PracticeStats(models.Model):

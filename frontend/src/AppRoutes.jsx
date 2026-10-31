@@ -20,6 +20,7 @@ import {
   ResetPasswordPage,
   SettingsPage,
   TermsAndConditionsPage,
+  VerifyEmailPage,
 } from "./routes/routeModules";
 
 // Lazy pages live in routes/routeModules.js: src/index.js preloads the current URL's
@@ -28,6 +29,7 @@ import {
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<AuthLandingPage />} />
+    <Route path="/verify-email" element={<LazyRoute fallback={null}><VerifyEmailPage /></LazyRoute>} />
     <Route
       path="/privacy-policy"
       element={

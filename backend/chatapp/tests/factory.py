@@ -1,4 +1,5 @@
 from itertools import count
+from django.utils import timezone
 
 from chatapp.models import Conversation, Message, Profile
 
@@ -12,6 +13,8 @@ def make_user(**kwargs):
         "email": f"user{idx}@example.com",
         "password": "pass1234",
         "native_language": "english",
+        # Most tests model pre-existing accounts, grandfathered by migration 0035.
+        "email_verified_at": timezone.now(),
     }
     defaults.update(kwargs)
     raw_password = defaults.pop("password")

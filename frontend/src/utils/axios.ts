@@ -1,6 +1,7 @@
 import axios, { AxiosHeaders } from "axios";
 import { ensureCsrfToken, getStoredCsrfToken, installSessionRefreshInterceptor } from "./csrf";
 import { getLegacyAccessToken } from "./auth";
+import { requestEmailVerification } from "../features/emailVerification";
 
 const instance = axios.create({
   baseURL: process.env.REACT_APP_BASE_URL || "",
@@ -28,5 +29,12 @@ instance.interceptors.request.use(async (config) => {
 });
 
 installSessionRefreshInterceptor(instance);
+
+instance.interceptors.response.use((response) => response, (error) => {
+  if (error.response?.status === 403 && error.response?.data?.code === "email_unverified") {
+    requestEmailVerification(error.response.data.error);
+  }
+  return Promise.reject(error);
+});
 
 export default instance;

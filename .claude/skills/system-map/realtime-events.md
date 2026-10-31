@@ -5,6 +5,12 @@ Purpose: every websocket endpoint and event type across backend, web and mobile,
 Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` (server-broadcast messages, close codes, reconnect backoff, mobile heartbeat), `perf/backend-db` (#29, merged: worker-thread DB calls, connect ordering), `perf/mobile-chat` (#33, merged: single mobile presence socket + `services/presenceEvents.ts` fan-out, coalesced refetches) and `perf/list-refetch` (web `conversation_update` handling).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/consumers.py backend/chatapp/views.py frontend/src mobile/src`, then update only the affected rows and bump the commit line.
 
+## Email verification (2026-10-31; security/email-verification, based on 77b0f5f)
+
+- Verification broadcasts internal `email_verified_event` to `session_user_<id>` after commit. Both consumers emit `{type: "email_verified"}`; web refreshes its own profile, mobile updates its auth flag. Profile reads remain authoritative if Redis drops notifications.
+- Every outgoing call signaling frame rechecks verification in the database. Unverified callers receive `{type: "email_unverified", code: "email_unverified", error: ...}` and nothing is relayed. Web opens the verify dialog and clears call state; call start/accept also checks the client flag before microphone/camera access.
+- Typing uses the flag loaded by the existing membership query, updated on verification and the retained session's email-change event. It stays query-free; calls always query current state. Lost notifications can delay typing state until reconnect but cannot authorize calls or REST sends.
+
 ## Wiring
 - `backend/core/asgi.py`: `ProtocolTypeRouter` → `http` = Django; `websocket` = `URLRouter(chatapp.routing.websocket_urlpatterns)`. There is **no** auth/session middleware; consumers authenticate the JWT themselves.
 - `backend/chatapp/routing.py` (live): `ws/presence/` → `PresenceConsumer`; `ws/socket-server/<room_name>/` → `ChatConsumer`.

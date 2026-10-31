@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:verification": "node --experimental-strip-types --test tests/emailVerification.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

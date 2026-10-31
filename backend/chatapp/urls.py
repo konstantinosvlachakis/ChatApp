@@ -8,6 +8,11 @@ from .auth_views import (
     password_reset_confirm_view,
     password_reset_request_view,
 )
+from .email_verification import (
+    verify_email_confirm_link_view,
+    verify_email_confirm_view,
+    verify_email_send_view,
+)
 from django.conf import settings
 from django.conf.urls.static import static
 from . import consumers
@@ -24,6 +29,17 @@ urlpatterns = [
         "auth/password-reset/confirm/",
         password_reset_confirm_view,
         name="password_reset_confirm",
+    ),
+    path("auth/verify-email/send/", verify_email_send_view, name="verify_email_send"),
+    path(
+        "auth/verify-email/confirm/",
+        verify_email_confirm_view,
+        name="verify_email_confirm",
+    ),
+    path(
+        "auth/verify-email/confirm-link/",
+        verify_email_confirm_link_view,
+        name="verify_email_confirm_link",
     ),
     # Profile
     path("profile/", profile_view, name="profile"),

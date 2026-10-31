@@ -34,6 +34,7 @@ import {
 } from "../features/coachConversation";
 import { sendCoachMessage } from "../services/api/coach";
 import { getErrorMessage } from "../services/api/errors";
+import { isEmailUnverifiedError } from "../services/emailVerification";
 import { getMessageGroupFlags } from "../components/chat/messageGroups";
 import { SendButton } from "../components/chat/SendButton";
 import { useReducedMotion } from "../components/chat/useReducedMotion";
@@ -375,6 +376,13 @@ export function CoachChatScreen() {
       startReplyAnimation(coachReply.id, coachReply.text || "");
     } catch (error) {
       if (generationRef.current !== generation) return;
+      // 403 email_unverified: the central verify prompt is showing; take the message back out
+      // of the chat and restore it to the input so it can be sent after verifying.
+      if (isEmailUnverifiedError(error)) {
+        await syncMessages(messagesRef.current.filter((message) => message.id !== outgoingMessage.id));
+        setInput((current) => current || trimmed);
+        return;
+      }
       // Shown as the coach's reply bubble (the chat itself is the feedback surface).
       const fallbackMessage = getErrorMessage(
         error,

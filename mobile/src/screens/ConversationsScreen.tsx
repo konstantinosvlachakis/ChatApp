@@ -85,6 +85,7 @@ import {
 import { useChatPresence } from "./chat/useChatPresence";
 import { useChatSocket } from "./chat/useChatSocket";
 import { useStableCallback } from "./chat/useStableCallback";
+import { isEmailUnverifiedError } from "../services/emailVerification";
 
 // Chats tab (route `ChatsHome`): conversation list, or the open chat. State, requests and socket
 // wiring live here; rendering is in `screens/chat/*` and `components/chat/*`.
@@ -630,7 +631,10 @@ export function ConversationsScreen() {
       setParticipantUsername("");
       await openConversation(id);
     } catch (error) {
-      Alert.alert("Chat error", getErrorMessage(error, "Could not open chat."));
+      // 403 email_unverified: the central verify prompt (AppTabs) is already showing.
+      if (!isEmailUnverifiedError(error)) {
+        Alert.alert("Chat error", getErrorMessage(error, "Could not open chat."));
+      }
     } finally {
       setCreatingConversation(false);
     }

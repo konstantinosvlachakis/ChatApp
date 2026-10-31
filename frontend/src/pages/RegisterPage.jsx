@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
+import { useUser } from "../context/UserContext";
+import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
+import { startResendCooldown } from "../features/emailVerification";
 
 const languageOptions = [
   {
@@ -101,6 +104,7 @@ const RegisterPage = () => {
   const calendarRef = useRef(null);
 
   const navigate = useNavigate();
+  const { refreshUserProfile } = useUser();
   const maxBirthDate = getMinBirthDate();
   const selectedDate = parseDateInputValue(dateOfBirth);
   const yearOptions = useMemo(() => {
@@ -224,7 +228,16 @@ const RegisterPage = () => {
         password,
         nativeLanguage,
       });
-      navigate("/login");
+      startResendCooldown(email.trim());
+      try {
+        const tokens = await api.post("/api/token/", { email: email.trim().toLowerCase(), password, remember_me: false });
+        clearClientSessionData();
+        if (shouldUseLegacyAuthFallback()) setLegacyTokens(tokens);
+        await refreshUserProfile();
+        navigate("/verify-email");
+      } catch {
+        navigate("/login", { state: { verifyEmail: true, email: email.trim() } });
+      }
     } catch (error) {
       setSubmitError(getErrorMessage(error, "Could not create account."));
     } finally {
