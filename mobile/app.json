@@ -44,6 +44,12 @@
       "expo-font",
       "expo-secure-store",
       [
+        "expo-status-bar",
+        {
+          "style": "light"
+        }
+      ],
+      [
         "expo-notifications",
         {
           "defaultChannel": "messages"
@@ -53,8 +59,13 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
+          "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#f7f6f2"
+          "backgroundColor": "#0d1c2b",
+          "dark": {
+            "image": "./assets/splash.png",
+            "backgroundColor": "#0d1c2b"
+          }
         }
       ]
     ]
