@@ -6,6 +6,10 @@ Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/cha
 
 DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers only `PushDevice` (token excluded; the admin is unusable anyway, see Profile).
 
+## Email verification (2026-10-31; security/email-verification, based on 77b0f5f)
+
+Latest migration `0035_email_verification`: nullable `Profile.email_verified_at` (new accounts default unverified); data migration marks existing accounts verified. `email_verified` is a property. `EmailVerificationCode` is one-to-one with Profile: normalized email, HMAC-SHA256 hash bound to user/address, expiry, attempts, creation timestamp and JSON `send_history` (at most 10 timestamps/day). No plaintext code is stored. Issuance and confirmation lock Profile to serialize replacements, guesses and send budgets. Failed guesses commit counters. Verification clears the hash but retains send history, invalidates the private profile cache and notifies sockets on commit. Email changes save the new address and null verification timestamp together, rotate sessions, and issue a new code; old links fail the fingerprint/token-version checks.
+
 ## ER diagram
 
 ```mermaid

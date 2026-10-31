@@ -16,6 +16,7 @@ import { RouteErrorBoundary } from "../components/ErrorBoundary";
 import api from "../lib/api";
 import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
 import AppHeader from "./AppHeader";
+import EmailVerificationGate from "../components/EmailVerification/EmailVerificationGate";
 import BottomTabBar from "./BottomTabBar";
 import { isOpenChatPath } from "./navItems";
 import { getNotificationPermission, requestNotificationPermission } from "../utils/notifications";
@@ -54,7 +55,7 @@ const Layout = () => {
     ? "w-full max-w-[1440px]"
     : "w-full md:w-[90vw] max-w-[1500px]";
   const navigate = useNavigate();
-  const { user, setUser, loading: userLoading } = useUser();
+  const { user, setUser, refreshUserProfile, loading: userLoading } = useUser();
   const queryClient = useQueryClient();
   // No refetch on every focus: socket events keep the list current, and the effects below
   // refetch only when events may have been missed (see shouldRefetchListOnFocus).
@@ -198,6 +199,7 @@ const Layout = () => {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (data.type === "email_verified") refreshUserProfile();
           if (data.type === "initial_online_users") {
             setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
             return;
@@ -290,7 +292,7 @@ const Layout = () => {
       presenceSocketRef.current = null;
       setOnlineUserIds(new Set());
     };
-  }, [queryClient, user?.user_id]);
+  }, [queryClient, user?.user_id, refreshUserProfile]);
 
   useEffect(() => {
     const refetch = createTrailingDebounce(
@@ -402,6 +404,7 @@ const Layout = () => {
           onLogout={handleLogout}
         />
 
+        <EmailVerificationGate />
         <main
           className={
             isChatRoute

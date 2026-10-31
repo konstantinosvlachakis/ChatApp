@@ -77,6 +77,10 @@ Email (password reset): `EMAIL_HOST` (unset -> console backend, nothing is sent)
 Redis failure handling (optional): `CACHE_BREAKER_COOLDOWN_SECONDS`, `CHANNEL_LAYER_BREAKER_COOLDOWN_SECONDS`, `CHANNEL_LAYER_TIMEOUT_SECONDS`, `CACHE_FAILURE_LOG_INTERVAL_SECONDS`.
 Hardening (all optional, safe defaults): `SECURE_HSTS_*`, `DRF_THROTTLE_<SCOPE>` for every scope in the throttle table, `DRF_NUM_PROXIES`, `AUTH_COOKIE_ENFORCE_CSRF`, `LOGIN_MAX_FAILURES_PER_EMAIL`, `LOGIN_FAILURE_WINDOW_SECONDS`, `COACH_GLOBAL_DAILY_LIMIT`, `PRACTICE_DAILY_XP_LIMIT`, `WS_FRAME_RATE_PER_SECOND`, `WS_FRAME_BURST`, `WS_TYPING_RATE_PER_SECOND`, `WS_TYPING_BURST`, `WS_CALL_INVITES_PER_MINUTE`, `WS_MAX_DROPPED_FRAMES_PER_MINUTE`, `WS_MAX_CHAT_SOCKETS_PER_USER`, `WS_MAX_PRESENCE_SOCKETS_PER_USER`, `WS_CONNECTION_COUNT_TTL_SECONDS`, `CSP_MODE`, `CSP_EXTRA_CONNECT_SRC`, `CSP_EXTRA_IMG_SRC`, `PERMISSIONS_POLICY`, `COACH_CHAT_DAILY_LIMIT`, `COACH_CHAT_MAX_MESSAGE_LENGTH`, `MESSAGE_MAX_LENGTH`, `TRANSLATION_MAX_LENGTH`, `MESSAGE_ATTACHMENT_MAX_BYTES`, `PROFILE_IMAGE_MAX_BYTES`, `WS_MAX_MESSAGE_BYTES`.
 
+## Email verification (2026-10-31, security/email-verification)
+
+`email_verification.py`: six-digit HMAC codes (15 min, 5 guesses), signed 24-hour links, SMTP delivery, permissions and verification endpoints. Migration `0035_email_verification` adds nullable `Profile.email_verified_at`, marks existing accounts verified, and creates one verification record per user with DB send history (3/10 min, 10/day, including automatic sends). New accounts/changed addresses stay unverified; signup survives mail errors. REST gates chat creation, message/photo send/edit, reactions and Lumi; sockets check current DB verification for calls and keep typing query-free. See the system-map verification sections. Verified on the working tree based on `b6e5fec`: 291 backend tests pass; migration drift check clean.
+
 ## Run tests (local sqlite, no external services)
 ```bash
 cd backend && DJANGO_ENV=local USE_REDIS_REALTIME=false CLOUDINARY_URL= GEMINI_API_KEY= DATABASE_URL= python manage.py test chatapp

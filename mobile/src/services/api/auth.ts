@@ -36,6 +36,37 @@ export async function requestPasswordReset(email: string) {
   return response.data;
 }
 
+export type EmailVerificationSendResponse = {
+  message: string;
+  /** Where the code went (absent when already verified). */
+  email?: string;
+  /** Code lifetime in seconds (900). */
+  expires_in?: number;
+  /** true: the address was already verified and no code was sent. */
+  email_verified: boolean;
+};
+
+/**
+ * Emails a new 6-digit code to the signed-in user's address (register already sends the
+ * first one). 429 `throttled` carries `retry_after` / Retry-After (ApiError.retryAfterSeconds).
+ */
+export async function sendEmailVerificationCode() {
+  const response = await api.post<EmailVerificationSendResponse>("/auth/verify-email/send/");
+  return response.data;
+}
+
+/**
+ * Confirms the emailed code. 400 `invalid_code` (body may include `attempts_remaining`),
+ * `code_expired`, `too_many_attempts`; 429 `throttled`.
+ */
+export async function confirmEmailVerification(code: string) {
+  const response = await api.post<{ message: string; email_verified: boolean }>(
+    "/auth/verify-email/confirm/",
+    { code }
+  );
+  return response.data;
+}
+
 const LOGOUT_TIMEOUT_MS = 5_000;
 
 /**

@@ -5,6 +5,7 @@ const PUBLIC_PATHS = new Set([
   "/login",
   "/register",
   "/forgot-password",
+  "/verify-email",
   "/privacy-policy",
   "/terms-and-conditions",
 ]);
@@ -126,6 +127,7 @@ const AUTH_ENDPOINT_PATHS = new Set([
   "/api/csrf/",
   "/api/auth/password-reset/",
   "/api/auth/password-reset/confirm/",
+  "/api/auth/verify-email/confirm-link/",
 ]);
 
 export const isAuthEndpoint = (pathname: string) => AUTH_ENDPOINT_PATHS.has(pathname);

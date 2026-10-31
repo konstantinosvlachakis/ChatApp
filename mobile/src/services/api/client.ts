@@ -1,6 +1,7 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL } from "../../config/api";
 import { reportApiFailure, reportApiSuccess } from "../connectivity";
+import { isEmailUnverifiedError, publishEmailUnverified } from "../emailVerification";
 import { captureError } from "../monitoring";
 import { tokenStorage } from "../storage";
 import { ApiError, toApiError } from "./errors";
@@ -187,6 +188,11 @@ api.interceptors.response.use(
 
     if (apiError.status >= 500) {
       captureError(apiError);
+    }
+    // Gated action by an unverified account: one central prompt (AppTabs) instead of
+    // per-screen error toasts (toastApiError skips this code).
+    if (isEmailUnverifiedError(apiError)) {
+      publishEmailUnverified(apiError.message);
     }
     throw apiError;
   }

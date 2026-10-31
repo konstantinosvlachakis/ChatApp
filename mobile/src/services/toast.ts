@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { EMAIL_UNVERIFIED_CODE } from "../features/emailVerification";
 import { toApiError } from "./api/errors";
 
 /** Imperative in-app toasts (rendered by components/ToastHost, mounted once in App.tsx). */
@@ -61,10 +62,14 @@ export function showToast(
   return toast.id;
 }
 
-/** Show a failed action's error. Aborted requests are ignored. */
+/**
+ * Show a failed action's error. Aborted requests are ignored, and so is 403
+ * `email_unverified` (the API client already triggered the "verify your email" prompt).
+ */
 export function toastApiError(error: unknown, fallback: string, title?: string) {
   const apiError = toApiError(error);
   if (apiError.isAborted) return null;
+  if (apiError.status === 403 && apiError.code === EMAIL_UNVERIFIED_CODE) return null;
   const message = apiError.code === "unknown" ? fallback : apiError.message || fallback;
   return showToast(message, { title, variant: "error" });
 }

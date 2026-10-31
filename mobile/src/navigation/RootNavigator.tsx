@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   AppState,
   DeviceEventEmitter,
@@ -42,6 +43,7 @@ import {
   watchPushTokenChanges,
 } from "../services/push";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
+import { subscribeToEmailUnverified } from "../services/emailVerification";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RegisterScreen } from "../screens/RegisterScreen";
 import { ForgotPasswordScreen } from "../screens/ForgotPasswordScreen";
@@ -51,6 +53,7 @@ import { CoachChatScreen } from "../screens/CoachChatScreen";
 import { PracticeScreen } from "../screens/PracticeScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { VerifyEmailScreen } from "../screens/VerifyEmailScreen";
 import { PublicProfileScreen } from "../screens/PublicProfileScreen";
 import { PremiumScreen } from "../screens/PremiumScreen";
 import { useTheme } from "../context/ThemeContext";
@@ -87,7 +90,7 @@ function resolveMediaUrl(path?: string | null) {
 }
 
 function AppTabs() {
-  const { user } = useAuth();
+  const { user, refreshProfile, pendingEmailVerification, clearPendingEmailVerification, setEmailVerified } = useAuth();
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const { height } = useWindowDimensions();
@@ -294,6 +297,58 @@ function AppTabs() {
     };
   }, [loadUnreadChatsCount, scheduleUnreadRefresh]);
 
+  // Just signed up (RegisterScreen → login(..., {verifyEmail: true})): open VerifyEmail once,
+  // on top of the tabs so "Do this later" / back lands here. Older servers omit
+  // `email_verified`, so only an explicit false opens it.
+  React.useEffect(() => {
+    if (!pendingEmailVerification) return;
+    clearPendingEmailVerification();
+    if (user?.email_verified === false) {
+      navigation.navigate("VerifyEmail", { codeSent: true });
+    }
+  }, [clearPendingEmailVerification, navigation, pendingEmailVerification, user?.email_verified]);
+
+  React.useEffect(() => {
+    if (user?.email_verified !== false) return;
+    // A browser link can verify the address while the app is backgrounded,
+    // even when the socket notification was missed.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshProfile().catch(() => {});
+    });
+    return () => subscription.remove();
+  }, [refreshProfile, user?.email_verified]);
+
+  // Gated action (start chat, send, react, Lumi) refused with 403 email_unverified: the API
+  // client publishes it; show one prompt at a time (call sites skip their error toast).
+  const verifyPromptOpenRef = React.useRef(false);
+  React.useEffect(
+    () =>
+      subscribeToEmailUnverified((message) => {
+        setEmailVerified(false);
+        if (verifyPromptOpenRef.current) return;
+        verifyPromptOpenRef.current = true;
+        const close = () => {
+          verifyPromptOpenRef.current = false;
+        };
+        Alert.alert(
+          "Verify your email to start chatting",
+          message || "Enter the 6-digit code we emailed you to message people and practise with Lumi.",
+          [
+            { text: "Not now", style: "cancel", onPress: close },
+            {
+              text: "Enter code",
+              onPress: () => {
+                close();
+                navigation.navigate("VerifyEmail");
+              },
+            },
+          ],
+          { cancelable: true, onDismiss: close }
+        );
+      }),
+    [navigation, setEmailVerified]
+  );
+
   // Push: register after login / on start (asks permission once, a moment after the tabs
   // appear), re-register when the device token rotates.
   React.useEffect(() => {
@@ -382,6 +437,7 @@ function AppTabs() {
       socket.onmessage = (event: WebSocketMessageEvent) => {
         try {
           const payload = JSON.parse(event.data) as PresenceEvent;
+          if (payload?.type === "email_verified") setEmailVerified(true);
           if (payload?.type === "conversation_update") {
             scheduleUnreadRefresh();
           }
@@ -434,7 +490,7 @@ function AppTabs() {
       resetPresenceEvents();
       setSocketReconnecting(false);
     };
-  }, [scheduleUnreadRefresh, user?.user_id, wsBaseUrl]);
+  }, [scheduleUnreadRefresh, setEmailVerified, user?.user_id, wsBaseUrl]);
 
   React.useEffect(() => {
     const latestViewer = user?.recent_profile_viewers?.[0];
@@ -623,6 +679,7 @@ export function RootNavigator() {
         <>
           <Stack.Screen name="AppTabs" component={AppTabs} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         </>
       ) : (
         <>

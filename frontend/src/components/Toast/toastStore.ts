@@ -1,4 +1,4 @@
-import { getErrorMessage, isAbortError } from "../../lib/apiError";
+import { getErrorMessage, isAbortError, toApiError } from "../../lib/apiError";
 
 /**
  * Minimal toast store (no UI dependency). `showToast` works from anywhere (components,
@@ -99,6 +99,7 @@ export const toast = {
  */
 export const toastApiError = (error: unknown, action?: string) => {
   if (isAbortError(error)) return null;
+  if (toApiError(error).code === "email_unverified") return null;
   const detail = getErrorMessage(error);
   return toast.error(action ? `${action}: ${detail}` : detail);
 };

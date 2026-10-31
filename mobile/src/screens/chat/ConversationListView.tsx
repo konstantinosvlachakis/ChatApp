@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../../components/CoachAvatar";
+import { VerifyEmailBanner } from "../../components/VerifyEmailBanner";
 import { ChatAvatar, chatAvatarUri } from "../../components/chat/ChatAvatar";
 import {
   coachMatchesQuery,
@@ -273,6 +274,7 @@ export function ConversationListView({
           ) : null}
         </View>
       </View>
+      <VerifyEmailBanner />
       <FlatList
         data={visibleConversations}
         keyExtractor={conversationKeyExtractor}

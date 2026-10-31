@@ -8,6 +8,14 @@ People web caller notes below refreshed on 2026-10-27 against the working tree b
 
 Paths: backend views are in `backend/chatapp/views.py` unless noted. Web = `frontend/src/...`, mobile = `mobile/src/...`.
 
+## Email verification (2026-10-31; security/email-verification, based on 77b0f5f)
+
+- Own `/api/profile/` and profile edit's `updated_profile` expose `email_verified: boolean`. Public profiles expose neither verification state nor code records. Registration returns `email_verified: false` and `verification_email_sent` (background delivery may still fail).
+- Authenticated POST `/api/auth/verify-email/send/` replaces the code and returns `{message, email, expires_in: 900, email_verified: false}`; already verified returns `{message, email_verified: true}`. Database limits: 3 sends/600 s and 10/day, including signup/email-change sends. Additional DRF scopes limit sends per user and IP (30/h). 429 includes `retry_after` and `Retry-After`.
+- Authenticated POST `/api/auth/verify-email/confirm/` takes `{code: "012345"}`; success `{message, email_verified: true}`. 400 codes: `invalid_code` (wrong six-digit guesses include `attempts_remaining`), `code_expired`, `too_many_attempts`. Five guesses per code; 30 confirmations/h.
+- Public POST `/api/auth/verify-email/confirm-link/` takes `{token}` from `/verify-email?token=...`. Signed token binds user/address fingerprint/token version, expires in 24 h, and never signs in. Bad links return 400 `invalid_link`.
+- Unverified accounts get 403 `email_unverified` on conversation creation, message/photo send/edit, reactions and Lumi. Reads, People, Practice, profiles and Settings remain open. Web's axios interceptor opens `EmailVerificationGate`; mobile's API client publishes the central verify prompt. Both clients treat a missing flag from an older backend as verified for reminders; backend permissions always enforce current state.
+
 ## Auth and transport conventions
 
 - **Base path** `/api/` (`backend/core/urls.py` includes `chatapp.urls`). Web: every call goes through `frontend/src/lib/api.ts` (`api.get/post/patch/delete/upload("/api/...")`, which prefixes `BASE_URL` = `REACT_APP_BASE_URL`, empty = same origin). Mobile: axios `api` instance with `baseURL = ${API_BASE_URL}/api` (`mobile/src/services/api/client.ts`), so mobile paths have no `/api` prefix.

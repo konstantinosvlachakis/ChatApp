@@ -2,6 +2,8 @@ export interface Profile {
   user_id?: number;
   username: string;
   email?: string;
+  /** Own profile only. Missing on older servers: treat `undefined` as verified. */
+  email_verified?: boolean;
   date_of_birth?: string;
   location?: string;
   location_updated_at?: string | null;

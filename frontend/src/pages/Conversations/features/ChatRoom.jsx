@@ -5,6 +5,7 @@ import MessageInput from "./MessageInput";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
 import api from "../../../lib/api";
+import { requestEmailVerification } from "../../../features/emailVerification";
 import { deleteMessage } from "../api/deleteMessage";
 import { editMessage } from "../api/editMessage";
 import { pinMessage } from "../api/pinMessage";
@@ -882,6 +883,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
 
   const startCall = useCallback(
     async (mode) => {
+      if (user?.email_verified === false) { requestEmailVerification(); return; }
       if (callState !== "idle") return;
       if (!otherUser?.id) return;
 
@@ -929,10 +931,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       otherUser?.id,
       resetCallState,
       sendSocketEvent,
+      user?.email_verified,
     ]
   );
 
   const acceptIncomingCall = useCallback(async () => {
+    if (user?.email_verified === false) { requestEmailVerification(); return; }
     if (!incomingOfferRef.current || callState !== "incoming") return;
 
     try {
@@ -977,6 +981,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     createPeerConnection,
     endCall,
     flushPendingIceCandidates,
+    user?.email_verified,
     initializeLocalMedia,
     resetCallState,
     sendSocketEvent,
@@ -1140,6 +1145,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           const data = JSON.parse(e.data);
 
           switch (data.type) {
+            case "email_unverified":
+              requestEmailVerification(data.error);
+              resetCallState();
+              break;
             case "message_created": {
               // Server broadcast of a saved message, sent to every socket in the room
               // (including ours): dedupe by id against the POST response.

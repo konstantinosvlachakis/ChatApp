@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
@@ -7,7 +7,8 @@ import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LoginPage = () => {
-  const [email, setEmail] = useState("");
+  const location = useLocation();
+  const [email, setEmail] = useState(location.state?.email || "");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
@@ -67,7 +68,7 @@ const LoginPage = () => {
 
       await refreshUserProfile();
 
-      navigate("/profile");
+      navigate(location.state?.verifyEmail ? "/verify-email" : "/profile");
     } catch (error) {
       // ApiError.message is the envelope's `error` (or a friendly network/status text).
       setError(getErrorMessage(error, "Invalid credentials."));

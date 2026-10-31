@@ -54,3 +54,5 @@ jobs:
         working-directory: mobile
       - run: npx tsc --noEmit
         working-directory: mobile
+      - run: npm run test:verification
+        working-directory: mobile

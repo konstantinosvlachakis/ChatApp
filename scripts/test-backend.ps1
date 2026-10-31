@@ -12,6 +12,6 @@ $env:DATABASE_URL = ""
 $env:DJANGO_LOG_LEVEL = "CRITICAL"
 $env:SENTRY_DSN = ""
 
-$labels = if ($args.Count -gt 0) { $args } else { @("chatapp") }
+[string[]]$labels = if ($args.Count -gt 0) { $args } else { @("chatapp") }
 python manage.py test @labels
 exit $LASTEXITCODE

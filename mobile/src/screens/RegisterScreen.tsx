@@ -13,7 +13,10 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../context/AuthContext";
+import { RESEND_COOLDOWN_SECONDS } from "../features/emailVerification";
 import { register } from "../services/api/auth";
+import { setResendAvailableIn } from "../services/emailVerification";
 import { getErrorMessage } from "../services/api/errors";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
@@ -22,6 +25,7 @@ export function RegisterScreen() {
   const navigation = useNavigation<any>();
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,21 +39,34 @@ export function RegisterScreen() {
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
     try {
       setLoading(true);
       await register({
         username: username.trim(),
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         password,
         nativeLanguage: nativeLanguage.trim(),
         dateOfBirth: dateOfBirth.trim() || undefined,
       });
-      Alert.alert("Success", "Account created. You can log in now.");
-      navigation.navigate("Login");
     } catch (err) {
       Alert.alert("Sign up failed", getErrorMessage(err, "Could not create account."));
-    } finally {
       setLoading(false);
+      return;
+    }
+    // The server already emailed the first code: start the resend cooldown, don't send another.
+    setResendAvailableIn(RESEND_COOLDOWN_SECONDS);
+    try {
+      // Signs in with the same credentials; the logged-in stack replaces this one and AppTabs
+      // opens VerifyEmail (AuthContext.pendingEmailVerification).
+      await login(normalizedEmail, password, { verifyEmail: true });
+    } catch {
+      setLoading(false);
+      Alert.alert(
+        "Account created",
+        "Log in to continue. We emailed you a 6-digit code to verify your address."
+      );
+      navigation.navigate("Login");
     }
   };
 

@@ -3,6 +3,7 @@
 // of opening their own /ws/presence/ socket.
 
 export type PresenceEvent =
+  | { type: "email_verified" }
   | { type: "initial_online_users"; user_ids?: number[]; userIds?: number[] }
   | { type: "presence_update"; user_id: number; is_online: boolean }
   | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }

@@ -9,6 +9,7 @@ import { avatarImage } from "../../lib/media";
 import { useUser } from "../../context/UserContext";
 import { getUserLocation } from "./utils/getUserLocation";
 import api, { getErrorMessage } from "../../lib/api";
+import { requestEmailVerification, startResendCooldown } from "../../features/emailVerification";
 import { showToast, toast, toastApiError } from "../../components/Toast";
 import {
   LANGUAGE_KEYS,
@@ -236,6 +237,10 @@ const EditProfilePage = () => {
       });
       setCurrentPassword("");
       await refreshUserProfile();
+      if (emailChanged) {
+        startResendCooldown(form.email.trim());
+        requestEmailVerification();
+      }
       showToast(
         emailChanged
           ? "Your profile was saved. Other devices were signed out because your email changed."
