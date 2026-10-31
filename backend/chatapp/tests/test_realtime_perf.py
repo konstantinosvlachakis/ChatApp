@@ -79,7 +79,9 @@ class RealtimePerformanceTests(TransactionTestCase):
 
     async def _connect(self, path, user):
         communicator = WebsocketCommunicator(
-            ws_application, f"{path}?token={AccessToken.for_user(user)}"
+            ws_application,
+            path,
+            headers=[(b"authorization", f"Bearer {AccessToken.for_user(user)}".encode())],
         )
         connected, _ = await communicator.connect()
         self.assertTrue(connected)

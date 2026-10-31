@@ -174,7 +174,7 @@ class UploadValidationTests(TestCase):
 
     def test_attachment_name_is_server_generated_with_safe_extension(self):
         payload = SimpleUploadedFile(
-            "photo.html", b"\x89PNG\r\n", content_type="image/png"
+            "photo.html", b"\x89PNG\r\n\x1a\n" + b"0" * 16, content_type="image/png"
         )
 
         with patch("django.core.files.storage.FileSystemStorage._save") as save:
@@ -199,16 +199,24 @@ class UploadValidationTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_profile_image_url_cannot_point_to_third_party_host(self):
-        response = self.client.patch(
-            "/api/profile/edit/",
-            {"profile_image_url": "https://tracker.example.net/pixel.png"},
-            format="json",
-        )
+    def test_profile_image_url_cannot_be_set_by_the_client(self):
+        # Third-party hosts, other Cloudinary accounts, other herokuapp apps and
+        # even our own media paths: images only change through the upload.
+        before = self.alice.profile_image_url
+        for url in (
+            "https://tracker.example.net/pixel.png",
+            "https://res.cloudinary.com/someone-else/image/upload/v1/x.png",
+            "https://evil-app.herokuapp.com/media/x.png",
+            "/media/profile_images/someone-elses.png",
+        ):
+            response = self.client.patch(
+                "/api/profile/edit/", {"profile_image_url": url}, format="json"
+            )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.alice.refresh_from_db()
-        self.assertNotIn("tracker", self.alice.profile_image_url)
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, url)
+            self.assertEqual(response.json()["code"], "invalid_profile_image")
+            self.alice.refresh_from_db()
+            self.assertEqual(self.alice.profile_image_url, before)
 
 
 class CookieAuthCsrfTests(TestCase):
@@ -363,10 +371,12 @@ class ChatWebsocketAuthorizationTests(TransactionTestCase):
         self.chat_path = f"/ws/socket-server/{self.conversation.id}/"
 
     async def _connect(self, path, user=None, headers=None):
-        query = f"?token={AccessToken.for_user(user)}" if user else ""
-        communicator = WebsocketCommunicator(
-            ws_application, f"{path}{query}", headers=headers or []
-        )
+        headers = list(headers or [])
+        if user:
+            headers.append(
+                (b"authorization", f"Bearer {AccessToken.for_user(user)}".encode())
+            )
+        communicator = WebsocketCommunicator(ws_application, path, headers=headers)
         connected, _ = await communicator.connect()
         return communicator, connected
 

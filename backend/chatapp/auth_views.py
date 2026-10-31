@@ -13,6 +13,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -23,7 +24,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
 from core.exceptions import error_response
 
-from .models import Profile, Token
+from .models import Profile
 from .throttles import (
     AuthRateThrottle,
     PasswordResetEmailThrottle,
@@ -31,10 +32,59 @@ from .throttles import (
 )
 from .views import release_db_connection
 
+import hashlib
 import logging
+import os
 import threading
 
 logger = logging.getLogger(__name__)
+
+# Per-account login lockout (on top of the per-IP "auth" throttle): after this
+# many failed logins for one email within the window, further attempts for that
+# email get 429 from any IP until the window expires; a success resets it.
+LOGIN_MAX_FAILURES_PER_EMAIL = int(os.environ.get("LOGIN_MAX_FAILURES_PER_EMAIL", "10"))
+LOGIN_FAILURE_WINDOW_SECONDS = int(os.environ.get("LOGIN_FAILURE_WINDOW_SECONDS", "3600"))
+LOGIN_LOCKED_MESSAGE = (
+    "Too many failed sign-in attempts for this account. "
+    "Try again later or reset your password."
+)
+
+
+def login_failure_cache_key(email):
+    # Hash of the normalised email: the raw address never goes into the cache.
+    digest = hashlib.sha256(email.encode("utf-8")).hexdigest()
+    return f"auth:login_failures:v1:{digest}"
+
+
+def login_is_locked(email):
+    if LOGIN_MAX_FAILURES_PER_EMAIL <= 0 or not email:
+        return False
+    try:
+        failures = cache.get(login_failure_cache_key(email)) or 0
+    except Exception:
+        return False
+    return int(failures) >= LOGIN_MAX_FAILURES_PER_EMAIL
+
+
+def record_login_failure(email):
+    if LOGIN_MAX_FAILURES_PER_EMAIL <= 0 or not email:
+        return
+    key = login_failure_cache_key(email)
+    try:
+        # add + incr is atomic; the window starts at the first failure.
+        cache.add(key, 0, timeout=LOGIN_FAILURE_WINDOW_SECONDS)
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=LOGIN_FAILURE_WINDOW_SECONDS)
+    except Exception:
+        logger.warning("Could not record a login failure")
+
+
+def clear_login_failures(email):
+    try:
+        cache.delete(login_failure_cache_key(email))
+    except Exception:
+        pass
 
 
 def _get_cookie_max_age(delta):
@@ -94,6 +144,27 @@ class CustomObtainJWTToken(TokenObtainPairView):
         }
         logger.info("Login attempt")
 
+        email = serializer_data["email"]
+        if login_is_locked(email):
+            # Checked before the password so a locked account is no oracle. The
+            # same answer for unknown emails (the counter is per email string).
+            retry_after = LOGIN_FAILURE_WINDOW_SECONDS
+            # "message" is the legacy copy of "error" all token errors carry.
+            response = Response(
+                {
+                    "error": LOGIN_LOCKED_MESSAGE,
+                    "code": "throttled",
+                    "retry_after": retry_after,
+                    "message": LOGIN_LOCKED_MESSAGE,
+                },
+                status=429,
+            )
+            response["Retry-After"] = str(retry_after)
+            return response
+
+        # Unknown emails still run the password hasher: Django's ModelBackend
+        # hashes the password when the user doesn't exist, so the timing of a
+        # failed login doesn't reveal whether the account exists.
         serializer = TokenObtainPairSerializer(data=serializer_data)
 
         try:
@@ -107,12 +178,14 @@ class CustomObtainJWTToken(TokenObtainPairView):
                 status=400,
             )
         except AuthenticationFailed:
+            record_login_failure(email)
             message = "No active account found with the given credentials"
             return Response(
                 {"error": message, "code": "no_active_account", "message": message},
                 status=401,
             )
 
+        clear_login_failures(email)
         access_token = serializer.validated_data["access"]
         refresh_token = serializer.validated_data["refresh"]
 
@@ -290,10 +363,11 @@ def password_reset_confirm_view(request):
 
     user.set_password(new_password)
     user.save(update_fields=["password"])
-    # The new password hash invalidates this and every other reset link. Drop the
-    # legacy API token too. JWTs can't be revoked yet (no blacklist): existing
-    # access tokens live out their 1 h, refresh tokens their 7/30 days.
-    Token.objects.filter(user=user).delete()
+    # The new password hash invalidates this and every other reset link. JWTs
+    # can't be revoked yet (no blacklist): existing access tokens live out their
+    # 1 h, refresh tokens their 7/30 days.
+    # A reset proves control of the inbox: lift any login lockout for it.
+    clear_login_failures(str(user.email or "").strip().lower())
     logger.info("Password reset completed for user_id=%s", user.pk)
 
     response = Response({"message": "Your password has been reset. You can now log in."})

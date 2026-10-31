@@ -11,7 +11,6 @@ DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABAS
 ```mermaid
 erDiagram
     Profile ||--o| PracticeStats : "practice_stats"
-    Profile ||--o| Token : "legacy token (OneToOne)"
     Profile ||--o{ Conversation : "sent_conversations (sender)"
     Profile ||--o{ Conversation : "received_conversations (receiver)"
     Conversation ||--o{ Message : "messages"
@@ -56,13 +55,13 @@ Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by
 | ws_connection_count | PositiveInt, default 0 |
 
 Meta: index `profile_username_upper_idx` on `Upper("username")` (for `username__iexact`).
-Manager: `create_user(username, password, **extra)` hashes the password. `create_superuser` (used by `manage.py createsuperuser`) lowercases the email and creates a **regular** account: there are no `is_staff` / `is_superuser` fields, so the Django admin stays unusable (it used to crash setting them).
+Manager: `create_user(username, password, **extra)` hashes the password. `create_superuser` (used by `manage.py createsuperuser`) lowercases the email and creates a **regular** account: there are no `is_staff` / `is_superuser` fields, and there is no Django admin (removed in security/abuse-limits).
 
 ### PracticeStats
 `user` OneToOne→Profile (`practice_stats`), points / xp / correct_answers / total_answers PositiveInt default 0, level PositiveInt default 1, preferred_language Char(50) `""`, updated_at auto_now. Index `pstats_points_idx` on `-points`. Created lazily with `get_or_create` in the practice views.
 
-### Token (legacy)
-`user` OneToOne→Profile (no related_name, so the reverse accessor is `token`), key UUID unique, created_at. Only `login_view` (`/api/login/`) issues these. `CustomTokenAuthentication` (defined in models.py) **is not in `DEFAULT_AUTHENTICATION_CLASSES`**, so the issued tokens authenticate nothing. Dead code, slated for deletion.
+### Token (removed)
+Dropped by migration `0033_delete_legacy_token` together with `/api/login/` and `CustomTokenAuthentication` (they authenticated nothing).
 
 ### Conversation
 `sender` FK→Profile (`sent_conversations`), `receiver` FK→Profile (`received_conversations`, **`default=1`**, legacy), created_at auto_now_add, updated_at auto_now.
@@ -129,10 +128,13 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 - Fields: `Message.attachment` (FileField → `default_storage`, upload name forced to `<uuid4hex><ext>`). `Profile.profile_image_url` and `complementary_image_{1,2}_url` are **plain CharFields holding URLs or paths**, not FileFields.
 - `STORAGES["default"]`: `chatapp.storage.CloudinaryMediaStorage` when `CLOUDINARY_URL` is set, otherwise `FileSystemStorage` (`MEDIA_ROOT = backend/media`, `MEDIA_URL = /media/`). `STORAGES["staticfiles"]`: `StaticFilesStorage` locally, otherwise whitenoise `CompressedManifestStaticFilesStorage` (`WHITENOISE_MANIFEST_STRICT = False`).
 - `CloudinaryMediaStorage`: picks the resource type from the extension (`.mp4 .webm .mov .ogg .mp3 .wav .m4a .aac` → video, else image). It keeps the extension on the stored name so `_get_url` and `delete` can derive the type again.
-- Profile image upload (`update_profile_image`, slot = profile|complementary_1|complementary_2): with Cloudinary it calls `cloudinary_upload(folder="profile_images")` directly and stores `secure_url` (absolute). Otherwise it uses `default_storage.save("profile_images/<uuid><ext>")` and stores `default_storage.url(path)` (e.g. `/media/profile_images/...`). `profile_edit_view` only accepts references to our own media or Cloudinary (`is_allowed_profile_image_reference`).
+- Profile image upload (`update_profile_image`, slot = profile|complementary_1|complementary_2): with Cloudinary it calls `cloudinary_upload(folder="profile_images")` directly and stores `secure_url` (absolute). Otherwise it uses `default_storage.save("profile_images/<uuid><ext>")` and stores `default_storage.url(path)` (e.g. `/media/profile_images/...`). `profile_edit_view` rejects any client-supplied `profile_image_url` (400 `invalid_profile_image`). Uploads must pass the magic-byte check, and the replaced file is deleted after the save (`delete_replaced_profile_image`: only our own Cloudinary cloud, derived from the Cloudinary config, or `profile_images/` in default storage; never the default avatar or a file another profile still references).
 - URL building:
   - `build_media_url(request, path)` (views.py): absolute http(s) URLs pass through, upgraded to https for herokuapp.com / langvoyage.com. Otherwise it strips a `/media/` or `media/` prefix, does `request.build_absolute_uri(MEDIA_URL + path)`, and forces https when the request host is a production host.
   - `ProfileSerializer.get_profile_image_url` duplicates this logic.
   - `MessageSerializer.get_attachment_url` uses `attachment.url` made absolute, with the same https upgrade.
   - `moderation_summary_view` returns the raw `profile_image_url` (not built).
 - `/media/` is served without auth (random filenames only).
+
+## Change log
+- security/abuse-limits: removed the `Token` model (migration 0033); profile image references are server-set only and replaced files are deleted.

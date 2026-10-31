@@ -24,11 +24,12 @@ import {
 } from "../api/conversationListCache";
 import {
   SESSION_REFRESHED_EVENT,
-  getLegacyAccessToken,
   refreshSessionOnce,
 } from "../../../utils/auth";
 import {
+  RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
+  SOCKET_RATE_LIMIT_CLOSE_CODE,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../../../utils/reconnect";
@@ -1107,10 +1108,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (!conversation?.id || !user) return;
 
     const wsBaseUrl = getWebSocketBaseUrl();
-    const legacyAccessToken = getLegacyAccessToken();
-    const url = legacyAccessToken
-      ? `${wsBaseUrl}/ws/socket-server/${conversation.id}/?token=${encodeURIComponent(legacyAccessToken)}`
-      : `${wsBaseUrl}/ws/socket-server/${conversation.id}/`;
+    // Authenticated by the lv_access cookie (the server no longer accepts ?token=).
+    const url = `${wsBaseUrl}/ws/socket-server/${conversation.id}/`;
     isSocketUnmountingRef.current = false;
     clearReconnectTimer();
     // Per-effect flag: the shared ref above is reset by the next effect run before the
@@ -1328,6 +1327,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           return;
         }
 
+        if (event.code === SOCKET_RATE_LIMIT_CLOSE_CODE) {
+          reconnectAttemptRef.current = Math.max(
+            reconnectAttemptRef.current,
+            RATE_LIMITED_RECONNECT_ATTEMPT
+          );
+        }
         setSocketStatus("reconnecting");
         scheduleReconnect();
       };

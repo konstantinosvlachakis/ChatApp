@@ -16,7 +16,6 @@ urlpatterns = [
     path("token/", CustomObtainJWTToken.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CustomRefreshJWTToken.as_view(), name="token_refresh"),
     path("logout/", logout_view, name="logout"),
-    path("login/", login_view, name="login"),
     path("register/", register_view, name="register"),
     path("auth/password-reset/", password_reset_request_view, name="password_reset"),
     path(

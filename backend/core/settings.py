@@ -54,6 +54,8 @@ env = os.getenv("DJANGO_ENV")
 if not env:
     # Auto-detect production for Heroku/runtime DB environments.
     env = "production" if os.getenv("DYNO") or os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL") else "local"
+# Exposed for app code (e.g. the per-process rate limit warning in chatapp.apps).
+ENVIRONMENT = env
 
 
 def scrub_sentry_event(event, hint):
@@ -160,7 +162,6 @@ INSTALLED_APPS = [
     "daphne",
     "channels",
     "corsheaders",
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -185,6 +186,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Permissions-Policy + CSP on HTML responses (settings PERMISSIONS_POLICY, CSP_MODE).
+    "core.security_headers.SecurityHeadersMiddleware",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -199,8 +202,11 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"  # Store sessions in the 
 SESSION_COOKIE_NAME = "sessionid"  # Default session cookie name
 
 
+# DEBUG is an explicit opt-in (DJANGO_DEBUG=true, local development only); it is
+# never inferred from DJANGO_ENV, so a misconfigured dyno can't leak debug pages.
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").strip().lower() == "true"
+
 if env == "local":
-    DEBUG = True
     SECURE_SSL_REDIRECT = False  # Ensure SSL redirect is disabled locally
     BASE_URL = "http://localhost:8000"  # Use HTTP for local dev
     # Local development across browser + simulator/phone can use changing LAN IPs.
@@ -219,10 +225,11 @@ if env == "local":
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 else:
-    DEBUG = False
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    USE_X_FORWARDED_HOST = True
+    # No USE_X_FORWARDED_HOST: Heroku's router keeps the original Host header, and
+    # trusting a client-supplied X-Forwarded-Host would let it pick the host used
+    # in absolute URLs (password reset links fall back to BASE_URL, media URLs).
     BASE_URL = "https://langvoyage-d3781c6fad54.herokuapp.com"  # Production URL
     CORS_ALLOWED_ORIGINS = [
         "https://langvoyage.com",
@@ -245,6 +252,24 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+# Sent by core.security_headers.SecurityHeadersMiddleware. Camera/microphone are
+# used by calls and voice messages, geolocation by the profile location.
+PERMISSIONS_POLICY = os.environ.get(
+    "PERMISSIONS_POLICY",
+    "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=()",
+)
+# Content-Security-Policy for the Django-served web app (HTML responses only).
+# "report-only" (default) sends Content-Security-Policy-Report-Only, "enforce"
+# sends the enforcing header, "off" sends neither. Enforce only after checking
+# the browser console on every page: the React build inlines its runtime chunk
+# and the font <link> uses an onload handler, so script-src allows inline.
+CSP_MODE = os.environ.get("CSP_MODE", "report-only").strip().lower()
+# Extra connect-src origins (comma separated), e.g. a Sentry ingest origin.
+CSP_EXTRA_CONNECT_SRC = env_list(
+    "CSP_EXTRA_CONNECT_SRC", ["https://*.ingest.sentry.io", "https://*.ingest.us.sentry.io"]
+)
+CSP_EXTRA_IMG_SRC = env_list("CSP_EXTRA_IMG_SRC", [])
 AUTH_COOKIE_ACCESS = "lv_access"
 AUTH_COOKIE_REFRESH = "lv_refresh"
 # Requests authenticated via the JWT cookie must carry a valid X-CSRFToken header.
@@ -396,19 +421,36 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": os.environ.get("DRF_THROTTLE_ANON", "300/hour"),
-        "user": os.environ.get("DRF_THROTTLE_USER", "3000/hour"),
-        # Login / register / token refresh (per client IP) - brute-force protection.
-        "auth": os.environ.get("DRF_THROTTLE_AUTH", "20/minute"),
-        # Endpoints that call paid / third-party APIs.
-        "translate": os.environ.get("DRF_THROTTLE_TRANSLATE", "60/minute"),
-        "report": os.environ.get("DRF_THROTTLE_REPORT", "20/hour"),
-        "push_devices": os.environ.get("DRF_THROTTLE_PUSH_DEVICES", "30/hour"),
-        # Password reset emails: per client IP and per (hashed) email address.
-        "password_reset": os.environ.get("DRF_THROTTLE_PASSWORD_RESET", "5/hour"),
-        "password_reset_email": os.environ.get(
-            "DRF_THROTTLE_PASSWORD_RESET_EMAIL", "5/hour"
-        ),
+        scope: os.environ.get(f"DRF_THROTTLE_{scope.upper()}", rate)
+        for scope, rate in {
+            # Global fallbacks (every view keeps these; see chatapp/throttles.py).
+            "anon": "300/hour",
+            "user": "3000/hour",
+            # Login / register / token refresh (per client IP) - brute-force protection.
+            "auth": "20/minute",
+            # Account creation per IP, on top of "auth".
+            "register": "5/hour",
+            "password_reset": "5/hour",
+            "password_reset_email": "5/hour",
+            # Per user (per IP when anonymous). Two scopes = two windows.
+            "conversation_create": "20/hour",
+            "conversation_create_daily": "100/day",
+            "message_send": "30/minute",
+            "message_send_daily": "1500/day",
+            # Message attachments + profile images share these.
+            "uploads": "30/hour",
+            "uploads_daily": "200/day",
+            "block": "30/hour",
+            # Endpoints that call paid / third-party APIs.
+            "translate": "20/minute",
+            "translate_daily": "500/day",
+            "practice_submit": "60/minute",
+            "profile_view": "120/minute",
+            "people": "60/minute",
+            "reactions": "120/minute",
+            "report": "20/hour",
+            "push_devices": "30/hour",
+        }.items()
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets
     # clients spoof their IP and bypass per-IP throttles.

@@ -6,12 +6,13 @@ from rest_framework.decorators import (
     permission_classes,
     throttle_classes,
 )
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import MultipleObjectsReturned, ValidationError
 from django.core.validators import validate_email
 import logging
 from urllib.parse import urlparse
-from .models import Token, Profile
+from .models import Profile
 import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -68,10 +69,23 @@ from .gemini import (
     generate_practice_challenge,
 )
 from .throttles import (
+    CONVERSATION_CREATE_THROTTLES,
+    UPLOAD_THROTTLES,
     AuthRateThrottle,
+    BlockRateThrottle,
+    MessageSendDailyRateThrottle,
+    MessageSendRateThrottle,
+    PeopleRateThrottle,
+    PracticeSubmitRateThrottle,
+    PublicProfileRateThrottle,
     PushDeviceRateThrottle,
+    ReactionRateThrottle,
+    RegisterRateThrottle,
     ReportRateThrottle,
+    TranslateDailyRateThrottle,
     TranslateRateThrottle,
+    check_throttles,
+    with_default_throttles,
 )
 from core.exceptions import error_response
 
@@ -136,6 +150,10 @@ COACH_CHAT_RATE_LIMIT_REQUESTS = int(
     os.environ.get("COACH_CHAT_RATE_LIMIT_REQUESTS", "12")
 )
 COACH_CHAT_DAILY_LIMIT = int(os.environ.get("COACH_CHAT_DAILY_LIMIT", "200"))
+# All users together, per UTC day: caps the Gemini bill if many accounts are used.
+COACH_GLOBAL_DAILY_LIMIT = int(os.environ.get("COACH_GLOBAL_DAILY_LIMIT", "5000"))
+# Practice XP a user can earn per UTC day (answers still count once it is reached).
+PRACTICE_DAILY_XP_LIMIT = int(os.environ.get("PRACTICE_DAILY_XP_LIMIT", "500"))
 COACH_CHAT_MAX_MESSAGE_LENGTH = int(
     os.environ.get("COACH_CHAT_MAX_MESSAGE_LENGTH", "2000")
 )
@@ -198,6 +216,102 @@ def release_db_connection():
         conn.close()
 
 
+# ISO base media (MP4/MOV/M4A/HEIC) files start with a box: 4-byte size + type.
+_ISO_BMFF_LEADING_BOXES = {b"ftyp", b"moov", b"mdat", b"wide", b"free", b"skip", b"pnot"}
+_HEIF_BRANDS = {
+    b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"hevm", b"hevs",
+    b"mif1", b"msf1", b"avif",
+}
+
+
+def _is_jpeg(head):
+    return head.startswith(b"\xff\xd8\xff")
+
+
+def _is_png(head):
+    return head.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def _is_gif(head):
+    return head[:6] in (b"GIF87a", b"GIF89a")
+
+
+def _is_webp(head):
+    return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+
+
+def _is_heif(head):
+    return head[4:8] == b"ftyp" and head[8:12] in _HEIF_BRANDS
+
+
+def _is_iso_bmff(head):
+    return head[4:8] in _ISO_BMFF_LEADING_BOXES
+
+
+def _is_ebml(head):  # WebM / Matroska
+    return head.startswith(b"\x1a\x45\xdf\xa3")
+
+
+def _is_ogg(head):
+    return head.startswith(b"OggS")
+
+
+def _is_mpeg_audio(head):  # MP3: ID3 tag or an MPEG frame sync
+    return head.startswith(b"ID3") or (
+        len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0
+    )
+
+
+def _is_wav(head):
+    return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+
+
+def _is_aac(head):  # ADTS frame sync, ADIF header, or an ID3-tagged stream
+    return (
+        head.startswith(b"ADIF")
+        or head.startswith(b"ID3")
+        or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xF6) == 0xF0)
+    )
+
+
+# The declared content type must match the file's first bytes, so a script or
+# an HTML page can't be stored under an image/audio/video type. (Images are
+# never decoded server-side: Pillow isn't installed; Cloudinary processes them.)
+UPLOAD_SIGNATURE_CHECKS = {
+    "image/jpeg": _is_jpeg,
+    "image/jpg": _is_jpeg,
+    "image/pjpeg": _is_jpeg,
+    "image/png": _is_png,
+    "image/gif": _is_gif,
+    "image/webp": _is_webp,
+    "image/heic": _is_heif,
+    "image/heif": _is_heif,
+    "video/mp4": _is_iso_bmff,
+    "video/quicktime": _is_iso_bmff,
+    "video/webm": _is_ebml,
+    "audio/webm": _is_ebml,
+    "audio/ogg": _is_ogg,
+    "audio/mpeg": _is_mpeg_audio,
+    "audio/mp3": _is_mpeg_audio,
+    "audio/wav": _is_wav,
+    "audio/x-wav": _is_wav,
+    "audio/wave": _is_wav,
+    "audio/mp4": _is_iso_bmff,
+    "audio/x-m4a": _is_iso_bmff,
+    "audio/aac": _is_aac,
+}
+
+
+def read_upload_head(uploaded_file, size=32):
+    try:
+        uploaded_file.seek(0)
+        head = uploaded_file.read(size) or b""
+        uploaded_file.seek(0)
+    except Exception:
+        return b""
+    return head if isinstance(head, bytes) else b""
+
+
 def validate_uploaded_file(uploaded_file, allowed_types, max_bytes):
     """Return (safe_extension, error_message)."""
     content_type = (getattr(uploaded_file, "content_type", "") or "").split(";")[0]
@@ -206,27 +320,106 @@ def validate_uploaded_file(uploaded_file, allowed_types, max_bytes):
         return None, "Unsupported file type."
     if uploaded_file.size is None or uploaded_file.size > max_bytes:
         return None, f"File is too large (max {max_bytes // (1024 * 1024)} MB)."
+    signature_check = UPLOAD_SIGNATURE_CHECKS.get(content_type)
+    if signature_check is None or not signature_check(read_upload_head(uploaded_file)):
+        return None, "The file content doesn't match its type."
     return allowed_types[content_type], None
 
 
-def is_allowed_profile_image_reference(request, value):
-    """Only accept image references that point at our own media or Cloudinary."""
-    normalized = str(value or "").strip()
-    if not normalized or len(normalized) > 255 or ".." in normalized:
+def get_cloudinary_cloud_name():
+    """The project's own Cloudinary cloud name (Cloudinary config, else the host
+    part of the CLOUDINARY_URL env var); "" when Cloudinary isn't configured."""
+    raw_url = os.environ.get("CLOUDINARY_URL", "")
+    if not raw_url:
+        return ""
+    try:
+        import cloudinary
+
+        name = cloudinary.config().cloud_name
+        if name:
+            return str(name)
+    except Exception:
+        pass
+    try:
+        return urlparse(raw_url).hostname or ""
+    except ValueError:
+        return ""
+
+
+def own_cloudinary_public_id(url):
+    """Public id of an image URL in our own Cloudinary cloud, else None.
+
+    https://res.cloudinary.com/<cloud>/image/upload/[<transforms>/][v123/]<id>.<ext>
+    """
+    cloud_name = get_cloudinary_cloud_name()
+    if not cloud_name:
+        return None
+    try:
+        parsed = urlparse(str(url or ""))
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or (parsed.hostname or "") != "res.cloudinary.com":
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 4 or parts[0] != cloud_name or parts[1] != "image" or parts[2] != "upload":
+        return None
+    rest = parts[3:]
+    for index, part in enumerate(rest):
+        if re.fullmatch(r"v\d+", part):
+            rest = rest[index + 1 :]
+            break
+    if not rest:
+        return None
+    return os.path.splitext("/".join(rest))[0] or None
+
+
+PROFILE_IMAGE_FIELDS = (
+    "profile_image_url",
+    "complementary_image_1_url",
+    "complementary_image_2_url",
+)
+
+
+def delete_replaced_profile_image(old_value):
+    """Best effort: remove a replaced profile image that no profile uses any more.
+
+    Only files we stored are touched: uploads in our own Cloudinary cloud, or
+    ``profile_images/`` in the default storage. Never the default avatar, never
+    a file another slot or account still references. Call it after the new
+    image is saved.
+    """
+    old_value = str(old_value or "").strip()
+    default_avatar = Profile._meta.get_field("profile_image_url").default
+    if not old_value or old_value == default_avatar:
         return False
-    parsed = urlparse(normalized)
-    if not parsed.scheme and not parsed.netloc:
-        return not normalized.startswith("//")
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    still_used = Q()
+    for field in PROFILE_IMAGE_FIELDS:
+        still_used |= Q(**{field: old_value})
+    if Profile.objects.filter(still_used).exists():
         return False
-    hostname = parsed.hostname.lower()
-    request_hostname = request.get_host().split(":")[0].lower()
-    return (
-        hostname == request_hostname
-        or hostname == "res.cloudinary.com"
-        or hostname in {"langvoyage.com", "www.langvoyage.com"}
-        or hostname.endswith(".herokuapp.com")
-    )
+    try:
+        public_id = own_cloudinary_public_id(old_value)
+        if public_id:
+            from cloudinary.uploader import destroy as cloudinary_destroy
+
+            cloudinary_destroy(public_id, invalidate=True, resource_type="image")
+            return True
+        if urlparse(old_value).scheme:
+            # Some other absolute URL (legacy data): not ours to delete.
+            return False
+        name = old_value
+        media_prefix = str(settings.MEDIA_URL or "/media/")
+        if name.startswith(media_prefix):
+            name = name[len(media_prefix) :]
+        name = name.lstrip("/")
+        if not name.startswith("profile_images/") or ".." in name or name == default_avatar:
+            return False
+        default_storage.delete(name)
+        return True
+    except Exception:
+        logger.warning("Could not delete a replaced profile image")
+        return False
+
 
 PRACTICE_LIBRARY = {
     "english": {
@@ -914,7 +1107,7 @@ def broadcast_presence_update(user_id, is_online):
 
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
-@throttle_classes([PushDeviceRateThrottle])
+@throttle_classes(with_default_throttles(PushDeviceRateThrottle))
 def push_devices_view(request):
     """Register (POST, upsert) or remove (DELETE, on logout) an Expo push token."""
     token = request.data.get("token") if hasattr(request.data, "get") else None
@@ -942,7 +1135,11 @@ def push_devices_view(request):
     }
     try:
         # A token is one app install: if it moved to another account, it now
-        # belongs to whoever registered it last.
+        # belongs to whoever registered it last (a phone that switches accounts
+        # without logging out). The old owner stops getting pushes on it at once,
+        # and the new owner only gets future pushes for their own messages: there
+        # is no history to replay. Expo tokens are only known to the device and
+        # Expo (no endpoint returns them), and registration is throttled.
         _device, created = PushDevice.objects.update_or_create(
             token=token, defaults=fields
         )
@@ -978,39 +1175,46 @@ def get_coach_chat_rate_limit_key(user_id):
     return f"coach_chat:rate_limit:user:{user_id}"
 
 
-def consume_coach_chat_rate_limit(user_id):
-    cache_key = get_coach_chat_rate_limit_key(user_id)
-    current_value = cache.get(cache_key)
-    if current_value is None:
-        cache.set(cache_key, 1, timeout=COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS)
-        return True
+def consume_cache_counter(cache_key, limit, timeout):
+    """Count one use in a fixed window; True while the count is within limit.
 
+    cache.add + cache.incr are atomic (Redis, and LocMem within a process), so
+    concurrent requests can't all read the same old value and slip through.
+    """
+    if limit <= 0:
+        return True
+    cache.add(cache_key, 0, timeout=timeout)
     try:
         next_value = cache.incr(cache_key)
     except ValueError:
-        cache.set(cache_key, 1, timeout=COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS)
+        # Expired between add and incr: this request opens a new window.
+        cache.set(cache_key, 1, timeout=timeout)
         return True
+    return int(next_value) <= limit
 
-    return int(next_value) <= COACH_CHAT_RATE_LIMIT_REQUESTS
+
+def consume_coach_chat_rate_limit(user_id):
+    return consume_cache_counter(
+        get_coach_chat_rate_limit_key(user_id),
+        COACH_CHAT_RATE_LIMIT_REQUESTS,
+        COACH_CHAT_RATE_LIMIT_WINDOW_SECONDS,
+    )
 
 
 def consume_coach_chat_daily_limit(user_id):
-    if COACH_CHAT_DAILY_LIMIT <= 0:
-        return True
-
-    cache_key = (
-        f"coach_chat:daily_limit:user:{user_id}:date:{timezone.now():%Y%m%d}"
+    return consume_cache_counter(
+        f"coach_chat:daily_limit:user:{user_id}:date:{timezone.now():%Y%m%d}",
+        COACH_CHAT_DAILY_LIMIT,
+        60 * 60 * 25,
     )
-    if cache.add(cache_key, 1, timeout=60 * 60 * 25):
-        return True
 
-    try:
-        next_value = cache.incr(cache_key)
-    except ValueError:
-        cache.set(cache_key, 1, timeout=60 * 60 * 25)
-        return True
 
-    return int(next_value) <= COACH_CHAT_DAILY_LIMIT
+def consume_coach_global_daily_budget():
+    return consume_cache_counter(
+        f"coach_chat:global_daily:date:{timezone.now():%Y%m%d}",
+        COACH_GLOBAL_DAILY_LIMIT,
+        60 * 60 * 25,
+    )
 
 
 def sanitize_language_name(value, fallback="english"):
@@ -1064,6 +1268,12 @@ def coach_chat_view(request):
             "coach_daily_limit",
             status.HTTP_429_TOO_MANY_REQUESTS,
         )
+    if not consume_coach_global_daily_budget():
+        return coach_error(
+            "Lumi is taking a break after a busy day. Please try again tomorrow.",
+            "coach_global_limit",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        )
 
     native_language = sanitize_language_name(
         getattr(request.user, "native_language", None)
@@ -1102,45 +1312,16 @@ def coach_chat_view(request):
     )
 
 
-# Legacy token login. No authentication runs here (so no CSRF is needed), but the
-# endpoint is throttled per IP to stop password brute-forcing.
-@api_view(["POST"])
-@authentication_classes([])
-@permission_classes([AllowAny])
-@throttle_classes([AuthRateThrottle])
-def login_view(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = str(data.get("email") or "").strip().lower()
-            password = data.get("password")
-
-            if not email or not password:
-                return JsonResponse(
-                    {"error": "Email and password required"}, status=400
-                )
-
-            # Retrieve the user from the Profile model
-            user = Profile.objects.filter(email__iexact=email).first()
-
-            # Check if the user exists and if the password is correct
-            if user and user.check_password(password):
-                # Create or retrieve the token
-                token, _ = Token.objects.get_or_create(user=user)
-                return JsonResponse({"token": token.key}, status=200)
-            else:
-                return JsonResponse({"error": "Invalid credentials"}, status=400)
-
-        except (json.JSONDecodeError, AttributeError):
-            return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
-    else:
-        return JsonResponse({"error": "Only POST method allowed"}, status=405)
+REGISTRATION_FAILED_MESSAGE = (
+    "We couldn't create that account. If you already have one, "
+    "log in or reset your password."
+)
 
 
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
-@throttle_classes([AuthRateThrottle])
+@throttle_classes([AuthRateThrottle, RegisterRateThrottle])
 def register_view(request):
     if request.method == "POST":
         try:
@@ -1191,10 +1372,6 @@ def register_view(request):
             if Profile.objects.filter(username__iexact=username).exists():
                 return JsonResponse({"error": "Username already exists", "code": "username_taken"}, status=400)
 
-            # Check if the email already exists
-            if Profile.objects.filter(email__iexact=email).exists():
-                return JsonResponse({"error": "Email already exists", "code": "email_taken"}, status=400)
-
             # Enforce settings.AUTH_PASSWORD_VALIDATORS.
             try:
                 validate_password(
@@ -1203,6 +1380,17 @@ def register_view(request):
                 )
             except ValidationError as error:
                 return JsonResponse({"error": " ".join(error.messages)}, status=400)
+
+            # An existing email gets a generic answer (no "email already exists"),
+            # after the same password hashing a real signup does, so neither the
+            # message nor the timing says the address has an account. Usernames
+            # are public, so "username taken" above stays specific.
+            if Profile.objects.filter(email__iexact=email).exists():
+                make_password(str(password))
+                return JsonResponse(
+                    {"error": REGISTRATION_FAILED_MESSAGE, "code": "registration_failed"},
+                    status=400,
+                )
 
             # Create the new user
             Profile.objects.create_user(
@@ -1270,6 +1458,7 @@ def profile_view(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(PeopleRateThrottle))
 def profile_data_view(request):
     page_param = request.query_params.get("page", "1")
     page_size_param = request.query_params.get(
@@ -1393,6 +1582,7 @@ def profile_data_view(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(PublicProfileRateThrottle))
 def public_profile_view(request, username):
     profile = get_profile_by_username_or_404(username)
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
@@ -1451,9 +1641,7 @@ def profile_edit_view(request):
         bio = data.get("bio")
         learning_goal = data.get("learning_goal")
         avatar_ring_color = data.get("avatar_ring_color")
-        profile_image_url = data.get(
-            "profile_image_url"
-        )  # Include profile image URL if necessary
+        profile_image_url = data.get("profile_image_url")
 
         # Update only if data is provided
         if username:
@@ -1572,11 +1760,16 @@ def profile_edit_view(request):
                 )
             user.avatar_ring_color = normalized_ring_color
         if profile_image_url:
-            # Only allow references to our own media / Cloudinary, never arbitrary
-            # third-party URLs (tracking pixels) or path tricks.
-            if not is_allowed_profile_image_reference(request, profile_image_url):
-                return JsonResponse({"error": "Invalid profile image URL"}, status=400)
-            user.profile_image_url = str(profile_image_url).strip()  # Update profile image URL
+            # Images only change through the upload endpoint (neither client sends
+            # a URL here): a client-chosen URL could point at a tracking pixel,
+            # another Cloudinary account or someone else's upload.
+            return JsonResponse(
+                {
+                    "error": "Profile photos can only be changed by uploading an image.",
+                    "code": "invalid_profile_image",
+                },
+                status=400,
+            )
 
         # Save the updated user object
         user.save()
@@ -1672,6 +1865,7 @@ def delete_account_view(request):
 
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(BlockRateThrottle))
 def block_user_view(request, username):
     target = get_profile_by_username_or_404(username)
 
@@ -1748,7 +1942,7 @@ def moderation_summary_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@throttle_classes([ReportRateThrottle])
+@throttle_classes(with_default_throttles(ReportRateThrottle))
 def report_user_view(request, username):
     target = get_profile_by_username_or_404(username)
 
@@ -1906,6 +2100,10 @@ class MessageListView(APIView):
         return Response(payload, status=status.HTTP_200_OK)
 
     parser_classes = (MultiPartParser, FormParser)  # Allow handling of file uploads
+    # POST only (GET history is not counted); attachments also count as uploads.
+    throttle_classes = with_default_throttles(
+        MessageSendRateThrottle, MessageSendDailyRateThrottle
+    )
 
     def post(self, request, conversation_id):
         # Fetch conversation where the user is the sender
@@ -1949,6 +2147,7 @@ class MessageListView(APIView):
                     {"error": attachment_error},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            check_throttles(request, self, UPLOAD_THROTTLES)
             # Never trust the client filename: it controls the served content type.
             attachment.name = f"{uuid.uuid4().hex}{safe_extension}"
 
@@ -2280,6 +2479,9 @@ class ConversationListView(APIView):
                 .first()
             )
             if not conversation:
+                # Opening an existing chat is free; only new conversations count
+                # (raises Throttled -> 429, the transaction rolls back).
+                check_throttles(request, self, CONVERSATION_CREATE_THROTTLES)
                 conversation = Conversation.objects.create(
                     sender=user, receiver=participant
                 )
@@ -2332,6 +2534,7 @@ def mark_conversation_read_view(request, conversation_id):
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(*UPLOAD_THROTTLES))
 def update_profile_image(request, user_id):
     if request.user.id != int(user_id):
         return Response(
@@ -2388,15 +2591,17 @@ def update_profile_image(request, user_id):
             except Exception:
                 stored_url = path
 
-        if slot == "complementary_1":
-            profile.complementary_image_1_url = stored_url
-        elif slot == "complementary_2":
-            profile.complementary_image_2_url = stored_url
-        else:
-            profile.profile_image_url = stored_url
+        slot_field = {
+            "complementary_1": "complementary_image_1_url",
+            "complementary_2": "complementary_image_2_url",
+        }.get(slot, "profile_image_url")
+        previous_url = getattr(profile, slot_field)
+        setattr(profile, slot_field, stored_url)
 
         profile.save()
         bump_profile_cache_version(profile.id)
+        if previous_url and previous_url != stored_url:
+            delete_replaced_profile_image(previous_url)
         return Response(
             {
                 "message": "Profile image updated successfully.",
@@ -2504,7 +2709,9 @@ def fetch_google_translation(text, target_language):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-@throttle_classes([TranslateRateThrottle])
+@throttle_classes(
+    with_default_throttles(TranslateRateThrottle, TranslateDailyRateThrottle)
+)
 def translate_message_view(request):
     message_id = request.data.get("message_id")
     text = str(request.data.get("text") or "").strip()
@@ -2676,6 +2883,7 @@ def translate_message_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(ReactionRateThrottle))
 def react_to_message_view(request, message_id):
     message = get_object_or_404(
         Message.objects.select_related("conversation"), id=message_id
@@ -3525,8 +3733,28 @@ def practice_challenge_view(request):
     )
 
 
+def practice_daily_xp_cache_key(user_id):
+    return f"practice:daily_xp:v1:user:{user_id}:date:{timezone.now():%Y%m%d}"
+
+
+def consume_practice_daily_xp(user_id, xp):
+    """Reserve up to ``xp`` of today's XP allowance; returns the XP granted."""
+    if xp <= 0 or PRACTICE_DAILY_XP_LIMIT <= 0:
+        return xp
+    cache_key = practice_daily_xp_cache_key(user_id)
+    cache.add(cache_key, 0, timeout=60 * 60 * 25)
+    try:
+        total = int(cache.incr(cache_key, xp))
+    except ValueError:
+        cache.set(cache_key, xp, timeout=60 * 60 * 25)
+        total = xp
+    over = total - PRACTICE_DAILY_XP_LIMIT
+    return xp if over <= 0 else max(0, xp - over)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(PracticeSubmitRateThrottle))
 def practice_submit_view(request):
     challenge_id = request.data.get("challenge_id")
     selected_word = (request.data.get("selected_word") or "").strip()
@@ -3568,12 +3796,21 @@ def practice_submit_view(request):
     already_scored = not cache.add(
         scored_key, {"correct": is_correct}, timeout=PRACTICE_SCORED_TTL_SECONDS
     )
+    daily_xp_limit_reached = False
     if already_scored:
         previous = cache.get(scored_key) or {}
         is_correct = bool(previous.get("correct", is_correct))
         awarded_xp = 0
         awarded_points = 0
     else:
+        # Daily XP cap (stops scripted farming of the leaderboard): past it the
+        # answer still counts, but no XP or points are awarded.
+        granted_xp = consume_practice_daily_xp(request.user.id, awarded_xp)
+        if granted_xp < awarded_xp:
+            daily_xp_limit_reached = True
+            if granted_xp == 0:
+                awarded_points = 0
+            awarded_xp = granted_xp
         try:
             # Atomic increments so concurrent submits don't lose updates. The level
             # mirrors practice_level_from_xp(): (xp // 100) + 1 on the new xp value.
@@ -3602,6 +3839,7 @@ def practice_submit_view(request):
             "awarded_xp": awarded_xp,
             "awarded_points": awarded_points,
             "already_scored": already_scored,
+            "daily_xp_limit_reached": daily_xp_limit_reached,
             "language": language,
             "stats": serialize_practice_stats(stats),
             "leaderboard": leaderboard,

@@ -41,8 +41,7 @@ web socket room-leak fix, route guard, logout cleanup, mobile https-only release
 ## Security backlog (open)
 - **User action:** rotate every credential that was in the committed `.env` — it is still in git history (history rewrite needs a force-push; ask first).
 - Refresh tokens not rotated/blacklisted → logout doesn't revoke (backend + web + mobile change).
-- Legacy `/api/login/` + `Token` model issue non-expiring tokens; unused → delete.
-- Backend still accepts `?token=` on websockets; web has a localhost-only legacy token fallback. Remove both together.
+- ~~Legacy `/api/login/` + `Token`~~ and ~~`?token=` websocket auth~~: removed in security/abuse-limits (web's localhost legacy tokens remain for HTTP only).
 - `/media/` served without auth (filenames now random) → signed/private delivery.
 - Practice points farmable by replaying answers.
 - Web profile page requests geolocation automatically and sends coords to a third-party geocoder → make opt-in.
@@ -93,3 +92,6 @@ Update this table as features land.
 - Commits: author as `konstantinosvlachakis` (per-command `git -c user.name/user.email`), never a Claude co-author line. Short `type(scope): summary` + bullets. Ask before committing/pushing.
 - Never open or print `.env` files or secret values; refer to env vars by name only.
 - Don't install packages or run cloud/Heroku commands without explicit approval.
+
+## Change log
+- security/abuse-limits: abuse limits PR: admin, legacy login/Token and `?token=` ws auth removed; scoped throttles, login lockout, websocket limits, upload signature checks, security headers (see backend-status).

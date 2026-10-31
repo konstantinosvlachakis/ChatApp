@@ -30,7 +30,9 @@ import {
   resetPresenceEvents,
 } from "../services/presenceEvents";
 import {
+  RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
+  SOCKET_RATE_LIMIT_CLOSE_CODE,
   getReconnectDelayMs,
   startPresenceHeartbeat,
 } from "../services/realtime";
@@ -405,6 +407,9 @@ function AppTabs() {
             })
             .catch(() => {});
           return;
+        }
+        if (event?.code === SOCKET_RATE_LIMIT_CLOSE_CODE) {
+          reconnectAttempt = Math.max(reconnectAttempt, RATE_LIMITED_RECONNECT_ATTEMPT);
         }
         // Flag the banner only once a reconnect has already failed (no flicker on blips).
         if (reconnectAttempt > 0) setSocketReconnecting(true);

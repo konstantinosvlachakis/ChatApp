@@ -121,7 +121,6 @@ export const SESSION_REFRESHED_EVENT = "session-refreshed";
 const AUTH_ENDPOINT_PATHS = new Set([
   "/api/token/",
   "/api/token/refresh/",
-  "/api/login/",
   "/api/logout/",
   "/api/register/",
   "/api/csrf/",

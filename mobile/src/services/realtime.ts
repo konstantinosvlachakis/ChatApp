@@ -8,6 +8,11 @@ export const PRESENCE_HEARTBEAT_FRAME = JSON.stringify({ type: "heartbeat" });
 
 // Close codes the backend uses to reject unauthenticated/unauthorised sockets.
 export const SOCKET_AUTH_CLOSE_CODES = new Set([1008, 4401, 4403]);
+// The backend closes with 4429 when the user has too many sockets open or a socket
+// floods frames. The socket was accepted first (onopen reset the backoff), so jump
+// to the long end of the backoff instead of retrying within a second.
+export const SOCKET_RATE_LIMIT_CLOSE_CODE = 4429;
+export const RATE_LIMITED_RECONNECT_ATTEMPT = 5;
 
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
