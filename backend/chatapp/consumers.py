@@ -5,12 +5,13 @@ import os
 import time
 import uuid
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from channels.db import database_sync_to_async
 from channels.exceptions import StopConsumer
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
+from django.core.cache import cache
 from django.db.models import Exists, F, OuterRef, Q
 from django.http.request import validate_host
 from django.utils import timezone
@@ -30,6 +31,31 @@ PRESENCE_TOUCH_INTERVAL_SECONDS = int(
 )
 # Generous enough for WebRTC SDP payloads, small enough to stop memory abuse.
 WS_MAX_MESSAGE_BYTES = int(os.environ.get("WS_MAX_MESSAGE_BYTES", str(64 * 1024)))
+
+# Abuse limits (all per connection unless noted). Excess frames are dropped
+# silently; only sustained abuse closes the socket with WS_RATE_LIMIT_CLOSE_CODE.
+WS_FRAME_RATE_PER_SECOND = float(os.environ.get("WS_FRAME_RATE_PER_SECOND", "10"))
+WS_FRAME_BURST = float(os.environ.get("WS_FRAME_BURST", "20"))
+WS_TYPING_RATE_PER_SECOND = float(os.environ.get("WS_TYPING_RATE_PER_SECOND", "2"))
+# Clients only send typing on start/stop transitions; a small burst keeps a
+# quick type-clear-type from dropping the "stopped" frame.
+WS_TYPING_BURST = float(os.environ.get("WS_TYPING_BURST", "4"))
+WS_CALL_INVITES_PER_MINUTE = float(os.environ.get("WS_CALL_INVITES_PER_MINUTE", "5"))
+WS_MAX_DROPPED_FRAMES_PER_MINUTE = int(
+    os.environ.get("WS_MAX_DROPPED_FRAMES_PER_MINUTE", "100")
+)
+# Open sockets per user (across processes when the cache is Redis).
+WS_MAX_CHAT_SOCKETS_PER_USER = int(os.environ.get("WS_MAX_CHAT_SOCKETS_PER_USER", "10"))
+WS_MAX_PRESENCE_SOCKETS_PER_USER = int(
+    os.environ.get("WS_MAX_PRESENCE_SOCKETS_PER_USER", "5")
+)
+# The per-user socket counters expire this long after the first socket opened,
+# so counts leaked by a crashed process heal themselves (the cap briefly fails
+# open when a counter expires under live sockets).
+WS_CONNECTION_COUNT_TTL_SECONDS = int(
+    os.environ.get("WS_CONNECTION_COUNT_TTL_SECONDS", "3600")
+)
+WS_RATE_LIMIT_CLOSE_CODE = 4429
 
 # Consumer DB calls run on the default thread pool. The default
 # thread_sensitive=True would funnel every socket in the process through
@@ -72,7 +98,8 @@ def increment_presence_count(user_id):
 
     Atomic UPDATEs only (no row lock). A user still flagged online but with
     a stale last_seen (e.g. counts left behind by a crash) counts as coming
-    online, so contacts get told.
+    online, so contacts get told. Returns None if the user no longer exists
+    (a deleted account whose access token is still valid).
     """
     now = timezone.now()
     threshold = now - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
@@ -80,13 +107,12 @@ def increment_presence_count(user_id):
         id=user_id, is_online=True, last_seen__gte=threshold
     ).update(ws_connection_count=F("ws_connection_count") + 1, last_seen=now):
         return False
-    return bool(
-        Profile.objects.filter(id=user_id).update(
-            ws_connection_count=F("ws_connection_count") + 1,
-            is_online=True,
-            last_seen=now,
-        )
+    updated = Profile.objects.filter(id=user_id).update(
+        ws_connection_count=F("ws_connection_count") + 1,
+        is_online=True,
+        last_seen=now,
     )
+    return True if updated else None
 
 
 def get_online_user_ids(user_ids):
@@ -115,7 +141,136 @@ async def send_presence_update(channel_layer, user_id, is_online, contact_ids):
         await channel_layer.group_send(user_presence_group_name(contact_id), event)
 
 
+class TokenBucket:
+    """Classic token bucket on the monotonic clock (one per connection/type)."""
+
+    def __init__(self, rate_per_second, burst):
+        self.rate = float(rate_per_second)
+        self.capacity = max(1.0, float(burst))
+        self.tokens = self.capacity
+        self.updated = time.monotonic()
+
+    def allow(self):
+        now = time.monotonic()
+        self.tokens = min(self.capacity, self.tokens + (now - self.updated) * self.rate)
+        self.updated = now
+        if self.tokens >= 1:
+            self.tokens -= 1
+            return True
+        return False
+
+
+def socket_count_cache_key(kind, user_id):
+    return f"ws:connections:v1:{kind}:user:{user_id}"
+
+
+def reserve_socket_slot(kind, user_id, limit):
+    """Count an opening socket; False (and nothing counted) if over the cap."""
+    if limit <= 0:
+        return True
+    key = socket_count_cache_key(kind, user_id)
+    try:
+        cache.add(key, 0, timeout=WS_CONNECTION_COUNT_TTL_SECONDS)
+        try:
+            count = int(cache.incr(key))
+        except ValueError:
+            cache.set(key, 1, timeout=WS_CONNECTION_COUNT_TTL_SECONDS)
+            return True
+        if count > limit:
+            cache.decr(key)
+            return False
+    except Exception:
+        # A cache outage must not take realtime down: fail open.
+        logger.warning("Websocket connection counter unavailable")
+    return True
+
+
+def release_socket_slot(kind, user_id):
+    key = socket_count_cache_key(kind, user_id)
+    try:
+        if int(cache.decr(key)) < 0:
+            cache.set(key, 0, timeout=WS_CONNECTION_COUNT_TTL_SECONDS)
+    except ValueError:
+        pass  # Counter expired: nothing to release.
+    except Exception:
+        logger.warning("Websocket connection counter unavailable")
+
+
 class PresenceTrackingMixin:
+    # "chat" / "presence": which per-user socket cap applies.
+    socket_kind = None
+
+    def init_abuse_limits(self):
+        self.socket_slot_reserved = False
+        self.frame_bucket = TokenBucket(WS_FRAME_RATE_PER_SECOND, WS_FRAME_BURST)
+        self.type_buckets = {
+            "typing": TokenBucket(WS_TYPING_RATE_PER_SECOND, WS_TYPING_BURST),
+            "call_invite": TokenBucket(
+                WS_CALL_INVITES_PER_MINUTE / 60.0, WS_CALL_INVITES_PER_MINUTE
+            ),
+        }
+        self.dropped_window_start = time.monotonic()
+        self.dropped_in_window = 0
+        self.closing_for_abuse = False
+
+    def socket_limit(self):
+        if self.socket_kind == "chat":
+            return WS_MAX_CHAT_SOCKETS_PER_USER
+        return WS_MAX_PRESENCE_SOCKETS_PER_USER
+
+    async def reserve_socket_slot(self, user_id):
+        # Cache calls can block (Redis), so they run off the event loop too.
+        reserved = await db_async(reserve_socket_slot)(
+            self.socket_kind, user_id, self.socket_limit()
+        )
+        self.socket_slot_reserved = bool(reserved)
+        return reserved
+
+    async def release_socket_slot(self, user_id):
+        if getattr(self, "socket_slot_reserved", False):
+            self.socket_slot_reserved = False
+            await db_async(release_socket_slot)(self.socket_kind, user_id)
+
+    async def reject(self, code):
+        # Accept first so the client receives the close code; closing during the
+        # handshake shows up in browsers as a bare 1006.
+        await self.accept()
+        await self.close(code=code)
+
+    def _type_bucket(self, message_type):
+        if message_type in {"user_typing", "user_stopped_typing"}:
+            return self.type_buckets["typing"]
+        if message_type == "call_invite":
+            return self.type_buckets["call_invite"]
+        return None
+
+    async def allow_frame(self):
+        """Per-connection frame budget. False means drop the frame (silently)."""
+        if getattr(self, "closing_for_abuse", False):
+            return False
+        if self.frame_bucket.allow():
+            return True
+        await self.record_dropped_frame("frame rate")
+        return False
+
+    async def record_dropped_frame(self, reason):
+        """Count a dropped frame; more than WS_MAX_DROPPED_FRAMES_PER_MINUTE in a
+        minute closes the socket with 4429 (sustained abuse)."""
+        now = time.monotonic()
+        if now - self.dropped_window_start >= 60:
+            self.dropped_window_start = now
+            self.dropped_in_window = 0
+        self.dropped_in_window += 1
+        logger.debug("Dropped websocket frame (%s) on %s", reason, self.connection_id)
+        if self.dropped_in_window > WS_MAX_DROPPED_FRAMES_PER_MINUTE and not self.closing_for_abuse:
+            self.closing_for_abuse = True
+            logger.info(
+                "Closing websocket %s for sustained frame abuse (user %s)",
+                self.connection_id,
+                getattr(self, "user_id", None),
+            )
+            await self.close(code=WS_RATE_LIMIT_CLOSE_CODE)
+
     @property
     def connection_id(self):
         """Per-connection id used as the log "request id" for this socket."""
@@ -152,9 +307,8 @@ class PresenceTrackingMixin:
             # (prevents cross-site WebSocket hijacking).
             if token and not self._origin_is_allowed():
                 return None
-        if not token:
-            query_string = self.scope.get("query_string", b"").decode()
-            token = parse_qs(query_string).get("token", [None])[0]
+        # The legacy ?token= query parameter is not accepted: URLs end up in
+        # proxy/server logs and browser history.
         if not token:
             return None
 
@@ -298,11 +452,14 @@ class PresenceTrackingMixin:
 
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
+    socket_kind = "chat"
+
     async def connect(self):
         self.room_group_name = None
         self.username = None
         self.other_user_id = None
         self.contact_ids = None
+        self.init_abuse_limits()
         self.user_id = await self.get_user_id_from_token()
 
         # Only authenticated participants may join a conversation's group. The
@@ -313,15 +470,18 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         except (KeyError, TypeError, ValueError):
             conversation_id = None
         if self.user_id and conversation_id is not None:
+            # Deleted accounts have no conversations, so this rejects them too.
             details = await self.get_participant_details(conversation_id, self.user_id)
             if details:
                 self.username, self.other_user_id = details
         if not self.username:
             self.user_id = None
-            # Accept first so the client receives the 4403 close code; closing
-            # during the handshake shows up in browsers as a bare 1006.
-            await self.accept()
-            await self.close(code=4403)
+            await self.reject(4403)
+            return
+        if not await self.reserve_socket_slot(self.user_id):
+            # Too many open chat sockets for this user.
+            self.user_id = None
+            await self.reject(WS_RATE_LIMIT_CLOSE_CODE)
             return
 
         self.room_group_name = str(conversation_id)
@@ -336,6 +496,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         if not getattr(self, "room_group_name", None):
             return
+        if self.user_id:
+            await self.release_socket_slot(self.user_id)
         await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
         if self.user_id:
             try:
@@ -372,7 +534,12 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 await self.broadcast_presence(False)
 
     async def receive(self, text_data=None, bytes_data=None):
-        if not self.user_id or not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
+        if not self.user_id:
+            return
+        if not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
+            await self.record_dropped_frame("empty or oversized")
+            return
+        if not await self.allow_frame():
             return
         try:
             data = json.loads(text_data)
@@ -381,6 +548,11 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if not isinstance(data, dict):
             return
         message_type = data.get("type")
+        # Typing (2/s) and call_invite (5/min) have their own budgets.
+        bucket = self._type_bucket(message_type)
+        if bucket is not None and not bucket.allow():
+            await self.record_dropped_frame(f"{message_type} rate")
+            return
         call_event_types = {
             "call_invite",
             "call_accept",
@@ -530,13 +702,19 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
 
 class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
+    socket_kind = "presence"
+
     async def connect(self):
         self.contact_ids = None
+        self.init_abuse_limits()
         self.user_id = await self.get_user_id_from_token()
         if not self.user_id:
-            # Accept first so the client receives 4401 instead of a bare 1006.
-            await self.accept()
-            await self.close(code=4401)
+            await self.reject(4401)
+            return
+        if not await self.reserve_socket_slot(self.user_id):
+            # Too many open presence sockets for this user.
+            self.user_id = None
+            await self.reject(WS_RATE_LIMIT_CLOSE_CODE)
             return
 
         # Only the user's own group: presence changes are delivered here by
@@ -549,6 +727,15 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         became_online, self.contact_ids, online_ids = await self.open_presence(
             self.user_id
         )
+        if became_online is None:
+            # The account was deleted but its access token is still valid.
+            user_id, self.user_id = self.user_id, None
+            await self.release_socket_slot(user_id)
+            await self.channel_layer.group_discard(
+                user_presence_group_name(user_id), self.channel_name
+            )
+            await self.close(code=4401)
+            return
         self.last_touch_monotonic = time.monotonic()
         if became_online:
             await self.broadcast_presence(True)
@@ -566,12 +753,15 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         Returns (became_online, contact_ids, online_contact_ids).
         """
         became_online = increment_presence_count(user_id)
+        if became_online is None:
+            return None, set(), []
         contact_ids = get_presence_contact_ids(user_id)
         return became_online, contact_ids, get_online_user_ids(contact_ids)
 
     async def disconnect(self, close_code):
         if not getattr(self, "user_id", None):
             return
+        await self.release_socket_slot(self.user_id)
         await self.channel_layer.group_discard(
             user_presence_group_name(self.user_id), self.channel_name
         )
@@ -584,6 +774,9 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if not getattr(self, "user_id", None):
             return
         if not text_data or len(text_data) > WS_MAX_MESSAGE_BYTES:
+            await self.record_dropped_frame("empty or oversized")
+            return
+        if not await self.allow_frame():
             return
         try:
             payload = json.loads(text_data or "{}")

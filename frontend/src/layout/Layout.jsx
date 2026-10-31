@@ -23,11 +23,12 @@ import "./appShell.css";
 import {
   SESSION_REFRESHED_EVENT,
   clearClientSessionData,
-  getLegacyAccessToken,
   refreshSessionOnce,
 } from "../utils/auth";
 import {
+  RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
+  SOCKET_RATE_LIMIT_CLOSE_CODE,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../utils/reconnect";
@@ -162,11 +163,8 @@ const Layout = () => {
       if (isUnmounted) return;
       clearPresenceTimers();
 
-      const legacyAccessToken = getLegacyAccessToken();
-      const socketUrl = legacyAccessToken
-        ? `${wsBaseUrl}/ws/presence/?token=${encodeURIComponent(legacyAccessToken)}`
-        : `${wsBaseUrl}/ws/presence/`;
-      const socket = new WebSocket(socketUrl);
+      // Authenticated by the lv_access cookie (the server no longer accepts ?token=).
+      const socket = new WebSocket(`${wsBaseUrl}/ws/presence/`);
       presenceSocketRef.current = socket;
 
       socket.onopen = () => {
@@ -233,6 +231,9 @@ const Layout = () => {
             refreshSessionOnce();
           }
           return;
+        }
+        if (event.code === SOCKET_RATE_LIMIT_CLOSE_CODE) {
+          reconnectAttempt = Math.max(reconnectAttempt, RATE_LIMITED_RECONNECT_ATTEMPT);
         }
         scheduleReconnect();
       };

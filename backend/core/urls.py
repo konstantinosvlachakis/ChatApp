@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib import admin
 from django.urls import path, include, re_path
 from django.views.static import serve
 from .views import api_not_found, csrf, front, health
@@ -11,7 +10,8 @@ FRONTEND_BUILD_DIR = Path(settings.TEMPLATES[0]["DIRS"][0])
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # No Django admin: Profile has no is_staff, so /admin/ was only an
+    # unthrottled password oracle. /admin/ now falls through to the SPA.
     path("api/csrf/", csrf, name="csrf"),
     path("api/health/", health, name="health"),
     path("api/", include("chatapp.urls")),

@@ -11,7 +11,6 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from chatapp.auth_views import PASSWORD_RESET_REQUEST_MESSAGE
-from chatapp.models import Token
 from chatapp.throttles import PasswordResetEmailThrottle, PasswordResetIPThrottle
 
 from .factory import make_user
@@ -111,7 +110,6 @@ class PasswordResetTests(TestCase):
         self.assertNotIn("forgetful@example.com", "\n".join(logs.output))
 
     def test_confirm_sets_password_and_link_is_single_use(self):
-        Token.objects.create(user=self.user)
         uid, token = self._link_parts()
 
         response = self._confirm(uid, token)
@@ -119,7 +117,6 @@ class PasswordResetTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(NEW_PASSWORD))
-        self.assertFalse(Token.objects.filter(user=self.user).exists())
 
         reuse = self._confirm(uid, token, "another-Passphrase-55")
         self.assertEqual(reuse.status_code, status.HTTP_400_BAD_REQUEST)

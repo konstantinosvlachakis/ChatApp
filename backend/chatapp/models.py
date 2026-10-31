@@ -1,10 +1,7 @@
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Upper
-import uuid
 from django.utils import timezone
-from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.conf import settings
 
@@ -113,36 +110,6 @@ class PracticeStats(models.Model):
 
     def __str__(self):
         return f"PracticeStats(user={self.user_id}, points={self.points}, level={self.level})"
-
-
-class Token(models.Model):
-    user = models.OneToOneField(
-        Profile, on_delete=models.CASCADE
-    )  # Link to Profile, ensuring each Profile can have one Token
-    key = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return str(self.key)
-
-
-class CustomTokenAuthentication(BaseAuthentication):
-    def authenticate(self, request):
-        token_key = request.headers.get("Authorization")
-        if not token_key:
-            return None  # No token in request
-
-        if token_key.startswith("Token "):
-            token_key = token_key[6:]
-
-        try:
-            token = Token.objects.get(key=token_key)
-            return (
-                token.user,
-                token,
-            )
-        except Token.DoesNotExist:
-            raise AuthenticationFailed("Invalid or expired token")
 
 
 # Messaging Models

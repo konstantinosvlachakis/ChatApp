@@ -1,9 +1,51 @@
 import hashlib
 
+from rest_framework.exceptions import Throttled
+from rest_framework.settings import api_settings
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle, UserRateThrottle
 
 
-# Rates are configured in settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].
+# Rates are configured in settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+# (each overridable by the env var DRF_THROTTLE_<SCOPE>).
+#
+# A view's explicit throttle_classes REPLACE the global defaults, so views that
+# add a scope use with_default_throttles(...) to keep the anon/user limits too.
+# A scope with two windows (per minute AND per day) is two classes.
+
+
+def with_default_throttles(*throttle_classes):
+    return [*api_settings.DEFAULT_THROTTLE_CLASSES, *throttle_classes]
+
+
+class ScopedUserThrottle(UserRateThrottle):
+    """Per user when authenticated, per client IP otherwise.
+
+    ``methods`` limits the throttle to some HTTP methods (e.g. only POST on a
+    view that also lists with GET); other methods are not counted.
+    """
+
+    methods = None
+
+    def get_cache_key(self, request, view):
+        if self.methods and request.method not in self.methods:
+            return None
+        return super().get_cache_key(request, view)
+
+
+def check_throttles(request, view, throttle_classes):
+    """Run throttles inside a view (for limits that only apply on some paths,
+    e.g. uploads or creating a new conversation). Raises Throttled (429
+    envelope with Retry-After via core.exceptions)."""
+    waits = []
+    for throttle_class in throttle_classes:
+        throttle = throttle_class()
+        if not throttle.allow_request(request, view):
+            waits.append(throttle.wait())
+    if waits:
+        known = [wait for wait in waits if wait is not None]
+        raise Throttled(wait=max(known) if known else None)
+
+
 class AuthRateThrottle(AnonRateThrottle):
     """Per-IP limit for login / register / token refresh (brute-force protection)."""
 
@@ -17,16 +59,81 @@ class AuthRateThrottle(AnonRateThrottle):
         }
 
 
-class TranslateRateThrottle(UserRateThrottle):
+class RegisterRateThrottle(AuthRateThrottle):
+    """Per-IP account creation limit (on top of the shared auth bucket)."""
+
+    scope = "register"
+
+
+class TranslateRateThrottle(ScopedUserThrottle):
     scope = "translate"
 
 
-class ReportRateThrottle(UserRateThrottle):
+class TranslateDailyRateThrottle(ScopedUserThrottle):
+    scope = "translate_daily"
+
+
+class ReportRateThrottle(ScopedUserThrottle):
     scope = "report"
 
 
-class PushDeviceRateThrottle(UserRateThrottle):
+class PushDeviceRateThrottle(ScopedUserThrottle):
     scope = "push_devices"
+
+
+class ConversationCreateRateThrottle(ScopedUserThrottle):
+    scope = "conversation_create"
+
+
+class ConversationCreateDailyRateThrottle(ScopedUserThrottle):
+    scope = "conversation_create_daily"
+
+
+class MessageSendRateThrottle(ScopedUserThrottle):
+    scope = "message_send"
+    methods = {"POST"}
+
+
+class MessageSendDailyRateThrottle(ScopedUserThrottle):
+    scope = "message_send_daily"
+    methods = {"POST"}
+
+
+class UploadRateThrottle(ScopedUserThrottle):
+    """Shared by message attachments and profile image uploads."""
+
+    scope = "uploads"
+
+
+class UploadDailyRateThrottle(ScopedUserThrottle):
+    scope = "uploads_daily"
+
+
+class BlockRateThrottle(ScopedUserThrottle):
+    scope = "block"
+
+
+class PracticeSubmitRateThrottle(ScopedUserThrottle):
+    scope = "practice_submit"
+
+
+class PublicProfileRateThrottle(ScopedUserThrottle):
+    scope = "profile_view"
+
+
+class PeopleRateThrottle(ScopedUserThrottle):
+    scope = "people"
+
+
+class ReactionRateThrottle(ScopedUserThrottle):
+    scope = "reactions"
+
+
+CONVERSATION_CREATE_THROTTLES = (
+    ConversationCreateRateThrottle,
+    ConversationCreateDailyRateThrottle,
+)
+UPLOAD_THROTTLES = (UploadRateThrottle, UploadDailyRateThrottle)
 
 
 class PasswordResetIPThrottle(AuthRateThrottle):
