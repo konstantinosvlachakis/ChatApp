@@ -13,10 +13,14 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { useAuth } from "../context/AuthContext";
 import { getErrorMessage } from "../services/api/errors";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
+
+const LOGO = require("../../assets/icon.png");
+const LOGO_SIZE = 64;
 
 export function LoginScreen() {
   const navigation = useNavigation<any>();
@@ -39,7 +43,7 @@ export function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.bgBlobOne} />
       <View style={styles.bgBlobTwo} />
       <KeyboardAvoidingView
@@ -47,6 +51,14 @@ export function LoginScreen() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          {/* Same tile as the launch splash, so splash -> login reads as one brand moment. */}
+          <Image
+            source={LOGO}
+            style={styles.logo}
+            contentFit="cover"
+            accessibilityRole="image"
+            accessibilityLabel="LangVoyage"
+          />
           <View style={styles.card}>
             <Text style={styles.brand}>LangVoyage</Text>
             <Text style={styles.title}>Welcome back</Text>
@@ -126,6 +138,14 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingHorizontal: 20,
       paddingTop: 28,
       paddingBottom: 28,
+    },
+    logo: {
+      width: LOGO_SIZE,
+      height: LOGO_SIZE,
+      // Same 24% corner ratio as the splash tile.
+      borderRadius: LOGO_SIZE * 0.24,
+      alignSelf: "center",
+      marginBottom: 18,
     },
     card: {
       backgroundColor: colors.surface,

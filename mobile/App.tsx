@@ -1,13 +1,7 @@
 import "react-native-gesture-handler";
 import React from "react";
-import {
-  Animated,
-  Easing,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Animated, Easing, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
 import { Sora_600SemiBold, Sora_700Bold } from "@expo-google-fonts/sora";
@@ -25,8 +19,8 @@ import {
   NavigationContainer,
 } from "@react-navigation/native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
-import { AuthProvider } from "./src/context/AuthContext";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
+import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import { CoachAvatar } from "./src/components/CoachAvatar";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
@@ -35,48 +29,44 @@ import { ToastHost } from "./src/components/ToastHost";
 import { initMonitoring, wrapRoot } from "./src/services/monitoring";
 import { initNotifications } from "./src/services/push";
 
+/**
+ * Launch: the native splash (app.json `expo-splash-screen`, logo on the launch navy) stays up
+ * until fonts load, then LaunchScreen takes over on the same navy: its content fades in,
+ * holds, and slides out over the first screen once auth has settled.
+ * Keep `background` in sync with the splash `backgroundColor` in app.json.
+ */
+const LAUNCH = {
+  background: "#081320",
+  // The launch screen stays at least this long, then leaves once the app is ready.
+  minVisibleMs: 1550,
+  // Leave anyway if auth or the theme never settle.
+  safetyTimeoutMs: 6000,
+} as const;
+
+// Must run before the first render, or the native splash may already be gone.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 // No-op unless EXPO_PUBLIC_SENTRY_DSN is set at build time.
 initMonitoring();
 // Foreground handler, Android channel and notification-tap listener (cold starts too).
 initNotifications();
 
-function LaunchScreen({
-  visible,
-  onHidden,
-  freezeForDebug = false,
-}: {
-  visible: boolean;
-  onHidden?: () => void;
-  freezeForDebug?: boolean;
-}) {
+function LaunchScreen({ ready, onHidden }: { ready: boolean; onHidden: () => void }) {
   const { width } = useWindowDimensions();
   const opacity = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(16)).current;
+  const translateY = React.useRef(new Animated.Value(22)).current;
   const translateX = React.useRef(new Animated.Value(0)).current;
-  const scale = React.useRef(new Animated.Value(0.96)).current;
-  const hasAnimatedInRef = React.useRef(false);
-  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scale = React.useRef(new Animated.Value(0.95)).current;
+  const [minElapsed, setMinElapsed] = React.useState(false);
+  const [timedOut, setTimedOut] = React.useState(false);
+  const exitStartedRef = React.useRef(false);
+
+  // The backdrop is the native splash's colour, so hiding it once this is laid out is seamless.
+  const handleLayout = React.useCallback(() => {
+    SplashScreen.hide();
+  }, []);
 
   React.useEffect(() => {
-    if (!visible) {
-      opacity.stopAnimation();
-      translateY.stopAnimation();
-      translateX.stopAnimation();
-      scale.stopAnimation();
-      hasAnimatedInRef.current = false;
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
-      return;
-    }
-
-    opacity.setValue(0);
-    translateY.setValue(22);
-    translateX.setValue(0);
-    scale.setValue(0.95);
-    hasAnimatedInRef.current = true;
-
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,
@@ -97,65 +87,53 @@ function LaunchScreen({
         useNativeDriver: true,
       }),
     ]).start();
-
-    if (freezeForDebug) {
-      return () => {
-        if (hideTimerRef.current) {
-          clearTimeout(hideTimerRef.current);
-          hideTimerRef.current = null;
-        }
-      };
-    }
-
-    hideTimerRef.current = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: 520,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateX, {
-          toValue: Math.min(width * 0.38, 180),
-          duration: 620,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scale, {
-          toValue: 0.985,
-          duration: 620,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (finished && hasAnimatedInRef.current) {
-          onHidden?.();
-        }
-      });
-    }, 1550);
-
+    const minTimer = setTimeout(() => setMinElapsed(true), LAUNCH.minVisibleMs);
+    const safetyTimer = setTimeout(() => setTimedOut(true), LAUNCH.safetyTimeoutMs);
     return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
+      clearTimeout(minTimer);
+      clearTimeout(safetyTimer);
     };
-  }, [freezeForDebug, onHidden, opacity, scale, translateX, translateY, visible, width]);
+  }, [opacity, scale, translateY]);
 
-  if (!visible) return null;
+  React.useEffect(() => {
+    if (exitStartedRef.current || !((minElapsed && ready) || timedOut)) return;
+    exitStartedRef.current = true;
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 520,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateX, {
+        toValue: Math.min(width * 0.38, 180),
+        duration: 620,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 0.985,
+        duration: 620,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => onHidden());
+  }, [minElapsed, onHidden, opacity, ready, scale, timedOut, translateX, width]);
 
   return (
-    <View style={launchStyles.backdrop}>
+    <View
+      style={launchStyles.backdrop}
+      onLayout={handleLayout}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       <View style={launchStyles.glowA} />
       <View style={launchStyles.glowB} />
       <View style={launchStyles.glowC} />
       <Animated.View
         style={[
           launchStyles.centerWrap,
-          {
-            opacity,
-            transform: [{ translateX }, { translateY }, { scale }],
-          },
+          { opacity, transform: [{ translateX }, { translateY }, { scale }] },
         ]}
       >
         <View style={launchStyles.logoPlate}>
@@ -168,14 +146,12 @@ function LaunchScreen({
   );
 }
 
-function AppContent() {
-  const { colors, isDark } = useTheme();
-  const freezeLaunchForDebug = false;
-  const [showLaunch, setShowLaunch] = React.useState(true);
-  const handleLaunchHidden = React.useCallback(() => {
-    if (freezeLaunchForDebug) return;
-    setShowLaunch(false);
-  }, [freezeLaunchForDebug]);
+function AppContent({ fontsReady }: { fontsReady: boolean }) {
+  const { colors, isDark, hydrated: themeReady } = useTheme();
+  const { loading: authLoading } = useAuth();
+  const [launchDone, setLaunchDone] = React.useState(false);
+  const handleLaunchHidden = React.useCallback(() => setLaunchDone(true), []);
+  const ready = fontsReady && themeReady && !authLoading;
   const navigationTheme = React.useMemo(
     () =>
       isDark
@@ -204,23 +180,24 @@ function AppContent() {
     [colors.background, colors.border, colors.primary, colors.surface, colors.text, isDark]
   );
   return (
-    <View style={{ flex: 1 }}>
-      <NavigationContainer theme={navigationTheme}>
-        <StatusBar style={isDark ? "light" : "dark"} />
-        <RootNavigator />
-      </NavigationContainer>
-      <LaunchScreen
-        visible={showLaunch}
-        freezeForDebug={freezeLaunchForDebug}
-        onHidden={handleLaunchHidden}
-      />
-      <ToastHost />
+    // Opaque themed root: nothing white/black shows behind the fading overlay or screen transitions.
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Light icons over the navy overlay; the theme's style once it is gone. */}
+      <StatusBar style={launchDone ? (isDark ? "light" : "dark") : "light"} />
+      {fontsReady ? (
+        <NavigationContainer theme={navigationTheme}>
+          <RootNavigator />
+        </NavigationContainer>
+      ) : null}
+      {fontsReady ? <ToastHost /> : null}
+      {/* The launch screen's title uses the custom fonts; until they load the native splash stays up. */}
+      {launchDone || !fontsReady ? null : <LaunchScreen ready={ready} onHidden={handleLaunchHidden} />}
     </View>
   );
 }
 
 function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Sora_600SemiBold,
     Sora_700Bold,
     Manrope_400Regular,
@@ -229,19 +206,18 @@ function App() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
-
-  if (!fontsLoaded) {
-    return null;
-  }
+  // A font failure falls back to system fonts rather than blocking launch.
+  const fontsReady = fontsLoaded || Boolean(fontError);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Frame-by-frame keyboard events (chat composer + lists, auth forms) on iOS and Android. */}
       <KeyboardProvider>
-        <SafeAreaProvider>
+        {/* initialMetrics: correct insets on the first frame, so screens don't shift under the overlay. */}
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
           <ThemeProvider>
             <AuthProvider>
-              <AppContent />
+              <AppContent fontsReady={fontsReady} />
             </AuthProvider>
           </ThemeProvider>
         </SafeAreaProvider>
@@ -255,7 +231,7 @@ export default wrapRoot(App);
 const launchStyles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "#081320",
+    backgroundColor: LAUNCH.background,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
