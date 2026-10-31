@@ -1,22 +1,9 @@
 import "react-native-gesture-handler";
 import React from "react";
-import { StyleSheet, View } from "react-native";
-import { isRunningInExpoGo } from "expo";
+import { Animated, Easing, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { Image } from "expo-image";
 import { useFonts } from "expo-font";
-import Animated, {
-  Easing,
-  ReduceMotion,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import { Sora_600SemiBold, Sora_700Bold } from "@expo-google-fonts/sora";
 import {
   Manrope_400Regular,
@@ -34,134 +21,128 @@ import {
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
+import { CoachAvatar } from "./src/components/CoachAvatar";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import { RootNavigator } from "./src/navigation/RootNavigator";
+import { fontFamilies } from "./src/theme/typography";
 import { ToastHost } from "./src/components/ToastHost";
 import { initMonitoring, wrapRoot } from "./src/services/monitoring";
 import { initNotifications } from "./src/services/push";
 
 /**
- * Launch hand-off. The native splash (app.json `expo-splash-screen` plugin) draws
- * `assets/splash.png` at `imageWidth` dp, centred in the full window, on `background`.
- * The JS overlay draws the same image at the same size and centre, so the hide is
- * invisible; then it animates out over the first real screen.
- * Keep `background` / `imageSize` in sync with app.json.
+ * Launch: the native splash (app.json `expo-splash-screen`, logo on the launch navy) stays up
+ * until fonts load, then LaunchScreen takes over on the same navy: its content fades in,
+ * holds, and slides out over the first screen once auth has settled.
+ * Keep `background` in sync with the splash `backgroundColor` in app.json.
  */
 const LAUNCH = {
-  background: "#0d1c2b",
-  // = app.json imageWidth. splash.png is a 1024 canvas with a 512 px tile, so the tile is 120 dp.
-  imageSize: 240,
-  // After hiding the native splash, let it go before the overlay starts moving.
-  holdMs: 120,
-  dipScale: 0.92,
-  dipMs: 180,
-  growScale: 1.15,
-  growMs: 360,
-  fadeDelayMs: 180,
-  fadeMs: 360, // total exit: fadeDelayMs + fadeMs = 540 ms
-  reducedFadeMs: 150,
-  // Hide the native splash even if fonts/auth/theme never settle.
+  background: "#081320",
+  // The launch screen stays at least this long, then leaves once the app is ready.
+  minVisibleMs: 1550,
+  // Leave anyway if auth or the theme never settle.
   safetyTimeoutMs: 6000,
 } as const;
 
-const SPLASH_IMAGE = require("./assets/splash.png");
-
 // Must run before the first render, or the native splash may already be gone.
 SplashScreen.preventAutoHideAsync().catch(() => {});
-if (!isRunningInExpoGo()) {
-  // The overlay underneath is identical, so drop the native fade (Android defaults to 400 ms).
-  SplashScreen.setOptions({ duration: 0, fade: false });
-}
 
 // No-op unless EXPO_PUBLIC_SENTRY_DSN is set at build time.
 initMonitoring();
 // Foreground handler, Android channel and notification-tap listener (cold starts too).
 initNotifications();
 
-function LaunchOverlay({ ready, onHidden }: { ready: boolean; onHidden: () => void }) {
-  const reduceMotion = useReducedMotion();
-  const [laidOut, setLaidOut] = React.useState(false);
-  const [logoShown, setLogoShown] = React.useState(false);
+function LaunchScreen({ ready, onHidden }: { ready: boolean; onHidden: () => void }) {
+  const { width } = useWindowDimensions();
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(22)).current;
+  const translateX = React.useRef(new Animated.Value(0)).current;
+  const scale = React.useRef(new Animated.Value(0.95)).current;
+  const [minElapsed, setMinElapsed] = React.useState(false);
   const [timedOut, setTimedOut] = React.useState(false);
-  const [exiting, setExiting] = React.useState(false);
-  const nativeHiddenRef = React.useRef(false);
-  const opacity = useSharedValue(1);
-  const scale = useSharedValue(1);
+  const exitStartedRef = React.useRef(false);
 
-  React.useEffect(() => {
-    const timer = setTimeout(() => setTimedOut(true), LAUNCH.safetyTimeoutMs);
-    return () => clearTimeout(timer);
+  // The backdrop is the native splash's colour, so hiding it once this is laid out is seamless.
+  const handleLayout = React.useCallback(() => {
+    SplashScreen.hide();
   }, []);
 
-  // Painted = the overlay is laid out and its logo is on screen (or loading it failed / timed out).
-  const painted = laidOut && (logoShown || timedOut);
-  // After the safety timeout, reveal whatever is underneath (e.g. RootNavigator's
-  // "Starting app..." if the auth bootstrap still hangs) rather than staying on the splash.
-  const reveal = (ready && painted) || timedOut;
-
-  // Hide the native splash exactly once, when the app is ready behind an identical overlay
-  // (or on the safety timeout). hide() itself is idempotent too.
   React.useEffect(() => {
-    if (nativeHiddenRef.current || !reveal) return;
-    nativeHiddenRef.current = true;
-    SplashScreen.hide();
-  }, [reveal]);
-
-  React.useEffect(() => {
-    if (!reveal || exiting) return;
-    const timer = setTimeout(() => setExiting(true), LAUNCH.holdMs);
-    return () => clearTimeout(timer);
-  }, [exiting, reveal]);
-
-  React.useEffect(() => {
-    if (!exiting) return;
-    const finish = (finished?: boolean) => {
-      "worklet";
-      if (finished) scheduleOnRN(onHidden);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 680,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 760,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 7,
+        tension: 68,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    const minTimer = setTimeout(() => setMinElapsed(true), LAUNCH.minVisibleMs);
+    const safetyTimer = setTimeout(() => setTimedOut(true), LAUNCH.safetyTimeoutMs);
+    return () => {
+      clearTimeout(minTimer);
+      clearTimeout(safetyTimer);
     };
-    if (reduceMotion) {
-      opacity.value = withTiming(
-        0,
-        { duration: LAUNCH.reducedFadeMs, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never },
-        finish
-      );
-    } else {
-      scale.value = withSequence(
-        withTiming(LAUNCH.dipScale, { duration: LAUNCH.dipMs, easing: Easing.out(Easing.quad) }),
-        withTiming(LAUNCH.growScale, { duration: LAUNCH.growMs, easing: Easing.out(Easing.cubic) })
-      );
-      opacity.value = withDelay(
-        LAUNCH.fadeDelayMs,
-        withTiming(0, { duration: LAUNCH.fadeMs, easing: Easing.out(Easing.cubic) }, finish)
-      );
-    }
-    // Unmount even if the animation is interrupted.
-    const total = reduceMotion ? LAUNCH.reducedFadeMs : LAUNCH.fadeDelayMs + LAUNCH.fadeMs;
-    const fallback = setTimeout(onHidden, total + 300);
-    return () => clearTimeout(fallback);
-  }, [exiting, onHidden, opacity, reduceMotion, scale]);
+  }, [opacity, scale, translateY]);
 
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const logoStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  React.useEffect(() => {
+    if (exitStartedRef.current || !((minElapsed && ready) || timedOut)) return;
+    exitStartedRef.current = true;
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 520,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateX, {
+        toValue: Math.min(width * 0.38, 180),
+        duration: 620,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 0.985,
+        duration: 620,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => onHidden());
+  }, [minElapsed, onHidden, opacity, ready, scale, timedOut, translateX, width]);
 
   return (
-    <Animated.View
-      style={[launchStyles.backdrop, backdropStyle, { pointerEvents: exiting ? "none" : "auto" }]}
-      onLayout={() => setLaidOut(true)}
+    <View
+      style={launchStyles.backdrop}
+      onLayout={handleLayout}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <Animated.View style={[launchStyles.logo, logoStyle]}>
-        <Image
-          source={SPLASH_IMAGE}
-          style={StyleSheet.absoluteFill}
-          contentFit="contain"
-          transition={null}
-          onDisplay={() => setLogoShown(true)}
-          onError={() => setLogoShown(true)}
-        />
+      <View style={launchStyles.glowA} />
+      <View style={launchStyles.glowB} />
+      <View style={launchStyles.glowC} />
+      <Animated.View
+        style={[
+          launchStyles.centerWrap,
+          { opacity, transform: [{ translateX }, { translateY }, { scale }] },
+        ]}
+      >
+        <View style={launchStyles.logoPlate}>
+          <CoachAvatar size={96} hideBadge />
+        </View>
+        <Text style={launchStyles.title}>LangVoyage</Text>
+        <Text style={launchStyles.tagline}>Speak with confidence, every day.</Text>
       </Animated.View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -209,7 +190,8 @@ function AppContent({ fontsReady }: { fontsReady: boolean }) {
         </NavigationContainer>
       ) : null}
       {fontsReady ? <ToastHost /> : null}
-      {launchDone ? null : <LaunchOverlay ready={ready} onHidden={handleLaunchHidden} />}
+      {/* The launch screen's title uses the custom fonts; until they load the native splash stays up. */}
+      {launchDone || !fontsReady ? null : <LaunchScreen ready={ready} onHidden={handleLaunchHidden} />}
     </View>
   );
 }
@@ -247,16 +229,68 @@ function App() {
 export default wrapRoot(App);
 
 const launchStyles = StyleSheet.create({
-  // Root views are edge-to-edge (full window incl. status/navigation bars), the same box the
-  // native splash centres in on Android and iOS, so plain centring matches it.
   backdrop: {
     ...StyleSheet.absoluteFill,
     backgroundColor: LAUNCH.background,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  logo: {
-    width: LAUNCH.imageSize,
-    height: LAUNCH.imageSize,
+  glowA: {
+    position: "absolute",
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: "rgba(19, 122, 115, 0.32)",
+    top: -40,
+    left: -90,
+  },
+  glowB: {
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(241, 182, 210, 0.28)",
+    right: -50,
+    top: 90,
+  },
+  glowC: {
+    position: "absolute",
+    width: 360,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(23, 50, 76, 0.72)",
+    bottom: -50,
+    alignSelf: "center",
+  },
+  centerWrap: {
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  logoPlate: {
+    padding: 10,
+    borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  title: {
+    marginTop: 22,
+    color: "#f8fafc",
+    fontSize: 32,
+    fontFamily: fontFamilies.displayBold,
+    letterSpacing: 0.4,
+  },
+  tagline: {
+    marginTop: 8,
+    color: "rgba(226,232,240,0.82)",
+    fontSize: 15,
+    fontFamily: fontFamilies.bodyMedium,
+    textAlign: "center",
+    letterSpacing: 0.2,
   },
 });
