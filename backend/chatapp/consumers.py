@@ -17,10 +17,20 @@ from django.http.request import validate_host
 from django.utils import timezone
 
 from core.observability import reset_request_id, set_request_id
+from core.realtime import safe_group_add, safe_group_discard, safe_group_send
 
 from .models import BlockedUser, Conversation, Profile
+from .tokens import (
+    SESSION_ID_CLAIM,
+    SESSION_REVOKED_CLOSE_CODE,
+    token_version_of,
+    user_session_group_name,
+)
 
 logger = logging.getLogger(__name__)
+
+# Internal error: clients treat it like any drop and reconnect with backoff.
+CHANNEL_LAYER_UNAVAILABLE_CLOSE_CODE = 1011
 
 
 ONLINE_FRESHNESS_SECONDS = int(os.environ.get("ONLINE_FRESHNESS_SECONDS", "90"))
@@ -93,21 +103,25 @@ def get_presence_contact_ids(user_id):
     return contact_ids
 
 
-def increment_presence_count(user_id):
+def increment_presence_count(user_id, token_version=None):
     """Count a new socket; return True if the user just came online.
 
     Atomic UPDATEs only (no row lock). A user still flagged online but with
     a stale last_seen (e.g. counts left behind by a crash) counts as coming
     online, so contacts get told. Returns None if the user no longer exists
-    (a deleted account whose access token is still valid).
+    (a deleted account whose access token is still valid) or, when
+    token_version is given, if the token was revoked since it was issued.
     """
     now = timezone.now()
     threshold = now - timezone.timedelta(seconds=ONLINE_FRESHNESS_SECONDS)
-    if Profile.objects.filter(
-        id=user_id, is_online=True, last_seen__gte=threshold
-    ).update(ws_connection_count=F("ws_connection_count") + 1, last_seen=now):
+    profiles = Profile.objects.filter(id=user_id)
+    if token_version is not None:
+        profiles = profiles.filter(token_version=token_version)
+    if profiles.filter(is_online=True, last_seen__gte=threshold).update(
+        ws_connection_count=F("ws_connection_count") + 1, last_seen=now
+    ):
         return False
-    updated = Profile.objects.filter(id=user_id).update(
+    updated = profiles.update(
         ws_connection_count=F("ws_connection_count") + 1,
         is_online=True,
         last_seen=now,
@@ -138,7 +152,8 @@ async def send_presence_update(channel_layer, user_id, is_online, contact_ids):
         "is_online": bool(is_online),
     }
     for contact_id in contact_ids or ():
-        await channel_layer.group_send(user_presence_group_name(contact_id), event)
+        # Best effort: an outage is logged and skipped (core/realtime).
+        await safe_group_send(channel_layer, user_presence_group_name(contact_id), event)
 
 
 class TokenBucket:
@@ -237,6 +252,16 @@ class PresenceTrackingMixin:
         await self.accept()
         await self.close(code=code)
 
+    async def reject_unavailable(self, group_name=None):
+        """The channel layer is down (Redis outage): undo the connect and close
+        with 1011 so clients retry with their normal backoff."""
+        user_id, self.user_id = self.user_id, None
+        await self.release_socket_slot(user_id)
+        if group_name:
+            await safe_group_discard(self.channel_layer, group_name, self.channel_name)
+        await self.leave_session_group(user_id)
+        await self.reject(CHANNEL_LAYER_UNAVAILABLE_CLOSE_CODE)
+
     def _type_bucket(self, message_type):
         if message_type in {"user_typing", "user_stopped_typing"}:
             return self.type_buckets["typing"]
@@ -318,9 +343,36 @@ class PresenceTrackingMixin:
             user_id = payload.get("user_id")
             if not user_id:
                 return None
+            # Checked against Profile.token_version by each consumer's first
+            # query (no extra round trip); see session_revoked_event.
+            self.token_version = token_version_of(payload)
+            self.session_id = payload.get(SESSION_ID_CLAIM)
             return int(user_id)
         except Exception:
             return None
+
+    async def join_session_group(self):
+        self.session_group_joined = await safe_group_add(
+            self.channel_layer, user_session_group_name(self.user_id), self.channel_name
+        )
+        return self.session_group_joined
+
+    async def leave_session_group(self, user_id):
+        if getattr(self, "session_group_joined", False):
+            self.session_group_joined = False
+            await safe_group_discard(
+                self.channel_layer, user_session_group_name(user_id), self.channel_name
+            )
+
+    async def session_revoked_event(self, event):
+        """The user's tokens were revoked (password reset, email change, log
+        out of all devices, account deletion): close sockets opened with an
+        older token, except the session that made the change."""
+        keep = event.get("keep_session_id")
+        if keep and keep == getattr(self, "session_id", None):
+            return
+        if getattr(self, "token_version", 0) < int(event.get("token_version") or 0):
+            await self.close(code=SESSION_REVOKED_CLOSE_CODE)
 
     def _origin_is_allowed(self):
         raw_headers = dict(self.scope.get("headers", []))
@@ -430,25 +482,39 @@ class PresenceTrackingMixin:
 
     @db_async
     def get_participant_details(self, conversation_id, user_id):
-        """Return (username, other_participant_id) if user_id is a participant.
+        """Return (username, other_participant_id, own_token_version) if user_id
+        is a participant.
 
-        One query covers the membership check, the user's own username and the
-        other participant's id (used for typing notifications).
+        One query covers the membership check, the user's own username and
+        token_version and the other participant's id (used for typing
+        notifications).
         """
         row = (
             Conversation.objects.filter(id=conversation_id)
             .filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
             .values_list(
-                "sender_id", "receiver_id", "sender__username", "receiver__username"
+                "sender_id",
+                "receiver_id",
+                "sender__username",
+                "receiver__username",
+                "sender__token_version",
+                "receiver__token_version",
             )
             .first()
         )
         if not row:
             return None
-        sender_id, receiver_id, sender_username, receiver_username = row
+        (
+            sender_id,
+            receiver_id,
+            sender_username,
+            receiver_username,
+            sender_version,
+            receiver_version,
+        ) = row
         if sender_id == user_id:
-            return sender_username, receiver_id
-        return receiver_username, sender_id
+            return sender_username, receiver_id, sender_version
+        return receiver_username, sender_id, receiver_version
 
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
@@ -473,7 +539,13 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             # Deleted accounts have no conversations, so this rejects them too.
             details = await self.get_participant_details(conversation_id, self.user_id)
             if details:
-                self.username, self.other_user_id = details
+                username, other_user_id, current_version = details
+                if self.token_version != int(current_version or 0):
+                    # Revoked token (password reset, log out everywhere, ...).
+                    self.user_id = None
+                    await self.reject(SESSION_REVOKED_CLOSE_CODE)
+                    return
+                self.username, self.other_user_id = username, other_user_id
         if not self.username:
             self.user_id = None
             await self.reject(4403)
@@ -484,8 +556,13 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             await self.reject(WS_RATE_LIMIT_CLOSE_CODE)
             return
 
-        self.room_group_name = str(conversation_id)
-        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        room_group_name = str(conversation_id)
+        if not await safe_group_add(
+            self.channel_layer, room_group_name, self.channel_name
+        ) or not await self.join_session_group():
+            await self.reject_unavailable(room_group_name)
+            return
+        self.room_group_name = room_group_name
         # Count the socket before accepting: DB calls run on worker threads, so
         # this keeps "client saw the open" after "presence is up to date".
         became_online = await self.increment_presence(self.user_id)
@@ -498,15 +575,19 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             return
         if self.user_id:
             await self.release_socket_slot(self.user_id)
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        await safe_group_discard(
+            self.channel_layer, self.room_group_name, self.channel_name
+        )
         if self.user_id:
+            await self.leave_session_group(self.user_id)
             try:
                 conversation_id = int(self.room_group_name)
             except (TypeError, ValueError):
                 conversation_id = None
 
             if conversation_id is not None:
-                await self.channel_layer.group_send(
+                await safe_group_send(
+                    self.channel_layer,
                     self.room_group_name,
                     {
                         "type": "typing_event",
@@ -518,7 +599,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 )
 
                 if self.other_user_id:
-                    await self.channel_layer.group_send(
+                    await safe_group_send(
+                        self.channel_layer,
                         user_presence_group_name(self.other_user_id),
                         {
                             "type": "typing_status_event",
@@ -571,7 +653,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 conversation_id = int(self.room_group_name)
             except (TypeError, ValueError):
                 return
-            await self.channel_layer.group_send(
+            await safe_group_send(
+                self.channel_layer,
                 self.room_group_name,
                 {
                     "type": "typing_event",
@@ -583,7 +666,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
 
             if self.other_user_id:
-                await self.channel_layer.group_send(
+                await safe_group_send(
+                    self.channel_layer,
                     user_presence_group_name(self.other_user_id),
                     {
                         "type": "typing_status_event",
@@ -595,7 +679,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             return
 
         if message_type in call_event_types:
-            await self.channel_layer.group_send(
+            await safe_group_send(
+                self.channel_layer,
                 self.room_group_name,
                 {
                     "type": "call_event",
@@ -719,22 +804,28 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         # Only the user's own group: presence changes are delivered here by
         # their contacts' sockets (see send_presence_update).
-        await self.channel_layer.group_add(
-            user_presence_group_name(self.user_id), self.channel_name
-        )
+        presence_group = user_presence_group_name(self.user_id)
+        if not await safe_group_add(
+            self.channel_layer, presence_group, self.channel_name
+        ) or not await self.join_session_group():
+            await self.reject_unavailable(presence_group)
+            return
         await self.accept()
 
         became_online, self.contact_ids, online_ids = await self.open_presence(
             self.user_id
         )
         if became_online is None:
-            # The account was deleted but its access token is still valid.
+            # The account was deleted, or the token was revoked (token_version
+            # bumped), while the access token is still unexpired.
             user_id, self.user_id = self.user_id, None
             await self.release_socket_slot(user_id)
-            await self.channel_layer.group_discard(
+            await safe_group_discard(
+                self.channel_layer,
                 user_presence_group_name(user_id), self.channel_name
             )
-            await self.close(code=4401)
+            await self.leave_session_group(user_id)
+            await self.close(code=SESSION_REVOKED_CLOSE_CODE)
             return
         self.last_touch_monotonic = time.monotonic()
         if became_online:
@@ -752,7 +843,9 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
 
         Returns (became_online, contact_ids, online_contact_ids).
         """
-        became_online = increment_presence_count(user_id)
+        became_online = increment_presence_count(
+            user_id, token_version=getattr(self, "token_version", None)
+        )
         if became_online is None:
             return None, set(), []
         contact_ids = get_presence_contact_ids(user_id)
@@ -762,9 +855,11 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
         if not getattr(self, "user_id", None):
             return
         await self.release_socket_slot(self.user_id)
-        await self.channel_layer.group_discard(
+        await safe_group_discard(
+            self.channel_layer,
             user_presence_group_name(self.user_id), self.channel_name
         )
+        await self.leave_session_group(self.user_id)
 
         became_offline = await self.decrement_presence(self.user_id)
         if became_offline:

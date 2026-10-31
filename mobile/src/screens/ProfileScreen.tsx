@@ -25,6 +25,7 @@ import { useTheme } from "../context/ThemeContext";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
 import { toastApiError } from "../services/toast";
+import { ApiError, getErrorMessage } from "../services/api/errors";
 import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
@@ -252,6 +253,9 @@ export function ProfileScreen() {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isMissionCatalogOpen, setIsMissionCatalogOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  // Changing the email (the login) needs the current password; never kept after a save/close.
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [addingMissionLanguage, setAddingMissionLanguage] = useState<string | null>(null);
   const [removingMissionLanguage, setRemovingMissionLanguage] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -389,6 +393,16 @@ export function ProfileScreen() {
     setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const emailChanged =
+    editForm.email.trim().toLowerCase() !== (user?.email || "").trim().toLowerCase();
+
+  useEffect(() => {
+    if (!isEditProfileOpen) {
+      setCurrentPassword("");
+      setPasswordError("");
+    }
+  }, [isEditProfileOpen]);
+
   const renderLanguageChoiceContent = (
     label: string,
     active = false,
@@ -521,8 +535,13 @@ export function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
+    if (emailChanged && !currentPassword) {
+      setPasswordError("Enter your current password to change your email.");
+      return;
+    }
     try {
       setSavingProfile(true);
+      setPasswordError("");
       const payload = await updateProfile({
         username: editForm.username.trim(),
         email: editForm.email.trim().toLowerCase(),
@@ -541,14 +560,29 @@ export function ProfileScreen() {
         avatar_ring_color: isValidHexColor(editForm.avatarRingColor)
           ? editForm.avatarRingColor.toLowerCase()
           : "#1b7f79",
+        // updateProfile stores the fresh token pair the server returns after an email change.
+        ...(emailChanged ? { current_password: currentPassword } : {}),
       });
       const mergedProfile = { ...user, ...payload } as Profile;
       setUser(mergedProfile);
       refreshProfile().catch(() => {});
       setIsEditProfileOpen(false);
-      Alert.alert("Profile updated", "Your profile changes have been saved.");
+      Alert.alert(
+        "Profile updated",
+        emailChanged
+          ? "Your profile changes have been saved. Other devices were signed out because your email changed."
+          : "Your profile changes have been saved."
+      );
     } catch (error) {
-      toastApiError(error, "Could not update your profile.", "Save failed");
+      if (
+        emailChanged &&
+        error instanceof ApiError &&
+        ["invalid_password", "password_required", "throttled"].includes(error.code)
+      ) {
+        setPasswordError(getErrorMessage(error, "Your current password is incorrect."));
+      } else {
+        toastApiError(error, "Could not update your profile.", "Save failed");
+      }
     } finally {
       setSavingProfile(false);
     }
@@ -1223,6 +1257,35 @@ export function ProfileScreen() {
                   keyboardType="email-address"
                 />
               </View>
+
+              {emailChanged ? (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Current password</Text>
+                  <TextInput
+                    value={currentPassword}
+                    onChangeText={(value) => {
+                      setCurrentPassword(value);
+                      setPasswordError("");
+                    }}
+                    style={[styles.input, passwordError ? styles.inputInvalid : undefined]}
+                    placeholder="Current password"
+                    placeholderTextColor={colors.mutedText}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="current-password"
+                    textContentType="password"
+                    accessibilityLabel="Current password"
+                  />
+                  <Text
+                    style={passwordError ? styles.inputErrorText : styles.inputHelpText}
+                    accessibilityRole={passwordError ? "alert" : undefined}
+                  >
+                    {passwordError ||
+                      "Your email is how you log in, so confirm it's you. Other devices will be signed out."}
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Location</Text>
@@ -2757,6 +2820,21 @@ const createStyles = (colors: ThemeColors) =>
     inputMultiline: {
       minHeight: 104,
       textAlignVertical: "top",
+    },
+    inputInvalid: {
+      borderColor: colors.danger,
+    },
+    inputHelpText: {
+      color: colors.mutedText,
+      fontSize: 12,
+      lineHeight: 17,
+      fontFamily: fontFamilies.bodyMedium,
+    },
+    inputErrorText: {
+      color: colors.danger,
+      fontSize: 12,
+      lineHeight: 17,
+      fontFamily: fontFamilies.bodySemiBold,
     },
     avatarAccentCard: {
       gap: 14,

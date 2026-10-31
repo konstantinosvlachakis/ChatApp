@@ -132,13 +132,16 @@ if use_redis_realtime and redis_url:
             },
         },
     }
+    # ResilientRedisCache fails open (core/cache.py): a Redis outage degrades
+    # throttles/counters to "allowed" and caches to misses instead of 500s.
+    # Short socket timeouts + its circuit breaker keep requests fast meanwhile.
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "BACKEND": "core.cache.ResilientRedisCache",
             "LOCATION": os.environ.get("REDIS_CACHE_URL", redis_url),
             "OPTIONS": {
-                "socket_connect_timeout": 2,
-                "socket_timeout": 2,
+                "socket_connect_timeout": 0.5,
+                "socket_timeout": 0.5,
             },
         }
     }
@@ -156,6 +159,19 @@ else:
     }
 
 
+# Redis failure handling (core/cache.py, core/realtime.py): after a failure the
+# cache / channel layer is skipped for this many seconds (per process), and a
+# failure WARNING is logged at most once per interval.
+CACHE_BREAKER_COOLDOWN_SECONDS = float(os.environ.get("CACHE_BREAKER_COOLDOWN_SECONDS", "5"))
+CHANNEL_LAYER_BREAKER_COOLDOWN_SECONDS = float(
+    os.environ.get("CHANNEL_LAYER_BREAKER_COOLDOWN_SECONDS", "5")
+)
+CHANNEL_LAYER_TIMEOUT_SECONDS = float(os.environ.get("CHANNEL_LAYER_TIMEOUT_SECONDS", "2"))
+CACHE_FAILURE_LOG_INTERVAL_SECONDS = float(
+    os.environ.get("CACHE_FAILURE_LOG_INTERVAL_SECONDS", "60")
+)
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -169,6 +185,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Refresh-token rotation + blacklist (OutstandingToken / BlacklistedToken);
+    # its migrations run in the Heroku release phase.
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 
@@ -393,8 +412,11 @@ AUTH_USER_MODEL = "chatapp.Profile"
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    # Every refresh returns a new refresh token and blacklists the used one
+    # (implemented in chatapp/tokens.py, which also checks the token_version
+    # claim and gives concurrent refreshes a short grace window).
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "VERIFYING_KEY": None,
@@ -450,6 +472,7 @@ REST_FRAMEWORK = {
             "reactions": "120/minute",
             "report": "20/hour",
             "push_devices": "30/hour",
+            "logout_all": "10/hour",
         }.items()
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets

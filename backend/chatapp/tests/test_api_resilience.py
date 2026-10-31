@@ -8,7 +8,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.db import DatabaseError
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework import exceptions, serializers
 from rest_framework.permissions import AllowAny
@@ -240,12 +240,23 @@ class HealthCheckTests(TestCase):
         self.assertEqual(body["checks"]["cache"]["status"], "ok")
         self.assertNotIn("db.internal", response.content.decode())
 
-    def test_health_reports_failing_cache(self):
-        with patch("core.views.cache.get", return_value=None):
+    def test_health_reports_failing_cache_as_degraded(self):
+        # The app fails open without Redis, so a cache failure is "degraded"
+        # (200, still routable); only the database makes the probe 503.
+        with patch("core.views.probe_cache", side_effect=OSError("host cache.internal down")):
             with self.assertLogs("core.views", level="WARNING"):
                 response = self.client.get("/api/health/")
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["checks"]["cache"]["status"], "error")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "degraded")
+        self.assertEqual(body["checks"]["cache"]["status"], "error")
+        self.assertEqual(body["checks"]["database"]["status"], "ok")
+        self.assertNotIn("cache.internal", response.content.decode())
+
+    def test_health_reports_channel_layer(self):
+        response = self.client.get("/api/health/")
+        self.assertEqual(response.json()["checks"]["channel_layer"]["status"], "ok")
+        self.assertEqual(response.json()["checks"]["cache"]["breaker"], "closed")
 
     @override_settings(
         REST_FRAMEWORK={
@@ -376,3 +387,61 @@ class PublicRootFileRouteTests(SimpleTestCase):
         match = resolve("/og-image.png")
         self.assertIs(match.func, serve)
         self.assertEqual(match.kwargs["path"], "og-image.png")
+
+
+class FrontendTemplateTests(SimpleTestCase):
+    """The SPA fallback serves prerendered pages for their own paths and the
+    neutral app shell (not the prerendered landing page) for everything else."""
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.build = Path(self.tmp.name)
+        (self.build / "index.html").write_text("<html>landing</html>")
+        for route in ("login", "forgot-password"):
+            (self.build / route).mkdir()
+            (self.build / route / "index.html").write_text(f"<html>{route}</html>")
+        patcher = patch("core.views.FRONTEND_BUILD_DIR", self.build)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def resolve(self, path):
+        from core.views import resolve_frontend_template
+
+        return resolve_frontend_template(path)
+
+    def test_prerendered_paths_get_their_own_file(self):
+        self.assertEqual(self.resolve("/"), "index.html")
+        self.assertEqual(self.resolve("/login"), "login/index.html")
+        self.assertEqual(self.resolve("/login/"), "login/index.html")
+        self.assertEqual(self.resolve("/forgot-password"), "forgot-password/index.html")
+
+    def test_other_paths_get_the_app_shell(self):
+        (self.build / "app-shell.html").write_text("<html>shell</html>")
+        for path in (
+            "/reset-password/MQ/abc-123",
+            "/profile",
+            "/conversations/12",
+            "/no-such-page",
+            "/..%2F..%2Fetc/passwd",
+            "/../backend",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.resolve(path), "app-shell.html")
+
+    def test_falls_back_to_index_without_a_shell(self):
+        self.assertEqual(self.resolve("/reset-password/MQ/abc-123"), "index.html")
+
+    def test_front_view_renders_the_resolved_file(self):
+        (self.build / "app-shell.html").write_text("<html>shell</html>")
+        with patch("core.views.render") as render:
+            render.return_value = HttpResponse("ok")
+            self.client.get("/reset-password/MQ/abc-123")
+            self.client.get("/forgot-password")
+        self.assertEqual(
+            [call.args[1] for call in render.call_args_list],
+            ["app-shell.html", "forgot-password/index.html"],
+        )
+        self.assertEqual(self.client.post("/profile").status_code, 405)

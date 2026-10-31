@@ -94,6 +94,11 @@ const FIELD_KEYS = [
   "avatar_ring_color",
 ];
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+// Errors about the current password are shown next to its field.
+const PASSWORD_ERROR_CODES = new Set(["invalid_password", "password_required", "throttled"]);
+
 const countChanges = (form, initial) =>
   FIELD_KEYS.filter((key) => JSON.stringify(form[key]) !== JSON.stringify(initial[key])).length;
 
@@ -130,16 +135,23 @@ const EditProfilePage = () => {
   const [error, setError] = useState("");
   const initial = useMemo(() => formFromUser(user), [user]);
   const [form, setForm] = useState(initial);
+  // Changing the email (the login) needs the current password; it is never kept in `form`.
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   // Re-hydrate when the user loads or after a save refreshes it.
   useEffect(() => {
     setForm(initial);
+    setCurrentPassword("");
+    setPasswordError("");
   }, [initial]);
 
   const changes = countChanges(form, initial);
   const ringValid = isValidHexColor(form.avatar_ring_color);
   const usernameValid = Boolean(form.username.trim());
-  const canSave = changes > 0 && ringValid && usernameValid && !saving;
+  const emailChanged = normalizeEmail(form.email) !== normalizeEmail(initial.email);
+  const passwordReady = !emailChanged || currentPassword.length > 0;
+  const canSave = changes > 0 && ringValid && usernameValid && passwordReady && !saving;
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -199,6 +211,7 @@ const EditProfilePage = () => {
     if (!canSave) return;
     setSaving(true);
     setError("");
+    setPasswordError("");
     // The API stores language labels title-cased; level keys must match those labels exactly.
     const practicing = form.languages_practicing.map(titleCase);
     const levels = Object.fromEntries(
@@ -219,12 +232,24 @@ const EditProfilePage = () => {
         bio: form.bio.trim(),
         learning_goal: form.learning_goal.trim(),
         avatar_ring_color: form.avatar_ring_color.toLowerCase(),
+        ...(emailChanged ? { current_password: currentPassword } : {}),
       });
+      setCurrentPassword("");
       await refreshUserProfile();
-      showToast("Your profile changes were saved.", { variant: "success", placement: "top" });
+      showToast(
+        emailChanged
+          ? "Your profile was saved. Other devices were signed out because your email changed."
+          : "Your profile changes were saved.",
+        { variant: "success", placement: "top" }
+      );
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to save profile."));
-      toastApiError(err, "Couldn't save your profile");
+      const message = getErrorMessage(err, "Failed to save profile.");
+      setError(message);
+      if (emailChanged && PASSWORD_ERROR_CODES.has(err?.code)) {
+        setPasswordError(message);
+      } else {
+        toastApiError(err, "Couldn't save your profile");
+      }
     } finally {
       setSaving(false);
     }
@@ -259,7 +284,16 @@ const EditProfilePage = () => {
     <div className="pe-actions">
       <span className={`pe-status ${changes ? "is-dirty" : ""} ${error ? "is-error" : ""}`}>{statusText}</span>
       <div className="pe-actions-buttons">
-        <button type="button" className="pf-btn" onClick={() => setForm(initial)} disabled={!changes || saving}>
+        <button
+          type="button"
+          className="pf-btn"
+          onClick={() => {
+            setForm(initial);
+            setCurrentPassword("");
+            setPasswordError("");
+          }}
+          disabled={!changes || saving}
+        >
           Discard
         </button>
         <button type="submit" className="pf-btn is-primary" disabled={!canSave}>
@@ -549,6 +583,33 @@ const EditProfilePage = () => {
                 />
               </div>
             </div>
+            {emailChanged && (
+              <div className="pe-field">
+                <label htmlFor="edit-current-password">Current password</label>
+                <input
+                  id="edit-current-password"
+                  className="pe-input"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => {
+                    setCurrentPassword(event.target.value);
+                    setPasswordError("");
+                  }}
+                  aria-invalid={passwordError ? "true" : undefined}
+                  aria-describedby={passwordError ? "edit-current-password-error" : "edit-current-password-help"}
+                />
+                {passwordError ? (
+                  <p id="edit-current-password-error" className="pe-error" role="alert">
+                    {passwordError}
+                  </p>
+                ) : (
+                  <p id="edit-current-password-help" className="pe-help">
+                    Your email is how you log in, so confirm it's you. Other devices will be signed out.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="pe-field">
               <div className="pe-field-top">
                 <label htmlFor="edit-location">Location</label>

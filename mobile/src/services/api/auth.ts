@@ -36,9 +36,38 @@ export async function requestPasswordReset(email: string) {
   return response.data;
 }
 
+const LOGOUT_TIMEOUT_MS = 5_000;
+
+/**
+ * Revokes this device's refresh token on the server (best effort: bounded, network
+ * errors ignored), then clears local session data. Refresh tokens rotate, so the one
+ * sent is whatever SecureStore holds now.
+ */
 export async function logout() {
   clearConversationsCache();
+  try {
+    const refresh = await tokenStorage.getRefreshToken();
+    if (refresh) {
+      await api.post("/logout/", { refresh }, { timeout: LOGOUT_TIMEOUT_MS });
+    }
+  } catch {
+    // Offline or server down: the token still expires on its own.
+  }
   await tokenStorage.clear();
+}
+
+/** Signs out every device (this one included): all tokens are revoked server-side. */
+export async function logoutAll() {
+  const response = await api.post<{ message: string }>("/auth/logout-all/");
+  return response.data;
+}
+
+/** Stores the fresh pair the server returns after an email change (other devices are signed out). */
+async function storeSessionTokens(tokens: unknown) {
+  const pair = tokens as { access?: unknown; refresh?: unknown } | null | undefined;
+  if (typeof pair?.access !== "string" || typeof pair?.refresh !== "string") return;
+  await tokenStorage.setRefreshToken(pair.refresh);
+  await tokenStorage.setAccessToken(pair.access);
 }
 
 export async function fetchProfile() {
@@ -85,8 +114,11 @@ export async function updateProfile(payload: {
   avatar_ring_color?: string;
   languages_practicing?: string[];
   practice_language_levels?: Record<string, string>;
+  /** Required by the server when `email` changes (400 password_required / 403 invalid_password). */
+  current_password?: string;
 }) {
   const response = await api.patch("/profile/edit/", payload);
+  await storeSessionTokens(response.data?.tokens);
   return (response.data?.updated_profile || response.data) as Partial<Profile>;
 }
 
@@ -95,8 +127,10 @@ export async function fetchModerationSummary() {
   return response.data;
 }
 
-export async function deleteAccount() {
-  const response = await api.delete("/profile/delete/");
+export async function deleteAccount(currentPassword: string) {
+  const response = await api.delete("/profile/delete/", {
+    data: { current_password: currentPassword },
+  });
   clearConversationsCache();
   await tokenStorage.clear();
   return response.data;

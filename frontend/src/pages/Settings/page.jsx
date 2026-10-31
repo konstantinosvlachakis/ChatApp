@@ -12,9 +12,10 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
-import api, { isAbortError } from "../../lib/api";
+import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { avatarImage } from "../../lib/media";
 import { toast, toastApiError } from "../../components/Toast";
 import { clearClientSessionData } from "../../utils/auth";
@@ -88,6 +89,9 @@ const reasonLabel = (reason) => {
   return text ? titleCase(text) : "";
 };
 
+// Errors shown inside the delete dialog (the user can fix them there); others are toasts.
+const DELETE_INLINE_ERROR_CODES = new Set(["invalid_password", "password_required", "throttled"]);
+
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
   typeof window.matchMedia === "function" &&
@@ -141,14 +145,17 @@ const SettingsPage = () => {
   const [notificationState, setNotificationState] = useState(() => getNotificationPermission());
   const [requestingNotifications, setRequestingNotifications] = useState(false);
 
-  const [dialog, setDialog] = useState(null); // "password" | "delete" | null
+  const [dialog, setDialog] = useState(null); // "password" | "delete" | "logoutAll" | null
   const [resetSending, setResetSending] = useState(false);
   const [resetSentTo, setResetSentTo] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
   const deleteInputRef = useRef(null);
-  const inFlightRef = useRef({ save: false, reset: false, delete: false, unblock: new Set() });
+  const inFlightRef = useRef({ save: false, reset: false, delete: false, logoutAll: false, unblock: new Set() });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -269,21 +276,52 @@ const SettingsPage = () => {
     await onLogout();
   };
 
+  // Revokes every session (all devices, this one included), then the normal logout teardown.
+  const handleLogoutEverywhere = async () => {
+    if (inFlightRef.current.logoutAll) return;
+    inFlightRef.current.logoutAll = true;
+    setLoggingOutEverywhere(true);
+    try {
+      await api.post("/api/auth/logout-all/");
+    } catch (err) {
+      toastApiError(err, "Couldn't log out of all devices");
+      inFlightRef.current.logoutAll = false;
+      setLoggingOutEverywhere(false);
+      return;
+    }
+    toast.success("You've been logged out on all devices.");
+    if (onLogout) {
+      // The session is already revoked: skip presence/offline (the server closes the sockets).
+      await onLogout({ sessionRevoked: true });
+    } else {
+      clearClientSessionData();
+      setUser(null);
+      navigate("/login");
+    }
+  };
+
   const deleteConfirmWord = user?.username || "DELETE";
   const deleteConfirmed = deleteConfirmText.trim() === deleteConfirmWord;
+  const canDelete = deleteConfirmed && deletePassword.length > 0;
 
   const handleDeleteAccount = async () => {
-    if (!deleteConfirmed || inFlightRef.current.delete) return;
+    if (!canDelete || inFlightRef.current.delete) return;
     inFlightRef.current.delete = true;
     setDeleting(true);
+    setDeleteError("");
     try {
-      await api.delete("/api/profile/delete/");
+      await api.delete("/api/profile/delete/", { body: { current_password: deletePassword } });
     } catch (err) {
-      toastApiError(err, "Couldn't delete your account");
+      if (DELETE_INLINE_ERROR_CODES.has(err?.code)) {
+        setDeleteError(getErrorMessage(err, "Couldn't delete your account."));
+      } else {
+        toastApiError(err, "Couldn't delete your account");
+      }
       inFlightRef.current.delete = false;
       setDeleting(false);
       return;
     }
+    setDeletePassword("");
     toast.success("Your account was deleted.");
     if (onLogout) {
       // Same teardown as the header's Log out (sockets, caches, cookies, user), minus presence.
@@ -296,11 +334,19 @@ const SettingsPage = () => {
   };
 
   const openDialog = (name) => {
-    if (name === "delete") setDeleteConfirmText("");
+    if (name === "delete") {
+      setDeleteConfirmText("");
+      setDeletePassword("");
+      setDeleteError("");
+    }
     setDialog(name);
   };
 
-  const closeDialog = useCallback(() => setDialog(null), []);
+  // Never keep a typed password around after the dialog closes.
+  const closeDialog = useCallback(() => {
+    setDialog(null);
+    setDeletePassword("");
+  }, []);
 
   if (!user) {
     return <div className="pf-state">Loading settings…</div>;
@@ -392,6 +438,22 @@ const SettingsPage = () => {
                 </button>
               </div>
             )}
+
+            <div className="st-row">
+              <div className="st-row-text">
+                <h3>Log out of all devices</h3>
+                <p>Signs you out everywhere, including the app on your phone and this browser.</p>
+              </div>
+              <button
+                type="button"
+                className="st-btn"
+                onClick={() => openDialog("logoutAll")}
+                disabled={loggingOutEverywhere}
+              >
+                <DevicesRoundedIcon aria-hidden="true" />
+                Log out of all devices
+              </button>
+            </div>
           </SectionCard>
 
           <SectionCard
@@ -604,13 +666,28 @@ const SettingsPage = () => {
       </ConfirmDialog>
 
       <ConfirmDialog
+        open={dialog === "logoutAll"}
+        title="Log out of all devices?"
+        confirmLabel="Log out everywhere"
+        busyLabel="Logging out…"
+        busy={loggingOutEverywhere}
+        onConfirm={handleLogoutEverywhere}
+        onClose={closeDialog}
+      >
+        <p>
+          Every browser and phone signed in to your account will be signed out, including this one. You'll need to
+          log in again.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
         open={dialog === "delete"}
         title="Delete your account?"
         confirmLabel="Delete account"
         busyLabel="Deleting…"
         busy={deleting}
         tone="danger"
-        confirmDisabled={!deleteConfirmed}
+        confirmDisabled={!canDelete}
         onConfirm={handleDeleteAccount}
         onClose={closeDialog}
         initialFocusRef={deleteInputRef}
@@ -635,6 +712,28 @@ const SettingsPage = () => {
           spellCheck={false}
           disabled={deleting}
         />
+        <label htmlFor="delete-password" className="st-dialog-label">
+          Your current password
+        </label>
+        <input
+          id="delete-password"
+          type="password"
+          className="st-select"
+          value={deletePassword}
+          onChange={(event) => {
+            setDeletePassword(event.target.value);
+            setDeleteError("");
+          }}
+          autoComplete="current-password"
+          disabled={deleting}
+          aria-invalid={deleteError ? "true" : undefined}
+          aria-describedby={deleteError ? "delete-password-error" : undefined}
+        />
+        {deleteError && (
+          <p id="delete-password-error" className="st-note is-error" role="alert">
+            {deleteError}
+          </p>
+        )}
       </ConfirmDialog>
     </div>
   );

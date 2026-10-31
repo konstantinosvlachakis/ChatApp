@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import SettingsPage from "./page";
 import api from "../../lib/api";
+import { ApiError } from "../../lib/apiError";
 import { clearToasts, getToasts } from "../../components/Toast/toastStore";
 
 const mockSetUser = jest.fn();
@@ -192,11 +193,56 @@ describe("SettingsPage", () => {
     expect(api.delete).not.toHaveBeenCalledWith("/api/profile/delete/");
 
     fireEvent.change(input, { target: { value: "kostas" } });
+    // The current password is required too.
+    expect(confirm).toBeDisabled();
+    const password = within(dialog).getByLabelText("Your current password");
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.change(password, { target: { value: "my-secret" } });
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
 
-    await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/api/profile/delete/"));
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith("/api/profile/delete/", { body: { current_password: "my-secret" } })
+    );
     await waitFor(() => expect(onLogout).toHaveBeenCalledWith({ accountDeleted: true }));
+  });
+
+  test("delete account shows a wrong password inside the dialog and stays signed in", async () => {
+    api.delete.mockRejectedValue(
+      new ApiError({ status: 403, code: "invalid_password", message: "Your current password is incorrect." })
+    );
+    const { onLogout } = await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete account/i }));
+    const dialog = screen.getByRole("dialog", { name: "Delete your account?" });
+    fireEvent.change(within(dialog).getByLabelText(/to confirm/i), { target: { value: "kostas" } });
+    fireEvent.change(within(dialog).getByLabelText("Your current password"), { target: { value: "wrong" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete account" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Your current password is incorrect.");
+    expect(onLogout).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Delete your account?" })).toBeInTheDocument();
+  });
+
+  test("log out of all devices confirms, revokes every session, then logs out", async () => {
+    const { onLogout } = await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out of all devices" }));
+    const dialog = screen.getByRole("dialog", { name: "Log out of all devices?" });
+    expect(api.post).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Log out everywhere" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/auth/logout-all/"));
+    await waitFor(() => expect(onLogout).toHaveBeenCalledWith({ sessionRevoked: true }));
+  });
+
+  test("log out of all devices keeps the session when the request fails", async () => {
+    api.post.mockRejectedValue(new ApiError({ status: 429, code: "throttled", message: "Slow down." }));
+    const { onLogout } = await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Log out of all devices" }));
+    fireEvent.click(screen.getByRole("button", { name: "Log out everywhere" }));
+    await waitFor(() => expect(getToasts().length).toBeGreaterThan(0));
+    expect(onLogout).not.toHaveBeenCalled();
   });
 
   test("log out uses the layout's logout", async () => {

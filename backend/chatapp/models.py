@@ -63,6 +63,9 @@ class Profile(AbstractBaseUser):
     is_online = models.BooleanField(default=False, db_index=True)
     last_seen = models.DateTimeField(null=True, blank=True)
     ws_connection_count = models.PositiveIntegerField(default=0)
+    # Embedded as the "tv" claim in every JWT (chatapp/tokens.py); bumping it
+    # revokes all of the user's access and refresh tokens.
+    token_version = models.PositiveIntegerField(default=0)
 
     objects = ProfileManager()
 
