@@ -26,6 +26,12 @@ development bundle returns HTTP 200. Expo's manifest advertises SDK 58.0.0.
 Auth stack: `Login`, `Register`, `ForgotPassword` (`screens/ForgotPasswordScreen.tsx`: email -> `services/api/auth.requestPasswordReset` -> `POST /auth/password-reset/` -> "Check your inbox"; opened from LoginScreen's "Forgot password?" with the typed email; the new password is set on the web link, no deep link). App: `AppTabs` (tabs `People`, `Practice`, `Chats`, `Profile`, `Premium`) + `Settings`. People stack: `CommunityHome`, `PublicProfile`. Chats stack: `ChatsHome`, `CoachChat`.
 Screens in `src/screens/`, shared UI in `src/components/` (`ReportUserModal`, `CoachAvatar`; chat pieces in `components/chat/`; People pieces in `components/people/`), theme in `src/theme/` (`warm.ts` = warm exchange palette, light/dark, AA-checked; used by People and Chats (incl. Lumi); add chat tokens there, not hex literals in screens), types in `src/types/`.
 
+## Launch (`feat/splash-navy`)
+- Native splash (`app.json` `expo-splash-screen` plugin): `assets/splash.png` (1024 canvas, 512 px rounded logo tile) at `imageWidth` 240 dp → 120 dp tile, `contain`, background `#081320` (same `dark` variant; = the launch screen's backdrop); fits Android 12+'s 192 dp icon circle. `expo-status-bar` plugin `style: "light"` so launch starts with light status-bar icons. Native changes need a new dev/EAS build (Expo Go shows its own loader).
+- `App.tsx` `LaunchScreen` (the user prefers this original design and timing; keep it): backdrop `LAUNCH.background` with three soft glows, a framed `CoachAvatar` (96), "LangVoyage" and a tagline. `preventAutoHideAsync()` at module scope; the native splash stays up until fonts load (the title uses them), then `LaunchScreen` mounts and calls `SplashScreen.hide()` on layout (same backdrop colour, so no jump).
+- Sequence: content fades in (680 ms) and rises (760 ms) with a spring scale; after at least `LAUNCH.minVisibleMs` (1550 ms) AND ready (`ThemeContext.hydrated` + `!AuthContext.loading`) it slides right (≤180 dp) and fades (520–620 ms), then unmounts and the `StatusBar` switches from `light` to the theme's style. Safety: leaves after `LAUNCH.safetyTimeoutMs` (6 s) regardless. The themed root background shows behind it, never white/black.
+- Login shows the same logo tile (`assets/icon.png`, 64 dp, 24% radius) above its card. Auth screens use `SafeAreaView` on all edges; `SafeAreaProvider` gets `initialWindowMetrics`.
+
 ## API and auth
 - `src/config/api.ts` — base URL. Dev falls back to loopback / Android emulator / Metro LAN host. **Release (`!__DEV__`) requires `EXPO_PUBLIC_API_BASE_URL` with `https://` or the app refuses to start.**
 - `src/services/api/client.ts` — axios with Bearer header and single-flight refresh-on-401, 15 s timeout (coach 35 s, uploads 60 s), GET/HEAD-only retries with backoff (network, timeout, 429, 502–504; Retry-After ≤ 30 s; max 3 attempts). Rejects with `ApiError` (`services/api/errors.ts`; `getErrorMessage`, `error.data` / `error.response.data` for raw bodies). Tokens stored via `expo-secure-store` (`src/services/storage.ts`).
@@ -77,3 +83,4 @@ Clean (0 errors) as of 2026-10-27 on `feat/mobile-push` with dependencies instal
 ## Change log
 - feat/mobile-chat-redesign: chat list, room and Lumi redesign
 - feat/mobile-chat-polish: translate on double-tap, keyboard-controller, expo-image, haptics, list perf
+- feat/splash-navy: navy splash with logo and animated hand-off

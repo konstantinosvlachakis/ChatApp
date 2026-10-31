@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/brand-icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -18,7 +18,7 @@
       "bundleIdentifier": "com.anonymous.langvoyagemobile"
     },
     "android": {
-      "icon": "./assets/icon.png",
+      "icon": "./assets/brand-icon.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0d1c2b"
@@ -44,6 +44,12 @@
       "expo-font",
       "expo-secure-store",
       [
+        "expo-status-bar",
+        {
+          "style": "light"
+        }
+      ],
+      [
         "expo-notifications",
         {
           "defaultChannel": "messages"
@@ -53,8 +59,13 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
+          "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#f7f6f2"
+          "backgroundColor": "#081320",
+          "dark": {
+            "image": "./assets/splash.png",
+            "backgroundColor": "#081320"
+          }
         }
       ]
     ]

@@ -74,6 +74,7 @@ frontend/build/
 *.heif
 !frontend/public/og-image.png
 !mobile/assets/icon.png
+!mobile/assets/brand-icon.png
 !mobile/assets/adaptive-icon.png
 !mobile/assets/splash.png
 
