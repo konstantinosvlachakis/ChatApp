@@ -169,6 +169,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    # Refresh-token rotation + blacklist (OutstandingToken / BlacklistedToken);
+    # its migrations run in the Heroku release phase.
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 
@@ -393,8 +396,11 @@ AUTH_USER_MODEL = "chatapp.Profile"
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
+    # Every refresh returns a new refresh token and blacklists the used one
+    # (implemented in chatapp/tokens.py, which also checks the token_version
+    # claim and gives concurrent refreshes a short grace window).
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
     "VERIFYING_KEY": None,
@@ -450,6 +456,7 @@ REST_FRAMEWORK = {
             "reactions": "120/minute",
             "report": "20/hour",
             "push_devices": "30/hour",
+            "logout_all": "10/hour",
         }.items()
     },
     # Heroku's router appends exactly one X-Forwarded-For entry; trusting more lets

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import EditProfilePage from "./EditProfilePage";
 import api from "../../lib/api";
+import { ApiError } from "../../lib/apiError";
 
 jest.mock("../../lib/api", () => {
   const actual = jest.requireActual("../../lib/apiError");
@@ -86,5 +87,54 @@ describe("EditProfilePage", () => {
     fireEvent.change(screen.getByLabelText("Hex value"), { target: { value: "#12" } });
     expect(screen.getByText("Enter a 6-digit hex colour like #1b7f79.")).toBeInTheDocument();
     screen.getAllByRole("button", { name: "Save changes" }).forEach((button) => expect(button).toBeDisabled());
+  });
+
+  test("other fields save without a password prompt", async () => {
+    api.patch.mockResolvedValue({ message: "ok" });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Bio"), { target: { value: "Hi" } });
+    expect(screen.queryByLabelText("Current password")).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "Save changes" })[0]);
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch.mock.calls[0][1]).not.toHaveProperty("current_password");
+  });
+
+  test("changing the email asks for the current password and sends it", async () => {
+    api.patch.mockResolvedValue({ message: "ok" });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "New@Example.com" } });
+    const password = screen.getByLabelText("Current password");
+    expect(password).toHaveAttribute("type", "password");
+    screen.getAllByRole("button", { name: "Save changes" }).forEach((button) => expect(button).toBeDisabled());
+
+    fireEvent.change(password, { target: { value: "my-secret" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save changes" })[0]);
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
+    expect(api.patch).toHaveBeenCalledWith(
+      "/api/profile/edit/",
+      expect.objectContaining({ email: "new@example.com", current_password: "my-secret" })
+    );
+  });
+
+  test("a wrong current password is shown next to the field", async () => {
+    api.patch.mockRejectedValue(
+      new ApiError({ status: 403, code: "invalid_password", message: "Your current password is incorrect." })
+    );
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "wrong" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save changes" })[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your current password is incorrect.");
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Current password")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  test("changing the email back to the saved one hides the password field", () => {
+    renderPage();
+    const email = screen.getByLabelText("Email");
+    fireEvent.change(email, { target: { value: "other@example.com" } });
+    expect(screen.getByLabelText("Current password")).toBeInTheDocument();
+    fireEvent.change(email, { target: { value: "YOU@example.com " } });
+    expect(screen.queryByLabelText("Current password")).toBeNull();
   });
 });

@@ -53,9 +53,13 @@ Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by
 | is_online | Bool, default False, db_index |
 | last_seen | DateTime, null |
 | ws_connection_count | PositiveInt, default 0 |
+| token_version | PositiveInt, default 0 (migration `0034_profile_token_version`). Embedded as the `tv` claim in every JWT; `tokens.revoke_user_tokens` bumps it (password reset, email change, log out of all devices, account deletion) so every older access/refresh token and socket is rejected. Tokens without the claim count as 0 |
 
 Meta: index `profile_username_upper_idx` on `Upper("username")` (for `username__iexact`).
 Manager: `create_user(username, password, **extra)` hashes the password. `create_superuser` (used by `manage.py createsuperuser`) lowercases the email and creates a **regular** account: there are no `is_staff` / `is_superuser` fields, and there is no Django admin (removed in security/abuse-limits).
+
+### OutstandingToken / BlacklistedToken (SimpleJWT `token_blacklist` app, its own migrations)
+Every refresh token issued through `chatapp/tokens.py` gets an `OutstandingToken` row (user FK SET_NULL, jti unique, token, expires_at); rotation, logout and `revoke_user_tokens` add `BlacklistedToken` rows (OneToOne). Rows are never pruned yet (`manage.py flushexpiredtokens` would remove expired ones; not scheduled).
 
 ### PracticeStats
 `user` OneToOne→Profile (`practice_stats`), points / xp / correct_answers / total_answers PositiveInt default 0, level PositiveInt default 1, preferred_language Char(50) `""`, updated_at auto_now. Index `pstats_points_idx` on `-points`. Created lazily with `get_or_create` in the practice views.
@@ -138,3 +142,4 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 
 ## Change log
 - security/abuse-limits: removed the `Token` model (migration 0033); profile image references are server-set only and replaced files are deleted.
+- security/sessions: `Profile.token_version` (migration 0034) and the SimpleJWT `token_blacklist` tables (`OutstandingToken` / `BlacklistedToken`).

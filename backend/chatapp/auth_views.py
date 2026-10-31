@@ -7,11 +7,9 @@ from rest_framework.decorators import (
     throttle_classes,
 )
 from rest_framework.response import Response
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.exceptions import AuthenticationFailed, ValidationError
-from datetime import timedelta
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from django.core.cache import cache
 from django.contrib.auth.password_validation import validate_password
@@ -27,8 +25,17 @@ from core.exceptions import error_response
 from .models import Profile
 from .throttles import (
     AuthRateThrottle,
+    LogoutAllRateThrottle,
     PasswordResetEmailThrottle,
     PasswordResetIPThrottle,
+    with_default_throttles,
+)
+from .tokens import (
+    LoginSerializer,
+    RotatingTokenRefreshSerializer,
+    blacklist_refresh_token,
+    refresh_lifetime,
+    revoke_user_tokens,
 )
 from .views import release_db_connection
 
@@ -93,7 +100,6 @@ def _get_cookie_max_age(delta):
 
 def _set_auth_cookies(response, access_token, refresh_token, remember_me=False):
     access_lifetime = settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"]
-    refresh_lifetime = timedelta(days=30) if remember_me else settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
 
     cookie_kwargs = {
         "httponly": True,
@@ -111,7 +117,7 @@ def _set_auth_cookies(response, access_token, refresh_token, remember_me=False):
     response.set_cookie(
         settings.AUTH_COOKIE_REFRESH,
         str(refresh_token),
-        max_age=_get_cookie_max_age(refresh_lifetime),
+        max_age=_get_cookie_max_age(refresh_lifetime(remember_me)),
         **cookie_kwargs,
     )
 
@@ -165,7 +171,9 @@ class CustomObtainJWTToken(TokenObtainPairView):
         # Unknown emails still run the password hasher: Django's ModelBackend
         # hashes the password when the user doesn't exist, so the timing of a
         # failed login doesn't reveal whether the account exists.
-        serializer = TokenObtainPairSerializer(data=serializer_data)
+        serializer = LoginSerializer(
+            data=serializer_data, context={"remember_me": remember_me}
+        )
 
         try:
             serializer.is_valid(raise_exception=True)
@@ -186,15 +194,10 @@ class CustomObtainJWTToken(TokenObtainPairView):
             )
 
         clear_login_failures(email)
+        # The refresh token carries the remember_me claim (30 days instead of
+        # 7) and keeps it across rotations.
         access_token = serializer.validated_data["access"]
         refresh_token = serializer.validated_data["refresh"]
-
-        # For remembered sessions, extend refresh token lifetime.
-        if remember_me:
-            refresh_token_obj = RefreshToken(refresh_token)
-            refresh_token_obj.set_exp(lifetime=timedelta(days=30))
-            refresh_token = str(refresh_token_obj)
-            access_token = str(refresh_token_obj.access_token)
 
         response = Response({"access": str(access_token), "refresh": str(refresh_token)})
         _set_auth_cookies(response, access_token, refresh_token, remember_me=remember_me)
@@ -203,32 +206,73 @@ class CustomObtainJWTToken(TokenObtainPairView):
 
 # Custom JWT Token Refresh View
 class CustomRefreshJWTToken(TokenRefreshView):
+    """Rotates: every refresh returns a new {access, refresh} pair and
+    blacklists the used refresh token (chatapp/tokens.py). Web sends an empty
+    body and gets both cookies reset (remember-me lifetime kept); mobile sends
+    {refresh} and must store the returned refresh token."""
+
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [AuthRateThrottle]
+    serializer_class = RotatingTokenRefreshSerializer
 
     def post(self, request, *args, **kwargs):
-        request_data = request.data.copy()
+        request_data = request.data.copy() if hasattr(request.data, "copy") else {}
         if not request_data.get("refresh"):
             cookie_refresh = request.COOKIES.get(settings.AUTH_COOKIE_REFRESH)
             if cookie_refresh:
                 request_data["refresh"] = cookie_refresh
         request._full_data = request_data
 
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            access_token = response.data.get("access")
-            refresh_token = response.data.get("refresh") or request_data.get("refresh")
-            if access_token and refresh_token:
-                _set_auth_cookies(response, access_token, refresh_token)
+        serializer = self.get_serializer(data=request_data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as error:
+            raise InvalidToken(error.args[0]) from error
+
+        response = Response(serializer.validated_data, status=200)
+        _set_auth_cookies(
+            response,
+            serializer.validated_data["access"],
+            serializer.validated_data["refresh"],
+            remember_me=getattr(serializer, "remember_me", False),
+        )
         return response
+
+
+def _refresh_token_from_request(request):
+    data = request.data if isinstance(request.data, dict) else {}
+    body_token = data.get("refresh")
+    if isinstance(body_token, str) and body_token.strip():
+        return body_token.strip()
+    return request.COOKIES.get(settings.AUTH_COOKIE_REFRESH)
 
 
 @api_view(("POST",))
 @authentication_classes([])
 @permission_classes([AllowAny])
-def logout_view(_request):
+def logout_view(request):
+    """Blacklists the refresh token (body {refresh} from mobile, else the
+    lv_refresh cookie) and clears the cookies. Idempotent: a missing, invalid,
+    expired or already-blacklisted token still answers 200."""
+    try:
+        blacklist_refresh_token(_refresh_token_from_request(request))
+    except Exception:
+        logger.warning("Logout could not read the request")
     response = Response({"detail": "Logged out."})
+    _clear_auth_cookies(response)
+    return response
+
+
+@api_view(("POST",))
+@throttle_classes(with_default_throttles(LogoutAllRateThrottle))
+def logout_all_view(request):
+    """Log out of every device: bump token_version (all access and refresh
+    tokens die), blacklist outstanding refresh tokens, close the user's sockets
+    (4401) and clear this browser's cookies."""
+    revoke_user_tokens(request.user, deactivate_push=True)
+    logger.info("Logged out of all devices: user_id=%s", request.user.pk)
+    response = Response({"message": "You have been logged out on all devices."})
     _clear_auth_cookies(response)
     return response
 
@@ -363,9 +407,9 @@ def password_reset_confirm_view(request):
 
     user.set_password(new_password)
     user.save(update_fields=["password"])
-    # The new password hash invalidates this and every other reset link. JWTs
-    # can't be revoked yet (no blacklist): existing access tokens live out their
-    # 1 h, refresh tokens their 7/30 days.
+    # The new password hash invalidates this and every other reset link, and
+    # the token_version bump signs out every device (access + refresh tokens).
+    revoke_user_tokens(user, deactivate_push=True)
     # A reset proves control of the inbox: lift any login lockout for it.
     clear_login_failures(str(user.email or "").strip().lower())
     logger.info("Password reset completed for user_id=%s", user.pk)

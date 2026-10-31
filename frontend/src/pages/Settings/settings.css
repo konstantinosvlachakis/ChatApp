@@ -48,6 +48,7 @@
 .st-row-text p { margin: 0; color: var(--lv-muted-ink); font-size: 14px; line-height: 1.5; }
 .st-note { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; overflow-wrap: anywhere; }
 .st-note.is-success { color: var(--lv-teal); }
+.st-note.is-error { color: var(--lv-badge); margin-top: 8px; }
 .st-note svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 /* Buttons (pills) */

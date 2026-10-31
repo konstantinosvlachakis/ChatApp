@@ -3,6 +3,7 @@ from .views import *
 from .auth_views import (
     CustomObtainJWTToken,
     CustomRefreshJWTToken,
+    logout_all_view,
     logout_view,
     password_reset_confirm_view,
     password_reset_request_view,
@@ -16,6 +17,7 @@ urlpatterns = [
     path("token/", CustomObtainJWTToken.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CustomRefreshJWTToken.as_view(), name="token_refresh"),
     path("logout/", logout_view, name="logout"),
+    path("auth/logout-all/", logout_all_view, name="logout_all"),
     path("register/", register_view, name="register"),
     path("auth/password-reset/", password_reset_request_view, name="password_reset"),
     path(

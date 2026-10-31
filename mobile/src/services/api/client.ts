@@ -30,7 +30,10 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
 
 let refreshPromise: Promise<string | null> | null = null;
 
-// Single-flight; also used by sockets closed with 4401/4403 (expired access token).
+// Single-flight; also used by sockets closed with 4401/4403 (expired or revoked token).
+// Refresh tokens rotate: every success returns a new refresh token (the old one is
+// blacklisted), so it must be stored. A failure (401: expired, revoked or already
+// rotated) clears the session, which logs the user out.
 export const refreshAccessToken = async () => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -65,6 +68,12 @@ export const refreshAccessToken = async () => {
         }
         return nextAccess as string;
       } catch {
+        // An email change may have stored a fresh pair while this refresh was in
+        // flight with the old token: keep that session instead of logging out.
+        const current = await tokenStorage.getRefreshToken();
+        if (current && current !== refresh) {
+          return tokenStorage.getAccessToken();
+        }
         await tokenStorage.clear();
         return null;
       } finally {

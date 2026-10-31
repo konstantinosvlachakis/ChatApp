@@ -8,7 +8,8 @@ type AuthContextValue = {
   user: Profile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  /** `sessionRevoked`: the server already revoked every token (log out of all devices). */
+  logout: (options?: { sessionRevoked?: boolean }) => Promise<void>;
   refreshProfile: () => Promise<void>;
   isAuthenticated: boolean;
 };
@@ -63,9 +64,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await refreshProfile();
   };
 
-  const logout = async () => {
+  const logout = async (options?: { sessionRevoked?: boolean }) => {
     // Needs the session, so before the tokens are cleared (bounded, never throws).
-    await unregisterPushDevice();
+    // After "log out of all devices" the session is gone and the server already
+    // deactivated the account's push tokens.
+    if (!options?.sessionRevoked) {
+      await unregisterPushDevice();
+    }
+    // Revokes this device's refresh token (best effort), then clears local data.
     await logoutApi();
     setUser(null);
   };

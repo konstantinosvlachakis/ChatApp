@@ -23,7 +23,9 @@ import "./appShell.css";
 import {
   SESSION_REFRESHED_EVENT,
   clearClientSessionData,
+  getLegacyRefreshToken,
   refreshSessionOnce,
+  shouldUseLegacyAuthFallback,
 } from "../utils/auth";
 import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
@@ -82,12 +84,19 @@ const Layout = () => {
   // Also used by Settings (via the Outlet context): `{ accountDeleted: true }` skips the
   // presence call (the account is gone) but still clears the auth cookies and local session.
   const handleLogout = async (options) => {
-    const accountDeleted = options?.accountDeleted === true;
+    // Deleted account / "log out of all devices": the session is already revoked, so
+    // presence/offline would only 401 (the server closes the sockets itself).
+    const sessionGone = options?.accountDeleted === true || options?.sessionRevoked === true;
     // Best effort: logout must complete locally even if the server is unreachable.
-    if (!accountDeleted) {
+    if (!sessionGone) {
       await api.post("/api/presence/offline/", undefined, { timeoutMs: 5000 }).catch(() => {});
     }
-    await api.post("/api/logout/", undefined, { timeoutMs: 5000 }).catch(() => {});
+    // The backend blacklists the refresh token from the lv_refresh cookie (or the
+    // localhost-only legacy token sent in the body) and clears the cookies.
+    const legacyRefresh = shouldUseLegacyAuthFallback() ? getLegacyRefreshToken() : "";
+    await api
+      .post("/api/logout/", legacyRefresh ? { refresh: legacyRefresh } : undefined, { timeoutMs: 5000 })
+      .catch(() => {});
 
     presenceHeartbeatRef.current && window.clearInterval(presenceHeartbeatRef.current);
     presenceHeartbeatRef.current = null;

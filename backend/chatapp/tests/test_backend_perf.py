@@ -146,7 +146,11 @@ class CommunityListInvalidationTests(TestCase):
         before = self._version()
         client = APIClient()
         client.force_authenticate(user=self.other)
-        self.assertEqual(client.delete("/api/profile/delete/").status_code, 200)
+        # Deleting needs the current password (security/sessions).
+        response = client.delete(
+            "/api/profile/delete/", {"current_password": "pass1234"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
         self.assertGreater(self._version(), before)
 
 

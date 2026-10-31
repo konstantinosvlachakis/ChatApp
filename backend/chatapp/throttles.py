@@ -59,6 +59,12 @@ class AuthRateThrottle(AnonRateThrottle):
         }
 
 
+class LogoutAllRateThrottle(ScopedUserThrottle):
+    """"Log out of all devices" (each call bumps token_version)."""
+
+    scope = "logout_all"
+
+
 class RegisterRateThrottle(AuthRateThrottle):
     """Per-IP account creation limit (on top of the shared auth bucket)."""
 

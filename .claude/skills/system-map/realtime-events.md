@@ -17,7 +17,7 @@ Checks run in this order; the first token found wins:
 2. `lv_access` cookie (`AUTH_COOKIE_ACCESS`, web). Accepted only if `_origin_is_allowed()` passes: no Origin header is OK (native clients); otherwise the Origin must be in `CORS_ALLOWED_ORIGINS`, match the handshake `Host`, or match explicit `ALLOWED_HOSTS` (the `*` entry is ignored).
 3. ~~Legacy `?token=` query param~~: removed (server ignores it; web no longer sends it). A token only in the URL is rejected like no token.
 
-The token is validated with SimpleJWT `AccessToken` (1 h lifetime). Neither consumer re-checks expiry once the socket is open.
+The token is validated with SimpleJWT `AccessToken` (1 h lifetime). Neither consumer re-checks expiry once the socket is open. Its `tv` claim must equal `Profile.token_version` (checked inside the first query: chat `get_participant_details`, presence `increment_presence_count(token_version=...)`), else close 4401. Both consumers join `session_user_<id>` and handle the internal `session_revoked_event {token_version, keep_session_id}` (sent by `tokens.revoke_user_tokens` on commit): a socket whose token `tv` is older closes with 4401 unless its `sid` == `keep_session_id` (the session that changed its email).
 
 ## Sockets
 | | Presence socket | Chat socket |
@@ -74,7 +74,7 @@ Count: 20 distinct wire types in use (`heartbeat`, `initial_online_users`, `pres
 
 **Broadcast message payloads** (`message_created`, `message_edited`, `message_reaction`, `message_pinned`) go through `serializers.message_broadcast_payload`, which drops the per-user fields `PER_USER_MESSAGE_FIELDS` = `current_user_reaction`, `can_translate`, `translated_text`, `translated_source_language`. Clients keep their own values when merging (spread) and derive `current_user_reaction` from `reactions[].user_id`; a new message defaults `translated_*` to null and `can_translate` to "not mine and has text". REST responses still carry the full per-user serialization.
 
-**Close codes**: 4401 (presence: unauthenticated/deleted), 4403 (chat: any rejection), 4429 (socket cap or sustained frame abuse). Socket caps use cache counters `ws:connections:v1:{chat|presence}:user:{uid}` (`reserve_socket_slot`/`release_socket_slot`: `cache.add`+`incr`, decremented on disconnect, 1 h TTL from the first socket so counts leaked by a crash expire; per process without Redis).
+**Close codes**: 4401 (presence: unauthenticated/deleted; both sockets: revoked token on connect or `session_revoked_event`), 4403 (chat: any other rejection), 4429 (socket cap or sustained frame abuse). Socket caps use cache counters `ws:connections:v1:{chat|presence}:user:{uid}` (`reserve_socket_slot`/`release_socket_slot`: `cache.add`+`incr`, decremented on disconnect, 1 h TTL from the first socket so counts leaked by a crash expire; per process without Redis).
 
 ## Client socket lifecycle
 - **Reconnect policy (web)**: `utils/reconnect.ts` `getReconnectDelayMs` = exponential backoff with jitter (0.5–1 s, 1–2 s, 2–4 s … capped at 15–30 s), reset on a successful open. While the tab is hidden no reconnect is scheduled; `visibilitychange` reconnects when it is shown again. On 4429 (`SOCKET_RATE_LIMIT_CLOSE_CODE`) the attempt counter jumps to `RATE_LIMITED_RECONNECT_ATTEMPT` (5 → 15–30 s), because the accepted-then-closed socket already reset the backoff in `onopen`. On an auth close (`SOCKET_AUTH_CLOSE_CODES` {1008,4401,4403}) the socket stops and calls `refreshSessionOnce()` once per successful connection; a successful refresh (from here or from any REST 401, see flows §1) dispatches `session-refreshed` (`SESSION_REFRESHED_EVENT`), and a socket stopped for auth reconnects once on that event.
@@ -100,3 +100,4 @@ Count: 20 distinct wire types in use (`heartbeat`, `initial_online_users`, `pres
 
 ## Change log
 - security/abuse-limits: removed `?token=` auth; added per-connection frame/typing/call_invite rate limits, per-user socket caps, close code 4429 (web + mobile presence back off to attempt 5 on it), deleted accounts rejected on presence. Event names and payloads unchanged.
+- security/sessions: token `tv` checked on connect (4401 when revoked; chat now uses 4401 for that case), `session_user_<id>` group + internal `session_revoked_event` closes revoked sockets with 4401 (except the `keep_session_id` session). No client-visible event added.

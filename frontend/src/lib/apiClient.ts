@@ -152,8 +152,11 @@ export const createApiClient = ({
       request<T>("PUT", path, body, options),
     patch: <T = unknown>(path: string, body?: unknown, options?: RequestOptions) =>
       request<T>("PATCH", path, body, options),
-    delete: <T = unknown>(path: string, options?: RequestOptions) =>
-      request<T>("DELETE", path, undefined, options),
+    /** `body` is sent as the JSON request body (e.g. `{current_password}` for account deletion). */
+    delete: <T = unknown>(path: string, options?: RequestOptions & { body?: unknown }) => {
+      const { body, ...rest } = options || {};
+      return request<T>("DELETE", path, body, rest);
+    },
     /** Multipart upload (FormData); longer default timeout, never retried. */
     upload: <T = unknown>(
       path: string,

@@ -21,14 +21,20 @@ import { API_BASE_URL } from "../config/api";
 import {
   deleteAccount,
   fetchModerationSummary,
+  logoutAll,
   unblockUser,
   updateSettings,
 } from "../services/api/auth";
+import { ApiError, getErrorMessage } from "../services/api/errors";
 import { toastApiError } from "../services/toast";
+import { PasswordPromptModal } from "../components/PasswordPromptModal";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 import type { ModerationSummary } from "../types";
 import { avatarImage } from "../utils/media";
+
+// Delete errors shown inside the password prompt (the user can fix them there).
+const PASSWORD_ERROR_CODES = new Set(["invalid_password", "password_required", "throttled"]);
 
 type LanguageOption = {
   value: string;
@@ -53,6 +59,9 @@ export function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deletePromptOpen, setDeletePromptOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"base" | "practice" | null>(null);
   const [unblockingUsername, setUnblockingUsername] = useState<string | null>(null);
   const [moderation, setModeration] = useState<ModerationSummary>({
@@ -128,6 +137,33 @@ export function SettingsScreen() {
     }
   };
 
+  const onLogoutEverywhere = () => {
+    Alert.alert(
+      "Log out of all devices",
+      "Every phone and browser signed in to your account will be signed out, including this one.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log out everywhere",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoggingOutEverywhere(true);
+              await logoutAll();
+            } catch (error) {
+              toastApiError(error, "Could not log out of all devices.", "Failed");
+              setLoggingOutEverywhere(false);
+              return;
+            }
+            // Every token is revoked now; clear this device like a normal logout.
+            await logout({ sessionRevoked: true });
+          },
+        },
+      ]
+    );
+  };
+
+  // Two steps: confirm what gets deleted, then the current password (required by the server).
   const onDeleteAccount = () => {
     Alert.alert(
       "Delete account",
@@ -135,22 +171,38 @@ export function SettingsScreen() {
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete account",
+          text: "Continue",
           style: "destructive",
-          onPress: async () => {
-            try {
-              setDeletingAccount(true);
-              await deleteAccount();
-              await logout();
-            } catch (error) {
-              toastApiError(error, "Could not delete your account.", "Failed");
-            } finally {
-              setDeletingAccount(false);
-            }
+          onPress: () => {
+            setDeleteError("");
+            setDeletePromptOpen(true);
           },
         },
       ]
     );
+  };
+
+  const confirmDeleteAccount = async (password: string) => {
+    if (deletingAccount) return;
+    try {
+      setDeletingAccount(true);
+      setDeleteError("");
+      await deleteAccount(password);
+    } catch (error) {
+      if (error instanceof ApiError && PASSWORD_ERROR_CODES.has(error.code)) {
+        setDeleteError(getErrorMessage(error, "Could not delete your account."));
+      } else {
+        toastApiError(error, "Could not delete your account.", "Failed");
+      }
+      setDeletingAccount(false);
+      return;
+    }
+    setDeletePromptOpen(false);
+    try {
+      await logout();
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const applyLanguage = (value: string) => {
@@ -300,6 +352,18 @@ export function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            style={styles.secondaryButton}
+            onPress={onLogoutEverywhere}
+            disabled={loggingOutEverywhere}
+            accessibilityRole="button"
+          >
+            <Ionicons name="phone-portrait-outline" size={18} color={colors.text} />
+            <Text style={styles.secondaryButtonText}>
+              {loggingOutEverywhere ? "Logging out everywhere..." : "Log out of all devices"}
+            </Text>
+          </Pressable>
+
+          <Pressable
             style={styles.deleteButton}
             onPress={onDeleteAccount}
             disabled={deletingAccount}
@@ -441,6 +505,23 @@ export function SettingsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <PasswordPromptModal
+        colors={colors}
+        visible={deletePromptOpen}
+        title="Confirm it's you"
+        message="Enter your current password to permanently delete your account."
+        confirmLabel="Delete account"
+        busyLabel="Deleting..."
+        busy={deletingAccount}
+        destructive
+        error={deleteError}
+        onCancel={() => {
+          setDeletePromptOpen(false);
+          setDeleteError("");
+        }}
+        onSubmit={confirmDeleteAccount}
+      />
     </SafeAreaView>
   );
 }

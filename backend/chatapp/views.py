@@ -88,6 +88,12 @@ from .throttles import (
     with_default_throttles,
 )
 from core.exceptions import error_response
+from .tokens import (
+    REMEMBER_ME_CLAIM,
+    SESSION_ID_CLAIM,
+    issue_token_pair,
+    revoke_user_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1622,6 +1628,51 @@ def public_profile_view(request, username):
     return JsonResponse(profile_data, status=200)
 
 
+def verify_current_password(user, password):
+    """Re-authentication for sensitive changes (email change, account deletion).
+
+    Returns None when ``password`` is the user's password, else an envelope
+    response: 400 ``password_required``, 403 ``invalid_password`` or 429
+    ``throttled``. Wrong passwords count toward the per-account login lockout
+    (same counter as /api/token/), so this can't be used to brute-force it.
+    """
+    from .auth_views import (
+        LOGIN_FAILURE_WINDOW_SECONDS,
+        LOGIN_LOCKED_MESSAGE,
+        clear_login_failures,
+        login_is_locked,
+        record_login_failure,
+    )
+
+    if not isinstance(password, str) or not password:
+        return error_response(
+            "Enter your current password to confirm this change.",
+            "password_required",
+            400,
+        )
+    lockout_key = str(user.email or "").strip().lower() or f"user-id:{user.pk}"
+    if login_is_locked(lockout_key):
+        response = error_response(
+            LOGIN_LOCKED_MESSAGE,
+            "throttled",
+            429,
+            retry_after=LOGIN_FAILURE_WINDOW_SECONDS,
+        )
+        response["Retry-After"] = str(LOGIN_FAILURE_WINDOW_SECONDS)
+        return response
+    if not user.check_password(password):
+        record_login_failure(lockout_key)
+        return error_response("Your current password is incorrect.", "invalid_password", 403)
+    clear_login_failures(lockout_key)
+    return None
+
+
+def _uses_bearer_auth(request):
+    return str(request.META.get("HTTP_AUTHORIZATION", "")).lower().startswith(
+        ("bearer ", "jwt ")
+    )
+
+
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def profile_edit_view(request):
@@ -1642,6 +1693,7 @@ def profile_edit_view(request):
         learning_goal = data.get("learning_goal")
         avatar_ring_color = data.get("avatar_ring_color")
         profile_image_url = data.get("profile_image_url")
+        email_changed = False
 
         # Update only if data is provided
         if username:
@@ -1724,6 +1776,16 @@ def profile_edit_view(request):
                 validate_email(normalized_email)
             except ValidationError:
                 return JsonResponse({"error": "Invalid email address"}, status=400)
+            if normalized_email != str(user.email or "").strip().lower():
+                # The email is the login: changing it needs the current
+                # password (checked before the uniqueness lookup, so a stolen
+                # session can't probe which addresses have accounts).
+                password_error = verify_current_password(
+                    user, data.get("current_password")
+                )
+                if password_error is not None:
+                    return password_error
+                email_changed = True
             if (
                 Profile.objects.exclude(id=user.id)
                 .filter(email__iexact=normalized_email)
@@ -1777,8 +1839,23 @@ def profile_edit_view(request):
         # bump would empty every viewer's list cache); its 30 s TTL is the bound.
         bump_profile_cache_version(user.id)
 
+        session_tokens = None
+        if email_changed:
+            # Sign out every other device (all tokens die with the version
+            # bump) but keep this session: fresh tokens with the same session
+            # id, so this device's sockets stay open too.
+            claims = request.auth or {}
+            session_id = claims.get(SESSION_ID_CLAIM)
+            revoke_user_tokens(user, keep_session_id=session_id)
+            session_tokens = issue_token_pair(
+                user,
+                remember_me=bool(claims.get(REMEMBER_ME_CLAIM)),
+                session_id=session_id,
+            )
+            logger.info("Email changed; other sessions revoked for user_id=%s", user.id)
+
         # Return the updated user data
-        return JsonResponse(
+        response = JsonResponse(
             {
                 "message": "Profile updated successfully",
                 "updated_profile": {
@@ -1796,9 +1873,26 @@ def profile_edit_view(request):
                     "profile_image_url": (user.profile_image_url or None),
                     "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
                 },
+                # Only after an email change, and only for Bearer clients
+                # (mobile stores the pair); web gets the cookies instead.
+                **(
+                    {"tokens": session_tokens}
+                    if session_tokens and _uses_bearer_auth(request)
+                    else {}
+                ),
             },
             status=200,
         )
+        if session_tokens and not _uses_bearer_auth(request):
+            from .auth_views import _set_auth_cookies
+
+            _set_auth_cookies(
+                response,
+                session_tokens["access"],
+                session_tokens["refresh"],
+                remember_me=bool((request.auth or {}).get(REMEMBER_ME_CLAIM)),
+            )
+        return response
 
     except (json.JSONDecodeError, AttributeError):
         return JsonResponse({"error": "Invalid JSON format", "code": "invalid_json"}, status=400)
@@ -1849,8 +1943,14 @@ def profile_location_update_view(request):
 @permission_classes([IsAuthenticated])
 def delete_account_view(request):
     user = request.user
+    data = request.data if isinstance(request.data, dict) else {}
+    password_error = verify_current_password(user, data.get("current_password"))
+    if password_error is not None:
+        return password_error
     user_id = user.id
     username = user.username
+    # Blacklist refresh tokens and close the user's sockets before the row goes.
+    revoke_user_tokens(user)
     user.delete()
     # Privacy: deleted users and blocks must leave community lists at once, so
     # these (and block_user_view) are the only community-list bumps.
