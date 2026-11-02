@@ -11,6 +11,7 @@ import { useUser } from "../../context/UserContext";
 import { createOrGetConversation } from "./api/conversation";
 import ExchangeProfileCard, { ExchangeProfile, languageLabel, languageLevel } from "./components/ExchangeProfileCard";
 import FilterSheet from "./components/FilterSheet";
+import { saveChatDraft } from "../Conversations/utils/chatDrafts";
 import "./community.css";
 
 const PAGE_SIZE = 24;
@@ -125,13 +126,15 @@ export default function CommunityPage() {
     setSheetOpen(false);
   };
 
-  const sayHello = async (username: string) => {
+  // `starter`: a "Try opening with" line, handed to the chat as a ready-to-send draft.
+  const sayHello = async (username: string, starter?: string) => {
     if (startingUsername) return;
     setStartingUsername(username);
     setConversationError("");
     try {
       const conversation = await createOrGetConversation(username);
       if (!conversation?.id) throw new Error("Missing conversation");
+      if (starter) saveChatDraft(conversation.id, starter, { focus: true });
       navigate(`/conversations/${conversation.id}`);
     } catch (failure) {
       setConversationError(getErrorMessage(failure, `Could not open a conversation with ${username}. Please try again.`));

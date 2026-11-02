@@ -27,10 +27,10 @@ test("buttons keep their text names with decorative icons", () => {
   expect(screen.queryByText("Try opening with")).toBeNull();
 });
 
-test("featured card offers conversation starters that open the chat", () => {
+test("featured card offers conversation starters that open the chat with the line as a draft", () => {
   const onSayHello = renderCard(true);
   expect(screen.getByText("Why you'll click")).toBeInTheDocument();
   expect(screen.getByText("Their English")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "What's a Spanish phrase you use every day?" }));
-  expect(onSayHello).toHaveBeenCalledWith("lucia");
+  expect(onSayHello).toHaveBeenCalledWith("lucia", "What's a Spanish phrase you use every day?");
 });
