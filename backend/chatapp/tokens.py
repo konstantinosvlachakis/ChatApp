@@ -150,6 +150,26 @@ def _active_user_for(token):
     return user
 
 
+def has_active_session(raw_token):
+    """True if raw_token is a refresh token that could still be rotated: valid
+    signature, not expired, not blacklisted, not revoked, active account.
+
+    Read-only (nothing is rotated or blacklisted), so page loads can use it to
+    skip the login screen for signed-in users.
+    """
+    if not raw_token:
+        return False
+    try:
+        _active_user_for(RefreshToken(raw_token))
+    except (TokenError, AuthenticationFailed):
+        return False
+    except Exception:
+        # A database hiccup must not break the page load; the app checks again.
+        logger.warning("Session check for a page load failed", exc_info=True)
+        return False
+    return True
+
+
 def rotate_refresh_token(raw_token):
     """Validate raw_token and return a new pair, blacklisting the old token.
 
