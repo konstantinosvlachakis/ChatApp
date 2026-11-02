@@ -5,6 +5,7 @@ import { useUser } from "../../context/UserContext";
 import { toastApiError } from "../../components/Toast";
 import PracticeHeader from "./PracticeHeader";
 import StatsStrip from "./StatsStrip";
+import LanguageLevel, { LevelChangeBanner } from "./LanguageLevel";
 import ChallengeCard from "./ChallengeCard";
 import VoiceRepeat from "./VoiceRepeat";
 import Leaderboard from "./Leaderboard";
@@ -39,6 +40,9 @@ const PracticePage = () => {
   const [loadError, setLoadError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState(null);
+  // Per-language difficulty (server `progress`); `levelChange` holds the submit that moved it.
+  const [progress, setProgress] = useState(null);
+  const [levelChange, setLevelChange] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [currentRank, setCurrentRank] = useState(null);
   const [challenge, setChallenge] = useState(null);
@@ -78,6 +82,8 @@ const PracticePage = () => {
       if (seq !== requestSeqRef.current) return;
       setLanguage(statePayload.language || challengePayload.language || preferredLanguage || "english");
       setStats(statePayload.stats || challengePayload.stats || null);
+      setProgress(statePayload.progress || null);
+      setLevelChange(null);
       setLeaderboard(statePayload.leaderboard || []);
       setCurrentRank(statePayload.current_rank ?? null);
       setChallenge(challengePayload.challenge || null);
@@ -143,6 +149,10 @@ const PracticePage = () => {
       });
       if (seq !== requestSeqRef.current) return false;
       setStats(payload.stats || null);
+      if (payload.progress) {
+        setProgress(payload.progress);
+        if (payload.progress.change) setLevelChange(payload.progress);
+      }
       setLeaderboard(payload.leaderboard || []);
       setCurrentRank(payload.current_rank ?? null);
       const alreadyScored = Boolean(payload.already_scored);
@@ -215,6 +225,8 @@ const PracticePage = () => {
       <div className={`pr-layout${refreshing ? " is-refreshing" : ""}`} aria-busy={refreshing || undefined}>
         <div className="pr-main">
           <StatsStrip stats={stats} todayCount={todayCount} />
+          <LanguageLevel progress={progress} language={language} />
+          <LevelChangeBanner progress={levelChange} onDismiss={() => setLevelChange(null)} />
           {mode === "drill" ? (
             <ChallengeCard
               challenge={challenge}

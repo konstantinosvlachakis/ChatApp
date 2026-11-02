@@ -132,15 +132,14 @@ class LibraryNoRepeatTests(TestCase):
         self.addCleanup(cache.clear)
         self.user = make_user()
 
-    def serve(self, language="english", level=1, user_id=None):
+    def serve(self, language="english", bucket=1, user_id=None):
         with library_only():
-            return views.build_challenge(language, level, user_id or self.user.id)
+            return views.build_challenge(language, bucket, user_id or self.user.id)
 
     def test_no_repeat_within_a_full_round_for_every_bucket(self):
         for language, buckets in PRACTICE_LIBRARY.items():
             for bucket, items in buckets.items():
-                level = {1: 1, 2: 3, 3: 5}[bucket]
-                ids = [self.serve(language, level)["id"] for _ in range(len(items))]
+                ids = [self.serve(language, bucket)["id"] for _ in range(len(items))]
                 self.assertEqual(len(set(ids)), len(items), f"{language}:{bucket}")
                 self.assertTrue(all(i.startswith(f"{language}:{bucket}:") for i in ids))
 

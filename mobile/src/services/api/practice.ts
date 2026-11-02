@@ -35,9 +35,35 @@ export type PracticeChallenge = {
   round_complete?: boolean;
 };
 
+/** Per-language difficulty (server `progress`); XP/level stay the motivational score. */
+export type PracticeLanguageProgress = {
+  language: string;
+  /** 1-3 */
+  bucket: number;
+  max_bucket: number;
+  /** "Basics" | "Everyday grammar" | "Advanced grammar" */
+  bucket_label: string;
+  /** "A1" | "A2–B1" | "B1–B2" */
+  cefr: string;
+  attempts_in_bucket: number;
+  window_size: number;
+  /** 0-1 over the recent answers in this bucket, null before the first answer. */
+  window_accuracy: number | null;
+  /** null at the top bucket. */
+  needed_for_promotion: {
+    attempts_remaining: number;
+    min_attempts: number;
+    accuracy_target: number;
+  } | null;
+  can_promote: boolean;
+  /** Set only on the submit that moved the bucket. */
+  change: "promoted" | "demoted" | null;
+};
+
 export type PracticeStateResponse = {
   language: string;
   stats: PracticeStats | null;
+  progress?: PracticeLanguageProgress | null;
   leaderboard: PracticeLeaderboardEntry[];
   current_rank: number | null;
 };
@@ -57,6 +83,7 @@ export type PracticeSubmitResponse = {
   daily_xp_limit_reached?: boolean;
   language: string;
   stats: PracticeStats | null;
+  progress?: PracticeLanguageProgress | null;
   leaderboard: PracticeLeaderboardEntry[];
   current_rank: number | null;
 };

@@ -142,6 +142,42 @@ class PracticeStats(models.Model):
         return f"PracticeStats(user={self.user_id}, points={self.points}, level={self.level})"
 
 
+class PracticeLanguageProgress(models.Model):
+    """Per-language drill difficulty (bucket 1-3), moved by accuracy, not XP.
+
+    Created lazily on first practice in a language and seeded from the
+    profile's self-reported level (see ``chatapp.practice_progress``).
+    ``recent_results`` holds the last answers in this bucket as "1"/"0"
+    characters, oldest first (capped at ``PRACTICE_WINDOW``).
+    """
+
+    user = models.ForeignKey(
+        Profile, related_name="practice_progress", on_delete=models.CASCADE
+    )
+    language = models.CharField(max_length=50)
+    bucket = models.PositiveSmallIntegerField(default=1)
+    attempts_in_bucket = models.PositiveIntegerField(default=0)
+    recent_results = models.CharField(max_length=50, blank=True, default="")
+    promoted_at = models.DateTimeField(null=True, blank=True)
+    demoted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "language"], name="practice_progress_user_language_uniq"
+            ),
+            models.CheckConstraint(
+                condition=Q(bucket__gte=1) & Q(bucket__lte=3),
+                name="practice_progress_bucket_range",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PracticeLanguageProgress(user={self.user_id}, {self.language}, bucket={self.bucket})"
+
+
 # Messaging Models
 class Conversation(models.Model):
     sender = models.ForeignKey(

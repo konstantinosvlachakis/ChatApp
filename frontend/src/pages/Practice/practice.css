@@ -201,3 +201,26 @@
   .pr-blank, .pr-result, .pr-skel, .pr-round-chip, .pr-voice-result { animation: none !important; }
   .pr-ring-fill, .pr-bar span, .pr-option, .pr-segment-btn, .pr-layout { transition: none; }
 }
+
+/* Per-language difficulty (LanguageLevel.jsx) */
+.pr-level { display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-panel); background: var(--lv-paper); box-shadow: var(--lv-shadow-soft); }
+.pr-level-icon { flex-shrink: 0; width: 28px !important; height: 28px !important; margin-top: 2px; color: var(--lv-teal); }
+.pr-level-text { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; }
+.pr-level-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pr-level-title strong { color: var(--lv-ink); font-family: var(--lv-font-display); font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.pr-level-cefr { padding: 2px 10px; border-radius: var(--lv-radius-pill); background: var(--lv-sage); color: var(--lv-teal); font-size: 12px; font-weight: 800; }
+.pr-level-summary { margin: 0; color: var(--lv-muted-ink); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.pr-level-meter { height: 8px; }
+.pr-level-banner { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: 18px; animation: pr-rise .25s ease-out; }
+.pr-level-banner.is-good { background: var(--lv-peach-soft); color: var(--lv-peach-deep); }
+.pr-level-banner.is-calm { background: var(--lv-sage); color: var(--lv-teal); }
+.pr-level-banner p { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.pr-level-banner strong { color: var(--lv-ink); font-family: var(--lv-font-display); }
+.pr-level-banner-icon { flex-shrink: 0; width: 26px !important; height: 26px !important; }
+.pr-level-banner.is-good .pr-level-banner-icon { animation: pr-pop .4s ease-out; }
+.pr-level-banner-close { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--lv-ink-soft); cursor: pointer; }
+.pr-level-banner-close:hover { background: var(--lv-paper); }
+.pr-level-banner-close:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .pr-level-banner, .pr-level-banner-icon { animation: none !important; }
+}

@@ -122,7 +122,14 @@ Connect a socket → `increment_presence` (if the user just came online → `pre
 4. Tap (warm or cold start): response listener / `getLastNotificationResponseAsync` → `subscribeToNotificationOpens` in `AppTabs` → `navigate("AppTabs", {screen:"Chats", params:{screen:"ChatsHome", params:{openConversationId, openFromBannerAt}}})` (the same params the in-app banner uses). Logged out: the tap is queued and replayed after login.
 5. Logout: `AuthContext.logout` → `unregisterPushDevice` → `DELETE /api/push/devices/ {token}` (best effort, 5 s) → tokens cleared. If that call fails the token stays on the old account until another user registers it on this device or Expo reports it unregistered.
 
+## 15. Practice difficulty (`feat/practice-levels`)
+1. Open Practice (web `PracticePage.jsx`, mobile `PracticeScreen`) → `GET /api/practice/state/?language=` → `get_language_progress(user, language, stats)`: existing row, else create seeded from `Profile.practice_language_levels[language]` (beginner 1 / intermediate 2 / advanced, fluent 3 / else 1), raised to the legacy XP bucket when `language == PracticeStats.preferred_language` → `progress` in the response → web `LanguageLevel` card ("Spanish · Everyday grammar", CEFR chip, "12/15 sentences · 85% accuracy · 3 more to level up"), mobile level card.
+2. `GET /api/practice/challenge/` and `GET /api/practice/voice/next/` → `current_bucket(user, language)` → library/generator item from that bucket.
+3. `POST /api/practice/submit/` → score once (`practice:scored`) → XP/points (daily cap) → if not `already_scored`: `record_practice_result` (atomic, `select_for_update`; skipped when the item's bucket ≠ current bucket) appends the result, then promotes (≥15 attempts, ≥80 % of the last 20, bucket < 3) or demotes (≥10 attempts, <50 %, bucket > 1) and resets the window → `progress.change` → web banner "Level up! Spanish → Advanced grammar" / "Let's practise Everyday grammar a bit more." (dismissible; animation off with reduced motion), mobile banner (Animated spring skipped with Reduce Motion). The next challenge comes from the new bucket.
+4. Voice Repeat passes (`voice/complete/`) award capped XP only; they never move the bucket.
+
 ## Change log
 - security/abuse-limits: login lockout and register throttle/generic duplicate-email error.
 - security/sessions: §1 refresh rotation (web cookie + mobile SecureStore), logout blacklists the refresh token (mobile now calls `/api/logout/`), new "Revoking sessions" block (token_version, logout-all, email-change keep-session, re-auth for email change/account deletion); §2b password reset now signs out every device.
 - security/sessions (resilience + boot flicker): §1 web boot no longer awaits `/api/csrf/` before rendering; unsafe requests await the in-flight token.
+- feat/practice-levels: new §15 Practice difficulty (per-language progress, promotion/demotion, client banners).
