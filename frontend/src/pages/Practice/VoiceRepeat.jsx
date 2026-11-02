@@ -7,16 +7,22 @@ import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRounded";
+import CelebrationRoundedIcon from "@mui/icons-material/CelebrationRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import { getErrorMessage } from "../../lib/api";
 import {
   LANGUAGE_SPEECH_CODE,
+  VOICE_ROUND_COMPLETE_MESSAGE,
   calculateSpeechMatch,
+  completeVoiceSentence,
+  fetchVoiceSentence,
   formatLanguageName,
   markSpeechWords,
   pickBestVoiceForLanguage,
-  randomVoiceSentence,
   requiredSpeechMatchThreshold,
   translateWithFallback,
   translationTargets,
+  voiceRewardLabel,
 } from "./practiceUtils";
 
 const SILENCE_STOP_MS = 1300;
@@ -31,7 +37,7 @@ const safeStop = (recognition) => {
 };
 
 /** Result of one attempt: big match %, the sentence with matched/missed words, pass/fail. */
-const VoiceResult = ({ result, lang }) => {
+const VoiceResult = ({ result, lang, reward }) => {
   const percent = Math.round(result.score * 100);
   const missed = result.words.filter((item) => !item.matched).length;
   return (
@@ -65,18 +71,30 @@ const VoiceResult = ({ result, lang }) => {
         <span className="pr-voice-legend">
           {missed ? `${missed} word${missed === 1 ? "" : "s"} to work on (underlined)` : "Every word recognised"}
         </span>
+        {result.passed && reward ? (
+          <span className={reward.awardedXp > 0 ? "pr-xp-chip" : "pr-result-note"}>{voiceRewardLabel(reward)}</span>
+        ) : null}
       </div>
     </div>
   );
 };
 
 /**
- * Voice repeat: hear a sentence (speechSynthesis), repeat it (SpeechRecognition). When recognition
- * ends with a transcript the attempt is scored straight away (client-side word overlap, no XP).
+ * Voice repeat: hear a sentence (speechSynthesis), repeat it (SpeechRecognition). Sentences come
+ * from the server library (GET /api/practice/voice/next/, no repeats per round). When recognition
+ * ends with a transcript the attempt is scored straight away (client-side word overlap); a pass
+ * claims XP once per sentence (POST /api/practice/voice/complete/, capped server-side) and
+ * `onProgress(payload)` hands the updated stats/leaderboard to the page.
  * The parent remounts this component (key = language) when the practice language changes.
  */
-const VoiceRepeat = ({ language, user }) => {
-  const [voiceSentence, setVoiceSentence] = useState(() => (language ? randomVoiceSentence(language) : ""));
+const VoiceRepeat = ({ language, user, onProgress }) => {
+  // { id, text, round_complete, translation_hint?, ... } from the server.
+  const [sentence, setSentence] = useState(null);
+  const [sentenceStatus, setSentenceStatus] = useState("loading"); // loading | ready | error
+  const [sentenceError, setSentenceError] = useState("");
+  // XP claim for the current sentence: { status: "pending" | "done", awardedXp, alreadyScored, ... }.
+  const [reward, setReward] = useState(null);
+  const voiceSentence = sentence?.text || "";
   const [voiceTranslation, setVoiceTranslation] = useState("");
   const [voiceTranslationTarget, setVoiceTranslationTarget] = useState("");
   const [voiceTranslationLoading, setVoiceTranslationLoading] = useState(false);
@@ -91,6 +109,11 @@ const VoiceRepeat = ({ language, user }) => {
   const listenMaxTimerRef = useRef(null);
   const nextRef = useRef(null);
   const tryAgainRef = useRef(null);
+  // Bumped on every sentence load so a late response is ignored.
+  const sentenceSeqRef = useRef(0);
+  // Sentence id whose XP claim was sent (synchronous guard against double posts).
+  const claimedIdRef = useRef(null);
+  const mountedRef = useRef(true);
   const sentenceLang = (LANGUAGE_SPEECH_CODE[language] || "").split("-")[0] || undefined;
 
   useEffect(() => {
@@ -127,11 +150,35 @@ const VoiceRepeat = ({ language, user }) => {
     safeStop(current);
   };
 
-  useEffect(() => () => abandonRecognition(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      abandonRecognition();
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const loadSentence = async () => {
+    const seq = ++sentenceSeqRef.current;
+    setSentenceStatus("loading");
+    setSentenceError("");
+    try {
+      const payload = await fetchVoiceSentence(language);
+      if (!mountedRef.current || seq !== sentenceSeqRef.current) return;
+      setSentence(payload && payload.text ? payload : null);
+      setSentenceStatus(payload && payload.text ? "ready" : "error");
+      if (!payload?.text) setSentenceError("No sentence available right now.");
+    } catch (err) {
+      if (!mountedRef.current || seq !== sentenceSeqRef.current) return;
+      setSentence(null);
+      setSentenceError(getErrorMessage(err, "Could not load a sentence."));
+      setSentenceStatus("error");
+    }
+  };
 
   useEffect(() => {
-    if (language && !voiceSentence) setVoiceSentence(randomVoiceSentence(language));
-  }, [language, voiceSentence]);
+    if (language) loadSentence();
+  }, [language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +188,13 @@ const VoiceRepeat = ({ language, user }) => {
       if (!targets.length) {
         setVoiceTranslation("");
         setVoiceTranslationTarget("");
+        return;
+      }
+      // The library ships an English gloss: no translate call when English is the first target.
+      if (sentence?.translation_hint && targets[0] === "english") {
+        setVoiceTranslation(sentence.translation_hint);
+        setVoiceTranslationTarget("english");
+        setVoiceTranslationLoading(false);
         return;
       }
       setVoiceTranslationLoading(true);
@@ -169,19 +223,47 @@ const VoiceRepeat = ({ language, user }) => {
     (attempt.passed ? nextRef.current : tryAgainRef.current)?.focus();
   }, [attempt]);
 
+  // One XP claim per sentence: later passes (Try again) reuse the first claim's result.
+  const claimReward = async (sentenceId, score) => {
+    if (!sentenceId || claimedIdRef.current === sentenceId) return;
+    claimedIdRef.current = sentenceId;
+    setReward({ status: "pending", awardedXp: 0 });
+    try {
+      const payload = await completeVoiceSentence(sentenceId, Math.round(score * 1000) / 1000);
+      if (!mountedRef.current || claimedIdRef.current !== sentenceId) return;
+      setReward({
+        status: "done",
+        awardedXp: payload?.awarded_xp || 0,
+        alreadyScored: Boolean(payload?.already_scored),
+        voiceLimit: Boolean(payload?.daily_voice_limit_reached),
+        xpLimit: Boolean(payload?.daily_xp_limit_reached) && !(payload?.awarded_xp > 0),
+      });
+      onProgress?.(payload);
+    } catch (_err) {
+      if (!mountedRef.current || claimedIdRef.current !== sentenceId) return;
+      // Let the next passing attempt try again.
+      claimedIdRef.current = null;
+      setReward({ status: "done", awardedXp: 0 });
+    }
+  };
+
   const evaluateAttempt = (transcript) => {
     const score = calculateSpeechMatch(voiceSentence, transcript);
+    const passed = score >= requiredSpeechMatchThreshold(voiceSentence);
     setAttempt({
       score,
-      passed: score >= requiredSpeechMatchThreshold(voiceSentence),
+      passed,
       words: markSpeechWords(voiceSentence, transcript),
     });
+    if (passed) claimReward(sentence?.id, score);
   };
 
   const loadNextVoiceSentence = () => {
     abandonRecognition();
     setVoiceListening(false);
-    setVoiceSentence(randomVoiceSentence(language));
+    claimedIdRef.current = null;
+    setReward(null);
+    loadSentence();
     setVoiceTranslation("");
     setVoiceTranslationTarget("");
     setVoiceTranslationLoading(false);
@@ -286,20 +368,54 @@ const VoiceRepeat = ({ language, user }) => {
     recognition.start();
   };
 
-  const recordDisabled = !voiceSentence || !voiceSupported;
+  const sentenceLoading = sentenceStatus === "loading";
+  const recordDisabled = !voiceSentence || !voiceSupported || sentenceLoading;
+
+  if (sentenceStatus === "error" && !voiceSentence) {
+    return (
+      <section className="pf-card pr-card pr-voice" aria-labelledby="pr-voice-title">
+        <div className="pr-card-top">
+          <h2 id="pr-voice-title" className="pr-voice-title">
+            Hear it, then say it
+          </h2>
+        </div>
+        <div className="pr-voice-error" role="alert">
+          <p className="pr-notice is-warn">{sentenceError || "Could not load a sentence."}</p>
+          <div>
+            <button type="button" className="st-btn is-teal" onClick={loadSentence}>
+              <RefreshRoundedIcon aria-hidden="true" />
+              Retry
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section className="pf-card pr-card pr-voice" aria-labelledby="pr-voice-title">
+    <section className="pf-card pr-card pr-voice" aria-labelledby="pr-voice-title" aria-busy={sentenceLoading || undefined}>
       <div className="pr-card-top">
         <h2 id="pr-voice-title" className="pr-voice-title">
           Hear it, then say it
         </h2>
       </div>
 
-      <div className="pr-voice-pair">
-        <p className="pr-voice-sentence" lang={sentenceLang}>
-          {voiceSentence || "Loading sentence..."}
+      {sentence?.round_complete && !sentenceLoading ? (
+        <p className="pr-round-chip" role="status">
+          <CelebrationRoundedIcon aria-hidden="true" />
+          {VOICE_ROUND_COMPLETE_MESSAGE}
         </p>
+      ) : null}
+
+      <div className="pr-voice-pair">
+        {sentenceLoading ? (
+          <div className="pr-voice-sentence pr-skel pr-skel-voice" aria-hidden="true" />
+        ) : (
+          <p className="pr-voice-sentence" lang={sentenceLang}>
+            {voiceSentence}
+          </p>
+        )}
+        {sentenceLoading ? <span className="lv-visually-hidden" role="status">Loading sentence...</span> : null}
         <p className="pr-translation">
           <span>
             Translation{voiceTranslationTarget ? ` (${formatLanguageName(voiceTranslationTarget)})` : ""}
@@ -351,7 +467,7 @@ const VoiceRepeat = ({ language, user }) => {
               <MicRoundedIcon aria-hidden="true" />
               Record
             </button>
-            <button type="button" className="st-btn" onClick={loadNextVoiceSentence}>
+            <button type="button" className="st-btn" onClick={loadNextVoiceSentence} disabled={sentenceLoading}>
               <SkipNextRoundedIcon aria-hidden="true" />
               Skip
             </button>
@@ -374,7 +490,7 @@ const VoiceRepeat = ({ language, user }) => {
 
       <div aria-live="polite" role="status" className="pr-live">
         {voiceListening ? <span className="lv-visually-hidden">Listening…</span> : null}
-        {attempt ? <VoiceResult result={attempt} lang={sentenceLang} /> : null}
+        {attempt ? <VoiceResult result={attempt} lang={sentenceLang} reward={reward} /> : null}
         {attempt && voiceTranscript ? (
           <div className="pr-transcript">
             <span>You said</span>

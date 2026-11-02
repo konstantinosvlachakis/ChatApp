@@ -84,6 +84,56 @@ export async function submitPracticeAnswer(payload: {
   return response.data;
 }
 
+/** Voice Repeat sentence from the server library (`GET /practice/voice/next/`). */
+export type VoiceSentence = {
+  /** `voice:<language>:<bucket>:<index>`; send it back to `completeVoiceSentence`. */
+  id: string;
+  text: string;
+  language: string;
+  bucket: number;
+  /** True on the first sentence of a new round (every sentence of this level was served). */
+  round_complete: boolean;
+  /** Minimum match score the server accepts (mirrors requiredSpeechMatchThreshold). */
+  pass_threshold?: number;
+  /** Optional English gloss. */
+  translation_hint?: string;
+};
+
+export type VoiceCompleteResponse = {
+  id: string;
+  language: string;
+  passed: boolean;
+  pass_threshold: number;
+  awarded_xp: number;
+  awarded_points: number;
+  already_scored: boolean;
+  daily_limit_reached: boolean;
+  daily_voice_limit_reached: boolean;
+  daily_xp_limit_reached: boolean;
+  /** Awards are off while the server cache is down (nothing was awarded). */
+  awards_unavailable: boolean;
+  reason: string;
+  stats: PracticeStats | null;
+  leaderboard: PracticeLeaderboardEntry[];
+  current_rank: number | null;
+};
+
+export async function fetchVoiceSentence(language?: string) {
+  const response = await api.get<VoiceSentence>("/practice/voice/next/", {
+    params: language ? { language } : undefined,
+  });
+  return response.data;
+}
+
+/** Claim XP for a passed sentence (`score` 0-1); capped and checked server-side. */
+export async function completeVoiceSentence(id: string, score: number) {
+  const response = await api.post<VoiceCompleteResponse>("/practice/voice/complete/", {
+    id,
+    score,
+  });
+  return response.data;
+}
+
 export async function translatePracticeSentence(text: string, targetLanguage: string) {
   const response = await api.post<{
     translated_text?: string;

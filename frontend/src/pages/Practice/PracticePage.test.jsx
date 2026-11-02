@@ -264,6 +264,66 @@ describe("PracticePage", () => {
     expect(await screen.findByText("Present tense of beber")).toBeInTheDocument();
   });
 
+  test("a voice XP award updates the stats strip and leaderboard", async () => {
+    const voiceStats = { ...stats, points: 122, xp: 235 };
+    api.get.mockImplementation((path) => {
+      if (path === "/api/practice/voice/next/") {
+        return Promise.resolve({
+          id: "voice:spanish:2:4",
+          text: "Hoy hace muy buen tiempo.",
+          language: "spanish",
+          bucket: 2,
+          round_complete: false,
+          pass_threshold: 0.68,
+          translation_hint: "The weather is very nice today.",
+        });
+      }
+      if (path === "/api/practice/state/") {
+        return Promise.resolve({ language: "spanish", stats, leaderboard, current_rank: 2 });
+      }
+      return Promise.resolve({ language: "spanish", challenge: challenge(), stats });
+    });
+    api.post.mockResolvedValue({
+      awarded_xp: 5,
+      awarded_points: 2,
+      already_scored: false,
+      daily_voice_limit_reached: false,
+      daily_xp_limit_reached: false,
+      stats: voiceStats,
+      leaderboard: [{ ...leaderboard[1], rank: 1, points: 122 }],
+      current_rank: 1,
+    });
+    const Recognition = jest.fn(function FakeRecognition() {
+      this.start = jest.fn();
+      this.stop = jest.fn();
+      Recognition.latest = this;
+    });
+    window.SpeechRecognition = Recognition;
+    window.speechSynthesis = { getVoices: () => [], cancel: jest.fn(), speak: jest.fn() };
+    try {
+      await renderPage();
+      fireEvent.click(screen.getByRole("button", { name: /Voice repeat/ }));
+      await screen.findByText("Hoy hace muy buen tiempo.");
+      fireEvent.click(screen.getByRole("button", { name: /^Record$/ }));
+      act(() => {
+        Recognition.latest.onresult({
+          resultIndex: 0,
+          results: [Object.assign([{ transcript: "hoy hace muy buen tiempo" }], { isFinal: true })],
+        });
+        Recognition.latest.onend();
+      });
+      expect(await screen.findByText("+5 XP")).toBeInTheDocument();
+      expect(api.post).toHaveBeenCalledWith("/api/practice/voice/complete/", { id: "voice:spanish:2:4", score: 1 });
+      const strip = screen.getByRole("region", { name: "Your progress" });
+      expect(within(strip).getByText("122")).toBeInTheDocument();
+      expect(within(strip).getByText("65 XP to level 4")).toBeInTheDocument();
+      expect(screen.getByText("You're #1")).toBeInTheDocument();
+    } finally {
+      delete window.SpeechRecognition;
+      delete window.speechSynthesis;
+    }
+  });
+
   test("submit failure is reported with a toast", async () => {
     api.post.mockRejectedValue(new Error("nope"));
     await renderPage();

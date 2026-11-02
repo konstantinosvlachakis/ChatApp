@@ -1,0 +1,368 @@
+{
+  "1": [
+    {
+      "text": "Я практикую русский язык каждый день.",
+      "translation_hint": "I practise Russian every day."
+    },
+    {
+      "text": "Сегодня очень хорошая погода.",
+      "translation_hint": "The weather is beautiful today."
+    },
+    {
+      "text": "Пожалуйста, повтори это предложение чётко.",
+      "translation_hint": "Please repeat this sentence clearly."
+    },
+    {
+      "text": "Где находится центральный вокзал?",
+      "translation_hint": "Where is the main train station?"
+    },
+    {
+      "text": "Я бы хотел кофе, пожалуйста.",
+      "translation_hint": "I would like a coffee, please."
+    },
+    {
+      "text": "Мой брат живёт в Лондоне.",
+      "translation_hint": "My brother lives in London."
+    },
+    {
+      "text": "Сегодня мы идём на пляж.",
+      "translation_hint": "We are going to the beach today."
+    },
+    {
+      "text": "Магазин открывается в девять.",
+      "translation_hint": "The shop opens at nine."
+    },
+    {
+      "text": "Вы можете мне помочь, пожалуйста?",
+      "translation_hint": "Can you help me, please?"
+    },
+    {
+      "text": "Я учусь готовить пасту.",
+      "translation_hint": "I am learning to cook pasta."
+    },
+    {
+      "text": "Эта книга очень интересная.",
+      "translation_hint": "This book is very interesting."
+    },
+    {
+      "text": "Мои друзья ждут на улице.",
+      "translation_hint": "My friends are waiting outside."
+    },
+    {
+      "text": "Я пью чай каждое утро.",
+      "translation_hint": "I drink tea every morning."
+    },
+    {
+      "text": "Дети играют в парке.",
+      "translation_hint": "The children are playing in the park."
+    },
+    {
+      "text": "Сколько стоит эта куртка?",
+      "translation_hint": "How much does this jacket cost?"
+    },
+    {
+      "text": "Я живу недалеко от центра города.",
+      "translation_hint": "I live near the city centre."
+    },
+    {
+      "text": "Она свободно говорит на трёх языках.",
+      "translation_hint": "She speaks three languages fluently."
+    },
+    {
+      "text": "Давай встретимся сегодня после работы.",
+      "translation_hint": "Let's meet after work today."
+    },
+    {
+      "text": "Ресторан закрыт по понедельникам.",
+      "translation_hint": "The restaurant is closed on Mondays."
+    },
+    {
+      "text": "Мне нужно купить хлеба.",
+      "translation_hint": "I need to buy some bread."
+    },
+    {
+      "text": "В нашей квартире есть маленький балкон.",
+      "translation_hint": "Our flat has a small balcony."
+    },
+    {
+      "text": "Сегодня снова идёт дождь.",
+      "translation_hint": "It is raining again today."
+    },
+    {
+      "text": "Моя сестра работает в больнице.",
+      "translation_hint": "My sister works at a hospital."
+    },
+    {
+      "text": "Обычно я хожу на работу пешком.",
+      "translation_hint": "I usually walk to work."
+    },
+    {
+      "text": "Вы не знаете, который час?",
+      "translation_hint": "Do you know what time it is?"
+    },
+    {
+      "text": "Спасибо за вашу помощь.",
+      "translation_hint": "Thank you for your help."
+    },
+    {
+      "text": "Собака спит на диване.",
+      "translation_hint": "The dog is sleeping on the sofa."
+    },
+    {
+      "text": "Я люблю слушать музыку.",
+      "translation_hint": "I love listening to music."
+    },
+    {
+      "text": "Мы ужинаем в восемь.",
+      "translation_hint": "We have dinner at eight."
+    },
+    {
+      "text": "Здесь поблизости есть аптека?",
+      "translation_hint": "Is there a pharmacy nearby?"
+    }
+  ],
+  "2": [
+    {
+      "text": "Вчера я ходил на рынок с мамой.",
+      "translation_hint": "Yesterday I went to the market with my mother."
+    },
+    {
+      "text": "Завтра мы навестим бабушку и дедушку в деревне.",
+      "translation_hint": "Tomorrow we will visit our grandparents in the village."
+    },
+    {
+      "text": "Я не мог уснуть ночью из-за шума.",
+      "translation_hint": "I couldn't sleep last night because of the noise."
+    },
+    {
+      "text": "Когда я был ребёнком, я жил у моря.",
+      "translation_hint": "When I was a child, I lived by the sea."
+    },
+    {
+      "text": "Мы опоздали на автобус, поэтому взяли такси.",
+      "translation_hint": "We missed the bus, so we took a taxi."
+    },
+    {
+      "text": "Она уже сделала домашнее задание на завтра.",
+      "translation_hint": "She has already finished her homework for tomorrow."
+    },
+    {
+      "text": "Если завтра пойдёт дождь, мы останемся дома.",
+      "translation_hint": "If it rains tomorrow, we will stay at home."
+    },
+    {
+      "text": "Я никогда не был в Японии, но очень хочу поехать.",
+      "translation_hint": "I have never been to Japan, but I'd love to go."
+    },
+    {
+      "text": "Прошлым летом мы провели две недели в горах.",
+      "translation_hint": "Last summer we spent two weeks in the mountains."
+    },
+    {
+      "text": "Он позвонил мне, когда я готовил ужин.",
+      "translation_hint": "He called me while I was cooking dinner."
+    },
+    {
+      "text": "В следующем месяце я начну новую работу.",
+      "translation_hint": "I'm going to start a new job next month."
+    },
+    {
+      "text": "Хотя было холодно, мы всё равно пошли на прогулку.",
+      "translation_hint": "Although it was cold, we still went for a walk."
+    },
+    {
+      "text": "Они переехали в новый дом после рождения ребёнка.",
+      "translation_hint": "They moved house after their baby was born."
+    },
+    {
+      "text": "Я забыл зонт, и теперь я совсем мокрый.",
+      "translation_hint": "I forgot my umbrella, and now I'm completely wet."
+    },
+    {
+      "text": "Нам нужно выехать пораньше, чтобы не попасть в пробку.",
+      "translation_hint": "We should leave early to avoid the traffic."
+    },
+    {
+      "text": "Фильм был длинным, но концовка была замечательной.",
+      "translation_hint": "The film was long, but the ending was wonderful."
+    },
+    {
+      "text": "Я позвоню тебе сразу, как только приеду домой.",
+      "translation_hint": "I will call you as soon as I get home."
+    },
+    {
+      "text": "Мои родители познакомились, когда были студентами в Афинах.",
+      "translation_hint": "My parents met when they were students in Athens."
+    },
+    {
+      "text": "Вы не могли бы подсказать, как добраться до музея?",
+      "translation_hint": "Could you tell me how to get to the museum?"
+    },
+    {
+      "text": "Я изучаю этот язык уже почти два года.",
+      "translation_hint": "I've been learning this language for almost two years."
+    },
+    {
+      "text": "Мы поели в маленьком ресторане возле гавани.",
+      "translation_hint": "We ate at a small restaurant near the harbour."
+    },
+    {
+      "text": "На следующей неделе я встречаюсь с другом из университета.",
+      "translation_hint": "Next week I'm meeting a friend from university."
+    },
+    {
+      "text": "Поезд опоздал, поэтому я пропустил важную встречу.",
+      "translation_hint": "The train was late, so I missed an important meeting."
+    },
+    {
+      "text": "Перед сном я обычно читаю книгу или слушаю музыку.",
+      "translation_hint": "Before bed I usually read a book or listen to music."
+    },
+    {
+      "text": "Она устала, но продолжала работать до полуночи.",
+      "translation_hint": "She was tired, but she kept working until midnight."
+    },
+    {
+      "text": "Этим летом мы планируем поездку на острова.",
+      "translation_hint": "We are planning a trip to the islands this summer."
+    },
+    {
+      "text": "Я потерял ключи, и мне пришлось ждать на улице.",
+      "translation_hint": "I lost my keys, so I had to wait outside."
+    },
+    {
+      "text": "Моя бабушка научила меня печь домашний хлеб.",
+      "translation_hint": "My grandmother taught me how to bake homemade bread."
+    },
+    {
+      "text": "Если у тебя будет время, мы можем вместе сходить в кино.",
+      "translation_hint": "If you have time, we can go to the cinema together."
+    },
+    {
+      "text": "Музей был закрыт, поэтому мы погуляли по старому городу.",
+      "translation_hint": "The museum was closed, so we visited the old town instead."
+    }
+  ],
+  "3": [
+    {
+      "text": "Если бы я знал о забастовке, я бы поехал более ранним поездом.",
+      "translation_hint": "If I had known about the strike, I would have taken an earlier train."
+    },
+    {
+      "text": "Чем больше я практикуюсь в разговоре, тем увереннее чувствую себя в реальных беседах.",
+      "translation_hint": "The more I practise speaking, the more confident I feel in real conversations."
+    },
+    {
+      "text": "Несмотря на сильный дождь, тысячи людей пришли посмотреть концерт на площади.",
+      "translation_hint": "Despite the heavy rain, thousands of people came to watch the concert in the square."
+    },
+    {
+      "text": "Жаль, что в молодости я так мало путешествовал по разным странам.",
+      "translation_hint": "I wish I had travelled to more countries when I was younger."
+    },
+    {
+      "text": "К тому времени, когда мы добрались до вокзала, последний поезд уже ушёл.",
+      "translation_hint": "By the time we reached the station, the last train had already left."
+    },
+    {
+      "text": "Она сказала, что поможет нам с переездом, если мы угостим её обедом.",
+      "translation_hint": "She said she would help us move, as long as we bought her lunch."
+    },
+    {
+      "text": "Нет смысла переживать из-за того, что ты просто не можешь изменить.",
+      "translation_hint": "It's no use worrying about things that you simply cannot change."
+    },
+    {
+      "text": "Изучение языка требует времени, поэтому не будь к себе слишком строг.",
+      "translation_hint": "Learning a language takes time, so don't be too hard on yourself."
+    },
+    {
+      "text": "Если бы мы выехали на десять минут раньше, мы бы не застряли в пробке.",
+      "translation_hint": "Had we left ten minutes earlier, we would not have got stuck in traffic."
+    },
+    {
+      "text": "Дом, в котором вырос мой дедушка, превратили в небольшой музей.",
+      "translation_hint": "The house where my grandfather grew up has been turned into a small museum."
+    },
+    {
+      "text": "Я с нетерпением жду встречи с тобой, когда ты вернёшься весной.",
+      "translation_hint": "I'm looking forward to seeing you again when you come back in the spring."
+    },
+    {
+      "text": "Он не только пробежал марафон, но и побил свой личный рекорд.",
+      "translation_hint": "Not only did he finish the marathon, but he also beat his personal record."
+    },
+    {
+      "text": "Каждый раз, когда я приезжаю в родной город, я понимаю, как всё изменилось.",
+      "translation_hint": "Whenever I visit my hometown, I realise how much everything has changed."
+    },
+    {
+      "text": "Встречу перенесли на следующую неделю, потому что половина команды заболела гриппом.",
+      "translation_hint": "The meeting was moved to next week because half the team had the flu."
+    },
+    {
+      "text": "Хотя инструкция была очень запутанной, нам всё-таки удалось самим собрать всю мебель.",
+      "translation_hint": "Even though the instructions were confusing, we managed to assemble all the furniture ourselves."
+    },
+    {
+      "text": "Тебе нужно было заранее предупредить меня, что ты сегодня опоздаешь на ужин.",
+      "translation_hint": "You should have warned me earlier that you would be late for dinner tonight."
+    },
+    {
+      "text": "Когда привыкнешь к климату, жизнь у моря кажется просто чудесной.",
+      "translation_hint": "Once you get used to the climate, living by the sea is wonderful."
+    },
+    {
+      "text": "Соседи, которые жили там десятилетиями, знали каждую историю о деревне.",
+      "translation_hint": "The neighbours, who had lived there for decades, knew every story about the village."
+    },
+    {
+      "text": "Сегодня я лучше останусь дома и приготовлю что-нибудь простое, чем пойду в шумный бар.",
+      "translation_hint": "I'd rather stay in tonight and cook something simple than go to a crowded bar."
+    },
+    {
+      "text": "Мне потребовались годы, чтобы понять, почему мой отец так любил рыбалку.",
+      "translation_hint": "It took me years to understand why my father loved fishing so much."
+    },
+    {
+      "text": "Книга была настолько захватывающей, что я не спал всю ночь, чтобы её дочитать.",
+      "translation_hint": "The book was so gripping that I stayed up all night to finish it."
+    },
+    {
+      "text": "Если мы не забронируем билеты сегодня, свободных мест может уже не остаться.",
+      "translation_hint": "Unless we book the tickets today, there might not be any seats left."
+    },
+    {
+      "text": "Не успел я сесть на диван, как телефон снова начал звонить.",
+      "translation_hint": "Hardly had I sat down on the sofa when the phone started ringing again."
+    },
+    {
+      "text": "Каждый раз, когда мы спорим о футболе, мой дядя в итоге меняет тему.",
+      "translation_hint": "Every time we argue about football, my uncle ends up changing the subject."
+    },
+    {
+      "text": "Ресторан, который мы нашли совершенно случайно, оказался лучшим во всём городе.",
+      "translation_hint": "The restaurant we discovered completely by chance turned out to be the best in town."
+    },
+    {
+      "text": "Если когда-нибудь будешь в Мадриде, дай мне знать, и я всё тебе покажу.",
+      "translation_hint": "If you're ever in Madrid, let me know and I'll show you around."
+    },
+    {
+      "text": "Она пишет свой роман уже три года, и он почти закончен.",
+      "translation_hint": "She has been working on her novel for three years and it's almost finished."
+    },
+    {
+      "text": "Я не ожидал, что экзамен будет таким лёгким, учитывая, как сильно я волновался.",
+      "translation_hint": "I didn't expect the exam to be so easy, considering how much I'd worried."
+    },
+    {
+      "text": "Нам придётся ехать длинной дорогой, так как мост закрыт на ремонт.",
+      "translation_hint": "We'll have to take the long road, since the bridge is closed for repairs."
+    },
+    {
+      "text": "Оглядываясь назад, переезд за границу был лучшим решением в моей жизни.",
+      "translation_hint": "Looking back, moving abroad was the best decision I have ever made."
+    }
+  ]
+}
