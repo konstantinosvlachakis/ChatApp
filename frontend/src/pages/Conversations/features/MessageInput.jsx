@@ -5,6 +5,7 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import MicNoneRoundedIcon from "@mui/icons-material/MicNoneRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import { logger } from "../../../lib/logger";
+import { draftStorageKeyFor, takeDraftFocusRequest } from "../utils/chatDrafts";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -26,9 +27,7 @@ const MessageInput = ({
   replyingMessage = null,
   disabled = false,
 }) => {
-  const draftStorageKey = conversationId
-    ? `chat:draft:${conversationId}`
-    : "chat:draft:global";
+  const draftStorageKey = draftStorageKeyFor(conversationId);
   const [message, setMessage] = useState(() => localStorage.getItem(draftStorageKey) || "");
   const [showPicker, setShowPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
@@ -100,8 +99,19 @@ const MessageInput = ({
   }, [draftStorageKey, editingMessage?.id]);
 
   useEffect(() => {
-    setMessage(localStorage.getItem(draftStorageKey) || "");
-  }, [draftStorageKey]);
+    const draft = localStorage.getItem(draftStorageKey) || "";
+    setMessage(draft);
+    // A draft handed over from elsewhere (e.g. a People "Try opening with" line):
+    // put the cursor after it so it can be edited or sent straight away.
+    if (draft && takeDraftFocusRequest(conversationId)) {
+      requestAnimationFrame(() => {
+        const input = inputRef.current;
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange?.(draft.length, draft.length);
+      });
+    }
+  }, [conversationId, draftStorageKey]);
 
   useEffect(() => {
     if (editingMessage) {

@@ -34,7 +34,8 @@ interface Props {
   viewerLanguage?: string;
   busy: boolean;
   starting: boolean;
-  onSayHello: (username: string) => void;
+  /** `starter`: an opening line to prefill in the chat's composer. */
+  onSayHello: (username: string, starter?: string) => void;
 }
 
 export default function ExchangeProfileCard({
@@ -141,11 +142,11 @@ export default function ExchangeProfileCard({
             </>
           )}
           <h3 id={facts.length ? `${panelId}-try` : `${panelId}-why`}>Try opening with</h3>
-          <p id={`${panelId}-hint`} className="exchange-panel-hint">Tap one to start a chat with {profile.username}.</p>
+          <p id={`${panelId}-hint`} className="exchange-panel-hint">Tap one to open a chat with {profile.username}, ready to send.</p>
           <ul className="exchange-starters">
             {starters.map((starter) => (
               <li key={starter}>
-                <button type="button" disabled={busy} aria-describedby={`${panelId}-hint`} onClick={() => onSayHello(profile.username)}>
+                <button type="button" disabled={busy} aria-describedby={`${panelId}-hint`} onClick={() => onSayHello(profile.username, starter)}>
                   <ChatBubbleOutlineRoundedIcon aria-hidden="true" />
                   <span>{starter}</span>
                 </button>
