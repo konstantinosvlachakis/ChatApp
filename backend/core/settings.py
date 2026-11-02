@@ -467,6 +467,9 @@ REST_FRAMEWORK = {
             "translate": "20/minute",
             "translate_daily": "500/day",
             "practice_submit": "60/minute",
+            # Voice Repeat: next sentence / XP claim (plus daily voice + XP caps).
+            "voice_next": "60/minute",
+            "voice_complete": "30/minute",
             "profile_view": "120/minute",
             "people": "60/minute",
             "reactions": "120/minute",

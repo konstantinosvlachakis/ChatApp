@@ -96,3 +96,27 @@ export const evaluateVoiceAttempt = (sentence: string, transcript: string): Voic
     words: markSpeechWords(sentence, transcript),
   };
 };
+
+/** Shown on the first Voice Repeat sentence of a new round (backend `round_complete`). */
+export const VOICE_ROUND_COMPLETE_MESSAGE =
+  "You've practised every voice sentence for this level, so we're starting a fresh round.";
+
+/** Outcome of a Voice Repeat XP claim (POST /practice/voice/complete/). */
+export type VoiceReward = {
+  pending: boolean;
+  awardedXp: number;
+  alreadyScored?: boolean;
+  voiceLimit?: boolean;
+  xpLimit?: boolean;
+};
+
+/** Result-card label for a voice XP claim (mirrors web `voiceRewardLabel`). */
+export const voiceRewardLabel = (reward: VoiceReward | null) => {
+  if (!reward) return "";
+  if (reward.pending) return "Saving XP...";
+  if (reward.awardedXp > 0) return `+${reward.awardedXp} XP`;
+  if (reward.alreadyScored) return "Already earned today";
+  if (reward.voiceLimit) return "Daily voice XP reached";
+  if (reward.xpLimit) return "Daily XP limit reached";
+  return "XP couldn't be saved this time";
+};

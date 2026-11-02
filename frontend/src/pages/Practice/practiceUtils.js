@@ -74,38 +74,29 @@ export const LANGUAGE_SPEECH_CODE = {
   russian: "ru-RU",
 };
 
-export const VOICE_SENTENCE_LIBRARY = {
-  english: [
-    "I practice English every day.",
-    "The weather is beautiful today.",
-    "Please repeat this sentence clearly.",
-  ],
-  spanish: [
-    "Practico español todos los días.",
-    "Hoy hace muy buen tiempo.",
-    "Por favor repite esta frase claramente.",
-  ],
-  french: [
-    "Je pratique le français chaque jour.",
-    "Il fait très beau aujourd'hui.",
-    "Répète cette phrase avec une bonne prononciation.",
-  ],
-  greek: [
-    "Εξασκούμαι στα ελληνικά κάθε μέρα.",
-    "Σήμερα ο καιρός είναι υπέροχος.",
-    "Παρακαλώ επανάλαβε αυτή την πρόταση καθαρά.",
-  ],
-  russian: [
-    "Я практикую русский язык каждый день.",
-    "Сегодня очень хорошая погода.",
-    "Пожалуйста, повтори это предложение чётко.",
-  ],
+/** Next Voice Repeat sentence: `{ id, text, language, bucket, round_complete, pass_threshold, translation_hint? }`. */
+export const fetchVoiceSentence = (language) =>
+  api.get("/api/practice/voice/next/", { params: language ? { language } : undefined });
+
+/**
+ * Claim XP for a passed sentence (`score` 0-1). The server only pays served ids, once per
+ * sentence per day, up to the daily voice/XP caps; the response carries the updated stats.
+ */
+export const completeVoiceSentence = (id, score) => api.post("/api/practice/voice/complete/", { id, score });
+
+/** Result-card label for a voice XP claim (`reward` from VoiceRepeat). */
+export const voiceRewardLabel = (reward) => {
+  if (!reward) return "";
+  if (reward.status === "pending") return "Saving XP...";
+  if (reward.awardedXp > 0) return `+${reward.awardedXp} XP`;
+  if (reward.alreadyScored) return "Already earned today";
+  if (reward.voiceLimit) return "Daily voice XP reached";
+  if (reward.xpLimit) return "Daily XP limit reached";
+  return "XP couldn't be saved this time";
 };
 
-export const randomVoiceSentence = (language) => {
-  const pool = VOICE_SENTENCE_LIBRARY[language] || VOICE_SENTENCE_LIBRARY.english;
-  return pool[Math.floor(Math.random() * pool.length)];
-};
+export const VOICE_ROUND_COMPLETE_MESSAGE =
+  "You've practised every voice sentence for this level, so we're starting a fresh round.";
 
 export const pickBestVoiceForLanguage = (language) => {
   if (typeof window === "undefined" || !window.speechSynthesis) return null;

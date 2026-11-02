@@ -164,6 +164,8 @@
 .pr-skel-strip { height: 92px; }
 .pr-skel-card { height: 420px; }
 .pr-skel-board { height: 460px; }
+.pr-skel-voice { min-height: 88px; padding: 0; }
+.pr-voice-error { display: flex; flex-direction: column; gap: 12px; }
 @keyframes pr-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
 @media (max-width: 1023px) {

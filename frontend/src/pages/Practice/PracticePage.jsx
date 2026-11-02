@@ -166,6 +166,14 @@ const PracticePage = () => {
     }
   }, [challenge?.id, selected, result, refreshing, language]);
 
+  // Voice Repeat XP claims return the same stats/leaderboard shape as the drill submit.
+  const handleVoiceProgress = useCallback((payload) => {
+    if (!payload) return;
+    if (payload.stats) setStats(payload.stats);
+    if (Array.isArray(payload.leaderboard)) setLeaderboard(payload.leaderboard);
+    if (payload.current_rank !== undefined) setCurrentRank(payload.current_rank ?? null);
+  }, []);
+
   const handleTranslate = useCallback(
     (text) => translateWithFallback(text, translationTargets(user, language)),
     [user, language]
@@ -224,7 +232,7 @@ const PracticePage = () => {
           {/* Mounted on first open and kept (hidden) so its state survives mode switches. */}
           {voiceOpened ? (
             <div hidden={mode !== "voice"}>
-              <VoiceRepeat key={language} language={language} user={user} />
+              <VoiceRepeat key={language} language={language} user={user} onProgress={handleVoiceProgress} />
             </div>
           ) : null}
         </div>

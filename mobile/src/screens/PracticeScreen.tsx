@@ -15,20 +15,26 @@ import * as Speech from "expo-speech";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
+  completeVoiceSentence,
   fetchPracticeChallenge,
   fetchPracticeState,
+  fetchVoiceSentence,
   submitPracticeAnswer,
   translatePracticeSentence,
   type PracticeChallenge,
   type PracticeLeaderboardEntry,
   type PracticeStats,
+  type VoiceSentence,
 } from "../services/api/practice";
 import { getErrorMessage } from "../services/api/errors";
 import { ChatAvatar } from "../components/chat/ChatAvatar";
 import {
   ROUND_COMPLETE_MESSAGE,
+  VOICE_ROUND_COMPLETE_MESSAGE,
   evaluateVoiceAttempt,
+  voiceRewardLabel,
   type VoiceAttempt,
+  type VoiceReward,
 } from "../features/practiceVoice";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
@@ -43,34 +49,6 @@ const LANGUAGE_SPEECH_CODE: Record<string, string> = {
   french: "fr-FR",
   greek: "el-GR",
   russian: "ru-RU",
-};
-
-const VOICE_SENTENCE_LIBRARY: Record<string, string[]> = {
-  english: [
-    "I practice English every day.",
-    "The weather is beautiful today.",
-    "Please repeat this sentence clearly.",
-  ],
-  spanish: [
-    "Practico español todos los días.",
-    "Hoy hace muy buen tiempo.",
-    "Por favor repite esta frase claramente.",
-  ],
-  french: [
-    "Je pratique le français chaque jour.",
-    "Il fait très beau aujourd'hui.",
-    "Répète cette phrase avec une bonne prononciation.",
-  ],
-  greek: [
-    "Εξασκούμαι στα ελληνικά κάθε μέρα.",
-    "Σήμερα ο καιρός είναι υπέροχος.",
-    "Παρακαλώ επανάλαβε αυτή την πρόταση καθαρά.",
-  ],
-  russian: [
-    "Я практикую русский язык каждый день.",
-    "Сегодня очень хорошая погода.",
-    "Пожалуйста, повтори это предложение чётко.",
-  ],
 };
 
 const getChallengeSourceLabel = (source?: string) => {
@@ -105,6 +83,12 @@ export function PracticeScreen() {
   const voiceTranscriptRef = useRef("");
   const voiceSentenceRef = useRef("");
   const voiceErrorRef = useRef("");
+  // Current server sentence (read by the speech listeners, which are registered once).
+  const voiceItemRef = useRef<VoiceSentence | null>(null);
+  // Bumped on every voice sentence load so a late response is ignored.
+  const voiceSeqRef = useRef(0);
+  // Sentence id whose XP claim was sent (synchronous guard against double posts).
+  const voiceClaimedIdRef = useRef<string | null>(null);
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const warm = useMemo(() => warmColors(isDark), [isDark]);
@@ -148,6 +132,12 @@ export function PracticeScreen() {
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceResult, setVoiceResult] = useState("");
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceItem, setVoiceItem] = useState<VoiceSentence | null>(null);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceLoadError, setVoiceLoadError] = useState("");
+  // Practice language the current voice sentence was requested for ("" = load on open).
+  const [voiceLoadedFor, setVoiceLoadedFor] = useState("");
+  const [voiceReward, setVoiceReward] = useState<VoiceReward | null>(null);
 
   const progress = levelProgressPercent(stats?.xp);
   const dailyProgress = Math.min(
@@ -155,13 +145,10 @@ export function PracticeScreen() {
     Math.round((successfulMilestones / DAILY_SET_STEPS) * 100)
   );
 
-  const pickVoiceSentence = (nextLanguage: string) => {
-    const pool = VOICE_SENTENCE_LIBRARY[nextLanguage] || VOICE_SENTENCE_LIBRARY.english;
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-
-  const resetVoiceState = (sentence?: string) => {
-    const nextSentence = sentence || pickVoiceSentence(language);
+  const resetVoiceState = (item: VoiceSentence | null) => {
+    const nextSentence = item?.text || "";
+    voiceItemRef.current = item;
+    voiceClaimedIdRef.current = null;
     voiceTranscriptRef.current = "";
     voiceSentenceRef.current = nextSentence;
     voiceErrorRef.current = "";
@@ -172,6 +159,8 @@ export function PracticeScreen() {
         // no-op
       }
     }
+    setVoiceItem(item);
+    setVoiceReward(null);
     setVoiceSentence(nextSentence);
     setVoiceTranslation("");
     setVoiceTranslationTarget("");
@@ -180,6 +169,57 @@ export function PracticeScreen() {
     setVoiceAttempt(null);
     setVoiceListening(false);
     setVoiceResult("");
+  };
+
+  // Next Voice Repeat sentence from the server library (no repeats per round).
+  const loadVoiceSentence = async (nextLanguage: string) => {
+    const seq = ++voiceSeqRef.current;
+    setVoiceLoadedFor(nextLanguage);
+    setVoiceLoading(true);
+    setVoiceLoadError("");
+    resetVoiceState(null);
+    try {
+      const item = await fetchVoiceSentence(nextLanguage);
+      if (seq !== voiceSeqRef.current) return;
+      if (!item?.text) {
+        setVoiceLoadError("No sentence available right now.");
+        return;
+      }
+      resetVoiceState(item);
+    } catch (err: any) {
+      if (seq !== voiceSeqRef.current) return;
+      setVoiceLoadError(getErrorMessage(err, "Could not load a sentence."));
+    } finally {
+      if (seq === voiceSeqRef.current) setVoiceLoading(false);
+    }
+  };
+
+  // One XP claim per sentence; the server checks it was served, the score and the daily caps.
+  const claimVoiceReward = async (score: number) => {
+    const item = voiceItemRef.current;
+    if (!item?.id || voiceClaimedIdRef.current === item.id) return;
+    voiceClaimedIdRef.current = item.id;
+    setVoiceReward({ pending: true, awardedXp: 0 });
+    try {
+      const payload = await completeVoiceSentence(item.id, Math.round(score * 1000) / 1000);
+      if (voiceItemRef.current?.id !== item.id) return;
+      const awardedXp = payload.awarded_xp || 0;
+      setVoiceReward({
+        pending: false,
+        awardedXp,
+        alreadyScored: Boolean(payload.already_scored),
+        voiceLimit: Boolean(payload.daily_voice_limit_reached),
+        xpLimit: Boolean(payload.daily_xp_limit_reached) && awardedXp <= 0,
+      });
+      if (payload.stats) setStats(payload.stats);
+      if (Array.isArray(payload.leaderboard)) setLeaderboard(payload.leaderboard);
+      if (payload.current_rank !== undefined) setCurrentRank(payload.current_rank ?? null);
+    } catch {
+      if (voiceItemRef.current?.id !== item.id) return;
+      // Let the next passing attempt try again.
+      voiceClaimedIdRef.current = null;
+      setVoiceReward({ pending: false, awardedXp: 0 });
+    }
   };
 
   const bootstrapPractice = async (preferredLanguage: string, isRefresh = false) => {
@@ -200,7 +240,12 @@ export function PracticeScreen() {
       setChallenge(challengePayload.challenge || null);
       setSelectedWord("");
       setResult(null);
-      resetVoiceState(pickVoiceSentence(preferredLanguage));
+      // The voice sentence is fetched when Voice Repeat is open (see the effect below).
+      voiceSeqRef.current += 1;
+      setVoiceLoading(false);
+      setVoiceLoadError("");
+      resetVoiceState(null);
+      setVoiceLoadedFor("");
     } catch (err: any) {
       if (seq !== requestSeqRef.current) return;
       setError(getErrorMessage(err, "Could not load practice."));
@@ -230,6 +275,12 @@ export function PracticeScreen() {
   }, []);
 
   useEffect(() => {
+    if (gameMode !== "voice" || loading || refreshing) return;
+    if (voiceLoadedFor === language) return;
+    loadVoiceSentence(language).catch(() => {});
+  }, [gameMode, language, loading, refreshing, voiceLoadedFor]);
+
+  useEffect(() => {
     const translateVoiceSentence = async () => {
       if (!voiceSentence) return;
       const baseLanguage = (user?.base_translate_language || "").trim().toLowerCase();
@@ -243,6 +294,15 @@ export function PracticeScreen() {
       if (!targetCandidates.length) {
         setVoiceTranslation("");
         setVoiceTranslationTarget("");
+        return;
+      }
+
+      // The library ships an English gloss: no translate call when English is the first target.
+      const hint = voiceItemRef.current?.translation_hint;
+      if (hint && targetCandidates[0] === "english") {
+        setVoiceTranslation(hint);
+        setVoiceTranslationTarget("english");
+        setVoiceTranslationLoading(false);
         return;
       }
 
@@ -306,7 +366,9 @@ export function PracticeScreen() {
         return;
       }
       setVoiceResult("");
-      setVoiceAttempt(evaluateVoiceAttempt(voiceSentenceRef.current, transcript));
+      const attempt = evaluateVoiceAttempt(voiceSentenceRef.current, transcript);
+      setVoiceAttempt(attempt);
+      if (attempt.passed) claimVoiceReward(attempt.score).catch(() => {});
     });
 
     return () => {
@@ -434,7 +496,7 @@ export function PracticeScreen() {
   };
 
   const nextVoiceSentence = () => {
-    resetVoiceState(pickVoiceSentence(language));
+    loadVoiceSentence(language).catch(() => {});
   };
 
   if (loading) {
@@ -751,10 +813,33 @@ export function PracticeScreen() {
             <Text style={styles.challengeHint}>
               Hear the sentence, then repeat it using your microphone.
             </Text>
-            <View style={styles.voiceSentenceCard}>
-              <Text style={styles.voiceSentenceText}>
-                {voiceSentence || "Loading sentence..."}
-              </Text>
+            {voiceItem?.round_complete && !voiceLoading ? (
+              <View style={styles.roundChip} accessibilityRole="text" accessibilityLiveRegion="polite">
+                <Ionicons name="sparkles" size={16} color={warm.teal} />
+                <Text style={styles.roundChipText}>{VOICE_ROUND_COMPLETE_MESSAGE}</Text>
+              </View>
+            ) : null}
+            {voiceLoadError && !voiceSentence ? (
+              <View style={styles.errorCard} accessibilityLiveRegion="polite">
+                <Text style={styles.errorText}>{voiceLoadError}</Text>
+                <Pressable
+                  style={styles.warmSecondaryButton}
+                  onPress={nextVoiceSentence}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="refresh" size={18} color={warm.ink} />
+                  <Text style={styles.warmSecondaryButtonText}>Retry</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.voiceSentenceCard} accessibilityState={{ busy: voiceLoading }}>
+              {voiceLoading ? (
+                <ActivityIndicator color={warm.teal} accessibilityLabel="Loading sentence" />
+              ) : (
+                <Text style={styles.voiceSentenceText}>
+                  {voiceSentence || (voiceLoadError ? "" : "Loading sentence...")}
+                </Text>
+              )}
             </View>
             <View style={styles.voiceTranslationCard}>
               <Text style={styles.voiceTranslationLabel}>
@@ -853,9 +938,11 @@ export function PracticeScreen() {
                     <Text style={styles.warmPrimaryButtonText}>Record</Text>
                   </Pressable>
                   <Pressable
-                    style={styles.warmSecondaryButton}
+                    style={[styles.warmSecondaryButton, voiceLoading ? styles.buttonDisabled : undefined]}
                     onPress={nextVoiceSentence}
+                    disabled={voiceLoading}
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: voiceLoading }}
                   >
                     <Ionicons name="play-skip-forward" size={18} color={warm.ink} />
                     <Text style={styles.warmSecondaryButtonText}>Skip</Text>
@@ -924,6 +1011,15 @@ export function PracticeScreen() {
                           : "Every word recognised";
                       })()}
                     </Text>
+                    {voiceAttempt.passed && voiceReward ? (
+                      voiceReward.awardedXp > 0 ? (
+                        <View style={styles.xpChip}>
+                          <Text style={styles.xpChipText}>{voiceRewardLabel(voiceReward)}</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.resultNote}>{voiceRewardLabel(voiceReward)}</Text>
+                      )
+                    ) : null}
                   </View>
                 </View>
                 {voiceTranscript ? (

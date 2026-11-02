@@ -100,6 +100,12 @@ urlpatterns = [
     path("practice/state/", practice_state_view, name="practice_state"),
     path("practice/challenge/", practice_challenge_view, name="practice_challenge"),
     path("practice/submit/", practice_submit_view, name="practice_submit"),
+    path("practice/voice/next/", practice_voice_next_view, name="practice_voice_next"),
+    path(
+        "practice/voice/complete/",
+        practice_voice_complete_view,
+        name="practice_voice_complete",
+    ),
 ]
 websocket_urlpatterns = [
     path(

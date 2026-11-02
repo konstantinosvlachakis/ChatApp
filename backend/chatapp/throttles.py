@@ -124,6 +124,14 @@ class PracticeSubmitRateThrottle(ScopedUserThrottle):
     scope = "practice_submit"
 
 
+class VoiceNextRateThrottle(ScopedUserThrottle):
+    scope = "voice_next"
+
+
+class VoiceCompleteRateThrottle(ScopedUserThrottle):
+    scope = "voice_complete"
+
+
 class PublicProfileRateThrottle(ScopedUserThrottle):
     scope = "profile_view"
 

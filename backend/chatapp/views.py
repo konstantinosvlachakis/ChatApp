@@ -86,6 +86,8 @@ from .throttles import (
     ReportRateThrottle,
     TranslateDailyRateThrottle,
     TranslateRateThrottle,
+    VoiceCompleteRateThrottle,
+    VoiceNextRateThrottle,
     check_throttles,
     with_default_throttles,
 )
@@ -98,6 +100,12 @@ from .tokens import (
 )
 from .email_verification import RequireVerifiedEmail, send_verification_email
 from .practice_library import PRACTICE_LIBRARY
+from .practice_library.voice import (
+    VOICE_LIBRARY,
+    parse_voice_sentence_id,
+    voice_sentence_id,
+    voice_word_count,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +172,11 @@ COACH_CHAT_DAILY_LIMIT = int(os.environ.get("COACH_CHAT_DAILY_LIMIT", "200"))
 COACH_GLOBAL_DAILY_LIMIT = int(os.environ.get("COACH_GLOBAL_DAILY_LIMIT", "5000"))
 # Practice XP a user can earn per UTC day (answers still count once it is reached).
 PRACTICE_DAILY_XP_LIMIT = int(os.environ.get("PRACTICE_DAILY_XP_LIMIT", "500"))
+# Voice Repeat: XP/points per passed sentence (once per sentence per UTC day) and
+# how many voice awards a user can earn per UTC day (inside PRACTICE_DAILY_XP_LIMIT).
+PRACTICE_VOICE_XP = int(os.environ.get("PRACTICE_VOICE_XP", "5"))
+PRACTICE_VOICE_POINTS = int(os.environ.get("PRACTICE_VOICE_POINTS", "2"))
+PRACTICE_VOICE_DAILY_AWARDS = int(os.environ.get("PRACTICE_VOICE_DAILY_AWARDS", "10"))
 COACH_CHAT_MAX_MESSAGE_LENGTH = int(
     os.environ.get("COACH_CHAT_MAX_MESSAGE_LENGTH", "2000")
 )
@@ -2721,6 +2734,12 @@ def practice_bucket_for_level(level):
     return 3
 
 
+def practice_bucket_for_xp(xp_value):
+    """Difficulty bucket (1-3) for a user's practice XP: the drill and Voice
+    Repeat both pick their level this way (one place to change)."""
+    return practice_bucket_for_level(practice_level_from_xp(xp_value))
+
+
 def split_sentence_parts(sentence):
     if "___" not in sentence:
         return [sentence, None, ""]
@@ -3170,35 +3189,51 @@ def top_up_daily_library(language, level, bucket):
 PRACTICE_LIBRARY_ROUND_TTL_SECONDS = 60 * 60 * 24 * 30
 
 
-def library_round_cache_key(user_id, language, bucket):
-    return f"practice:library_round:v1:user:{user_id}:lang:{language}:bucket:{bucket}"
+def library_round_cache_key(user_id, language, bucket, namespace="library_round"):
+    """``namespace`` separates libraries sharing the round mechanism: the drill
+    (``library_round``) and Voice Repeat (``voice_round``)."""
+    return f"practice:{namespace}:v1:user:{user_id}:lang:{language}:bucket:{bucket}"
 
 
-def library_bucket_signature(challenges):
+def library_bucket_signature(challenges, text_key="sentence"):
     """Changes whenever items are added, removed or edited in a bucket."""
     joined = "\n".join(
-        normalize_option_value((challenge or {}).get("sentence"))
+        normalize_option_value((challenge or {}).get(text_key))
         for challenge in challenges
     )
     digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
     return f"{len(challenges)}:{digest}"
 
 
-def _fresh_library_order(size, recent_signatures, challenges, avoid_index=None):
+def _fresh_library_order(
+    size, recent_signatures, challenges, avoid_index=None, text_key="sentence"
+):
     order = list(range(size))
     random.shuffle(order)
     if size > 1:
         # Don't open a round with the item just served or one seen recently.
         for position, index in enumerate(order):
-            sentence = normalize_option_value(challenges[index].get("sentence"))
+            sentence = normalize_option_value(challenges[index].get(text_key))
             if index != avoid_index and sentence not in recent_signatures:
                 order[0], order[position] = order[position], order[0]
                 break
     return order
 
 
-def next_library_index(user_id, language, bucket, challenges, recent_signatures):
+def next_library_index(
+    user_id,
+    language,
+    bucket,
+    challenges,
+    recent_signatures,
+    *,
+    namespace="library_round",
+    text_key="sentence",
+):
     """Pick the next built-in item for a user: no repeats until the bucket is exhausted.
+
+    Shared by the drill library (``namespace="library_round"``, items keyed by
+    ``sentence``) and the Voice Repeat library (``"voice_round"``, ``text``).
 
     Per user and (language, bucket) the cache holds a shuffled order of the
     bucket's indexes plus a cursor (30 days). When the cursor reaches the end a
@@ -3210,8 +3245,8 @@ def next_library_index(user_id, language, bucket, challenges, recent_signatures)
     ``(index, round_complete)``.
     """
     size = len(challenges)
-    signature = library_bucket_signature(challenges)
-    cache_key = library_round_cache_key(user_id, language, bucket)
+    signature = library_bucket_signature(challenges, text_key)
+    cache_key = library_round_cache_key(user_id, language, bucket, namespace)
     try:
         state = cache.get(cache_key)
     except Exception:
@@ -3239,11 +3274,13 @@ def next_library_index(user_id, language, bucket, challenges, recent_signatures)
                 order, cursor = served + remaining, len(served)
 
     if order is None:
-        order = _fresh_library_order(size, recent_signatures, challenges)
+        order = _fresh_library_order(
+            size, recent_signatures, challenges, text_key=text_key
+        )
         cursor = 0
     elif cursor >= len(order):
         order = _fresh_library_order(
-            size, set(), challenges, avoid_index=last_index
+            size, set(), challenges, avoid_index=last_index, text_key=text_key
         )
         cursor = 0
         round_complete = True
@@ -3650,6 +3687,256 @@ def practice_submit_view(request):
             "already_scored": already_scored,
             "daily_xp_limit_reached": daily_xp_limit_reached,
             "language": language,
+            "stats": serialize_practice_stats(stats),
+            "leaderboard": leaderboard,
+            "current_rank": current_rank,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+# ---------- Voice Repeat (server-side sentence library + capped XP) ----------
+
+# A served sentence id can be claimed for XP for this long.
+PRACTICE_VOICE_SERVED_TTL_SECONDS = 60 * 60 * 24
+# Per-day keys outlive the UTC day a little (like practice:daily_xp).
+PRACTICE_VOICE_DAY_TTL_SECONDS = 60 * 60 * 25
+PRACTICE_VOICE_ROUND_NAMESPACE = "voice_round"
+
+
+def voice_pass_threshold(text):
+    """Minimum speech-match score (0-1) that counts as a pass.
+
+    Mirrors the clients' ``requiredSpeechMatchThreshold`` (web practiceUtils.js,
+    mobile features/practiceVoice.ts): <=4 words 0.62, <=7 words 0.68, else 0.72.
+    """
+    words = voice_word_count(text)
+    if words <= 4:
+        return 0.62
+    if words <= 7:
+        return 0.68
+    return 0.72
+
+
+def practice_voice_day_key():
+    return f"{timezone.now():%Y%m%d}"
+
+
+def practice_voice_served_cache_key(user_id, sentence_id):
+    return f"practice:voice_served:v1:user:{user_id}:id:{sentence_id}"
+
+
+def practice_voice_awarded_cache_key(user_id, sentence_id):
+    return (
+        f"practice:voice_awarded:v1:user:{user_id}:date:{practice_voice_day_key()}"
+        f":id:{sentence_id}"
+    )
+
+
+def practice_voice_awards_cache_key(user_id):
+    return f"practice:voice_awards:v1:user:{user_id}:date:{practice_voice_day_key()}"
+
+
+def _safe_cache_delete(key):
+    try:
+        cache.delete(key)
+    except Exception:
+        pass
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(VoiceNextRateThrottle))
+def practice_voice_next_view(request):
+    """Next Voice Repeat sentence for the user's level, no repeats per round."""
+    language = resolve_practice_language(
+        request.user,
+        request.query_params.get("language"),
+    )
+    if language not in VOICE_LIBRARY:
+        language = "english"
+    xp = (
+        PracticeStats.objects.filter(user=request.user)
+        .values_list("xp", flat=True)
+        .first()
+    )
+    bucket = practice_bucket_for_xp(xp or 0)
+    items = VOICE_LIBRARY[language].get(bucket) or []
+    if not items:
+        return error_response(
+            "No voice sentences available.",
+            "voice_library_empty",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    index, round_complete = next_library_index(
+        request.user.id,
+        language,
+        bucket,
+        items,
+        set(),
+        namespace=PRACTICE_VOICE_ROUND_NAMESPACE,
+        text_key="text",
+    )
+    item = items[index]
+    sentence_id = voice_sentence_id(language, bucket, index)
+    try:
+        # Only served ids can earn XP (see practice_voice_complete_view).
+        cache.set(
+            practice_voice_served_cache_key(request.user.id, sentence_id),
+            1,
+            timeout=PRACTICE_VOICE_SERVED_TTL_SECONDS,
+        )
+    except Exception:
+        pass
+    payload = {
+        "id": sentence_id,
+        "text": item["text"],
+        "language": language,
+        "bucket": bucket,
+        "round_complete": round_complete,
+        "pass_threshold": voice_pass_threshold(item["text"]),
+    }
+    if item.get("translation_hint"):
+        payload["translation_hint"] = item["translation_hint"]
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+def _parse_voice_score(raw_score):
+    if isinstance(raw_score, bool) or raw_score is None:
+        return None
+    try:
+        score = float(raw_score)
+    except (TypeError, ValueError):
+        return None
+    if score != score or not 0.0 <= score <= 1.0:  # NaN or out of range
+        return None
+    return score
+
+
+def _claim_voice_award(user_id, sentence_id):
+    """Run the award checks; returns ``(reason, awarded_xp)``.
+
+    ``reason`` is ``awarded`` or why nothing was awarded: ``not_served``,
+    ``already_scored``, ``daily_voice_limit``, ``daily_xp_limit`` or
+    ``unavailable`` (cache down: fail closed, the served-id check can't run).
+    """
+    if cache_degraded():
+        return "unavailable", 0
+    try:
+        served = cache.get(practice_voice_served_cache_key(user_id, sentence_id))
+    except Exception:
+        return "unavailable", 0
+    if not served:
+        return ("unavailable" if cache_degraded() else "not_served"), 0
+
+    awarded_key = practice_voice_awarded_cache_key(user_id, sentence_id)
+    try:
+        # Atomic: of two concurrent claims for the same sentence only one wins.
+        added = cache.add(awarded_key, 1, timeout=PRACTICE_VOICE_DAY_TTL_SECONDS)
+    except Exception:
+        return "unavailable", 0
+    if not added:
+        return "already_scored", 0
+    if cache_degraded():
+        # ResilientRedisCache.add reports True when Redis failed.
+        return "unavailable", 0
+
+    counter_key = practice_voice_awards_cache_key(user_id)
+    try:
+        cache.add(counter_key, 0, timeout=PRACTICE_VOICE_DAY_TTL_SECONDS)
+        awards_today = int(cache.incr(counter_key))
+    except Exception:
+        _safe_cache_delete(awarded_key)
+        return "unavailable", 0
+    if PRACTICE_VOICE_DAILY_AWARDS > 0 and awards_today > PRACTICE_VOICE_DAILY_AWARDS:
+        _safe_cache_delete(awarded_key)
+        return "daily_voice_limit", 0
+
+    granted_xp = consume_practice_daily_xp(user_id, PRACTICE_VOICE_XP)
+    if granted_xp <= 0 and PRACTICE_VOICE_XP > 0:
+        _safe_cache_delete(awarded_key)
+        return "daily_xp_limit", 0
+    return "awarded", granted_xp
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(VoiceCompleteRateThrottle))
+def practice_voice_complete_view(request):
+    """Claim XP for a passed Voice Repeat sentence.
+
+    Speech is scored on the device, so the claim is capped instead of trusted:
+    the id must have been served to this user (24 h), ``score`` must reach
+    ``voice_pass_threshold``, each sentence pays once per UTC day, at most
+    ``PRACTICE_VOICE_DAILY_AWARDS`` awards per day, inside ``PRACTICE_DAILY_XP_LIMIT``.
+    Without the cache it fails closed (200, nothing awarded, ``awards_unavailable``).
+    """
+    sentence_id = request.data.get("id")
+    parsed = parse_voice_sentence_id(sentence_id)
+    if parsed is None:
+        return error_response(
+            "Unknown voice sentence id.", "invalid_voice_id", status.HTTP_400_BAD_REQUEST
+        )
+    score = _parse_voice_score(request.data.get("score"))
+    if score is None:
+        return error_response(
+            "score must be a number between 0 and 1.",
+            "invalid_score",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    language, _bucket, _index, item = parsed
+    threshold = voice_pass_threshold(item["text"])
+    passed = score >= threshold
+
+    stats, _ = PracticeStats.objects.get_or_create(
+        user=request.user,
+        defaults={"preferred_language": language},
+    )
+    if passed:
+        reason, awarded_xp = _claim_voice_award(request.user.id, sentence_id)
+    else:
+        reason, awarded_xp = "below_threshold", 0
+    awarded_points = PRACTICE_VOICE_POINTS if reason == "awarded" else 0
+
+    if awarded_xp or awarded_points:
+        try:
+            # Same atomic update as the drill submit (no answer counters: voice
+            # attempts are not drill answers). Level = (xp // 100) + 1.
+            PracticeStats.objects.filter(pk=stats.pk).update(
+                points=F("points") + awarded_points,
+                xp=F("xp") + awarded_xp,
+                level=(F("xp") + awarded_xp) / 100 + 1,
+                updated_at=timezone.now(),
+            )
+        except Exception:
+            # Nothing was awarded: let the user claim again.
+            _safe_cache_delete(
+                practice_voice_awarded_cache_key(request.user.id, sentence_id)
+            )
+            raise
+        stats.refresh_from_db()
+
+    leaderboard, current_rank = get_leaderboard(
+        language, request.user.id, current_stats=stats, request=request
+    )
+    daily_voice_limit_reached = reason == "daily_voice_limit"
+    daily_xp_limit_reached = reason == "daily_xp_limit" or (
+        reason == "awarded" and awarded_xp < PRACTICE_VOICE_XP
+    )
+    return Response(
+        {
+            "id": sentence_id,
+            "language": language,
+            "passed": passed,
+            "pass_threshold": threshold,
+            "awarded_xp": awarded_xp,
+            "awarded_points": awarded_points,
+            "already_scored": reason == "already_scored",
+            "daily_limit_reached": daily_voice_limit_reached or daily_xp_limit_reached,
+            "daily_voice_limit_reached": daily_voice_limit_reached,
+            "daily_xp_limit_reached": daily_xp_limit_reached,
+            "awards_unavailable": reason == "unavailable",
+            "reason": reason,
             "stats": serialize_practice_stats(stats),
             "leaderboard": leaderboard,
             "current_rank": current_rank,
