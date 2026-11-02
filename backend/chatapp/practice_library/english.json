@@ -1,0 +1,998 @@
+{
+  "1": [
+    {
+      "sentence": "I ___ to school every day.",
+      "answer": "go",
+      "options": [
+        "go",
+        "goes",
+        "went",
+        "going"
+      ],
+      "hint": "Present simple, first person."
+    },
+    {
+      "sentence": "She ___ coffee in the morning.",
+      "answer": "drinks",
+      "options": [
+        "drink",
+        "drinks",
+        "drank",
+        "drinking"
+      ],
+      "hint": "Present simple, third person."
+    },
+    {
+      "sentence": "We ___ in Athens.",
+      "answer": "live",
+      "options": [
+        "live",
+        "lives",
+        "lived",
+        "living"
+      ],
+      "hint": "Current fact."
+    },
+    {
+      "sentence": "They ___ football on Sunday.",
+      "answer": "play",
+      "options": [
+        "play",
+        "plays",
+        "played",
+        "playing"
+      ],
+      "hint": "Habit action."
+    },
+    {
+      "sentence": "My brother ___ a teacher at a small school.",
+      "answer": "is",
+      "options": [
+        "am",
+        "are",
+        "is",
+        "be"
+      ],
+      "hint": "'To be', third person singular."
+    },
+    {
+      "sentence": "We ___ two cats and a dog at home.",
+      "answer": "have",
+      "options": [
+        "have",
+        "has",
+        "having",
+        "to have"
+      ],
+      "hint": "Possession verb, plural subject."
+    },
+    {
+      "sentence": "Look, there is ___ apple on the table.",
+      "answer": "an",
+      "options": [
+        "a",
+        "many",
+        "an",
+        "these"
+      ],
+      "hint": "Article before a vowel sound."
+    },
+    {
+      "sentence": "This is my sister, and ___ name is Anna.",
+      "answer": "her",
+      "options": [
+        "his",
+        "its",
+        "their",
+        "her"
+      ],
+      "hint": "Possessive for a woman."
+    },
+    {
+      "sentence": "They ___ English and a little French.",
+      "answer": "speak",
+      "options": [
+        "speaks",
+        "speak",
+        "speaking",
+        "to speak"
+      ],
+      "hint": "Present simple, plural subject."
+    },
+    {
+      "sentence": "I ___ hungry, can we eat now?",
+      "answer": "am",
+      "options": [
+        "is",
+        "are",
+        "am",
+        "be"
+      ],
+      "hint": "'To be' with 'I'."
+    },
+    {
+      "sentence": "My parents ___ in a big house near the sea.",
+      "answer": "live",
+      "options": [
+        "lives",
+        "living",
+        "to live",
+        "live"
+      ],
+      "hint": "Present simple, plural subject."
+    },
+    {
+      "sentence": "Does your friend ___ chocolate ice cream?",
+      "answer": "like",
+      "options": [
+        "like",
+        "likes",
+        "liking",
+        "liked"
+      ],
+      "hint": "Base form after 'does'."
+    },
+    {
+      "sentence": "Right now the children ___ in the garden.",
+      "answer": "are",
+      "options": [
+        "is",
+        "am",
+        "are",
+        "be"
+      ],
+      "hint": "'To be', plural subject."
+    },
+    {
+      "sentence": "He ___ a red car and a blue bike.",
+      "answer": "has",
+      "options": [
+        "have",
+        "has",
+        "having",
+        "haves"
+      ],
+      "hint": "'To have', third person singular."
+    },
+    {
+      "sentence": "Is ___ your bag on the chair?",
+      "answer": "this",
+      "options": [
+        "these",
+        "those",
+        "them",
+        "this"
+      ],
+      "hint": "Singular demonstrative."
+    },
+    {
+      "sentence": "My mother ___ dinner at seven o'clock every evening.",
+      "answer": "cooks",
+      "options": [
+        "cook",
+        "cooks",
+        "cooking",
+        "to cook"
+      ],
+      "hint": "Present simple, third person."
+    },
+    {
+      "sentence": "We are students, and ___ teacher is from Canada.",
+      "answer": "our",
+      "options": [
+        "we",
+        "us",
+        "ours",
+        "our"
+      ],
+      "hint": "Possessive adjective for 'we'."
+    },
+    {
+      "sentence": "I ___ like cold weather.",
+      "answer": "don't",
+      "options": [
+        "doesn't",
+        "don't",
+        "isn't",
+        "aren't"
+      ],
+      "hint": "Negative present simple with 'I'."
+    },
+    {
+      "sentence": "___ she work in a bank?",
+      "answer": "Does",
+      "options": [
+        "Do",
+        "Is",
+        "Does",
+        "Are"
+      ],
+      "hint": "Question auxiliary, third person."
+    },
+    {
+      "sentence": "There ___ three bedrooms in our flat.",
+      "answer": "are",
+      "options": [
+        "are",
+        "is",
+        "am",
+        "be"
+      ],
+      "hint": "Existence with a plural noun."
+    },
+    {
+      "sentence": "She wants to buy ___ umbrella for the rain.",
+      "answer": "an",
+      "options": [
+        "a",
+        "an",
+        "many",
+        "these"
+      ],
+      "hint": "Article before a vowel sound."
+    },
+    {
+      "sentence": "My dog is small, but ___ ears are very big.",
+      "answer": "its",
+      "options": [
+        "it's",
+        "it",
+        "itself",
+        "its"
+      ],
+      "hint": "Possessive of 'it'."
+    },
+    {
+      "sentence": "The shop ___ at nine and closes at six.",
+      "answer": "opens",
+      "options": [
+        "open",
+        "opening",
+        "opens",
+        "to open"
+      ],
+      "hint": "Present simple, third person."
+    },
+    {
+      "sentence": "My friends and I ___ to the cinema on Fridays.",
+      "answer": "go",
+      "options": [
+        "goes",
+        "go",
+        "going",
+        "to go"
+      ],
+      "hint": "Present simple, plural subject."
+    },
+    {
+      "sentence": "Tom ___ a shower every morning before work.",
+      "answer": "takes",
+      "options": [
+        "take",
+        "taking",
+        "to take",
+        "takes"
+      ],
+      "hint": "Daily routine, third person."
+    },
+    {
+      "sentence": "Are these shoes ___? They are under your bed.",
+      "answer": "yours",
+      "options": [
+        "your",
+        "yours",
+        "you",
+        "yourself"
+      ],
+      "hint": "Possessive pronoun, stands alone."
+    },
+    {
+      "sentence": "My sister ___ twenty-five years old.",
+      "answer": "is",
+      "options": [
+        "has",
+        "are",
+        "am",
+        "is"
+      ],
+      "hint": "Age uses 'to be'."
+    },
+    {
+      "sentence": "She has two ___ and one daughter.",
+      "answer": "sons",
+      "options": [
+        "son",
+        "sons",
+        "son's",
+        "sones"
+      ],
+      "hint": "Regular plural noun."
+    },
+    {
+      "sentence": "Where ___ you from?",
+      "answer": "are",
+      "options": [
+        "is",
+        "am",
+        "are",
+        "be"
+      ],
+      "hint": "'To be' with 'you'."
+    },
+    {
+      "sentence": "It ___ a lot in London in autumn.",
+      "answer": "rains",
+      "options": [
+        "rain",
+        "raining",
+        "to rain",
+        "rains"
+      ],
+      "hint": "Weather verb, present simple."
+    }
+  ],
+  "2": [
+    {
+      "sentence": "Yesterday, he ___ to the market.",
+      "answer": "went",
+      "options": [
+        "go",
+        "goes",
+        "went",
+        "gone"
+      ],
+      "hint": "Past tense of go."
+    },
+    {
+      "sentence": "I am ___ dinner right now.",
+      "answer": "cooking",
+      "options": [
+        "cook",
+        "cooked",
+        "cooking",
+        "cooks"
+      ],
+      "hint": "Present continuous form."
+    },
+    {
+      "sentence": "They have ___ their homework.",
+      "answer": "finished",
+      "options": [
+        "finish",
+        "finished",
+        "finishing",
+        "finishes"
+      ],
+      "hint": "Present perfect with 'have'."
+    },
+    {
+      "sentence": "She was ___ when I called.",
+      "answer": "sleeping",
+      "options": [
+        "sleep",
+        "sleeping",
+        "slept",
+        "sleeps"
+      ],
+      "hint": "Past continuous action."
+    },
+    {
+      "sentence": "Last summer we ___ to Italy by train.",
+      "answer": "travelled",
+      "options": [
+        "travel",
+        "travelled",
+        "will travel",
+        "travelling"
+      ],
+      "hint": "Past simple, finished time."
+    },
+    {
+      "sentence": "Tomorrow I ___ my grandparents in the village.",
+      "answer": "will visit",
+      "options": [
+        "visited",
+        "have visited",
+        "will visit",
+        "was visiting"
+      ],
+      "hint": "Future with 'will'."
+    },
+    {
+      "sentence": "She ___ TV when the phone rang.",
+      "answer": "was watching",
+      "options": [
+        "was watching",
+        "watches",
+        "is watching",
+        "has watched"
+      ],
+      "hint": "Past continuous, interrupted action."
+    },
+    {
+      "sentence": "The keys are ___ the table, next to your phone.",
+      "answer": "on",
+      "options": [
+        "of",
+        "on",
+        "to",
+        "from"
+      ],
+      "hint": "Preposition for a surface."
+    },
+    {
+      "sentence": "We have lived here ___ 2015.",
+      "answer": "since",
+      "options": [
+        "for",
+        "ago",
+        "since",
+        "during"
+      ],
+      "hint": "Starting point in time."
+    },
+    {
+      "sentence": "I saw Maria at the party and gave ___ your message.",
+      "answer": "her",
+      "options": [
+        "she",
+        "hers",
+        "herself",
+        "her"
+      ],
+      "hint": "Object pronoun, feminine."
+    },
+    {
+      "sentence": "He cut ___ while he was cooking dinner.",
+      "answer": "himself",
+      "options": [
+        "him",
+        "himself",
+        "his",
+        "he"
+      ],
+      "hint": "Reflexive pronoun."
+    },
+    {
+      "sentence": "This hotel is ___ than the one we stayed in last year.",
+      "answer": "cheaper",
+      "options": [
+        "cheap",
+        "cheapest",
+        "more cheap",
+        "cheaper"
+      ],
+      "hint": "Comparative of a short adjective."
+    },
+    {
+      "sentence": "You ___ wear a seatbelt in the car; it's the law.",
+      "answer": "must",
+      "options": [
+        "mustn't",
+        "must",
+        "can't",
+        "needn't"
+      ],
+      "hint": "Modal of obligation."
+    },
+    {
+      "sentence": "I ___ finished my homework yet.",
+      "answer": "haven't",
+      "options": [
+        "hasn't",
+        "didn't",
+        "haven't",
+        "wasn't"
+      ],
+      "hint": "Present perfect negative with 'yet'."
+    },
+    {
+      "sentence": "We arrived ___ the airport two hours early.",
+      "answer": "at",
+      "options": [
+        "at",
+        "to",
+        "on",
+        "for"
+      ],
+      "hint": "Preposition after 'arrive' for a place."
+    },
+    {
+      "sentence": "Next week they ___ going to move to a new flat.",
+      "answer": "are",
+      "options": [
+        "is",
+        "am",
+        "be",
+        "are"
+      ],
+      "hint": "'Going to' future, plural."
+    },
+    {
+      "sentence": "Can you help ___ carry these bags upstairs?",
+      "answer": "me",
+      "options": [
+        "I",
+        "me",
+        "my",
+        "mine"
+      ],
+      "hint": "Object pronoun, first person."
+    },
+    {
+      "sentence": "My brother is the ___ person in our family.",
+      "answer": "tallest",
+      "options": [
+        "tall",
+        "taller",
+        "tallest",
+        "more tall"
+      ],
+      "hint": "Superlative adjective."
+    },
+    {
+      "sentence": "Have you ever ___ sushi?",
+      "answer": "eaten",
+      "options": [
+        "ate",
+        "eat",
+        "eating",
+        "eaten"
+      ],
+      "hint": "Past participle, irregular verb."
+    },
+    {
+      "sentence": "When I was a child, I ___ play outside every afternoon.",
+      "answer": "used to",
+      "options": [
+        "used to",
+        "use to",
+        "using to",
+        "am used to"
+      ],
+      "hint": "Past habit."
+    },
+    {
+      "sentence": "The meeting starts ___ nine o'clock.",
+      "answer": "at",
+      "options": [
+        "in",
+        "on",
+        "at",
+        "during"
+      ],
+      "hint": "Preposition for clock times."
+    },
+    {
+      "sentence": "I'm sorry, but I ___ come to dinner tonight; I have to work late.",
+      "answer": "can't",
+      "options": [
+        "didn't",
+        "can't",
+        "haven't",
+        "wasn't"
+      ],
+      "hint": "Modal of inability."
+    },
+    {
+      "sentence": "They enjoyed ___ at the beach last weekend.",
+      "answer": "themselves",
+      "options": [
+        "them",
+        "their",
+        "themselves",
+        "theirs"
+      ],
+      "hint": "Reflexive pronoun, plural."
+    },
+    {
+      "sentence": "This box is ___ heavy for me to lift.",
+      "answer": "too",
+      "options": [
+        "enough",
+        "so",
+        "such",
+        "too"
+      ],
+      "hint": "More than is possible."
+    },
+    {
+      "sentence": "Is this jacket ___ or mine?",
+      "answer": "yours",
+      "options": [
+        "yours",
+        "your",
+        "you",
+        "yourself"
+      ],
+      "hint": "Possessive pronoun, second person."
+    },
+    {
+      "sentence": "I'll call you as soon as I ___ home.",
+      "answer": "get",
+      "options": [
+        "will get",
+        "get",
+        "got",
+        "getting"
+      ],
+      "hint": "Present tense in a time clause."
+    },
+    {
+      "sentence": "There isn't ___ milk left in the fridge.",
+      "answer": "any",
+      "options": [
+        "some",
+        "many",
+        "a",
+        "any"
+      ],
+      "hint": "Quantifier in negative sentences."
+    },
+    {
+      "sentence": "She speaks English ___ than her brother.",
+      "answer": "better",
+      "options": [
+        "good",
+        "well",
+        "better",
+        "best"
+      ],
+      "hint": "Irregular comparative adverb."
+    },
+    {
+      "sentence": "How long ago ___ you start working here?",
+      "answer": "did",
+      "options": [
+        "do",
+        "did",
+        "have",
+        "are"
+      ],
+      "hint": "Past simple question auxiliary."
+    },
+    {
+      "sentence": "I ___ my old school friend in town yesterday.",
+      "answer": "met",
+      "options": [
+        "meet",
+        "have met",
+        "will meet",
+        "met"
+      ],
+      "hint": "Past simple, irregular verb."
+    }
+  ],
+  "3": [
+    {
+      "sentence": "If I had more time, I would ___ Spanish.",
+      "answer": "practice",
+      "options": [
+        "practice",
+        "practiced",
+        "practicing",
+        "practices"
+      ],
+      "hint": "Conditional base verb."
+    },
+    {
+      "sentence": "By next year, we will have ___ the course.",
+      "answer": "completed",
+      "options": [
+        "complete",
+        "completed",
+        "completing",
+        "completes"
+      ],
+      "hint": "Future perfect."
+    },
+    {
+      "sentence": "He suggested that she ___ earlier.",
+      "answer": "arrive",
+      "options": [
+        "arrive",
+        "arrived",
+        "arrives",
+        "arriving"
+      ],
+      "hint": "Subjunctive after 'suggested that'."
+    },
+    {
+      "sentence": "The project ___ before the deadline.",
+      "answer": "was finished",
+      "options": [
+        "was finished",
+        "is finishing",
+        "finished",
+        "has finish"
+      ],
+      "hint": "Past passive voice."
+    },
+    {
+      "sentence": "If it ___ tomorrow, we will stay at home.",
+      "answer": "rains",
+      "options": [
+        "will rain",
+        "rains",
+        "rained",
+        "would rain"
+      ],
+      "hint": "First conditional, 'if' clause."
+    },
+    {
+      "sentence": "If I ___ you, I would take the earlier train.",
+      "answer": "were",
+      "options": [
+        "am",
+        "be",
+        "will be",
+        "were"
+      ],
+      "hint": "Second conditional, giving advice."
+    },
+    {
+      "sentence": "If we had left earlier, we ___ the bus.",
+      "answer": "would have caught",
+      "options": [
+        "would have caught",
+        "will catch",
+        "had caught",
+        "caught"
+      ],
+      "hint": "Third conditional result."
+    },
+    {
+      "sentence": "The bridge ___ in 1890 by a local engineer.",
+      "answer": "was built",
+      "options": [
+        "built",
+        "was built",
+        "has built",
+        "is building"
+      ],
+      "hint": "Past simple passive."
+    },
+    {
+      "sentence": "The woman ___ lives next door is a chef.",
+      "answer": "who",
+      "options": [
+        "which",
+        "whose",
+        "who",
+        "whom"
+      ],
+      "hint": "Relative pronoun for a person, subject."
+    },
+    {
+      "sentence": "This is the town ___ my father grew up.",
+      "answer": "where",
+      "options": [
+        "which",
+        "who",
+        "whose",
+        "where"
+      ],
+      "hint": "Relative adverb for a place."
+    },
+    {
+      "sentence": "I wish I ___ how to play the piano.",
+      "answer": "knew",
+      "options": [
+        "knew",
+        "know",
+        "will know",
+        "known"
+      ],
+      "hint": "Wish about the present."
+    },
+    {
+      "sentence": "The rooms ___ every morning by the hotel staff.",
+      "answer": "are cleaned",
+      "options": [
+        "clean",
+        "are cleaning",
+        "are cleaned",
+        "have cleaning"
+      ],
+      "hint": "Present simple passive."
+    },
+    {
+      "sentence": "The friend ___ car we borrowed lives in Leeds.",
+      "answer": "whose",
+      "options": [
+        "who",
+        "whose",
+        "which",
+        "whom"
+      ],
+      "hint": "Possessive relative pronoun."
+    },
+    {
+      "sentence": "Unless you ___ now, you'll miss the train.",
+      "answer": "leave",
+      "options": [
+        "will leave",
+        "left",
+        "leaving",
+        "leave"
+      ],
+      "hint": "Present tense after 'unless'."
+    },
+    {
+      "sentence": "By the time we arrived, the film ___.",
+      "answer": "had already started",
+      "options": [
+        "already starts",
+        "had already started",
+        "has already started",
+        "will already start"
+      ],
+      "hint": "Past perfect, earlier past action."
+    },
+    {
+      "sentence": "She ___ have forgotten the meeting; I reminded her an hour ago.",
+      "answer": "can't",
+      "options": [
+        "must",
+        "should",
+        "can't",
+        "would"
+      ],
+      "hint": "Deduction about the past, negative."
+    },
+    {
+      "sentence": "I'm looking forward to ___ you next month.",
+      "answer": "seeing",
+      "options": [
+        "see",
+        "saw",
+        "seen",
+        "seeing"
+      ],
+      "hint": "'To' as a preposition here."
+    },
+    {
+      "sentence": "The new shopping centre is said ___ the biggest in the city.",
+      "answer": "to be",
+      "options": [
+        "to be",
+        "be",
+        "being",
+        "is"
+      ],
+      "hint": "Passive reporting structure."
+    },
+    {
+      "sentence": "Had I known about the traffic, I ___ earlier.",
+      "answer": "would have left",
+      "options": [
+        "will leave",
+        "would leave",
+        "would have left",
+        "had left"
+      ],
+      "hint": "Inverted third conditional."
+    },
+    {
+      "sentence": "She got her hair ___ at the new salon.",
+      "answer": "cut",
+      "options": [
+        "cutting",
+        "cut",
+        "to cut",
+        "cuts"
+      ],
+      "hint": "Causative 'get something done'."
+    },
+    {
+      "sentence": "He is used to ___ up early for work.",
+      "answer": "getting",
+      "options": [
+        "get",
+        "got",
+        "gets",
+        "getting"
+      ],
+      "hint": "'Be used to' + -ing."
+    },
+    {
+      "sentence": "The letter, ___ arrived this morning, was from my aunt.",
+      "answer": "which",
+      "options": [
+        "who",
+        "which",
+        "whose",
+        "what"
+      ],
+      "hint": "Non-defining relative clause, thing."
+    },
+    {
+      "sentence": "I wouldn't mind ___ a coffee before the meeting.",
+      "answer": "having",
+      "options": [
+        "to have",
+        "have",
+        "having",
+        "had"
+      ],
+      "hint": "Gerund after 'mind'."
+    },
+    {
+      "sentence": "If you ___ the recipe, the cake wouldn't have burned.",
+      "answer": "had followed",
+      "options": [
+        "would follow",
+        "will follow",
+        "follow",
+        "had followed"
+      ],
+      "hint": "Third conditional, 'if' clause."
+    },
+    {
+      "sentence": "The museum ___ while we were in town, so we couldn't go in.",
+      "answer": "was being renovated",
+      "options": [
+        "was being renovated",
+        "renovated",
+        "was renovating",
+        "has renovated"
+      ],
+      "hint": "Past continuous passive."
+    },
+    {
+      "sentence": "You'd better ___ an umbrella; it looks like rain.",
+      "answer": "take",
+      "options": [
+        "to take",
+        "take",
+        "taking",
+        "took"
+      ],
+      "hint": "Base form after 'had better'."
+    },
+    {
+      "sentence": "Not only ___ she cook, but she also bakes bread.",
+      "answer": "does",
+      "options": [
+        "is",
+        "has",
+        "do",
+        "does"
+      ],
+      "hint": "Inversion after 'not only'."
+    },
+    {
+      "sentence": "It's the best film I ___ seen this year.",
+      "answer": "have",
+      "options": [
+        "have",
+        "has",
+        "am",
+        "was"
+      ],
+      "hint": "Present perfect after a superlative."
+    },
+    {
+      "sentence": "The package should ___ by Friday.",
+      "answer": "be delivered",
+      "options": [
+        "deliver",
+        "be delivered",
+        "delivering",
+        "been delivered"
+      ],
+      "hint": "Passive after a modal."
+    },
+    {
+      "sentence": "Would you mind ___ the window? It's cold in here.",
+      "answer": "closing",
+      "options": [
+        "to close",
+        "close",
+        "closing",
+        "closed"
+      ],
+      "hint": "Gerund after 'would you mind'."
+    }
+  ]
+}

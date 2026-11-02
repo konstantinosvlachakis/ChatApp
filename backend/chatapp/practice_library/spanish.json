@@ -1,0 +1,998 @@
+{
+  "1": [
+    {
+      "sentence": "Yo ___ al trabajo cada día.",
+      "answer": "voy",
+      "options": [
+        "voy",
+        "vas",
+        "fui",
+        "ir"
+      ],
+      "hint": "Presente, primera persona."
+    },
+    {
+      "sentence": "Ella ___ café por la mañana.",
+      "answer": "bebe",
+      "options": [
+        "bebo",
+        "bebe",
+        "bebió",
+        "beber"
+      ],
+      "hint": "Presente, tercera persona."
+    },
+    {
+      "sentence": "Nosotros ___ en Grecia.",
+      "answer": "vivimos",
+      "options": [
+        "vivo",
+        "viven",
+        "vivimos",
+        "viví"
+      ],
+      "hint": "Presente, nosotros."
+    },
+    {
+      "sentence": "Ellos ___ fútbol el domingo.",
+      "answer": "juegan",
+      "options": [
+        "juegan",
+        "juega",
+        "jugaron",
+        "jugar"
+      ],
+      "hint": "Presente plural."
+    },
+    {
+      "sentence": "Mi hermana ___ dos gatos en casa.",
+      "answer": "tiene",
+      "options": [
+        "tengo",
+        "tienen",
+        "tiene",
+        "tenemos"
+      ],
+      "hint": "To have, third person singular."
+    },
+    {
+      "sentence": "Nosotros ___ estudiantes de inglés.",
+      "answer": "somos",
+      "options": [
+        "somos",
+        "soy",
+        "es",
+        "son"
+      ],
+      "hint": "To be (ser), 'we'."
+    },
+    {
+      "sentence": "La casa de mis padres es muy ___.",
+      "answer": "bonita",
+      "options": [
+        "bonito",
+        "bonitos",
+        "bonitas",
+        "bonita"
+      ],
+      "hint": "Adjective agrees with 'casa'."
+    },
+    {
+      "sentence": "Hoy ___ mucho calor en Madrid.",
+      "answer": "hace",
+      "options": [
+        "hago",
+        "hace",
+        "hacen",
+        "haces"
+      ],
+      "hint": "Weather expression, present tense."
+    },
+    {
+      "sentence": "Yo ___ español y un poco de francés.",
+      "answer": "hablo",
+      "options": [
+        "habla",
+        "hablas",
+        "hablo",
+        "hablan"
+      ],
+      "hint": "Present tense, first person."
+    },
+    {
+      "sentence": "¿Tú ___ en una oficina o en casa?",
+      "answer": "trabajas",
+      "options": [
+        "trabajo",
+        "trabaja",
+        "trabajamos",
+        "trabajas"
+      ],
+      "hint": "Present tense, 'tú' form."
+    },
+    {
+      "sentence": "___ libro está encima de la mesa.",
+      "answer": "El",
+      "options": [
+        "El",
+        "La",
+        "Los",
+        "Las"
+      ],
+      "hint": "Definite article, masculine singular."
+    },
+    {
+      "sentence": "Me gusta mucho ___ música clásica.",
+      "answer": "la",
+      "options": [
+        "el",
+        "la",
+        "los",
+        "las"
+      ],
+      "hint": "Definite article; 'música' is feminine."
+    },
+    {
+      "sentence": "Mis amigos ___ muy simpáticos.",
+      "answer": "son",
+      "options": [
+        "soy",
+        "eres",
+        "son",
+        "es"
+      ],
+      "hint": "Ser, third person plural."
+    },
+    {
+      "sentence": "El café ___ muy caliente ahora.",
+      "answer": "está",
+      "options": [
+        "estoy",
+        "está",
+        "estás",
+        "están"
+      ],
+      "hint": "Estar for a temporary state."
+    },
+    {
+      "sentence": "Ellos ___ cansados después del trabajo.",
+      "answer": "están",
+      "options": [
+        "están",
+        "estoy",
+        "estás",
+        "está"
+      ],
+      "hint": "Estar, third person plural."
+    },
+    {
+      "sentence": "Los zapatos nuevos son ___.",
+      "answer": "rojos",
+      "options": [
+        "rojo",
+        "roja",
+        "rojas",
+        "rojos"
+      ],
+      "hint": "Colour agrees: masculine plural."
+    },
+    {
+      "sentence": "Las manzanas de este mercado son muy ___.",
+      "answer": "buenas",
+      "options": [
+        "bueno",
+        "buenas",
+        "buena",
+        "buenos"
+      ],
+      "hint": "Adjective agreement, feminine plural."
+    },
+    {
+      "sentence": "Juan y yo ___ la cena todos los días.",
+      "answer": "preparamos",
+      "options": [
+        "preparo",
+        "prepara",
+        "preparamos",
+        "preparan"
+      ],
+      "hint": "Present tense, 'we' form."
+    },
+    {
+      "sentence": "Mis padres viven con ___ perros en el campo.",
+      "answer": "sus",
+      "options": [
+        "su",
+        "sus",
+        "suyo",
+        "suyos"
+      ],
+      "hint": "Possessive before a plural noun."
+    },
+    {
+      "sentence": "Pedro, ¿dónde están ___ llaves?",
+      "answer": "tus",
+      "options": [
+        "tus",
+        "tu",
+        "tuyo",
+        "tuyas"
+      ],
+      "hint": "Possessive 'your', plural noun."
+    },
+    {
+      "sentence": "Yo ___ veinte años y vivo en Sevilla.",
+      "answer": "tengo",
+      "options": [
+        "tiene",
+        "tienes",
+        "tenemos",
+        "tengo"
+      ],
+      "hint": "Age uses 'tener', first person."
+    },
+    {
+      "sentence": "Ella ___ a las siete todas las mañanas.",
+      "answer": "se levanta",
+      "options": [
+        "me levanto",
+        "se levanta",
+        "te levantas",
+        "nos levantamos"
+      ],
+      "hint": "Reflexive verb, third person."
+    },
+    {
+      "sentence": "¿Vosotros ___ pescado o carne esta noche?",
+      "answer": "coméis",
+      "options": [
+        "como",
+        "comes",
+        "comen",
+        "coméis"
+      ],
+      "hint": "Present tense, 'vosotros' form."
+    },
+    {
+      "sentence": "Mi padre ___ el periódico en el tren.",
+      "answer": "lee",
+      "options": [
+        "leo",
+        "lee",
+        "lees",
+        "leen"
+      ],
+      "hint": "Present tense, third person singular."
+    },
+    {
+      "sentence": "Tengo ___ hermano y dos hermanas.",
+      "answer": "un",
+      "options": [
+        "una",
+        "unos",
+        "un",
+        "unas"
+      ],
+      "hint": "Indefinite article, masculine singular."
+    },
+    {
+      "sentence": "Hay ___ tiendas abiertas en esta calle.",
+      "answer": "muchas",
+      "options": [
+        "mucho",
+        "mucha",
+        "muchos",
+        "muchas"
+      ],
+      "hint": "Quantity word agrees with noun."
+    },
+    {
+      "sentence": "Yo no ___ dónde está la estación.",
+      "answer": "sé",
+      "options": [
+        "sé",
+        "sabe",
+        "sabes",
+        "sabemos"
+      ],
+      "hint": "Irregular 'saber', first person."
+    },
+    {
+      "sentence": "Los niños ___ en el parque después de clase.",
+      "answer": "corren",
+      "options": [
+        "corro",
+        "corres",
+        "corre",
+        "corren"
+      ],
+      "hint": "Present tense, third person plural."
+    },
+    {
+      "sentence": "La tienda ___ a las nueve de la mañana.",
+      "answer": "abre",
+      "options": [
+        "abro",
+        "abres",
+        "abre",
+        "abren"
+      ],
+      "hint": "Present tense, third person singular."
+    },
+    {
+      "sentence": "Tú ___ muy amable con todos.",
+      "answer": "eres",
+      "options": [
+        "soy",
+        "es",
+        "son",
+        "eres"
+      ],
+      "hint": "Ser, 'tú' form."
+    }
+  ],
+  "2": [
+    {
+      "sentence": "Ayer, él ___ al mercado.",
+      "answer": "fue",
+      "options": [
+        "va",
+        "fue",
+        "ir",
+        "iba"
+      ],
+      "hint": "Pretérito de ir."
+    },
+    {
+      "sentence": "Estoy ___ la cena ahora.",
+      "answer": "cocinando",
+      "options": [
+        "cocino",
+        "cocinando",
+        "cociné",
+        "cocinar"
+      ],
+      "hint": "Gerundio."
+    },
+    {
+      "sentence": "Hemos ___ la tarea.",
+      "answer": "terminado",
+      "options": [
+        "terminar",
+        "terminado",
+        "terminamos",
+        "termina"
+      ],
+      "hint": "Participio en pretérito perfecto."
+    },
+    {
+      "sentence": "Cuando llamé, ella estaba ___.",
+      "answer": "durmiendo",
+      "options": [
+        "duerme",
+        "durmió",
+        "durmiendo",
+        "dormir"
+      ],
+      "hint": "Imperfecto progresivo."
+    },
+    {
+      "sentence": "Ayer nosotros ___ una película en el cine.",
+      "answer": "vimos",
+      "options": [
+        "vi",
+        "vimos",
+        "vio",
+        "vieron"
+      ],
+      "hint": "Preterite of 'ver', 'we'."
+    },
+    {
+      "sentence": "El año pasado mis padres ___ a Japón.",
+      "answer": "viajaron",
+      "options": [
+        "viajó",
+        "viajamos",
+        "viajé",
+        "viajaron"
+      ],
+      "hint": "Preterite, third person plural."
+    },
+    {
+      "sentence": "Mañana ___ a llover por la tarde.",
+      "answer": "va",
+      "options": [
+        "voy",
+        "vas",
+        "va",
+        "vamos"
+      ],
+      "hint": "Near future: ir a + infinitive."
+    },
+    {
+      "sentence": "La semana que viene yo ___ a mis abuelos.",
+      "answer": "visitaré",
+      "options": [
+        "visitaré",
+        "visitarás",
+        "visitará",
+        "visitarán"
+      ],
+      "hint": "Simple future, first person."
+    },
+    {
+      "sentence": "Cuando era pequeño, ___ en un pueblo cerca del mar.",
+      "answer": "vivía",
+      "options": [
+        "vivías",
+        "vivía",
+        "vivíamos",
+        "vivían"
+      ],
+      "hint": "Imperfect, matches 'era'."
+    },
+    {
+      "sentence": "Anoche tú ___ muy tarde a casa.",
+      "answer": "llegaste",
+      "options": [
+        "llegué",
+        "llegó",
+        "llegaste",
+        "llegamos"
+      ],
+      "hint": "Preterite, 'tú' form."
+    },
+    {
+      "sentence": "Esta mañana he ___ el autobús de las ocho.",
+      "answer": "perdido",
+      "options": [
+        "perder",
+        "perdiendo",
+        "pierdo",
+        "perdido"
+      ],
+      "hint": "Past participle after 'haber'."
+    },
+    {
+      "sentence": "Mi hermano es más alto ___ yo.",
+      "answer": "que",
+      "options": [
+        "que",
+        "de",
+        "como",
+        "a"
+      ],
+      "hint": "Comparison word after 'más'."
+    },
+    {
+      "sentence": "Este restaurante es tan bueno ___ el otro.",
+      "answer": "como",
+      "options": [
+        "que",
+        "como",
+        "de",
+        "más"
+      ],
+      "hint": "Equality comparison with 'tan'."
+    },
+    {
+      "sentence": "El tren sale ___ las diez y media.",
+      "answer": "a",
+      "options": [
+        "en",
+        "de",
+        "a",
+        "con"
+      ],
+      "hint": "Preposition for clock time."
+    },
+    {
+      "sentence": "Vamos a la playa ___ coche.",
+      "answer": "en",
+      "options": [
+        "a",
+        "en",
+        "de",
+        "por"
+      ],
+      "hint": "Preposition for means of transport."
+    },
+    {
+      "sentence": "Este regalo es ___ mi madre, por su cumpleaños.",
+      "answer": "para",
+      "options": [
+        "por",
+        "en",
+        "a",
+        "para"
+      ],
+      "hint": "Preposition for the recipient."
+    },
+    {
+      "sentence": "¿Has visto a Laura? Sí, ___ vi ayer en el gimnasio.",
+      "answer": "la",
+      "options": [
+        "lo",
+        "la",
+        "los",
+        "las"
+      ],
+      "hint": "Direct object pronoun, feminine."
+    },
+    {
+      "sentence": "Compré unos libros y ___ leí en una semana.",
+      "answer": "los",
+      "options": [
+        "lo",
+        "la",
+        "las",
+        "los"
+      ],
+      "hint": "Direct object pronoun, masculine plural."
+    },
+    {
+      "sentence": "A mi madre ___ encantan las flores.",
+      "answer": "le",
+      "options": [
+        "me",
+        "le",
+        "te",
+        "les"
+      ],
+      "hint": "Indirect object pronoun, third person."
+    },
+    {
+      "sentence": "A nosotros ___ gusta viajar en verano.",
+      "answer": "nos",
+      "options": [
+        "me",
+        "te",
+        "les",
+        "nos"
+      ],
+      "hint": "Indirect object pronoun, 'us'."
+    },
+    {
+      "sentence": "Todos los días yo ___ ducho antes de desayunar.",
+      "answer": "me",
+      "options": [
+        "me",
+        "te",
+        "se",
+        "nos"
+      ],
+      "hint": "Reflexive pronoun, first person."
+    },
+    {
+      "sentence": "Mis hijos ___ acuestan a las nueve.",
+      "answer": "se",
+      "options": [
+        "me",
+        "se",
+        "te",
+        "nos"
+      ],
+      "hint": "Reflexive pronoun, third person plural."
+    },
+    {
+      "sentence": "Está lloviendo, así que tú ___ llevar paraguas.",
+      "answer": "debes",
+      "options": [
+        "debo",
+        "debe",
+        "debes",
+        "deben"
+      ],
+      "hint": "Modal 'deber', 'tú' form."
+    },
+    {
+      "sentence": "Nosotros no ___ salir porque hay mucho trabajo.",
+      "answer": "podemos",
+      "options": [
+        "puedo",
+        "puede",
+        "pueden",
+        "podemos"
+      ],
+      "hint": "Modal 'poder', 'we' form."
+    },
+    {
+      "sentence": "Ellos ___ que estudiar para el examen de mañana.",
+      "answer": "tienen",
+      "options": [
+        "tienen",
+        "tengo",
+        "tienes",
+        "tiene"
+      ],
+      "hint": "Obligation: tener que."
+    },
+    {
+      "sentence": "El domingo pasado ___ mucho frío en la montaña.",
+      "answer": "hizo",
+      "options": [
+        "hará",
+        "hizo",
+        "hace",
+        "haga"
+      ],
+      "hint": "Weather, completed past period."
+    },
+    {
+      "sentence": "Mientras yo cocinaba, mi hermano ___ la mesa.",
+      "answer": "ponía",
+      "options": [
+        "ponías",
+        "poníamos",
+        "ponía",
+        "ponían"
+      ],
+      "hint": "Imperfect, third person singular."
+    },
+    {
+      "sentence": "El próximo verano nosotros ___ en un hotel junto a la playa.",
+      "answer": "nos quedaremos",
+      "options": [
+        "me quedaré",
+        "te quedarás",
+        "nos quedaremos",
+        "se quedarán"
+      ],
+      "hint": "Future of a reflexive verb, 'we'."
+    },
+    {
+      "sentence": "La farmacia está al lado ___ banco.",
+      "answer": "del",
+      "options": [
+        "de la",
+        "del",
+        "de los",
+        "al"
+      ],
+      "hint": "Contraction of de + el."
+    },
+    {
+      "sentence": "Mi hermana es ___ que yo; tiene dos años más.",
+      "answer": "mayor",
+      "options": [
+        "menor",
+        "mejor",
+        "peor",
+        "mayor"
+      ],
+      "hint": "Irregular comparative of age."
+    }
+  ],
+  "3": [
+    {
+      "sentence": "Si tuviera más tiempo, ___ más francés.",
+      "answer": "practicaría",
+      "options": [
+        "practico",
+        "practicaría",
+        "practiqué",
+        "practicar"
+      ],
+      "hint": "Condicional."
+    },
+    {
+      "sentence": "Para el próximo año, habremos ___ el curso.",
+      "answer": "completado",
+      "options": [
+        "completar",
+        "completado",
+        "completamos",
+        "completará"
+      ],
+      "hint": "Futuro perfecto."
+    },
+    {
+      "sentence": "Él sugirió que ella ___ temprano.",
+      "answer": "llegara",
+      "options": [
+        "llega",
+        "llegó",
+        "llegara",
+        "llegar"
+      ],
+      "hint": "Subjuntivo pasado."
+    },
+    {
+      "sentence": "El informe ___ antes del plazo.",
+      "answer": "fue enviado",
+      "options": [
+        "fue enviado",
+        "envía",
+        "enviando",
+        "ha enviar"
+      ],
+      "hint": "Voz pasiva."
+    },
+    {
+      "sentence": "Espero que tú ___ un buen viaje.",
+      "answer": "tengas",
+      "options": [
+        "tienes",
+        "tengas",
+        "tendrás",
+        "tuvieras"
+      ],
+      "hint": "Subjunctive after 'espero que'."
+    },
+    {
+      "sentence": "Es importante que nosotros ___ a tiempo.",
+      "answer": "lleguemos",
+      "options": [
+        "llegamos",
+        "llegaremos",
+        "lleguemos",
+        "llegáramos"
+      ],
+      "hint": "Subjunctive after 'es importante que'."
+    },
+    {
+      "sentence": "Si mañana hace sol, ___ a la playa.",
+      "answer": "iremos",
+      "options": [
+        "iremos",
+        "iríamos",
+        "fuéramos",
+        "hubiéramos ido"
+      ],
+      "hint": "Real condition: si + present."
+    },
+    {
+      "sentence": "Si yo ___ rico, compraría una casa en la costa.",
+      "answer": "fuera",
+      "options": [
+        "soy",
+        "sea",
+        "seré",
+        "fuera"
+      ],
+      "hint": "Hypothetical si-clause, imperfect subjunctive."
+    },
+    {
+      "sentence": "Si hubieras venido, te ___ divertido mucho.",
+      "answer": "habrías",
+      "options": [
+        "habías",
+        "has",
+        "habrías",
+        "hayas"
+      ],
+      "hint": "Past unreal condition, conditional perfect."
+    },
+    {
+      "sentence": "Me alegro de que ___ conseguido el trabajo.",
+      "answer": "hayas",
+      "options": [
+        "has",
+        "hayas",
+        "habías",
+        "habrás"
+      ],
+      "hint": "Perfect subjunctive after emotion."
+    },
+    {
+      "sentence": "Busco un piso que ___ cerca del centro y no sea caro.",
+      "answer": "esté",
+      "options": [
+        "está",
+        "estaba",
+        "esté",
+        "estará"
+      ],
+      "hint": "Subjunctive for something not yet found."
+    },
+    {
+      "sentence": "No creo que el museo ___ los lunes.",
+      "answer": "abra",
+      "options": [
+        "abre",
+        "abra",
+        "abrirá",
+        "abría"
+      ],
+      "hint": "Subjunctive after 'no creo que'."
+    },
+    {
+      "sentence": "Cuando ___ a Madrid, te llamaré.",
+      "answer": "llegue",
+      "options": [
+        "llego",
+        "llegaré",
+        "llegaba",
+        "llegue"
+      ],
+      "hint": "Subjunctive after 'cuando' for future."
+    },
+    {
+      "sentence": "Te lo explico para que lo ___ mejor.",
+      "answer": "entiendas",
+      "options": [
+        "entiendas",
+        "entiendes",
+        "entenderás",
+        "entendías"
+      ],
+      "hint": "Subjunctive after 'para que'."
+    },
+    {
+      "sentence": "Ojalá ___ buen tiempo el fin de semana.",
+      "answer": "haga",
+      "options": [
+        "hace",
+        "hará",
+        "haga",
+        "hizo"
+      ],
+      "hint": "Subjunctive after 'ojalá'."
+    },
+    {
+      "sentence": "Yo en tu lugar ___ el tren en vez del coche.",
+      "answer": "tomaría",
+      "options": [
+        "tomo",
+        "tomaría",
+        "tomé",
+        "tome"
+      ],
+      "hint": "Conditional for giving advice."
+    },
+    {
+      "sentence": "Me ___ visitar Chile algún día.",
+      "answer": "gustaría",
+      "options": [
+        "gustó",
+        "gustaba",
+        "guste",
+        "gustaría"
+      ],
+      "hint": "Conditional to express a wish."
+    },
+    {
+      "sentence": "El nuevo puente ___ inaugurado por el alcalde mañana.",
+      "answer": "será",
+      "options": [
+        "fue",
+        "será",
+        "sería",
+        "era"
+      ],
+      "hint": "Future passive voice."
+    },
+    {
+      "sentence": "Las entradas ya ___ vendidas cuando llegamos.",
+      "answer": "habían sido",
+      "options": [
+        "han sido",
+        "habrán sido",
+        "habían sido",
+        "hayan sido"
+      ],
+      "hint": "Pluperfect passive."
+    },
+    {
+      "sentence": "La carta ___ escrita por mi abuela hace muchos años.",
+      "answer": "fue",
+      "options": [
+        "fue",
+        "será",
+        "sea",
+        "sería"
+      ],
+      "hint": "Past passive with 'ser'."
+    },
+    {
+      "sentence": "La chica ___ trabaja conmigo es de Perú.",
+      "answer": "que",
+      "options": [
+        "quien",
+        "que",
+        "cual",
+        "cuyo"
+      ],
+      "hint": "Restrictive relative pronoun."
+    },
+    {
+      "sentence": "Ese es el vecino ___ perro ladra toda la noche.",
+      "answer": "cuyo",
+      "options": [
+        "cuya",
+        "que",
+        "cuyo",
+        "quien"
+      ],
+      "hint": "Possessive relative, agrees with 'perro'."
+    },
+    {
+      "sentence": "La ciudad en ___ nací está en el norte.",
+      "answer": "la que",
+      "options": [
+        "el que",
+        "los que",
+        "quien",
+        "la que"
+      ],
+      "hint": "Relative after a preposition, feminine."
+    },
+    {
+      "sentence": "Los amigos con ___ viajé son de Valencia.",
+      "answer": "quienes",
+      "options": [
+        "quienes",
+        "quien",
+        "cuyos",
+        "cual"
+      ],
+      "hint": "Relative for people, plural."
+    },
+    {
+      "sentence": "Aunque ___ mañana, iremos de excursión.",
+      "answer": "llueva",
+      "options": [
+        "llovió",
+        "llueva",
+        "llovía",
+        "lloviera"
+      ],
+      "hint": "Subjunctive after 'aunque', future sense."
+    },
+    {
+      "sentence": "Antes de que ___ los invitados, limpiaremos la casa.",
+      "answer": "lleguen",
+      "options": [
+        "llegan",
+        "llegarán",
+        "llegaron",
+        "lleguen"
+      ],
+      "hint": "'Antes de que' always takes subjunctive."
+    },
+    {
+      "sentence": "Mi jefe me pidió que ___ el informe antes del viernes.",
+      "answer": "terminara",
+      "options": [
+        "termino",
+        "terminaré",
+        "terminara",
+        "terminaba"
+      ],
+      "hint": "Past request: imperfect subjunctive."
+    },
+    {
+      "sentence": "Tengo que ___ una decisión antes del viernes.",
+      "answer": "tomar",
+      "options": [
+        "hacer",
+        "tomar",
+        "dar",
+        "poner"
+      ],
+      "hint": "Collocation with 'decisión'."
+    },
+    {
+      "sentence": "Al final, mi hermano ___ cuenta de su error.",
+      "answer": "se dio",
+      "options": [
+        "se hizo",
+        "se puso",
+        "se dio",
+        "se tomó"
+      ],
+      "hint": "Idiom: to realise."
+    },
+    {
+      "sentence": "Ayer ___ un paseo por el parque con mis amigos.",
+      "answer": "dimos",
+      "options": [
+        "hicimos",
+        "tomamos",
+        "pusimos",
+        "dimos"
+      ],
+      "hint": "Collocation: to go for a walk."
+    }
+  ]
+}

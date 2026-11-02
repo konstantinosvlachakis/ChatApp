@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -25,11 +24,18 @@ import {
   type PracticeStats,
 } from "../services/api/practice";
 import { getErrorMessage } from "../services/api/errors";
+import { ChatAvatar } from "../components/chat/ChatAvatar";
+import {
+  ROUND_COMPLETE_MESSAGE,
+  evaluateVoiceAttempt,
+  type VoiceAttempt,
+} from "../features/practiceVoice";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
+import { warmColors, type WarmColors } from "../theme/warm";
 
 const DAILY_SET_STEPS = 10;
-const SPEECH_MATCH_THRESHOLD = 0.72;
+const LEADERBOARD_AVATAR_SIZE = 40;
 
 const LANGUAGE_SPEECH_CODE: Record<string, string> = {
   english: "en-US",
@@ -46,14 +52,14 @@ const VOICE_SENTENCE_LIBRARY: Record<string, string[]> = {
     "Please repeat this sentence clearly.",
   ],
   spanish: [
-    "Practico espanol todos los dias.",
+    "Practico español todos los días.",
     "Hoy hace muy buen tiempo.",
     "Por favor repite esta frase claramente.",
   ],
   french: [
-    "Je pratique le francais chaque jour.",
-    "Il fait tres beau aujourd hui.",
-    "Repete cette phrase avec une bonne prononciation.",
+    "Je pratique le français chaque jour.",
+    "Il fait très beau aujourd'hui.",
+    "Répète cette phrase avec une bonne prononciation.",
   ],
   greek: [
     "Εξασκούμαι στα ελληνικά κάθε μέρα.",
@@ -63,7 +69,7 @@ const VOICE_SENTENCE_LIBRARY: Record<string, string[]> = {
   russian: [
     "Я практикую русский язык каждый день.",
     "Сегодня очень хорошая погода.",
-    "Пожалуйста повтори это предложение четко.",
+    "Пожалуйста, повтори это предложение чётко.",
   ],
 };
 
@@ -75,39 +81,6 @@ const getChallengeSourceLabel = (source?: string) => {
 
 const levelProgressPercent = (xp?: number) => Math.min(100, Math.max(0, (xp || 0) % 100));
 
-const normalizeSpeechText = (value: string) =>
-  String(value || "")
-    .toLowerCase()
-    .replace(/[.,!?;:()'"`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const calculateSpeechMatch = (target: string, actual: string) => {
-  const t = normalizeSpeechText(target).split(" ").filter(Boolean);
-  const a = normalizeSpeechText(actual).split(" ").filter(Boolean);
-  if (!t.length || !a.length) return 0;
-  const targetCounts: Record<string, number> = {};
-  const actualCounts: Record<string, number> = {};
-  t.forEach((word) => {
-    targetCounts[word] = (targetCounts[word] || 0) + 1;
-  });
-  a.forEach((word) => {
-    actualCounts[word] = (actualCounts[word] || 0) + 1;
-  });
-  let overlap = 0;
-  Object.keys(targetCounts).forEach((word) => {
-    overlap += Math.min(targetCounts[word], actualCounts[word] || 0);
-  });
-  return overlap / Math.max(t.length, 1);
-};
-
-const requiredSpeechMatchThreshold = (sentence: string) => {
-  const wordCount = normalizeSpeechText(sentence).split(" ").filter(Boolean).length;
-  if (wordCount <= 4) return 0.62;
-  if (wordCount <= 7) return 0.68;
-  return SPEECH_MATCH_THRESHOLD;
-};
-
 let speechRecognitionModule: any = null;
 try {
   speechRecognitionModule = require("expo-speech-recognition").ExpoSpeechRecognitionModule;
@@ -115,12 +88,27 @@ try {
   speechRecognitionModule = null;
 }
 
+type DrillResult = {
+  correct: boolean;
+  correctAnswer: string;
+  awardedXp: number;
+  awardedPoints: number;
+  alreadyScored: boolean;
+  dailyLimitReached: boolean;
+};
+
 export function PracticeScreen() {
-  const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Synchronous guard: a double tap must not submit (and score) the same answer twice.
+  const submittingRef = useRef(false);
+  // Bumped on every load so a late response for an older language/challenge is ignored.
+  const requestSeqRef = useRef(0);
   const voiceTranscriptRef = useRef("");
+  const voiceSentenceRef = useRef("");
+  const voiceErrorRef = useRef("");
   const { user } = useAuth();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const warm = useMemo(() => warmColors(isDark), [isDark]);
+  const styles = useMemo(() => createStyles(colors, warm), [colors, warm]);
   const languageOptions = useMemo(() => {
     const set = new Set<string>();
     (user?.languages_practicing || []).forEach((lang) => {
@@ -143,15 +131,12 @@ export function PracticeScreen() {
   const [currentRank, setCurrentRank] = useState<number | null>(null);
   const [challenge, setChallenge] = useState<PracticeChallenge | null>(null);
   const [selectedWord, setSelectedWord] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [feedbackTone, setFeedbackTone] = useState<"success" | "error" | "neutral">("neutral");
-  const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState<DrillResult | null>(null);
+  const [loadingNext, setLoadingNext] = useState(false);
   const [successfulMilestones, setSuccessfulMilestones] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [overlayVisible, setOverlayVisible] = useState(false);
-  const [lastResultCorrect, setLastResultCorrect] = useState(false);
   const [error, setError] = useState("");
 
   const [voiceSentence, setVoiceSentence] = useState("");
@@ -159,9 +144,7 @@ export function PracticeScreen() {
   const [voiceTranslationTarget, setVoiceTranslationTarget] = useState("");
   const [voiceTranslationLoading, setVoiceTranslationLoading] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [voiceScore, setVoiceScore] = useState<number | null>(null);
-  const [voiceAttemptReady, setVoiceAttemptReady] = useState(false);
-  const [voiceAttemptSubmitted, setVoiceAttemptSubmitted] = useState(false);
+  const [voiceAttempt, setVoiceAttempt] = useState<VoiceAttempt | null>(null);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceResult, setVoiceResult] = useState("");
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -180,23 +163,27 @@ export function PracticeScreen() {
   const resetVoiceState = (sentence?: string) => {
     const nextSentence = sentence || pickVoiceSentence(language);
     voiceTranscriptRef.current = "";
+    voiceSentenceRef.current = nextSentence;
+    voiceErrorRef.current = "";
+    if (voiceListening && speechRecognitionModule) {
+      try {
+        speechRecognitionModule.abort();
+      } catch {
+        // no-op
+      }
+    }
     setVoiceSentence(nextSentence);
     setVoiceTranslation("");
     setVoiceTranslationTarget("");
     setVoiceTranslationLoading(false);
     setVoiceTranscript("");
-    setVoiceScore(null);
-    setVoiceAttemptReady(false);
-    setVoiceAttemptSubmitted(false);
+    setVoiceAttempt(null);
     setVoiceListening(false);
     setVoiceResult("");
   };
 
   const bootstrapPractice = async (preferredLanguage: string, isRefresh = false) => {
-    if (autoNextTimerRef.current) {
-      clearTimeout(autoNextTimerRef.current);
-      autoNextTimerRef.current = null;
-    }
+    const seq = ++requestSeqRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError("");
@@ -205,18 +192,17 @@ export function PracticeScreen() {
         fetchPracticeState(preferredLanguage),
         fetchPracticeChallenge(preferredLanguage),
       ]);
+      if (seq !== requestSeqRef.current) return;
       setLanguage(statePayload.language || challengePayload.language || preferredLanguage);
       setStats(statePayload.stats || challengePayload.stats || null);
       setLeaderboard(statePayload.leaderboard || []);
       setCurrentRank(statePayload.current_rank ?? null);
       setChallenge(challengePayload.challenge || null);
       setSelectedWord("");
-      setFeedback("");
-      setFeedbackTone("neutral");
-      setSubmitted(false);
-      setOverlayVisible(false);
+      setResult(null);
       resetVoiceState(pickVoiceSentence(preferredLanguage));
     } catch (err: any) {
+      if (seq !== requestSeqRef.current) return;
       setError(getErrorMessage(err, "Could not load practice."));
     } finally {
       if (isRefresh) setRefreshing(false);
@@ -232,9 +218,6 @@ export function PracticeScreen() {
 
   useEffect(() => {
     return () => {
-      if (autoNextTimerRef.current) {
-        clearTimeout(autoNextTimerRef.current);
-      }
       Speech.stop();
       if (voiceListening && speechRecognitionModule) {
         speechRecognitionModule.abort();
@@ -294,12 +277,11 @@ export function PracticeScreen() {
 
     const startListener = speechRecognitionModule.addListener("start", () => {
       setVoiceListening(true);
-      setVoiceResult("Listening...");
-      setVoiceAttemptReady(false);
-      setVoiceAttemptSubmitted(false);
-      setVoiceScore(null);
+      setVoiceResult("");
+      setVoiceAttempt(null);
       setVoiceTranscript("");
       voiceTranscriptRef.current = "";
+      voiceErrorRef.current = "";
     });
 
     const resultListener = speechRecognitionModule.addListener("result", (event: any) => {
@@ -310,20 +292,21 @@ export function PracticeScreen() {
     });
 
     const errorListener = speechRecognitionModule.addListener("error", (event: any) => {
-      setVoiceListening(false);
-      setVoiceAttemptReady(false);
-      setVoiceResult(event?.message || "Could not capture speech. Please try again.");
+      voiceErrorRef.current = event?.message || "Could not capture speech. Please try again.";
     });
 
+    // Recognition finished: score what was heard straight away (no separate submit step).
     const endListener = speechRecognitionModule.addListener("end", () => {
       setVoiceListening(false);
-      if (!voiceTranscriptRef.current.trim()) {
-        setVoiceResult("No speech captured. Try again.");
+      const transcript = voiceTranscriptRef.current.trim();
+      if (!transcript) {
+        setVoiceResult(
+          voiceErrorRef.current || "We didn't catch that. Tap Record and say the sentence."
+        );
         return;
       }
-      setVoiceAttemptReady(true);
-      setVoiceAttemptSubmitted(false);
-      setVoiceResult("Recording captured. Submit or re-record.");
+      setVoiceResult("");
+      setVoiceAttempt(evaluateVoiceAttempt(voiceSentenceRef.current, transcript));
     });
 
     return () => {
@@ -340,61 +323,59 @@ export function PracticeScreen() {
   };
 
   const loadNextChallenge = async (nextLanguage = language) => {
+    const seq = ++requestSeqRef.current;
     setError("");
-    setOverlayVisible(false);
+    setLoadingNext(true);
     try {
       const payload = await fetchPracticeChallenge(nextLanguage);
+      if (seq !== requestSeqRef.current) return;
       setChallenge(payload.challenge || null);
       if (payload.stats) setStats(payload.stats);
       setSelectedWord("");
-      setFeedback("");
-      setFeedbackTone("neutral");
-      setSubmitted(false);
+      setResult(null);
     } catch (err: any) {
+      if (seq !== requestSeqRef.current) return;
       setError(getErrorMessage(err, "Could not load next challenge."));
+    } finally {
+      if (seq === requestSeqRef.current) setLoadingNext(false);
     }
   };
 
   const handleSubmitAnswer = async () => {
-    if (!challenge?.id || !selectedWord || submitted || submitting) return false;
-    if (autoNextTimerRef.current) {
-      clearTimeout(autoNextTimerRef.current);
-      autoNextTimerRef.current = null;
-    }
+    if (!challenge?.id || !selectedWord || result || refreshing) return false;
+    if (submittingRef.current) return false;
+    submittingRef.current = true;
     setSubmitting(true);
     setError("");
+    const seq = requestSeqRef.current;
     try {
       const payload = await submitPracticeAnswer({
         challenge_id: challenge.id,
         selected_word: selectedWord,
         language,
       });
+      if (seq !== requestSeqRef.current) return false;
       setStats(payload.stats || null);
       setLeaderboard(payload.leaderboard || []);
       setCurrentRank(payload.current_rank ?? null);
-      setSubmitted(true);
-      setLastResultCorrect(Boolean(payload.correct));
-      setOverlayVisible(true);
-
-      if (payload.correct) {
+      const alreadyScored = Boolean(payload.already_scored);
+      if (payload.correct && !alreadyScored) {
         setSuccessfulMilestones((prev) => Math.min(DAILY_SET_STEPS, prev + 1));
-        setFeedback(`Correct! +${payload.awarded_xp} XP / +${payload.awarded_points} points`);
-        setFeedbackTone("success");
-      } else {
-        setFeedback(
-          `Not quite. Correct answer: "${payload.correct_answer}" (+${payload.awarded_xp} XP)`
-        );
-        setFeedbackTone("error");
       }
-      autoNextTimerRef.current = setTimeout(() => {
-        autoNextTimerRef.current = null;
-        loadNextChallenge(language);
-      }, 2000);
+      setResult({
+        correct: Boolean(payload.correct),
+        correctAnswer: payload.correct_answer || "",
+        awardedXp: payload.awarded_xp || 0,
+        awardedPoints: payload.awarded_points || 0,
+        alreadyScored,
+        dailyLimitReached: Boolean(payload.daily_xp_limit_reached),
+      });
       return true;
     } catch (err: any) {
       setError(getErrorMessage(err, "Could not submit answer."));
       return false;
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -421,8 +402,12 @@ export function PracticeScreen() {
         return;
       }
       voiceTranscriptRef.current = "";
+      voiceSentenceRef.current = voiceSentence;
+      voiceErrorRef.current = "";
       setVoiceTranscript("");
-      setVoiceResult("Listening...");
+      setVoiceAttempt(null);
+      setVoiceResult("");
+      setVoiceListening(true);
       speechRecognitionModule.start({
         lang: LANGUAGE_SPEECH_CODE[language] || "en-US",
         interimResults: true,
@@ -431,6 +416,7 @@ export function PracticeScreen() {
         addsPunctuation: true,
       });
     } catch {
+      setVoiceListening(false);
       setVoiceResult("Could not start listening. Please try again.");
     }
   };
@@ -444,19 +430,6 @@ export function PracticeScreen() {
       speechRecognitionModule.stop();
     } catch {
       setVoiceListening(false);
-    }
-  };
-
-  const submitVoiceAttempt = () => {
-    if (!voiceTranscript || !voiceSentence) return;
-    const score = calculateSpeechMatch(voiceSentence, voiceTranscript);
-    const minScore = requiredSpeechMatchThreshold(voiceSentence);
-    setVoiceScore(score);
-    setVoiceAttemptSubmitted(true);
-    if (score >= minScore) {
-      setVoiceResult(`Great pronunciation (${Math.round(score * 100)}% match).`);
-    } else {
-      setVoiceResult(`Try again (${Math.round(score * 100)}% match).`);
     }
   };
 
@@ -595,7 +568,6 @@ export function PracticeScreen() {
             <View style={styles.dailyTrack}>
               <View style={[styles.dailyFill, { width: `${dailyProgress}%` }]} />
             </View>
-            <Text style={styles.dailyMeta}>Rank #{currentRank || "-"}</Text>
           </View>
         </View>
 
@@ -612,10 +584,29 @@ export function PracticeScreen() {
               </View>
             </View>
 
+            {challenge?.round_complete ? (
+              <View style={styles.roundChip} accessibilityRole="text" accessibilityLiveRegion="polite">
+                <Ionicons name="sparkles" size={16} color={warm.teal} />
+                <Text style={styles.roundChipText}>{ROUND_COMPLETE_MESSAGE}</Text>
+              </View>
+            ) : null}
+
             <Text style={styles.challengeSentence}>
               {challenge?.sentence_parts?.[0] || ""}
-              <Text style={selectedWord ? styles.filledBlank : styles.emptyBlank}>
-                {selectedWord || "  choose word  "}
+              <Text
+                style={
+                  result
+                    ? styles.answerBlank
+                    : selectedWord
+                      ? styles.filledBlank
+                      : styles.emptyBlank
+                }
+              >
+                {result
+                  ? result.correct
+                    ? selectedWord
+                    : result.correctAnswer || selectedWord
+                  : selectedWord || "  choose word  "}
               </Text>
               {challenge?.sentence_parts?.[2] || ""}
             </Text>
@@ -623,48 +614,110 @@ export function PracticeScreen() {
             <View style={styles.optionsGrid}>
               {(challenge?.options || []).map((option) => {
                 const isActive = option === selectedWord;
+                const state = !result
+                  ? isActive
+                    ? "selected"
+                    : "idle"
+                  : isActive
+                    ? result.correct
+                      ? "correct"
+                      : "wrong"
+                    : !result.correct && option === result.correctAnswer
+                      ? "answer"
+                      : "idle";
                 return (
                   <Pressable
                     key={`${challenge?.id}-${option}`}
                     style={[
                       styles.optionButton,
-                      isActive ? styles.optionButtonActive : undefined,
+                      state === "selected" ? styles.optionButtonActive : undefined,
+                      state === "correct" || state === "answer" ? styles.optionCorrect : undefined,
+                      state === "wrong" ? styles.optionWrong : undefined,
                     ]}
                     onPress={() => {
-                      if (!submitted) setSelectedWord(option);
+                      if (!result && !submitting) setSelectedWord(option);
                     }}
-                    disabled={submitted}
+                    disabled={Boolean(result) || submitting}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive, disabled: Boolean(result) || submitting }}
+                    accessibilityHint={
+                      state === "correct" || state === "answer"
+                        ? "Correct answer"
+                        : state === "wrong"
+                          ? "Your answer, wrong"
+                          : undefined
+                    }
                   >
                     <Text
                       style={[
                         styles.optionButtonText,
-                        isActive ? styles.optionButtonTextActive : undefined,
+                        state === "selected" ? styles.optionButtonTextActive : undefined,
                       ]}
                     >
                       {option}
                     </Text>
+                    {state === "correct" || state === "answer" ? (
+                      <Ionicons name="checkmark-circle" size={20} color={warm.teal} />
+                    ) : null}
+                    {state === "wrong" ? (
+                      <Ionicons name="close-circle" size={20} color={warm.badge} />
+                    ) : null}
                   </Pressable>
                 );
               })}
             </View>
 
-            {feedback ? (
+            {result ? (
               <View
-                style={[
-                  styles.feedbackCard,
-                  feedbackTone === "success" ? styles.feedbackSuccess : styles.feedbackError,
-                ]}
+                style={[styles.resultCard, result.correct ? styles.resultPass : styles.resultFail]}
+                accessibilityLiveRegion="polite"
               >
-                <Text
-                  style={[
-                    styles.feedbackText,
-                    feedbackTone === "success"
-                      ? styles.feedbackSuccessText
-                      : styles.feedbackErrorText,
-                  ]}
+                <View style={styles.resultMain}>
+                  <Ionicons
+                    name={result.correct ? "checkmark-circle" : "close-circle"}
+                    size={28}
+                    color={result.correct ? warm.teal : warm.badge}
+                  />
+                  <View style={styles.resultTextWrap}>
+                    <Text style={styles.resultTitle}>
+                      {result.correct ? "Nice one! That's right." : "Not quite."}
+                    </Text>
+                    {!result.correct && result.correctAnswer ? (
+                      <Text style={styles.resultText}>
+                        The answer is <Text style={styles.resultStrong}>{result.correctAnswer}</Text>.
+                      </Text>
+                    ) : null}
+                    {result.alreadyScored ? (
+                      <Text style={styles.resultNote}>
+                        Already scored today, so no new XP for this one.
+                      </Text>
+                    ) : result.awardedXp > 0 ? (
+                      <View style={styles.xpChip}>
+                        <Text style={styles.xpChipText}>
+                          +{result.awardedXp} XP · +{result.awardedPoints} points
+                        </Text>
+                      </View>
+                    ) : result.dailyLimitReached ? (
+                      <Text style={styles.resultNote}>
+                        Daily XP limit reached. Answers still count toward accuracy.
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+                <Pressable
+                  style={[styles.warmPrimaryButton, loadingNext ? styles.buttonDisabled : undefined]}
+                  onPress={() => loadNextChallenge(language)}
+                  disabled={loadingNext}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: loadingNext, disabled: loadingNext }}
                 >
-                  {feedback}
-                </Text>
+                  <Text style={styles.warmPrimaryButtonText}>
+                    {loadingNext ? "Loading..." : "Next"}
+                  </Text>
+                  {loadingNext ? null : (
+                    <Ionicons name="arrow-forward" size={18} color={warm.onAction} />
+                  )}
+                </Pressable>
               </View>
             ) : null}
 
@@ -674,20 +727,24 @@ export function PracticeScreen() {
               </View>
             ) : null}
 
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[
-                  styles.primaryButton,
-                  (!selectedWord || submitted || submitting) ? styles.buttonDisabled : undefined,
-                ]}
-                onPress={handleSubmitAnswer}
-                disabled={!selectedWord || submitted || submitting}
-              >
-                <Text style={styles.primaryButtonText}>
-                  {submitting ? "Checking..." : "Check Answer"}
-                </Text>
-              </Pressable>
-            </View>
+            {!result ? (
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={[
+                    styles.warmPrimaryButton,
+                    !selectedWord || submitting ? styles.buttonDisabled : undefined,
+                  ]}
+                  onPress={handleSubmitAnswer}
+                  disabled={!selectedWord || submitting}
+                  accessibilityRole="button"
+                  accessibilityState={{ busy: submitting, disabled: !selectedWord || submitting }}
+                >
+                  <Text style={styles.warmPrimaryButtonText}>
+                    {submitting ? "Checking..." : "Check answer"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={styles.voiceCard}>
@@ -712,36 +769,100 @@ export function PracticeScreen() {
             </View>
 
             <View style={styles.voiceButtonGrid}>
-              <Pressable style={styles.primaryButton} onPress={playPronunciation}>
-                <Text style={styles.primaryButtonText}>Hear pronunciation</Text>
-              </Pressable>
               <Pressable
-                style={[
-                  styles.secondaryButton,
-                  !voiceSupported ? styles.buttonDisabled : undefined,
-                ]}
-                onPress={voiceListening ? stopVoiceRecognition : startVoiceRecognition}
-                disabled={!voiceSupported}
+                style={styles.warmSecondaryButton}
+                onPress={playPronunciation}
+                accessibilityRole="button"
               >
-                <Text style={styles.secondaryButtonText}>
-                  {voiceListening ? "Stop recording" : "Record & Verify"}
-                </Text>
+                <Ionicons name="volume-high" size={18} color={warm.ink} />
+                <Text style={styles.warmSecondaryButtonText}>Hear pronunciation</Text>
               </Pressable>
-              <Pressable style={styles.secondaryButton} onPress={nextVoiceSentence}>
-                <Text style={styles.secondaryButtonText}>Next sentence</Text>
-              </Pressable>
+              {voiceListening ? (
+                <Pressable
+                  style={[styles.warmSecondaryButton, styles.listeningButton]}
+                  onPress={stopVoiceRecognition}
+                  accessibilityRole="button"
+                  accessibilityLabel="Listening. Stop recording"
+                >
+                  <Ionicons name="stop-circle" size={18} color={warm.peachInk} />
+                  <Text style={[styles.warmSecondaryButtonText, { color: warm.peachInk }]}>
+                    Listening… tap to stop
+                  </Text>
+                </Pressable>
+              ) : voiceAttempt ? (
+                <>
+                  <Pressable
+                    style={[
+                      voiceAttempt.passed ? styles.warmSecondaryButton : styles.warmPrimaryButton,
+                      !voiceSupported ? styles.buttonDisabled : undefined,
+                    ]}
+                    onPress={startVoiceRecognition}
+                    disabled={!voiceSupported}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name="refresh"
+                      size={18}
+                      color={voiceAttempt.passed ? warm.ink : warm.onAction}
+                    />
+                    <Text
+                      style={
+                        voiceAttempt.passed
+                          ? styles.warmSecondaryButtonText
+                          : styles.warmPrimaryButtonText
+                      }
+                    >
+                      Try again
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={
+                      voiceAttempt.passed ? styles.warmPrimaryButton : styles.warmSecondaryButton
+                    }
+                    onPress={nextVoiceSentence}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      style={
+                        voiceAttempt.passed
+                          ? styles.warmPrimaryButtonText
+                          : styles.warmSecondaryButtonText
+                      }
+                    >
+                      Next sentence
+                    </Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color={voiceAttempt.passed ? warm.onAction : warm.ink}
+                    />
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    style={[
+                      styles.warmPrimaryButton,
+                      !voiceSupported || !voiceSentence ? styles.buttonDisabled : undefined,
+                    ]}
+                    onPress={startVoiceRecognition}
+                    disabled={!voiceSupported || !voiceSentence}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="mic" size={18} color={warm.onAction} />
+                    <Text style={styles.warmPrimaryButtonText}>Record</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.warmSecondaryButton}
+                    onPress={nextVoiceSentence}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="play-skip-forward" size={18} color={warm.ink} />
+                    <Text style={styles.warmSecondaryButtonText}>Skip</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
-
-            {voiceAttemptReady && !voiceListening ? (
-              <View style={styles.voiceButtonGrid}>
-                <Pressable style={styles.successButton} onPress={submitVoiceAttempt}>
-                  <Text style={styles.successButtonText}>Submit recording</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButton} onPress={startVoiceRecognition}>
-                  <Text style={styles.secondaryButtonText}>Re-record</Text>
-                </Pressable>
-              </View>
-            ) : null}
 
             {!voiceSupported ? (
               <View style={styles.errorCard}>
@@ -752,37 +873,70 @@ export function PracticeScreen() {
               </View>
             ) : null}
 
-            {voiceTranscript ? (
+            {voiceListening && voiceTranscript ? (
               <View style={styles.transcriptCard}>
-                <Text style={styles.transcriptLabel}>You said</Text>
+                <Text style={styles.transcriptLabel}>Hearing</Text>
                 <Text style={styles.transcriptText}>{voiceTranscript}</Text>
               </View>
             ) : null}
 
-            {voiceScore !== null && voiceAttemptSubmitted ? (
+            {voiceAttempt ? (
               <View
                 style={[
-                  styles.feedbackCard,
-                  voiceScore >= requiredSpeechMatchThreshold(voiceSentence)
-                    ? styles.feedbackSuccess
-                    : styles.feedbackError,
+                  styles.resultCard,
+                  voiceAttempt.passed ? styles.resultPass : styles.resultFail,
                 ]}
+                accessibilityLiveRegion="polite"
               >
-                <Text
-                  style={[
-                    styles.feedbackText,
-                    voiceScore >= requiredSpeechMatchThreshold(voiceSentence)
-                      ? styles.feedbackSuccessText
-                      : styles.feedbackErrorText,
-                  ]}
-                >
-                  Match score: {Math.round(voiceScore * 100)}%
-                </Text>
+                <View style={styles.voiceResultRow}>
+                  <View style={styles.voiceScoreCircle}>
+                    <Text
+                      style={[
+                        styles.voiceScorePercent,
+                        { color: voiceAttempt.passed ? warm.teal : warm.peachDeep },
+                      ]}
+                    >
+                      {Math.round(voiceAttempt.score * 100)}%
+                    </Text>
+                    <Text style={styles.voiceScoreLabel}>match</Text>
+                  </View>
+                  <View style={styles.resultTextWrap}>
+                    <Text style={styles.resultTitle}>
+                      {voiceAttempt.passed ? "Great pronunciation!" : "Almost — try again"}
+                    </Text>
+                    <Text style={styles.voiceWords}>
+                      {voiceAttempt.words.map((item, index) => (
+                        <Text
+                          key={`${index}-${item.word}`}
+                          style={item.matched ? styles.voiceWordMatched : styles.voiceWordMissed}
+                          accessibilityLabel={item.matched ? item.word : `${item.word}, missed`}
+                        >
+                          {index ? " " : ""}
+                          {item.word}
+                        </Text>
+                      ))}
+                    </Text>
+                    <Text style={styles.resultNote}>
+                      {(() => {
+                        const missed = voiceAttempt.words.filter((item) => !item.matched).length;
+                        return missed
+                          ? `${missed} word${missed === 1 ? "" : "s"} to work on (underlined)`
+                          : "Every word recognised";
+                      })()}
+                    </Text>
+                  </View>
+                </View>
+                {voiceTranscript ? (
+                  <View style={styles.transcriptCard}>
+                    <Text style={styles.transcriptLabel}>You said</Text>
+                    <Text style={styles.transcriptText}>{voiceTranscript}</Text>
+                  </View>
+                ) : null}
               </View>
             ) : null}
 
             {voiceResult ? (
-              <View style={styles.voiceResultCard}>
+              <View style={styles.voiceResultCard} accessibilityLiveRegion="polite">
                 <Text style={styles.voiceResultText}>{voiceResult}</Text>
               </View>
             ) : null}
@@ -792,7 +946,11 @@ export function PracticeScreen() {
         <View style={styles.leaderboardCard}>
           <View style={styles.leaderboardHeader}>
             <Text style={styles.leaderboardTitle}>Leaderboard</Text>
-            <Text style={styles.leaderboardMeta}>Rank #{currentRank || "-"}</Text>
+            {currentRank ? (
+              <View style={styles.rankPill}>
+                <Text style={styles.rankPillText}>You're #{currentRank}</Text>
+              </View>
+            ) : null}
           </View>
           {leaderboard.length ? (
             leaderboard.map((entry) => (
@@ -802,76 +960,49 @@ export function PracticeScreen() {
                   styles.leaderboardRow,
                   entry.is_current_user ? styles.leaderboardRowCurrent : undefined,
                 ]}
+                accessible
+                accessibilityLabel={`Rank ${entry.rank}, ${entry.username}${
+                  entry.is_current_user ? " (you)" : ""
+                }, level ${entry.level}, ${entry.points} points`}
               >
-                <View>
-                  <Text style={styles.leaderboardName}>
-                    #{entry.rank} {entry.username}
+                <View
+                  style={[styles.leaderboardPlace, entry.rank <= 3 ? styles.leaderboardPlaceTop : undefined]}
+                >
+                  <Text style={styles.leaderboardPlaceText}>{entry.rank}</Text>
+                </View>
+                <ChatAvatar
+                  name={entry.username}
+                  imagePath={entry.profile_image_url}
+                  size={LEADERBOARD_AVATAR_SIZE}
+                />
+                <View style={styles.leaderboardNameWrap}>
+                  <Text style={styles.leaderboardName} numberOfLines={1}>
+                    {entry.username}
                   </Text>
                   <Text style={styles.leaderboardLevel}>Level {entry.level}</Text>
                 </View>
+                {entry.is_current_user ? (
+                  <View style={styles.youPill}>
+                    <Text style={styles.youPillText}>You</Text>
+                  </View>
+                ) : null}
                 <Text style={styles.leaderboardPoints}>{entry.points} pts</Text>
               </View>
             ))
           ) : (
             <View style={styles.emptyLeaderboard}>
-              <Text style={styles.emptyLeaderboardText}>No leaderboard entries yet.</Text>
+              <Text style={styles.emptyLeaderboardText}>
+                No scores yet. Answer a challenge to get on the board.
+              </Text>
             </View>
           )}
         </View>
       </ScrollView>
-
-      <Modal
-        visible={overlayVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOverlayVisible(false)}
-      >
-        <View style={styles.overlay}>
-          <Pressable style={styles.overlayBackdrop} onPress={() => setOverlayVisible(false)} />
-          <View style={styles.overlayCard}>
-            <View
-              style={[
-                styles.overlayIconWrap,
-                lastResultCorrect ? styles.overlaySuccessIcon : styles.overlayErrorIcon,
-              ]}
-            >
-              <Ionicons
-                name={lastResultCorrect ? "checkmark" : "close"}
-                size={26}
-                color="#fff"
-              />
-            </View>
-            <Text style={styles.overlayEyebrow}>
-              {lastResultCorrect ? "Nice Work" : "Try Again"}
-            </Text>
-            <Text style={styles.overlayTitle}>
-              {lastResultCorrect ? "You cleared the next step." : "That answer did not land."}
-            </Text>
-            <Text style={styles.overlayText}>
-              {lastResultCorrect
-                ? "Your daily practice run keeps moving forward."
-                : "Stay on the current step and take another shot."}
-            </Text>
-            <Text style={styles.overlayCountdown}>Next challenge in 2 seconds</Text>
-            <View style={styles.overlayProgressCard}>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>Run progress</Text>
-                <Text style={styles.progressMeta}>
-                  {successfulMilestones}/{DAILY_SET_STEPS}
-                </Text>
-              </View>
-              <View style={styles.dailyTrack}>
-                <View style={[styles.dailyFill, { width: `${dailyProgress}%` }]} />
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
 
-const createStyles = (colors: ThemeColors) =>
+const createStyles = (colors: ThemeColors, warm: WarmColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     scroll: { flex: 1 },
@@ -1209,15 +1340,16 @@ const createStyles = (colors: ThemeColors) =>
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      minHeight: 56,
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: 10,
     },
     leaderboardRowCurrent: {
-      borderColor: "#7dd3fc",
-      backgroundColor: "#ecfeff",
+      borderColor: warm.teal,
+      backgroundColor: warm.sage,
     },
     leaderboardName: { color: colors.text, fontSize: 15, fontFamily: fontFamilies.bodyBold },
     leaderboardLevel: { color: colors.mutedText, fontSize: 12, marginTop: 3 },
@@ -1229,68 +1361,102 @@ const createStyles = (colors: ThemeColors) =>
       paddingVertical: 14,
     },
     emptyLeaderboardText: { color: colors.mutedText, fontSize: 14, fontFamily: fontFamilies.bodyMedium },
-    overlay: {
-      flex: 1,
+    roundChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      backgroundColor: warm.sage,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    roundChipText: {
+      flexShrink: 1,
+      color: warm.teal,
+      fontSize: 13,
+      lineHeight: 18,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    answerBlank: {
+      color: warm.teal,
+      backgroundColor: warm.sage,
+      fontFamily: fontFamilies.displayBold,
+    },
+    optionCorrect: { borderColor: warm.teal, backgroundColor: warm.sage },
+    optionWrong: { borderColor: warm.badge, backgroundColor: warm.dangerSoft },
+    resultCard: { borderRadius: 20, padding: 16, gap: 14, marginTop: 4 },
+    resultPass: { backgroundColor: warm.sage },
+    resultFail: { backgroundColor: warm.peachSoft, borderWidth: 1, borderColor: warm.lineWarm },
+    resultMain: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    resultTextWrap: { flex: 1, gap: 6, minWidth: 0 },
+    resultTitle: { color: warm.ink, fontSize: 18, fontFamily: fontFamilies.displayBold },
+    resultText: { color: warm.inkSoft, fontSize: 15, lineHeight: 21, fontFamily: fontFamilies.bodyMedium },
+    resultStrong: { color: warm.ink, fontFamily: fontFamilies.bodyBold },
+    resultNote: { color: warm.mutedInk, fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.bodySemiBold },
+    xpChip: {
+      alignSelf: "flex-start",
+      borderRadius: 999,
+      backgroundColor: warm.paper,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+    },
+    xpChipText: { color: warm.teal, fontSize: 14, fontFamily: fontFamilies.bodyExtraBold },
+    warmPrimaryButton: {
+      minHeight: 48,
+      flexDirection: "row",
+      alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+      borderRadius: 999,
+      backgroundColor: warm.action,
       paddingHorizontal: 18,
     },
-    overlayBackdrop: {
-      ...StyleSheet.absoluteFill,
-      backgroundColor: "rgba(15, 23, 42, 0.55)",
-    },
-    overlayCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 30,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 22,
-      alignItems: "center",
-    },
-    overlayIconWrap: {
-      width: 62,
-      height: 62,
-      borderRadius: 31,
+    warmPrimaryButtonText: { color: warm.onAction, fontSize: 15, fontFamily: fontFamilies.displaySemiBold },
+    warmSecondaryButton: {
+      minHeight: 48,
+      flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+      borderRadius: 999,
+      backgroundColor: warm.paper,
+      borderWidth: 1,
+      borderColor: warm.line,
+      paddingHorizontal: 18,
     },
-    overlaySuccessIcon: { backgroundColor: "#10b981" },
-    overlayErrorIcon: { backgroundColor: "#f43f5e" },
-    overlayEyebrow: {
-      color: colors.mutedText,
+    warmSecondaryButtonText: { color: warm.ink, fontSize: 15, fontFamily: fontFamilies.bodyBold },
+    listeningButton: { borderColor: warm.peachInk, backgroundColor: warm.peachSoft },
+    voiceResultRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+    voiceScoreCircle: {
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.paper,
+    },
+    voiceScorePercent: { fontSize: 26, fontFamily: fontFamilies.displayBold },
+    voiceScoreLabel: {
+      color: warm.mutedInk,
       fontSize: 11,
-      fontWeight: "800",
+      fontFamily: fontFamilies.bodyExtraBold,
       textTransform: "uppercase",
-      letterSpacing: 1,
-      marginTop: 14,
+      letterSpacing: 0.8,
     },
-    overlayTitle: {
-      color: colors.text,
-      fontSize: 24,
-      lineHeight: 30,
-      fontWeight: "800",
-      marginTop: 8,
-      textAlign: "center",
+    voiceWords: { fontSize: 18, lineHeight: 27, fontFamily: fontFamilies.displaySemiBold },
+    voiceWordMatched: { color: warm.teal },
+    voiceWordMissed: {
+      color: warm.peachDeep,
+      textDecorationLine: "underline",
+      textDecorationColor: warm.peachInk,
     },
-    overlayText: {
-      color: colors.mutedText,
-      fontSize: 14,
-      lineHeight: 20,
-      textAlign: "center",
-      marginTop: 8,
-    },
-    overlayCountdown: {
-      color: colors.mutedText,
-      fontSize: 11,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 1,
-      marginTop: 10,
-    },
-    overlayProgressCard: {
-      width: "100%",
-      marginTop: 18,
-      borderRadius: 20,
-      backgroundColor: colors.surfaceMuted,
-      padding: 14,
-    },
+    rankPill: { borderRadius: 999, backgroundColor: warm.peach, paddingHorizontal: 12, paddingVertical: 4 },
+    rankPillText: { color: warm.peachDeep, fontSize: 13, fontFamily: fontFamilies.bodyExtraBold },
+    leaderboardPlace: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 14 },
+    leaderboardPlaceTop: { backgroundColor: warm.peach },
+    leaderboardPlaceText: { color: warm.peachDeep, fontSize: 14, fontFamily: fontFamilies.bodyExtraBold },
+    leaderboardNameWrap: { flex: 1, minWidth: 0 },
+    youPill: { borderRadius: 999, backgroundColor: warm.teal, paddingHorizontal: 10, paddingVertical: 2 },
+    youPillText: { color: warm.onAction, fontSize: 12, fontFamily: fontFamilies.bodyExtraBold },
   });

@@ -17,6 +17,8 @@ export type PracticeLeaderboardEntry = {
   level: number;
   xp: number;
   is_current_user?: boolean;
+  /** Absolute photo URL (null = default avatar / initials). */
+  profile_image_url?: string | null;
 };
 
 export type PracticeChallenge = {
@@ -26,7 +28,11 @@ export type PracticeChallenge = {
   answer?: string;
   options?: string[];
   hint?: string;
+  difficulty_bucket?: number;
+  language?: string;
   source?: string;
+  /** True on the first item of a new round (every library sentence of this level was seen). */
+  round_complete?: boolean;
 };
 
 export type PracticeStateResponse = {
@@ -47,6 +53,8 @@ export type PracticeSubmitResponse = {
   correct_answer: string;
   awarded_xp: number;
   awarded_points: number;
+  already_scored?: boolean;
+  daily_xp_limit_reached?: boolean;
   language: string;
   stats: PracticeStats | null;
   leaderboard: PracticeLeaderboardEntry[];

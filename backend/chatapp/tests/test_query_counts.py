@@ -41,6 +41,8 @@ MAX_QUERIES = {
     "pin": 5,
     "send": 7,
 }
+# practice/state/ (stats get_or_create, leaderboard incl. photos via select_related, rank).
+MAX_PRACTICE_STATE_QUERIES = 4
 
 
 def seed_conversations(me, conversation_count, messages_per_conversation):
@@ -299,3 +301,32 @@ class QueryOptimisationBehaviourTests(TestCase):
         self.assertEqual(stats.total_answers, 1)
         self.assertEqual(response.data["stats"]["level"], 2)
         self.assertEqual(response.data["current_rank"], 1)
+
+    def test_practice_state_leaderboard_photos_add_no_queries(self):
+        """Leaderboard entries carry profile_image_url from the joined user row."""
+
+        def seed(count):
+            for index in range(count):
+                user = make_user()
+                user.profile_image_url = f"profile_images/board_{user.id}.jpg"
+                user.save(update_fields=["profile_image_url"])
+                PracticeStats.objects.create(
+                    user=user, points=50 + index, xp=10, level=1, preferred_language="english"
+                )
+
+        def measure():
+            with CaptureQueriesContext(connection) as ctx:
+                response = self.client.get("/api/practice/state/", {"language": "english"})
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertTrue(
+                all(entry["profile_image_url"] for entry in response.data["leaderboard"])
+            )
+            return len(ctx.captured_queries)
+
+        seed(2)
+        measure()  # first call creates the caller's PracticeStats row
+        small = measure()
+        seed(10)
+        large = measure()
+        self.assertEqual(small, large)
+        self.assertLessEqual(large, MAX_PRACTICE_STATE_QUERIES)

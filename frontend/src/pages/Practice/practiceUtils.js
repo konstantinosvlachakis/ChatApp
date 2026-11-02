@@ -81,14 +81,14 @@ export const VOICE_SENTENCE_LIBRARY = {
     "Please repeat this sentence clearly.",
   ],
   spanish: [
-    "Practico espanol todos los dias.",
+    "Practico español todos los días.",
     "Hoy hace muy buen tiempo.",
     "Por favor repite esta frase claramente.",
   ],
   french: [
-    "Je pratique le francais chaque jour.",
-    "Il fait tres beau aujourd hui.",
-    "Repete cette phrase avec une bonne prononciation.",
+    "Je pratique le français chaque jour.",
+    "Il fait très beau aujourd'hui.",
+    "Répète cette phrase avec une bonne prononciation.",
   ],
   greek: [
     "Εξασκούμαι στα ελληνικά κάθε μέρα.",
@@ -98,7 +98,7 @@ export const VOICE_SENTENCE_LIBRARY = {
   russian: [
     "Я практикую русский язык каждый день.",
     "Сегодня очень хорошая погода.",
-    "Пожалуйста повтори это предложение четко.",
+    "Пожалуйста, повтори это предложение чётко.",
   ],
 };
 
@@ -144,12 +144,13 @@ export const pickBestVoiceForLanguage = (language) => {
   return sorted[0] || null;
 };
 
+// Case, punctuation and diacritic-insensitive (recognisers differ on accents, ё/е and tonos).
 const normalizeSpeechText = (value) =>
   String(value || "")
-    .toLowerCase()
-    .replace(/[.,!?;:()'"`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .split(/\s+/)
+    .map((word) => speechWordKey(word))
+    .filter(Boolean)
+    .join(" ");
 
 export const calculateSpeechMatch = (target, actual) => {
   const t = normalizeSpeechText(target).split(" ").filter(Boolean);
@@ -175,4 +176,58 @@ export const requiredSpeechMatchThreshold = (sentence) => {
   if (wordCount <= 4) return 0.62;
   if (wordCount <= 7) return 0.68;
   return SPEECH_MATCH_THRESHOLD;
+};
+
+/** Shown on the first challenge of a new round (backend `round_complete`). */
+export const ROUND_COMPLETE_MESSAGE =
+  "You've practised every sentence for this level, so we're starting a fresh round.";
+
+/** Word key for alignment: lowercase, no punctuation, no diacritics ("Él," -> "el"). */
+export const speechWordKey = (word) =>
+  String(word || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    // Explicit punctuation list (no \p{} escapes: not every JS engine supports them).
+    .replace(/[\s.,!?;:()'"`«»„“”‘’¿¡…—–\-[\]{}/\··;]+/g, "");
+
+/**
+ * Mark each word of the target sentence as matched/missed against what was heard. Words are
+ * aligned in order (longest common subsequence), ignoring case, punctuation and diacritics.
+ * Returns [{ word, matched }] with the target's original spelling.
+ */
+export const markSpeechWords = (target, transcript) => {
+  const words = String(target || "").split(/\s+/).filter(Boolean);
+  const targetKeys = words.map(speechWordKey);
+  const heardKeys = String(transcript || "")
+    .split(/\s+/)
+    .map(speechWordKey)
+    .filter(Boolean);
+  const rows = targetKeys.length;
+  const cols = heardKeys.length;
+  const table = Array.from({ length: rows + 1 }, () => new Array(cols + 1).fill(0));
+  for (let i = rows - 1; i >= 0; i -= 1) {
+    for (let j = cols - 1; j >= 0; j -= 1) {
+      table[i][j] =
+        targetKeys[i] && targetKeys[i] === heardKeys[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const matched = new Array(rows).fill(false);
+  let i = 0;
+  let j = 0;
+  while (i < rows && j < cols) {
+    if (targetKeys[i] && targetKeys[i] === heardKeys[j]) {
+      matched[i] = true;
+      i += 1;
+      j += 1;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      i += 1;
+    } else {
+      j += 1;
+    }
+  }
+  // A "word" that is only punctuation (e.g. "—") is never counted as missed.
+  return words.map((word, index) => ({ word, matched: matched[index] || !targetKeys[index] }));
 };
