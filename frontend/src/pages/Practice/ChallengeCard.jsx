@@ -6,8 +6,9 @@ import CancelRoundedIcon from "@mui/icons-material/CancelRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import CelebrationRoundedIcon from "@mui/icons-material/CelebrationRounded";
 import { toastApiError } from "../../components/Toast";
-import { formatLanguageName, getChallengeSourceLabel } from "./practiceUtils";
+import { ROUND_COMPLETE_MESSAGE, formatLanguageName, getChallengeSourceLabel } from "./practiceUtils";
 
 const isTypingTarget = (target) => {
   if (!target || !target.tagName) return false;
@@ -206,6 +207,13 @@ const ChallengeCard = ({
           {getChallengeSourceLabel(challenge.source)}
         </span>
       </div>
+
+      {challenge.round_complete ? (
+        <p className="pr-round-chip" role="status">
+          <CelebrationRoundedIcon aria-hidden="true" />
+          {ROUND_COMPLETE_MESSAGE}
+        </p>
+      ) : null}
 
       <p className="pr-sentence" ref={sentenceRef} tabIndex={-1}>
         {parts[0] || ""}

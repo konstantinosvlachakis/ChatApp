@@ -97,6 +97,7 @@ from .tokens import (
     revoke_user_tokens,
 )
 from .email_verification import RequireVerifiedEmail, send_verification_email
+from .practice_library import PRACTICE_LIBRARY
 
 logger = logging.getLogger(__name__)
 
@@ -428,415 +429,6 @@ def delete_replaced_profile_image(old_value):
     except Exception:
         logger.warning("Could not delete a replaced profile image")
         return False
-
-
-PRACTICE_LIBRARY = {
-    "english": {
-        1: [
-            {
-                "sentence": "I ___ to school every day.",
-                "answer": "go",
-                "options": ["go", "goes", "went", "going"],
-                "hint": "Present simple, first person.",
-            },
-            {
-                "sentence": "She ___ coffee in the morning.",
-                "answer": "drinks",
-                "options": ["drink", "drinks", "drank", "drinking"],
-                "hint": "Present simple, third person.",
-            },
-            {
-                "sentence": "We ___ in Athens.",
-                "answer": "live",
-                "options": ["live", "lives", "lived", "living"],
-                "hint": "Current fact.",
-            },
-            {
-                "sentence": "They ___ football on Sunday.",
-                "answer": "play",
-                "options": ["play", "plays", "played", "playing"],
-                "hint": "Habit action.",
-            },
-        ],
-        2: [
-            {
-                "sentence": "Yesterday, he ___ to the market.",
-                "answer": "went",
-                "options": ["go", "goes", "went", "gone"],
-                "hint": "Past tense of go.",
-            },
-            {
-                "sentence": "I am ___ dinner right now.",
-                "answer": "cooking",
-                "options": ["cook", "cooked", "cooking", "cooks"],
-                "hint": "Present continuous form.",
-            },
-            {
-                "sentence": "They have ___ their homework.",
-                "answer": "finished",
-                "options": ["finish", "finished", "finishing", "finishes"],
-                "hint": "Present perfect with 'have'.",
-            },
-            {
-                "sentence": "She was ___ when I called.",
-                "answer": "sleeping",
-                "options": ["sleep", "sleeping", "slept", "sleeps"],
-                "hint": "Past continuous action.",
-            },
-        ],
-        3: [
-            {
-                "sentence": "If I had more time, I would ___ Spanish.",
-                "answer": "practice",
-                "options": ["practice", "practiced", "practicing", "practices"],
-                "hint": "Conditional base verb.",
-            },
-            {
-                "sentence": "By next year, we will have ___ the course.",
-                "answer": "completed",
-                "options": ["complete", "completed", "completing", "completes"],
-                "hint": "Future perfect.",
-            },
-            {
-                "sentence": "He suggested that she ___ earlier.",
-                "answer": "arrive",
-                "options": ["arrive", "arrived", "arrives", "arriving"],
-                "hint": "Subjunctive after 'suggested that'.",
-            },
-            {
-                "sentence": "The project ___ before the deadline.",
-                "answer": "was finished",
-                "options": ["was finished", "is finishing", "finished", "has finish"],
-                "hint": "Past passive voice.",
-            },
-        ],
-    },
-    "spanish": {
-        1: [
-            {
-                "sentence": "Yo ___ al trabajo cada día.",
-                "answer": "voy",
-                "options": ["voy", "vas", "fui", "ir"],
-                "hint": "Presente, primera persona.",
-            },
-            {
-                "sentence": "Ella ___ café por la mañana.",
-                "answer": "bebe",
-                "options": ["bebo", "bebe", "bebió", "beber"],
-                "hint": "Presente, tercera persona.",
-            },
-            {
-                "sentence": "Nosotros ___ en Grecia.",
-                "answer": "vivimos",
-                "options": ["vivo", "viven", "vivimos", "viví"],
-                "hint": "Presente, nosotros.",
-            },
-            {
-                "sentence": "Ellos ___ fútbol el domingo.",
-                "answer": "juegan",
-                "options": ["juegan", "juega", "jugaron", "jugar"],
-                "hint": "Presente plural.",
-            },
-        ],
-        2: [
-            {
-                "sentence": "Ayer, él ___ al mercado.",
-                "answer": "fue",
-                "options": ["va", "fue", "ir", "iba"],
-                "hint": "Pretérito de ir.",
-            },
-            {
-                "sentence": "Estoy ___ la cena ahora.",
-                "answer": "cocinando",
-                "options": ["cocino", "cocinando", "cociné", "cocinar"],
-                "hint": "Gerundio.",
-            },
-            {
-                "sentence": "Hemos ___ la tarea.",
-                "answer": "terminado",
-                "options": ["terminar", "terminado", "terminamos", "termina"],
-                "hint": "Participio en pretérito perfecto.",
-            },
-            {
-                "sentence": "Cuando llamé, ella estaba ___.",
-                "answer": "durmiendo",
-                "options": ["duerme", "durmió", "durmiendo", "dormir"],
-                "hint": "Imperfecto progresivo.",
-            },
-        ],
-        3: [
-            {
-                "sentence": "Si tuviera más tiempo, ___ más francés.",
-                "answer": "practicaría",
-                "options": ["practico", "practicaría", "practiqué", "practicar"],
-                "hint": "Condicional.",
-            },
-            {
-                "sentence": "Para el próximo año, habremos ___ el curso.",
-                "answer": "completado",
-                "options": ["completar", "completado", "completamos", "completará"],
-                "hint": "Futuro perfecto.",
-            },
-            {
-                "sentence": "Él sugirió que ella ___ temprano.",
-                "answer": "llegara",
-                "options": ["llega", "llegó", "llegara", "llegar"],
-                "hint": "Subjuntivo pasado.",
-            },
-            {
-                "sentence": "El informe ___ antes del plazo.",
-                "answer": "fue enviado",
-                "options": ["fue enviado", "envía", "enviando", "ha enviar"],
-                "hint": "Voz pasiva.",
-            },
-        ],
-    },
-    "french": {
-        1: [
-            {
-                "sentence": "Je ___ au travail chaque jour.",
-                "answer": "vais",
-                "options": ["vais", "va", "allé", "aller"],
-                "hint": "Présent, première personne.",
-            },
-            {
-                "sentence": "Elle ___ du café le matin.",
-                "answer": "boit",
-                "options": ["bois", "boit", "bu", "boire"],
-                "hint": "Présent, troisième personne.",
-            },
-            {
-                "sentence": "Nous ___ à Paris.",
-                "answer": "habitons",
-                "options": ["habite", "habitent", "habitons", "habité"],
-                "hint": "Présent, nous.",
-            },
-            {
-                "sentence": "Ils ___ au football le dimanche.",
-                "answer": "jouent",
-                "options": ["joue", "jouent", "joué", "jouer"],
-                "hint": "Présent pluriel.",
-            },
-        ],
-        2: [
-            {
-                "sentence": "Hier, il ___ au marché.",
-                "answer": "est allé",
-                "options": ["va", "allait", "est allé", "aller"],
-                "hint": "Passé composé.",
-            },
-            {
-                "sentence": "Je suis en train de ___ le dîner.",
-                "answer": "préparer",
-                "options": ["prépare", "préparer", "préparé", "préparant"],
-                "hint": "Infinitif après expression.",
-            },
-            {
-                "sentence": "Nous avons ___ nos devoirs.",
-                "answer": "fini",
-                "options": ["fini", "finissons", "finir", "finissait"],
-                "hint": "Participe passé.",
-            },
-            {
-                "sentence": "Quand tu as appelé, elle était en train de ___.",
-                "answer": "dormir",
-                "options": ["dort", "dormi", "dormir", "dormait"],
-                "hint": "Action en cours.",
-            },
-        ],
-        3: [
-            {
-                "sentence": "Si j'avais plus de temps, je ___ plus l'espagnol.",
-                "answer": "pratiquerais",
-                "options": ["pratique", "pratiquerais", "pratiqué", "pratiquer"],
-                "hint": "Conditionnel présent.",
-            },
-            {
-                "sentence": "D'ici l'an prochain, nous aurons ___ le cours.",
-                "answer": "terminé",
-                "options": ["terminer", "terminé", "terminons", "terminera"],
-                "hint": "Futur antérieur.",
-            },
-            {
-                "sentence": "Il faut que tu ___ tôt.",
-                "answer": "arrives",
-                "options": ["arrives", "arrivé", "arriver", "arrivait"],
-                "hint": "Subjonctif présent.",
-            },
-            {
-                "sentence": "Le dossier ___ avant la date limite.",
-                "answer": "a été envoyé",
-                "options": ["a été envoyé", "est envoyant", "envoie", "a envoyer"],
-                "hint": "Voix passive composée.",
-            },
-        ],
-    },
-    "greek": {
-        1: [
-            {
-                "sentence": "Εγώ ___ στο σχολείο κάθε μέρα.",
-                "answer": "πηγαίνω",
-                "options": ["πηγαίνω", "πηγαίνει", "πήγα", "πηγαίνεις"],
-                "hint": "Ενεστώτας, πρώτο πρόσωπο.",
-            },
-            {
-                "sentence": "Αυτή ___ καφέ το πρωί.",
-                "answer": "πίνει",
-                "options": ["πίνω", "πίνει", "ήπιε", "πίνουν"],
-                "hint": "Ενεστώτας, τρίτο πρόσωπο.",
-            },
-            {
-                "sentence": "Εμείς ___ στην Αθήνα.",
-                "answer": "μένουμε",
-                "options": ["μένω", "μένει", "μένουμε", "έμεινα"],
-                "hint": "Ενεστώτας, πρώτο πληθυντικό.",
-            },
-            {
-                "sentence": "Αυτοί ___ ποδόσφαιρο την Κυριακή.",
-                "answer": "παίζουν",
-                "options": ["παίζω", "παίζει", "παίζουν", "έπαιξαν"],
-                "hint": "Ενεστώτας, τρίτο πληθυντικό.",
-            },
-        ],
-        2: [
-            {
-                "sentence": "Χθες, αυτός ___ στην αγορά.",
-                "answer": "πήγε",
-                "options": ["πηγαίνει", "πήγε", "πάει", "πηγαίνω"],
-                "hint": "Αόριστος του 'πηγαίνω'.",
-            },
-            {
-                "sentence": "Τώρα ___ το βραδινό.",
-                "answer": "μαγειρεύω",
-                "options": ["μαγειρεύω", "μαγείρεψα", "μαγειρεύει", "μαγειρεύοντας"],
-                "hint": "Ενεστώτας, τρέχουσα δράση.",
-            },
-            {
-                "sentence": "Έχουμε ___ τις ασκήσεις.",
-                "answer": "τελειώσει",
-                "options": ["τελειώνουμε", "τελείωσα", "τελειώσει", "τελειώνει"],
-                "hint": "Παρακείμενος.",
-            },
-            {
-                "sentence": "Όταν τηλεφώνησες, αυτή ___ .",
-                "answer": "κοιμόταν",
-                "options": ["κοιμάται", "κοιμήθηκε", "κοιμόταν", "κοιμηθεί"],
-                "hint": "Παρατατικός.",
-            },
-        ],
-        3: [
-            {
-                "sentence": "Αν είχα περισσότερο χρόνο, θα ___ περισσότερα ισπανικά.",
-                "answer": "εξασκούσα",
-                "options": ["εξασκώ", "εξασκούσα", "εξάσκησα", "εξασκείται"],
-                "hint": "Υποθετικός λόγος.",
-            },
-            {
-                "sentence": "Μέχρι του χρόνου, θα έχουμε ___ το μάθημα.",
-                "answer": "ολοκληρώσει",
-                "options": ["ολοκληρώνω", "ολοκλήρωσα", "ολοκληρώσει", "ολοκληρώνει"],
-                "hint": "Συντελεσμένος μέλλοντας.",
-            },
-            {
-                "sentence": "Πρότεινε να ___ νωρίτερα.",
-                "answer": "έρθει",
-                "options": ["έρχεται", "ήρθε", "έρθει", "ερχόταν"],
-                "hint": "Υποτακτική.",
-            },
-            {
-                "sentence": "Η αναφορά ___ πριν την προθεσμία.",
-                "answer": "στάλθηκε",
-                "options": ["στέλνεται", "έστειλε", "στάλθηκε", "στείλει"],
-                "hint": "Παθητική φωνή, αόριστος.",
-            },
-        ],
-    },
-    "russian": {
-        1: [
-            {
-                "sentence": "Я ___ в школу каждый день.",
-                "answer": "хожу",
-                "options": ["хожу", "ходит", "пошёл", "идти"],
-                "hint": "Настоящее время, 1-е лицо.",
-            },
-            {
-                "sentence": "Она ___ кофе утром.",
-                "answer": "пьёт",
-                "options": ["пью", "пьёт", "пила", "пить"],
-                "hint": "Настоящее время, 3-е лицо.",
-            },
-            {
-                "sentence": "Мы ___ в Афинах.",
-                "answer": "живём",
-                "options": ["живу", "живёт", "живём", "жил"],
-                "hint": "Настоящее время, множественное число.",
-            },
-            {
-                "sentence": "Они ___ футбол в воскресенье.",
-                "answer": "играют",
-                "options": ["играю", "играет", "играют", "играл"],
-                "hint": "Настоящее время, 3-е лицо мн.ч.",
-            },
-        ],
-        2: [
-            {
-                "sentence": "Вчера он ___ на рынок.",
-                "answer": "пошёл",
-                "options": ["идёт", "пошёл", "идти", "ходил"],
-                "hint": "Прошедшее время.",
-            },
-            {
-                "sentence": "Сейчас я ___ ужин.",
-                "answer": "готовлю",
-                "options": ["готовлю", "готовил", "готовит", "готовить"],
-                "hint": "Действие сейчас.",
-            },
-            {
-                "sentence": "Мы уже ___ домашнее задание.",
-                "answer": "сделали",
-                "options": ["делаем", "сделали", "сделать", "делал"],
-                "hint": "Завершённое действие.",
-            },
-            {
-                "sentence": "Когда ты позвонил, она ___ .",
-                "answer": "спала",
-                "options": ["спит", "спала", "спать", "уснёт"],
-                "hint": "Длительное действие в прошлом.",
-            },
-        ],
-        3: [
-            {
-                "sentence": "Если бы у меня было больше времени, я бы ___ русский.",
-                "answer": "практиковал",
-                "options": [
-                    "практикую",
-                    "практиковал",
-                    "практиковать",
-                    "практиковал бы",
-                ],
-                "hint": "Условная конструкция.",
-            },
-            {
-                "sentence": "К следующему году мы ___ курс.",
-                "answer": "закончим",
-                "options": ["заканчиваем", "закончим", "закончили", "закончить"],
-                "hint": "Будущее действие.",
-            },
-            {
-                "sentence": "Учитель попросил, чтобы он ___ раньше.",
-                "answer": "пришёл",
-                "options": ["приходит", "пришёл", "прийти", "приходил"],
-                "hint": "Прошедшая форма в придаточном.",
-            },
-            {
-                "sentence": "Отчёт ___ до дедлайна.",
-                "answer": "был отправлен",
-                "options": ["был отправлен", "отправляет", "отправил", "отправить"],
-                "hint": "Страдательный залог.",
-            },
-        ],
-    },
-}
 
 
 def get_profile_list_cache_version():
@@ -3575,6 +3167,99 @@ def top_up_daily_library(language, level, bucket):
         cache.delete(lock_key)
 
 
+PRACTICE_LIBRARY_ROUND_TTL_SECONDS = 60 * 60 * 24 * 30
+
+
+def library_round_cache_key(user_id, language, bucket):
+    return f"practice:library_round:v1:user:{user_id}:lang:{language}:bucket:{bucket}"
+
+
+def library_bucket_signature(challenges):
+    """Changes whenever items are added, removed or edited in a bucket."""
+    joined = "\n".join(
+        normalize_option_value((challenge or {}).get("sentence"))
+        for challenge in challenges
+    )
+    digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+    return f"{len(challenges)}:{digest}"
+
+
+def _fresh_library_order(size, recent_signatures, challenges, avoid_index=None):
+    order = list(range(size))
+    random.shuffle(order)
+    if size > 1:
+        # Don't open a round with the item just served or one seen recently.
+        for position, index in enumerate(order):
+            sentence = normalize_option_value(challenges[index].get("sentence"))
+            if index != avoid_index and sentence not in recent_signatures:
+                order[0], order[position] = order[position], order[0]
+                break
+    return order
+
+
+def next_library_index(user_id, language, bucket, challenges, recent_signatures):
+    """Pick the next built-in item for a user: no repeats until the bucket is exhausted.
+
+    Per user and (language, bucket) the cache holds a shuffled order of the
+    bucket's indexes plus a cursor (30 days). When the cursor reaches the end a
+    new shuffled round starts (not with the last-served item) and
+    ``round_complete`` is True for that first item. A library change (signature
+    mismatch) keeps what was already served this round and shuffles the rest.
+    Without the cache (Redis down / evicted) every request starts a fresh
+    order, i.e. a random pick that avoids recent sentences. Returns
+    ``(index, round_complete)``.
+    """
+    size = len(challenges)
+    signature = library_bucket_signature(challenges)
+    cache_key = library_round_cache_key(user_id, language, bucket)
+    try:
+        state = cache.get(cache_key)
+    except Exception:
+        state = None
+
+    round_complete = False
+    order = None
+    cursor = 0
+    last_index = None
+    if isinstance(state, dict):
+        raw_order = state.get("order")
+        raw_cursor = state.get("cursor")
+        last_index = state.get("last")
+        if isinstance(raw_order, list) and isinstance(raw_cursor, int):
+            valid = [i for i in raw_order if isinstance(i, int) and 0 <= i < size]
+            if state.get("signature") == signature and sorted(valid) == list(range(size)):
+                order, cursor = valid, max(0, raw_cursor)
+            else:
+                served = []
+                for i in valid[: max(0, raw_cursor)]:
+                    if i not in served:
+                        served.append(i)
+                remaining = [i for i in range(size) if i not in served]
+                random.shuffle(remaining)
+                order, cursor = served + remaining, len(served)
+
+    if order is None:
+        order = _fresh_library_order(size, recent_signatures, challenges)
+        cursor = 0
+    elif cursor >= len(order):
+        order = _fresh_library_order(
+            size, set(), challenges, avoid_index=last_index
+        )
+        cursor = 0
+        round_complete = True
+
+    index = order[cursor]
+    try:
+        cache.set(
+            cache_key,
+            {"signature": signature, "order": order, "cursor": cursor + 1, "last": index},
+            timeout=PRACTICE_LIBRARY_ROUND_TTL_SECONDS,
+        )
+    except Exception:
+        pass
+    return index, round_complete
+
+
 def build_challenge(language, level, user_id):
     bucket = practice_bucket_for_level(level)
     recent_signatures = set(get_recent_practice_signatures(user_id, language, bucket))
@@ -3589,7 +3274,10 @@ def build_challenge(language, level, user_id):
             available_indexes = [
                 index for index in range(len(daily_pool)) if index not in seen_indexes
             ]
+            daily_round_complete = False
             if not available_indexes:
+                # Every pooled item was served today: start a fresh round.
+                daily_round_complete = bool(seen_indexes)
                 seen_indexes = set()
                 available_indexes = list(range(len(daily_pool)))
 
@@ -3630,6 +3318,7 @@ def build_challenge(language, level, user_id):
                 "difficulty_bucket": template.get("difficulty_bucket", bucket),
                 "language": language,
                 "source": "generator_daily",
+                "round_complete": daily_round_complete,
             }
 
     if (
@@ -3655,6 +3344,7 @@ def build_challenge(language, level, user_id):
                 "difficulty_bucket": generated.get("difficulty_bucket", bucket),
                 "language": language,
                 "source": "generator",
+                "round_complete": False,
             }
 
     challenges = PRACTICE_LIBRARY.get(language, PRACTICE_LIBRARY["english"]).get(
@@ -3663,15 +3353,9 @@ def build_challenge(language, level, user_id):
     if not challenges:
         return None
 
-    available_indexes = list(range(len(challenges)))
-    preferred_indexes = [
-        index
-        for index, challenge in enumerate(challenges)
-        if normalize_option_value(challenge.get("sentence")) not in recent_signatures
-    ]
-    candidate_indexes = preferred_indexes or available_indexes
-
-    index = random.choice(candidate_indexes)
+    index, round_complete = next_library_index(
+        user_id, language, bucket, challenges, recent_signatures
+    )
     template = challenges[index]
     options = list(template["options"])
     random.shuffle(options)
@@ -3690,6 +3374,7 @@ def build_challenge(language, level, user_id):
         "difficulty_bucket": bucket,
         "language": language,
         "source": "library",
+        "round_complete": round_complete,
     }
 
 
@@ -3753,7 +3438,9 @@ def serialize_practice_stats(stats):
     }
 
 
-def get_leaderboard(language, current_user_id, current_stats=None, limit=10):
+def get_leaderboard(
+    language, current_user_id, current_stats=None, limit=10, request=None
+):
     qs = PracticeStats.objects.select_related("user")
     ordering = ("-points", "-xp", "updated_at")
     filtered_qs = qs.filter(preferred_language__iexact=language)
@@ -3773,6 +3460,13 @@ def get_leaderboard(language, current_user_id, current_stats=None, limit=10):
                 "level": entry.level,
                 "xp": entry.xp,
                 "is_current_user": entry.user_id == current_user_id,
+                # Same URL logic as People/profile payloads; the user row is
+                # already joined (select_related), so no extra query.
+                "profile_image_url": (
+                    build_media_url(request, entry.user.profile_image_url)
+                    if request is not None
+                    else (entry.user.profile_image_url or None)
+                ),
             }
         )
 
@@ -3801,7 +3495,7 @@ def practice_state_view(request):
         stats.save(update_fields=["preferred_language", "updated_at"])
 
     leaderboard, current_rank = get_leaderboard(
-        language, request.user.id, current_stats=stats
+        language, request.user.id, current_stats=stats, request=request
     )
     return Response(
         {
@@ -3945,7 +3639,7 @@ def practice_submit_view(request):
         stats.refresh_from_db()
 
     leaderboard, current_rank = get_leaderboard(
-        language, request.user.id, current_stats=stats
+        language, request.user.id, current_stats=stats, request=request
     )
     return Response(
         {

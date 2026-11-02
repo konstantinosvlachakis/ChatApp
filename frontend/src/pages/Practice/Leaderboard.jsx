@@ -5,8 +5,7 @@ import { avatarImage } from "../../lib/media";
 
 const AVATAR_SIZE = 40;
 
-// Leaderboard entries are {rank, username, points, level, xp, is_current_user}; they carry no image
-// today, so the default avatar is used unless a future payload adds profile_image_url.
+// Entries carry profile_image_url (absolute URL or null); null falls back to the default avatar.
 const entryAvatar = (entry) =>
   entry.profile_image_url ? avatarImage(entry.profile_image_url, AVATAR_SIZE) : DEFAULT_AVATAR_URL;
 

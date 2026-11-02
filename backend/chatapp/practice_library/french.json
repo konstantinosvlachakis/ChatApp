@@ -1,0 +1,998 @@
+{
+  "1": [
+    {
+      "sentence": "Je ___ au travail chaque jour.",
+      "answer": "vais",
+      "options": [
+        "vais",
+        "va",
+        "allé",
+        "aller"
+      ],
+      "hint": "Présent, première personne."
+    },
+    {
+      "sentence": "Elle ___ du café le matin.",
+      "answer": "boit",
+      "options": [
+        "bois",
+        "boit",
+        "bu",
+        "boire"
+      ],
+      "hint": "Présent, troisième personne."
+    },
+    {
+      "sentence": "Nous ___ à Paris.",
+      "answer": "habitons",
+      "options": [
+        "habite",
+        "habitent",
+        "habitons",
+        "habité"
+      ],
+      "hint": "Présent, nous."
+    },
+    {
+      "sentence": "Ils ___ au football le dimanche.",
+      "answer": "jouent",
+      "options": [
+        "joue",
+        "jouent",
+        "joué",
+        "jouer"
+      ],
+      "hint": "Présent pluriel."
+    },
+    {
+      "sentence": "Mon frère ___ vingt-cinq ans.",
+      "answer": "a",
+      "options": [
+        "ai",
+        "a",
+        "avons",
+        "ont"
+      ],
+      "hint": "Verb avoir, third person singular."
+    },
+    {
+      "sentence": "Vous ___ très gentils avec nous.",
+      "answer": "êtes",
+      "options": [
+        "es",
+        "sommes",
+        "sont",
+        "êtes"
+      ],
+      "hint": "Verb être, vous form."
+    },
+    {
+      "sentence": "J'achète ___ pomme au marché.",
+      "answer": "une",
+      "options": [
+        "une",
+        "un",
+        "des",
+        "le"
+      ],
+      "hint": "Indefinite article, feminine noun."
+    },
+    {
+      "sentence": "___ voiture de mon père est rouge.",
+      "answer": "La",
+      "options": [
+        "Le",
+        "Les",
+        "La",
+        "L'"
+      ],
+      "hint": "Definite article, feminine singular."
+    },
+    {
+      "sentence": "Ma sœur porte une robe ___.",
+      "answer": "blanche",
+      "options": [
+        "blanc",
+        "blanche",
+        "blancs",
+        "blanches"
+      ],
+      "hint": "Adjective agreement, feminine singular."
+    },
+    {
+      "sentence": "Les enfants ___ leurs devoirs après l'école.",
+      "answer": "font",
+      "options": [
+        "fait",
+        "faites",
+        "faisons",
+        "font"
+      ],
+      "hint": "Verb faire, third person plural."
+    },
+    {
+      "sentence": "Tu ___ le train pour aller à Lyon ?",
+      "answer": "prends",
+      "options": [
+        "prends",
+        "prend",
+        "prenons",
+        "prennent"
+      ],
+      "hint": "Verb prendre, tu form."
+    },
+    {
+      "sentence": "Je range ___ chambre tous les samedis.",
+      "answer": "ma",
+      "options": [
+        "mon",
+        "mes",
+        "ma",
+        "leurs"
+      ],
+      "hint": "Possessive 'my', feminine noun."
+    },
+    {
+      "sentence": "Nous ___ français et anglais à la maison.",
+      "answer": "parlons",
+      "options": [
+        "parle",
+        "parlons",
+        "parlez",
+        "parlent"
+      ],
+      "hint": "Present tense, nous form."
+    },
+    {
+      "sentence": "Il fait froid, alors je ___ un manteau.",
+      "answer": "mets",
+      "options": [
+        "met",
+        "mettons",
+        "mettent",
+        "mets"
+      ],
+      "hint": "Verb mettre, first person singular."
+    },
+    {
+      "sentence": "Est-ce que vous ___ du thé ou du café ?",
+      "answer": "voulez",
+      "options": [
+        "veux",
+        "veut",
+        "voulez",
+        "veulent"
+      ],
+      "hint": "Verb vouloir, vous form."
+    },
+    {
+      "sentence": "Mes parents ___ dans une petite maison.",
+      "answer": "vivent",
+      "options": [
+        "vivent",
+        "vit",
+        "vis",
+        "vivons"
+      ],
+      "hint": "Verb vivre, third person plural."
+    },
+    {
+      "sentence": "Le musée ___ à neuf heures du matin.",
+      "answer": "ouvre",
+      "options": [
+        "ouvres",
+        "ouvre",
+        "ouvrons",
+        "ouvrent"
+      ],
+      "hint": "Present tense, third person singular."
+    },
+    {
+      "sentence": "Je voudrais ___ eau, s'il vous plaît.",
+      "answer": "de l'",
+      "options": [
+        "du",
+        "de la",
+        "des",
+        "de l'"
+      ],
+      "hint": "Partitive article before a vowel."
+    },
+    {
+      "sentence": "Ces fleurs sont très ___.",
+      "answer": "belles",
+      "options": [
+        "beau",
+        "belle",
+        "belles",
+        "beaux"
+      ],
+      "hint": "Adjective agreement, feminine plural."
+    },
+    {
+      "sentence": "Où ___ mes clés ?",
+      "answer": "sont",
+      "options": [
+        "sont",
+        "est",
+        "suis",
+        "êtes"
+      ],
+      "hint": "Verb être, plural subject."
+    },
+    {
+      "sentence": "Tu ___ faim ? Il y a du pain dans la cuisine.",
+      "answer": "as",
+      "options": [
+        "ai",
+        "as",
+        "a",
+        "avez"
+      ],
+      "hint": "Verb avoir, tu form."
+    },
+    {
+      "sentence": "Nous ___ le bus devant la gare.",
+      "answer": "attendons",
+      "options": [
+        "attends",
+        "attend",
+        "attendent",
+        "attendons"
+      ],
+      "hint": "Verb attendre, nous form."
+    },
+    {
+      "sentence": "Nous promenons ___ chiens le soir.",
+      "answer": "nos",
+      "options": [
+        "notre",
+        "nos",
+        "son",
+        "ta"
+      ],
+      "hint": "Possessive 'our', plural noun."
+    },
+    {
+      "sentence": "Elle ___ des légumes au marché le samedi.",
+      "answer": "achète",
+      "options": [
+        "achète",
+        "achètes",
+        "achetons",
+        "achètent"
+      ],
+      "hint": "Verb acheter, elle form."
+    },
+    {
+      "sentence": "Le chat ___ sur le canapé.",
+      "answer": "dort",
+      "options": [
+        "dors",
+        "dormons",
+        "dort",
+        "dorment"
+      ],
+      "hint": "Verb dormir, third person singular."
+    },
+    {
+      "sentence": "Mon appartement est ___ et lumineux.",
+      "answer": "grand",
+      "options": [
+        "grande",
+        "grands",
+        "grandes",
+        "grand"
+      ],
+      "hint": "Adjective agreement, masculine singular."
+    },
+    {
+      "sentence": "Je ne ___ pas la réponse.",
+      "answer": "sais",
+      "options": [
+        "sait",
+        "sais",
+        "savons",
+        "savent"
+      ],
+      "hint": "Verb savoir, first person singular."
+    },
+    {
+      "sentence": "Vous ___ d'où ?",
+      "answer": "venez",
+      "options": [
+        "viens",
+        "vient",
+        "viennent",
+        "venez"
+      ],
+      "hint": "Verb venir, vous form."
+    },
+    {
+      "sentence": "Il y a ___ livres sur la table.",
+      "answer": "des",
+      "options": [
+        "un",
+        "une",
+        "des",
+        "la"
+      ],
+      "hint": "Indefinite article, plural."
+    },
+    {
+      "sentence": "Tu ___ m'aider avec mes valises ?",
+      "answer": "peux",
+      "options": [
+        "peut",
+        "pouvons",
+        "peux",
+        "peuvent"
+      ],
+      "hint": "Verb pouvoir, tu form."
+    }
+  ],
+  "2": [
+    {
+      "sentence": "Hier, il ___ au marché.",
+      "answer": "est allé",
+      "options": [
+        "va",
+        "allait",
+        "est allé",
+        "aller"
+      ],
+      "hint": "Passé composé."
+    },
+    {
+      "sentence": "Je suis en train de ___ le dîner.",
+      "answer": "préparer",
+      "options": [
+        "prépare",
+        "préparer",
+        "préparé",
+        "préparant"
+      ],
+      "hint": "Infinitif après expression."
+    },
+    {
+      "sentence": "Nous avons ___ nos devoirs.",
+      "answer": "fini",
+      "options": [
+        "fini",
+        "finissons",
+        "finir",
+        "finissait"
+      ],
+      "hint": "Participe passé."
+    },
+    {
+      "sentence": "Quand tu as appelé, elle était en train de ___.",
+      "answer": "dormir",
+      "options": [
+        "dort",
+        "dormi",
+        "dormir",
+        "dormait"
+      ],
+      "hint": "Action en cours."
+    },
+    {
+      "sentence": "Hier soir, nous ___ une pizza.",
+      "answer": "avons mangé",
+      "options": [
+        "mangeons",
+        "avons mangé",
+        "mangerons",
+        "allons manger"
+      ],
+      "hint": "Passé composé, nous form."
+    },
+    {
+      "sentence": "Elles ___ en Italie l'été dernier.",
+      "answer": "sont allées",
+      "options": [
+        "sont allés",
+        "ont allé",
+        "sont allées",
+        "vont"
+      ],
+      "hint": "Passé composé with être, feminine plural."
+    },
+    {
+      "sentence": "Demain, il ___ beau toute la journée.",
+      "answer": "fera",
+      "options": [
+        "fera",
+        "faisait",
+        "a fait",
+        "fit"
+      ],
+      "hint": "Simple future, weather expression."
+    },
+    {
+      "sentence": "Quand j'étais petit, je ___ au parc tous les jours.",
+      "answer": "jouais",
+      "options": [
+        "joue",
+        "jouerai",
+        "jouerais",
+        "jouais"
+      ],
+      "hint": "Imperfect for a past habit."
+    },
+    {
+      "sentence": "Le livre est sur la table ; je ___ prends.",
+      "answer": "le",
+      "options": [
+        "la",
+        "le",
+        "les",
+        "lui"
+      ],
+      "hint": "Direct object pronoun, masculine."
+    },
+    {
+      "sentence": "J'ai vu tes parents et je ___ ai parlé.",
+      "answer": "leur",
+      "options": [
+        "les",
+        "leurs",
+        "leur",
+        "y"
+      ],
+      "hint": "Indirect object pronoun, plural."
+    },
+    {
+      "sentence": "Le matin, je ___ lève à sept heures.",
+      "answer": "me",
+      "options": [
+        "me",
+        "te",
+        "se",
+        "nous"
+      ],
+      "hint": "Reflexive pronoun, first person."
+    },
+    {
+      "sentence": "Ils ___ sont couchés très tard hier.",
+      "answer": "se",
+      "options": [
+        "me",
+        "te",
+        "vous",
+        "se"
+      ],
+      "hint": "Reflexive pronoun, third person plural."
+    },
+    {
+      "sentence": "Ma sœur chante ___ que moi.",
+      "answer": "mieux",
+      "options": [
+        "meilleur",
+        "mieux",
+        "meilleure",
+        "bon"
+      ],
+      "hint": "Comparative of the adverb bien."
+    },
+    {
+      "sentence": "Paris est plus grand ___ Lyon.",
+      "answer": "que",
+      "options": [
+        "de",
+        "comme",
+        "que",
+        "à"
+      ],
+      "hint": "Word after a comparative."
+    },
+    {
+      "sentence": "Vous ___ fermer la porte, s'il vous plaît ?",
+      "answer": "pouvez",
+      "options": [
+        "peux",
+        "peuvent",
+        "pouvons",
+        "pouvez"
+      ],
+      "hint": "Modal pouvoir, vous form."
+    },
+    {
+      "sentence": "Nous ___ partir tôt demain matin.",
+      "answer": "devons",
+      "options": [
+        "devons",
+        "dois",
+        "doit",
+        "doivent"
+      ],
+      "hint": "Modal devoir, nous form."
+    },
+    {
+      "sentence": "Je vais ___ Japon cet été.",
+      "answer": "au",
+      "options": [
+        "à",
+        "au",
+        "en",
+        "aux"
+      ],
+      "hint": "Preposition with a masculine country."
+    },
+    {
+      "sentence": "Elle habite ___ France depuis trois ans.",
+      "answer": "en",
+      "options": [
+        "à",
+        "au",
+        "aux",
+        "en"
+      ],
+      "hint": "Preposition with a feminine country."
+    },
+    {
+      "sentence": "Nous partons en vacances ___ voiture.",
+      "answer": "en",
+      "options": [
+        "en",
+        "à",
+        "par",
+        "dans"
+      ],
+      "hint": "Preposition for travelling by car."
+    },
+    {
+      "sentence": "Ils habitent ___ Marseille depuis longtemps.",
+      "answer": "à",
+      "options": [
+        "en",
+        "à",
+        "au",
+        "aux"
+      ],
+      "hint": "Preposition before a city."
+    },
+    {
+      "sentence": "L'année prochaine, j'___ en Espagne.",
+      "answer": "irai",
+      "options": [
+        "irai",
+        "allais",
+        "étais allé",
+        "allai"
+      ],
+      "hint": "Simple future of aller."
+    },
+    {
+      "sentence": "Tu ___ ton cadeau quand tu arriveras.",
+      "answer": "auras",
+      "options": [
+        "as",
+        "avais",
+        "aurais",
+        "auras"
+      ],
+      "hint": "Simple future, tu form."
+    },
+    {
+      "sentence": "Il ___ quand nous sommes sortis.",
+      "answer": "pleuvait",
+      "options": [
+        "pleuvait",
+        "pleut",
+        "pleuvra",
+        "pleuvrait"
+      ],
+      "hint": "Imperfect for background description."
+    },
+    {
+      "sentence": "Les lettres que j'ai ___ sont sur ton bureau.",
+      "answer": "écrites",
+      "options": [
+        "écrit",
+        "écrite",
+        "écrites",
+        "écrits"
+      ],
+      "hint": "Past participle agreement, feminine plural."
+    },
+    {
+      "sentence": "Hier, elle ___ le bus de huit heures.",
+      "answer": "a pris",
+      "options": [
+        "prend",
+        "a pris",
+        "prendra",
+        "prendrait"
+      ],
+      "hint": "Passé composé, elle form."
+    },
+    {
+      "sentence": "Tu parles à Sophie ? Oui, je ___ parle souvent.",
+      "answer": "lui",
+      "options": [
+        "la",
+        "le",
+        "leur",
+        "lui"
+      ],
+      "hint": "Indirect object pronoun, singular."
+    },
+    {
+      "sentence": "Le cinéma ? Nous ___ allons ce soir.",
+      "answer": "y",
+      "options": [
+        "y",
+        "en",
+        "le",
+        "lui"
+      ],
+      "hint": "Pronoun replacing a place."
+    },
+    {
+      "sentence": "Combien de croissants ? Je ___ prends trois.",
+      "answer": "en",
+      "options": [
+        "y",
+        "en",
+        "les",
+        "leur"
+      ],
+      "hint": "Pronoun replacing a quantity."
+    },
+    {
+      "sentence": "C'est la ___ pizza que j'aie jamais mangée.",
+      "answer": "meilleure",
+      "options": [
+        "meilleur",
+        "mieux",
+        "meilleure",
+        "meilleurs"
+      ],
+      "hint": "Superlative of bon, feminine."
+    },
+    {
+      "sentence": "Attention, le train ___ partir !",
+      "answer": "va",
+      "options": [
+        "vas",
+        "allons",
+        "vont",
+        "va"
+      ],
+      "hint": "Near future, third person singular."
+    }
+  ],
+  "3": [
+    {
+      "sentence": "Si j'avais plus de temps, je ___ plus l'espagnol.",
+      "answer": "pratiquerais",
+      "options": [
+        "pratique",
+        "pratiquerais",
+        "pratiqué",
+        "pratiquer"
+      ],
+      "hint": "Conditionnel présent."
+    },
+    {
+      "sentence": "D'ici l'an prochain, nous aurons ___ le cours.",
+      "answer": "terminé",
+      "options": [
+        "terminer",
+        "terminé",
+        "terminons",
+        "terminera"
+      ],
+      "hint": "Futur antérieur."
+    },
+    {
+      "sentence": "Il faut que tu ___ tôt.",
+      "answer": "arrives",
+      "options": [
+        "arrives",
+        "arrivé",
+        "arriver",
+        "arrivait"
+      ],
+      "hint": "Subjonctif présent."
+    },
+    {
+      "sentence": "Le dossier ___ avant la date limite.",
+      "answer": "a été envoyé",
+      "options": [
+        "a été envoyé",
+        "est envoyant",
+        "envoie",
+        "a envoyer"
+      ],
+      "hint": "Voix passive composée."
+    },
+    {
+      "sentence": "Je veux que tu ___ la vérité.",
+      "answer": "dises",
+      "options": [
+        "dis",
+        "dises",
+        "diras",
+        "dirais"
+      ],
+      "hint": "Subjunctive after vouloir que."
+    },
+    {
+      "sentence": "Bien qu'il ___ tard, nous continuons à travailler.",
+      "answer": "soit",
+      "options": [
+        "est",
+        "sera",
+        "soit",
+        "était"
+      ],
+      "hint": "Subjunctive after bien que."
+    },
+    {
+      "sentence": "Il est important que vous ___ à l'heure.",
+      "answer": "soyez",
+      "options": [
+        "soyez",
+        "êtes",
+        "serez",
+        "seriez"
+      ],
+      "hint": "Subjunctive after an impersonal expression."
+    },
+    {
+      "sentence": "Je doute qu'elle ___ venir ce soir.",
+      "answer": "puisse",
+      "options": [
+        "peut",
+        "puisses",
+        "pouvons",
+        "puisse"
+      ],
+      "hint": "Subjunctive after douter que."
+    },
+    {
+      "sentence": "Nous partirons avant qu'il ___ à pleuvoir.",
+      "answer": "commence",
+      "options": [
+        "commencera",
+        "commence",
+        "commençait",
+        "a commencé"
+      ],
+      "hint": "Subjunctive after avant que."
+    },
+    {
+      "sentence": "Si nous avions une voiture, nous ___ à la campagne.",
+      "answer": "irions",
+      "options": [
+        "allons",
+        "irons",
+        "allions",
+        "irions"
+      ],
+      "hint": "Conditional in a si-clause."
+    },
+    {
+      "sentence": "Si tu ___ plus tôt, tu aurais vu le début du film.",
+      "answer": "étais arrivé",
+      "options": [
+        "es arrivé",
+        "étais arrivé",
+        "serais arrivé",
+        "seras arrivé"
+      ],
+      "hint": "Pluperfect in a past si-clause."
+    },
+    {
+      "sentence": "S'il fait beau demain, nous ___ un pique-nique.",
+      "answer": "ferons",
+      "options": [
+        "ferons",
+        "ferions",
+        "faisions",
+        "aurions fait"
+      ],
+      "hint": "Future in a real condition."
+    },
+    {
+      "sentence": "À ta place, je ___ un taxi.",
+      "answer": "prendrais",
+      "options": [
+        "prendrai",
+        "prenais",
+        "prendrais",
+        "prenne"
+      ],
+      "hint": "Conditional for giving advice."
+    },
+    {
+      "sentence": "Nous ___ aimé venir, mais nous étions occupés.",
+      "answer": "aurions",
+      "options": [
+        "avons",
+        "aurons",
+        "avions",
+        "aurions"
+      ],
+      "hint": "Past conditional expressing regret."
+    },
+    {
+      "sentence": "Ce château ___ au XVe siècle.",
+      "answer": "a été construit",
+      "options": [
+        "a construit",
+        "a été construit",
+        "a été construite",
+        "avait construit"
+      ],
+      "hint": "Passive voice, masculine subject."
+    },
+    {
+      "sentence": "Les résultats ___ demain par le directeur.",
+      "answer": "seront annoncés",
+      "options": [
+        "seront annoncées",
+        "ont été annoncés",
+        "annonceront",
+        "seront annoncés"
+      ],
+      "hint": "Future passive, masculine plural."
+    },
+    {
+      "sentence": "C'est la ville ___ je suis né.",
+      "answer": "où",
+      "options": [
+        "où",
+        "que",
+        "qui",
+        "dont"
+      ],
+      "hint": "Relative pronoun for a place."
+    },
+    {
+      "sentence": "Le film ___ je t'ai parlé est sorti hier.",
+      "answer": "dont",
+      "options": [
+        "que",
+        "qui",
+        "dont",
+        "où"
+      ],
+      "hint": "Relative pronoun with parler de."
+    },
+    {
+      "sentence": "La femme ___ habite à côté est très sympathique.",
+      "answer": "qui",
+      "options": [
+        "que",
+        "qui",
+        "dont",
+        "où"
+      ],
+      "hint": "Relative pronoun as subject."
+    },
+    {
+      "sentence": "Voici le stylo avec ___ j'écris.",
+      "answer": "lequel",
+      "options": [
+        "laquelle",
+        "lesquels",
+        "qui",
+        "lequel"
+      ],
+      "hint": "Relative pronoun after a preposition."
+    },
+    {
+      "sentence": "Ma mère aimerait que nous ___ dimanche.",
+      "answer": "venions",
+      "options": [
+        "venons",
+        "venions",
+        "viendrons",
+        "viendrions"
+      ],
+      "hint": "Subjunctive after aimer que."
+    },
+    {
+      "sentence": "Je suis ravi que tu ___ réussi ton examen.",
+      "answer": "aies",
+      "options": [
+        "as",
+        "auras",
+        "aies",
+        "aurais"
+      ],
+      "hint": "Past subjunctive after an emotion."
+    },
+    {
+      "sentence": "Pourvu qu'il ___ beau ce week-end !",
+      "answer": "fasse",
+      "options": [
+        "fasse",
+        "fait",
+        "fera",
+        "ferait"
+      ],
+      "hint": "Subjunctive after pourvu que."
+    },
+    {
+      "sentence": "Je ne pense pas qu'il ___ raison.",
+      "answer": "ait",
+      "options": [
+        "aies",
+        "aient",
+        "ait",
+        "avons"
+      ],
+      "hint": "Subjunctive after a negative opinion."
+    },
+    {
+      "sentence": "Il pleut des ___ depuis ce matin.",
+      "answer": "cordes",
+      "options": [
+        "chats",
+        "cordes",
+        "cordons",
+        "fils"
+      ],
+      "hint": "Idiom for heavy rain."
+    },
+    {
+      "sentence": "Ce voyage m'a coûté les yeux de la ___.",
+      "answer": "tête",
+      "options": [
+        "main",
+        "bouche",
+        "face",
+        "tête"
+      ],
+      "hint": "Idiom meaning very expensive."
+    },
+    {
+      "sentence": "Ne t'inquiète pas, ce n'est pas la mer à ___.",
+      "answer": "boire",
+      "options": [
+        "boire",
+        "manger",
+        "voir",
+        "nager"
+      ],
+      "hint": "Idiom: it is not that hard."
+    },
+    {
+      "sentence": "Il s'est blessé en ___ au football.",
+      "answer": "jouant",
+      "options": [
+        "jouer",
+        "jouant",
+        "joué",
+        "jouait"
+      ],
+      "hint": "Gerund after en."
+    },
+    {
+      "sentence": "Après ___ dîné, ils sont allés au cinéma.",
+      "answer": "avoir",
+      "options": [
+        "être",
+        "ayant",
+        "avoir",
+        "eu"
+      ],
+      "hint": "Past infinitive after après."
+    },
+    {
+      "sentence": "Quand nous sommes arrivés, le film ___ déjà commencé.",
+      "answer": "avait",
+      "options": [
+        "a",
+        "aura",
+        "aurait",
+        "avait"
+      ],
+      "hint": "Pluperfect, earlier past action."
+    }
+  ]
+}

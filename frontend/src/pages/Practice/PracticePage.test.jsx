@@ -201,6 +201,48 @@ describe("PracticePage", () => {
     expect(document.querySelector(".pr-sentence")).toHaveFocus();
   });
 
+  test("round_complete shows the fresh-round note on that challenge only", async () => {
+    let challengeCount = 0;
+    api.get.mockImplementation((path) => {
+      if (path === "/api/practice/state/") {
+        return Promise.resolve({ language: "spanish", stats, leaderboard, current_rank: 2 });
+      }
+      challengeCount += 1;
+      return Promise.resolve({
+        language: "spanish",
+        challenge: { ...challenge(`spanish:1:${challengeCount}`), round_complete: challengeCount === 1 },
+        stats,
+      });
+    });
+    api.post.mockResolvedValue(submitPayload());
+    await renderPage();
+    expect(screen.getByText(/practised every sentence for this level/)).toBeInTheDocument();
+    fireEvent.click(option("bebo"));
+    fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() => expect(screen.queryByText(/practised every sentence/)).not.toBeInTheDocument());
+  });
+
+  test("leaderboard shows real profile photos and falls back to the default avatar", async () => {
+    const withPhotos = [
+      { ...leaderboard[0], profile_image_url: "https://example.test/media/profile_images/maria.jpg" },
+      { ...leaderboard[1], profile_image_url: null },
+    ];
+    api.get.mockImplementation((path) =>
+      Promise.resolve(
+        path === "/api/practice/state/"
+          ? { language: "spanish", stats, leaderboard: withPhotos, current_rank: 2 }
+          : { language: "spanish", challenge: challenge(), stats }
+      )
+    );
+    await renderPage();
+    const board = screen.getByRole("complementary", { name: "Leaderboard" });
+    const images = board.querySelectorAll("img.pr-board-avatar");
+    expect(images[0].getAttribute("src")).toContain("maria.jpg");
+    expect(images[1].getAttribute("src")).not.toContain("maria.jpg");
+    expect(images[1].getAttribute("src")).toBeTruthy();
+  });
+
   test("leaderboard highlights You", async () => {
     await renderPage();
     const board = screen.getByRole("complementary", { name: "Leaderboard" });
