@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import PracticePage from "./PracticePage";
 import api from "../../lib/api";
 import { clearToasts, getToasts } from "../../components/Toast/toastStore";
+import { levelChangeMessage, progressSummary } from "./practiceUtils";
 
 let mockUser;
 jest.mock("../../context/UserContext", () => ({
@@ -49,6 +50,24 @@ const submitPayload = (overrides = {}) => ({
   current_rank: 2,
   ...overrides,
 });
+
+const levelProgress = (overrides = {}) => {
+  const attempts = overrides.attempts_in_bucket ?? 0;
+  return {
+    language: "spanish",
+    bucket: 2,
+    max_bucket: 3,
+    bucket_label: "Everyday grammar",
+    cefr: "A2–B1",
+    attempts_in_bucket: attempts,
+    window_size: attempts,
+    window_accuracy: null,
+    needed_for_promotion: { attempts_remaining: Math.max(0, 15 - attempts), min_attempts: 15, accuracy_target: 0.8 },
+    can_promote: true,
+    change: null,
+    ...overrides,
+  };
+};
 
 const setupApi = () => {
   let challengeCount = 0;
@@ -331,5 +350,81 @@ describe("PracticePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
     await waitFor(() => expect(getToasts().length).toBe(1));
     expect(screen.getByRole("button", { name: "Check answer" })).toBeEnabled();
+  });
+
+  test("shows the per-language difficulty and level-up progress", async () => {
+    const progress = levelProgress({ attempts_in_bucket: 12, window_size: 12, window_accuracy: 0.85 });
+    api.get.mockImplementation((path) =>
+      Promise.resolve(
+        path === "/api/practice/state/"
+          ? { language: "spanish", stats, progress, leaderboard, current_rank: 2 }
+          : { language: "spanish", challenge: challenge(), stats }
+      )
+    );
+    await renderPage();
+    const level = screen.getByRole("region", { name: "Difficulty for this language" });
+    expect(within(level).getByText("Spanish · Everyday grammar")).toBeInTheDocument();
+    expect(within(level).getByText("A2–B1")).toBeInTheDocument();
+    expect(within(level).getByText("12/15 sentences · 85% accuracy · 3 more to level up")).toBeInTheDocument();
+    expect(within(level).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12");
+  });
+
+  test("a promotion shows a level-up banner that can be dismissed", async () => {
+    api.post.mockResolvedValue(
+      submitPayload({
+        progress: levelProgress({ bucket: 3, bucket_label: "Advanced grammar", cefr: "B1–B2", change: "promoted", can_promote: false, needed_for_promotion: null }),
+      })
+    );
+    await renderPage();
+    fireEvent.click(option("bebo"));
+    fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
+    expect(await screen.findByText("Level up!")).toBeInTheDocument();
+    expect(screen.getByText("Spanish → Advanced grammar")).toBeInTheDocument();
+    expect(screen.getByText("Spanish · Advanced grammar")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("Level up!")).not.toBeInTheDocument();
+  });
+
+  test("a demotion shows a kind note", async () => {
+    api.post.mockResolvedValue(
+      submitPayload({ correct: false, progress: levelProgress({ bucket: 1, bucket_label: "Basics", cefr: "A1", change: "demoted" }) })
+    );
+    await renderPage();
+    fireEvent.click(option("como"));
+    fireEvent.click(screen.getByRole("button", { name: "Check answer" }));
+    expect(await screen.findByText("Let's practise Basics a bit more.")).toBeInTheDocument();
+    expect(screen.queryByText("Level up!")).not.toBeInTheDocument();
+  });
+});
+
+describe("practice level helpers", () => {
+  test("progressSummary covers the promotion states", () => {
+    expect(progressSummary(levelProgress())).toBe("0/15 sentences · 15 more to level up");
+    expect(progressSummary(levelProgress({ attempts_in_bucket: 5, window_accuracy: 0.6 }))).toBe(
+      "5/15 sentences · 60% accuracy · 10 more at ≥ 80% accuracy to level up"
+    );
+    expect(
+      progressSummary(
+        levelProgress({
+          attempts_in_bucket: 18,
+          window_accuracy: 0.7,
+          needed_for_promotion: { attempts_remaining: 0, min_attempts: 15, accuracy_target: 0.8 },
+        })
+      )
+    ).toBe("15/15 sentences · 70% accuracy · Keep accuracy ≥ 80% to level up");
+    expect(progressSummary(levelProgress({ can_promote: false, needed_for_promotion: null, window_accuracy: 0.9 }))).toBe(
+      "Top level · 90% accuracy"
+    );
+    expect(progressSummary(null)).toBe("");
+  });
+
+  test("levelChangeMessage only fires on a change", () => {
+    expect(levelChangeMessage(levelProgress())).toBeNull();
+    expect(levelChangeMessage(levelProgress({ change: "promoted" }))).toEqual({
+      tone: "good",
+      title: "Level up!",
+      text: "Spanish → Everyday grammar",
+    });
+    expect(levelChangeMessage(levelProgress({ change: "demoted" })).tone).toBe("calm");
   });
 });

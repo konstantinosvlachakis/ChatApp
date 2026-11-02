@@ -66,7 +66,10 @@ Manager: `create_user(username, password, **extra)` hashes the password. `create
 Every refresh token issued through `chatapp/tokens.py` gets an `OutstandingToken` row (user FK SET_NULL, jti unique, token, expires_at); rotation, logout and `revoke_user_tokens` add `BlacklistedToken` rows (OneToOne). Rows are never pruned yet (`manage.py flushexpiredtokens` would remove expired ones; not scheduled).
 
 ### PracticeStats
-`user` OneToOne→Profile (`practice_stats`), points / xp / correct_answers / total_answers PositiveInt default 0, level PositiveInt default 1, preferred_language Char(50) `""`, updated_at auto_now. Index `pstats_points_idx` on `-points`. Created lazily with `get_or_create` in the practice views.
+`user` OneToOne→Profile (`practice_stats`), points / xp / correct_answers / total_answers PositiveInt default 0, level PositiveInt default 1, preferred_language Char(50) `""`, updated_at auto_now. Index `pstats_points_idx` on `-points`. Created lazily with `get_or_create` in the practice views. XP/points/level are the motivational score only; difficulty lives in `PracticeLanguageProgress`.
+
+### PracticeLanguageProgress (`feat/practice-levels`, migration 0036)
+`user` FK→Profile (`practice_progress`, CASCADE), `language` Char(50) (lowercase practice key, e.g. `spanish`), `bucket` PositiveSmallInt 1–3 (check constraint `practice_progress_bucket_range`), `attempts_in_bucket` PositiveInt, `recent_results` Char(50) `""` (last `PRACTICE_WINDOW` answers in this bucket, "1"/"0", oldest first), `promoted_at` / `demoted_at` nullable, `created_at`, `updated_at`. Unique (user, language) (`practice_progress_user_language_uniq`). Created lazily by `practice_progress.get_language_progress` (state, challenge, submit, voice next), seeded from `Profile.practice_language_levels` (beginner 1, intermediate 2, advanced/fluent 3, else 1) or, for the user's `PracticeStats.preferred_language`, max(that, legacy XP bucket). Updated under `select_for_update` in `practice_submit_view` only (voice never changes it).
 
 ### Token (removed)
 Dropped by migration `0033_delete_legacy_token` together with `/api/login/` and `CustomTokenAuthentication` (they authenticated nothing).
@@ -122,7 +125,7 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
   `block_user_view` POST also **hard-deletes the pair's conversations (and their messages)**. Unblocking restores nothing. Already-open chat sockets aren't kicked out.
 - **Case-insensitive usernames**: `get_profile_by_username_or_404` uses `iexact` and, if legacy case-variant duplicates exist, falls back to the lowest id. Register and edit reject `iexact` collisions. Email collisions are also checked with `iexact`.
 - **ProfileView is update-then-create** (`record_profile_view`): UPDATE updated_at, else create in `atomic()`, catching IntegrityError on a race and retrying the update. Self-views are ignored. DB lock errors are swallowed. It bumps the viewed user's profile cache version only when the viewer wasn't already the most recent viewer. Profile payloads show the 12 most recent viewers.
-- **PracticeStats are updated with F()** in `practice_submit_view`, at most once per served challenge (`practice:scored` cache guard, see caching.md): atomic increments; `level = (xp + awarded) / 100 + 1`, mirroring `practice_level_from_xp` (`xp // 100 + 1`). Buckets: level ≤2 → 1, ≤4 → 2, else 3. XP/points: correct +15/+10, wrong +3/+1. The leaderboard filters `preferred_language__iexact` and falls back to global.
+- **PracticeStats are updated with F()** in `practice_submit_view`, at most once per served challenge (`practice:scored` cache guard, see caching.md): atomic increments; `level = (xp + awarded) / 100 + 1`, mirroring `practice_level_from_xp` (`xp // 100 + 1`). Difficulty buckets no longer come from the level (see PracticeLanguageProgress: promotion at ≥15 answers in the bucket with ≥80 % over the last 20, demotion at ≥10 with <50 %). XP/points: correct +15/+10, wrong +3/+1. The leaderboard filters `preferred_language__iexact` and falls back to global.
 - **Presence**:
   - `ws_connection_count` counts open sockets (chat and presence) per user. `increment_presence` / `decrement_presence` (consumers.py) use only atomic filtered UPDATEs, and the count never goes negative.
   - `is_online` turns True on the first socket and False when the last socket closes, which also sets `last_seen`.
@@ -147,3 +150,4 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 ## Change log
 - security/abuse-limits: removed the `Token` model (migration 0033); profile image references are server-set only and replaced files are deleted.
 - security/sessions: `Profile.token_version` (migration 0034) and the SimpleJWT `token_blacklist` tables (`OutstandingToken` / `BlacklistedToken`).
+- feat/practice-levels: `PracticeLanguageProgress` (migration 0036); practice difficulty is per language and accuracy based, XP is score only.

@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import UserRateThrottle
 
 from chatapp import views
-from chatapp.models import PracticeStats
+from chatapp.models import PracticeLanguageProgress, PracticeStats
 from chatapp.practice_library import (
     BUCKETS,
     LANGUAGE_SCRIPTS,
@@ -187,11 +187,28 @@ class VoiceNextTests(VoiceApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertIn("code", response.json())
 
-    def test_bucket_follows_the_practice_level(self):
-        PracticeStats.objects.create(user=self.user, xp=450, level=5)
+    def test_bucket_follows_the_language_progress(self):
+        PracticeLanguageProgress.objects.create(user=self.user, language="english", bucket=3)
         body = self.next()
         self.assertEqual(body["bucket"], 3)
         self.assertTrue(body["id"].startswith("voice:english:3:"))
+
+    def test_xp_alone_does_not_raise_the_bucket(self):
+        # XP from another language no longer decides difficulty.
+        PracticeStats.objects.create(
+            user=self.user, xp=450, level=5, preferred_language="spanish"
+        )
+        self.assertEqual(self.next()["bucket"], 1)
+
+    def test_voice_passes_do_not_change_the_bucket(self):
+        PracticeLanguageProgress.objects.create(user=self.user, language="english", bucket=2)
+        for _ in range(20):
+            sentence_id = self.next()["id"]
+            self.assertTrue(sentence_id.startswith("voice:english:2:"))
+            self.complete(sentence_id)
+        progress = PracticeLanguageProgress.objects.get(user=self.user, language="english")
+        self.assertEqual((progress.bucket, progress.attempts_in_bucket), (2, 0))
+        self.assertEqual(progress.recent_results, "")
 
     def test_unknown_language_falls_back(self):
         body = self.next("klingon")

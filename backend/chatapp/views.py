@@ -100,6 +100,16 @@ from .tokens import (
 )
 from .email_verification import RequireVerifiedEmail, send_verification_email
 from .practice_library import PRACTICE_LIBRARY
+from .practice_progress import (
+    challenge_bucket,
+    clamp_bucket,
+    current_bucket,
+    get_language_progress,
+    practice_bucket_for_level,  # noqa: F401  (re-exported: prewarm command, tests)
+    practice_level_from_xp,
+    record_practice_result,
+    serialize_language_progress,
+)
 from .practice_library.voice import (
     VOICE_LIBRARY,
     parse_voice_sentence_id,
@@ -2721,23 +2731,9 @@ def resolve_practice_language(user, requested_language=None):
     return "english"
 
 
-def practice_level_from_xp(xp_value):
-    xp = max(int(xp_value or 0), 0)
-    return (xp // 100) + 1
-
-
-def practice_bucket_for_level(level):
-    if level <= 2:
-        return 1
-    if level <= 4:
-        return 2
-    return 3
-
-
-def practice_bucket_for_xp(xp_value):
-    """Difficulty bucket (1-3) for a user's practice XP: the drill and Voice
-    Repeat both pick their level this way (one place to change)."""
-    return practice_bucket_for_level(practice_level_from_xp(xp_value))
+# Generator prompts still take an internal level (-> CEFR via
+# cefr_level_for_level): one representative level per difficulty bucket.
+PRACTICE_GENERATOR_LEVEL_FOR_BUCKET = {1: 1, 2: 3, 3: 5}
 
 
 def split_sentence_parts(sentence):
@@ -3297,8 +3293,11 @@ def next_library_index(
     return index, round_complete
 
 
-def build_challenge(language, level, user_id):
-    bucket = practice_bucket_for_level(level)
+def build_challenge(language, bucket, user_id):
+    """Next drill item for ``language`` at difficulty ``bucket`` (1-3, from the
+    user's PracticeLanguageProgress via ``current_bucket``)."""
+    bucket = clamp_bucket(bucket)
+    level = PRACTICE_GENERATOR_LEVEL_FOR_BUCKET[bucket]
     recent_signatures = set(get_recent_practice_signatures(user_id, language, bucket))
     # A request makes at most one (slow) generator call in total.
     made_generator_call = False
@@ -3530,6 +3529,7 @@ def practice_state_view(request):
     if not stats.preferred_language:
         stats.preferred_language = language
         stats.save(update_fields=["preferred_language", "updated_at"])
+    progress = get_language_progress(request.user, language, stats)
 
     leaderboard, current_rank = get_leaderboard(
         language, request.user.id, current_stats=stats, request=request
@@ -3538,6 +3538,7 @@ def practice_state_view(request):
         {
             "language": language,
             "stats": serialize_practice_stats(stats),
+            "progress": serialize_language_progress(progress),
             "leaderboard": leaderboard,
             "current_rank": current_rank,
         },
@@ -3560,7 +3561,10 @@ def practice_challenge_view(request):
         stats.level = practice_level_from_xp(stats.xp)
         stats.save(update_fields=["level", "updated_at"])
 
-    challenge = build_challenge(language, stats.level, request.user.id)
+    # Difficulty is per language and mastery based (practice_progress), not XP.
+    challenge = build_challenge(
+        language, current_bucket(request.user, language, stats), request.user.id
+    )
     if not challenge:
         return Response(
             {"error": "No challenge templates available."},
@@ -3675,6 +3679,20 @@ def practice_submit_view(request):
             raise
         stats.refresh_from_db()
 
+    # Per-language difficulty: every first-time-scored answer counts (also past
+    # the daily XP cap); replays of a scored id (already_scored) do not.
+    progress_change = None
+    if already_scored:
+        progress = get_language_progress(request.user, language, stats)
+    else:
+        progress, progress_change = record_practice_result(
+            request.user,
+            language,
+            is_correct,
+            stats,
+            item_bucket=challenge_bucket(challenge_id),
+        )
+
     leaderboard, current_rank = get_leaderboard(
         language, request.user.id, current_stats=stats, request=request
     )
@@ -3688,6 +3706,7 @@ def practice_submit_view(request):
             "daily_xp_limit_reached": daily_xp_limit_reached,
             "language": language,
             "stats": serialize_practice_stats(stats),
+            "progress": serialize_language_progress(progress, progress_change),
             "leaderboard": leaderboard,
             "current_rank": current_rank,
         },
@@ -3748,19 +3767,17 @@ def _safe_cache_delete(key):
 @permission_classes([IsAuthenticated])
 @throttle_classes(with_default_throttles(VoiceNextRateThrottle))
 def practice_voice_next_view(request):
-    """Next Voice Repeat sentence for the user's level, no repeats per round."""
+    """Next Voice Repeat sentence at the user's difficulty for the language,
+    no repeats per round."""
     language = resolve_practice_language(
         request.user,
         request.query_params.get("language"),
     )
     if language not in VOICE_LIBRARY:
         language = "english"
-    xp = (
-        PracticeStats.objects.filter(user=request.user)
-        .values_list("xp", flat=True)
-        .first()
-    )
-    bucket = practice_bucket_for_xp(xp or 0)
+    # Same per-language bucket as the drill; voice passes never change it
+    # (their score is client-reported).
+    bucket = current_bucket(request.user, language)
     items = VOICE_LIBRARY[language].get(bucket) or []
     if not items:
         return error_response(

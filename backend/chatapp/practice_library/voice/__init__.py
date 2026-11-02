@@ -4,7 +4,7 @@ One JSON file per language (``<language>.json``) shaped
 ``{"1": [item, ...], "2": [...], "3": [...]}`` where an item is
 ``{"text": str, "translation_hint"?: str}`` (an optional English gloss).
 
-Buckets match the drill buckets (``practice_bucket_for_level``):
+Buckets match the drill buckets (the per-language ``current_bucket``):
 1 = short everyday sentences (4-7 words), 2 = medium with past/future and
 common connectors (7-11 words), 3 = longer with richer structure (10-15 words).
 

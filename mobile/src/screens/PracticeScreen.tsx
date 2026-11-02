@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Platform,
   Pressable,
   RefreshControl,
@@ -22,6 +23,7 @@ import {
   submitPracticeAnswer,
   translatePracticeSentence,
   type PracticeChallenge,
+  type PracticeLanguageProgress,
   type PracticeLeaderboardEntry,
   type PracticeStats,
   type VoiceSentence,
@@ -36,6 +38,13 @@ import {
   type VoiceAttempt,
   type VoiceReward,
 } from "../features/practiceVoice";
+import {
+  levelChangeMessage,
+  progressPercent,
+  progressSummary,
+  progressTitle,
+} from "../features/practiceLevel";
+import { useReducedMotion } from "../components/chat/useReducedMotion";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
@@ -111,6 +120,11 @@ export function PracticeScreen() {
   const [gameMode, setGameMode] = useState<"treasure" | "voice">("treasure");
   const [language, setLanguage] = useState("english");
   const [stats, setStats] = useState<PracticeStats | null>(null);
+  // Per-language difficulty (server `progress`); `levelChange` is the submit that moved it.
+  const [languageProgress, setLanguageProgress] = useState<PracticeLanguageProgress | null>(null);
+  const [levelChange, setLevelChange] = useState<PracticeLanguageProgress | null>(null);
+  const reduceMotion = useReducedMotion();
+  const levelBannerAnim = useRef(new Animated.Value(1)).current;
   const [leaderboard, setLeaderboard] = useState<PracticeLeaderboardEntry[]>([]);
   const [currentRank, setCurrentRank] = useState<number | null>(null);
   const [challenge, setChallenge] = useState<PracticeChallenge | null>(null);
@@ -222,6 +236,17 @@ export function PracticeScreen() {
     }
   };
 
+  const levelMessage = levelChangeMessage(levelChange);
+  useEffect(() => {
+    if (!levelChange) return;
+    if (reduceMotion) {
+      levelBannerAnim.setValue(1);
+      return;
+    }
+    levelBannerAnim.setValue(0);
+    Animated.spring(levelBannerAnim, { toValue: 1, useNativeDriver: true, friction: 6 }).start();
+  }, [levelBannerAnim, levelChange, reduceMotion]);
+
   const bootstrapPractice = async (preferredLanguage: string, isRefresh = false) => {
     const seq = ++requestSeqRef.current;
     if (isRefresh) setRefreshing(true);
@@ -235,6 +260,8 @@ export function PracticeScreen() {
       if (seq !== requestSeqRef.current) return;
       setLanguage(statePayload.language || challengePayload.language || preferredLanguage);
       setStats(statePayload.stats || challengePayload.stats || null);
+      setLanguageProgress(statePayload.progress || null);
+      setLevelChange(null);
       setLeaderboard(statePayload.leaderboard || []);
       setCurrentRank(statePayload.current_rank ?? null);
       setChallenge(challengePayload.challenge || null);
@@ -418,6 +445,10 @@ export function PracticeScreen() {
       });
       if (seq !== requestSeqRef.current) return false;
       setStats(payload.stats || null);
+      if (payload.progress) {
+        setLanguageProgress(payload.progress);
+        if (payload.progress.change) setLevelChange(payload.progress);
+      }
       setLeaderboard(payload.leaderboard || []);
       setCurrentRank(payload.current_rank ?? null);
       const alreadyScored = Boolean(payload.already_scored);
@@ -632,6 +663,80 @@ export function PracticeScreen() {
             </View>
           </View>
         </View>
+
+        {languageProgress ? (
+          <View style={styles.levelCard} accessibilityLabel="Difficulty for this language">
+            <View style={styles.levelIcon}>
+              <Ionicons name="school" size={20} color={warm.teal} />
+            </View>
+            <View style={styles.levelBody}>
+              <View style={styles.levelTitleRow}>
+                <Text style={styles.levelTitle}>{progressTitle(languageProgress, language)}</Text>
+                {languageProgress.cefr ? (
+                  <View style={styles.levelCefr}>
+                    <Text style={styles.levelCefrText}>{languageProgress.cefr}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={styles.levelSummary}>{progressSummary(languageProgress)}</Text>
+              {languageProgress.needed_for_promotion ? (
+                <View
+                  style={styles.levelTrack}
+                  accessibilityRole="progressbar"
+                  accessibilityLabel="Sentences toward the next difficulty"
+                  accessibilityValue={{
+                    min: 0,
+                    max: languageProgress.needed_for_promotion.min_attempts,
+                    now: Math.min(
+                      languageProgress.attempts_in_bucket,
+                      languageProgress.needed_for_promotion.min_attempts
+                    ),
+                  }}
+                >
+                  <View style={[styles.levelFill, { width: `${progressPercent(languageProgress)}%` }]} />
+                </View>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        {levelMessage ? (
+          <Animated.View
+            style={[
+              styles.levelBanner,
+              levelMessage.tone === "good" ? styles.levelBannerGood : styles.levelBannerCalm,
+              {
+                opacity: levelBannerAnim,
+                transform: [
+                  {
+                    scale: levelBannerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
+                  },
+                ],
+              },
+            ]}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Ionicons
+              name={levelMessage.tone === "good" ? "trophy" : "leaf"}
+              size={22}
+              color={levelMessage.tone === "good" ? warm.peachInk : warm.teal}
+            />
+            <Text style={styles.levelBannerText}>
+              <Text style={styles.levelBannerTitle}>{levelMessage.title} </Text>
+              {levelMessage.text}
+            </Text>
+            <Pressable
+              onPress={() => setLevelChange(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+              hitSlop={8}
+              style={styles.levelBannerClose}
+            >
+              <Ionicons name="close" size={20} color={warm.inkSoft} />
+            </Pressable>
+          </Animated.View>
+        ) : null}
 
         {gameMode === "treasure" ? (
           <View style={styles.challengeCard}>
@@ -1457,6 +1562,68 @@ const createStyles = (colors: ThemeColors, warm: WarmColors) =>
       paddingVertical: 14,
     },
     emptyLeaderboardText: { color: colors.mutedText, fontSize: 14, fontFamily: fontFamilies.bodyMedium },
+    levelCard: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 12,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: warm.line,
+      backgroundColor: warm.paper,
+      padding: 14,
+    },
+    levelIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.sage,
+    },
+    levelBody: { flex: 1, minWidth: 0, gap: 6 },
+    levelTitleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+    levelTitle: { flexShrink: 1, color: warm.ink, fontSize: 16, fontFamily: fontFamilies.displayBold },
+    levelCefr: {
+      borderRadius: 999,
+      backgroundColor: warm.sage,
+      paddingHorizontal: 10,
+      paddingVertical: 2,
+    },
+    levelCefrText: { color: warm.teal, fontSize: 12, fontFamily: fontFamilies.bodyBold },
+    levelSummary: {
+      color: warm.mutedInk,
+      fontSize: 13,
+      lineHeight: 18,
+      fontFamily: fontFamilies.bodySemiBold,
+    },
+    levelTrack: {
+      height: 8,
+      borderRadius: 999,
+      overflow: "hidden",
+      backgroundColor: warm.creamDeep,
+    },
+    levelFill: { height: "100%", borderRadius: 999, backgroundColor: warm.teal },
+    levelBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      borderRadius: 18,
+      paddingLeft: 14,
+      paddingRight: 4,
+      paddingVertical: 6,
+      minHeight: 52,
+    },
+    levelBannerGood: { backgroundColor: warm.peachSoft },
+    levelBannerCalm: { backgroundColor: warm.sage },
+    levelBannerText: {
+      flex: 1,
+      color: warm.inkSoft,
+      fontSize: 14,
+      lineHeight: 20,
+      fontFamily: fontFamilies.bodySemiBold,
+    },
+    levelBannerTitle: { color: warm.ink, fontFamily: fontFamilies.displayBold },
+    levelBannerClose: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     roundChip: {
       flexDirection: "row",
       alignItems: "center",

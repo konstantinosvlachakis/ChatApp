@@ -222,3 +222,52 @@ export const markSpeechWords = (target, transcript) => {
   // A "word" that is only punctuation (e.g. "—") is never counted as missed.
   return words.map((word, index) => ({ word, matched: matched[index] || !targetKeys[index] }));
 };
+
+/** "Spanish · Everyday grammar" for the per-language difficulty (server `progress`). */
+export const progressTitle = (progress, language) => {
+  const name = formatLanguageName(progress?.language || language);
+  const label = progress?.bucket_label || "";
+  return [name, label].filter(Boolean).join(" · ");
+};
+
+/**
+ * One-line summary of the per-language level-up progress, e.g.
+ * "12/15 sentences · 85% accuracy · 3 more to level up".
+ * Rules come from the server: `needed_for_promotion` {attempts_remaining, min_attempts, accuracy_target}.
+ */
+export const progressSummary = (progress) => {
+  if (!progress) return "";
+  const accuracy = typeof progress.window_accuracy === "number" ? Math.round(progress.window_accuracy * 100) : null;
+  const accuracyText = accuracy === null ? null : `${accuracy}% accuracy`;
+  const needed = progress.needed_for_promotion;
+  if (!progress.can_promote || !needed) {
+    return ["Top level", accuracyText].filter(Boolean).join(" · ");
+  }
+  const minAttempts = needed.min_attempts || 0;
+  const attempts = Math.min(progress.attempts_in_bucket || 0, minAttempts);
+  const target = Math.round((needed.accuracy_target || 0) * 100);
+  const remaining = needed.attempts_remaining || 0;
+  const belowTarget = accuracy !== null && accuracy < target;
+  let next;
+  if (remaining > 0) {
+    next = belowTarget
+      ? `${remaining} more at ≥ ${target}% accuracy to level up`
+      : `${remaining} more to level up`;
+  } else {
+    next = `Keep accuracy ≥ ${target}% to level up`;
+  }
+  return [`${attempts}/${minAttempts} sentences`, accuracyText, next].filter(Boolean).join(" · ");
+};
+
+/** Banner copy for a level change reported on a submit (`progress.change`). */
+export const levelChangeMessage = (progress) => {
+  if (!progress?.change) return null;
+  const name = formatLanguageName(progress.language);
+  if (progress.change === "promoted") {
+    return { tone: "good", title: "Level up!", text: `${name} → ${progress.bucket_label}` };
+  }
+  if (progress.change === "demoted") {
+    return { tone: "calm", title: "Let's build a stronger base", text: `Let's practise ${progress.bucket_label} a bit more.` };
+  }
+  return null;
+};

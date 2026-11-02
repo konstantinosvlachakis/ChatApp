@@ -41,7 +41,8 @@ MAX_QUERIES = {
     "pin": 5,
     "send": 7,
 }
-# practice/state/ (stats get_or_create, leaderboard incl. photos via select_related, rank).
+# practice/state/ (stats get_or_create, language progress, leaderboard incl. photos
+# via select_related, rank).
 MAX_PRACTICE_STATE_QUERIES = 4
 
 
