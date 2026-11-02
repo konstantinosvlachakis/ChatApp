@@ -80,7 +80,7 @@ export function describeExchange(profile: PeopleCard, viewerLanguage?: string | 
   return {
     nativeCaption: featured ? (profile.match?.teaches_me ? "You can practice" : "Speaks") : "Native language",
     native: languageLabel(profile.native_language),
-    learningCaption: learnsViewerLanguage ? (featured ? "They practice your" : "Learning your language") : "Practicing",
+    learningCaption: learnsViewerLanguage && !featured ? "Learning your language" : "Practicing",
     learning: learning ? languageLabel(learning) : "",
     level,
     goal:
@@ -98,6 +98,13 @@ export function mergePeoplePages(previous: PeopleCard[], next: PeopleCard[], rep
     if (profile?.username) byUsername.set(profile.username, profile);
   }
   return Array.from(byUsername.values());
+}
+
+/** Spotlight actual mutual exchanges, without repeating them in the main feed. */
+export function splitPerfectMatches(profiles: PeopleCard[]) {
+  const perfect = profiles.filter((profile) => profile.match?.reciprocal).slice(0, 8);
+  const highlighted = new Set(perfect.map((profile) => profile.username));
+  return { perfect, remaining: profiles.filter((profile) => !highlighted.has(profile.username)) };
 }
 
 /** Native-language options from the loaded profiles (+ the selected one), sorted. */

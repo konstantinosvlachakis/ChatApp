@@ -22,6 +22,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CountryFlag from "react-native-country-flag";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { ProfileLanguageSelector } from "../components/ProfileLanguageSelector";
+import { getProfileLanguageOptions } from "../features/profileLanguages";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
 import { toastApiError } from "../services/toast";
@@ -253,6 +255,7 @@ export function ProfileScreen() {
   const [uploadingSlot, setUploadingSlot] = useState<ProfilePhotoSlot | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [languagePicker, setLanguagePicker] = useState<"native" | "base" | "practice" | null>(null);
   const [isMissionCatalogOpen, setIsMissionCatalogOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   // Changing the email (the login) needs the current password; never kept after a save/close.
@@ -263,6 +266,7 @@ export function ProfileScreen() {
   const [previewIndex, setPreviewIndex] = useState(0);
   const previewScrollRef = useRef<ScrollViewInstance | null>(null);
   const languageOptions = React.useMemo(() => getCoachLanguageOptions(user), [user]);
+  const profileLanguageOptions = React.useMemo(() => getProfileLanguageOptions(user), [user]);
   const [editForm, setEditForm] = useState({
     username: "",
     email: "",
@@ -283,6 +287,8 @@ export function ProfileScreen() {
       try {
         const profile = await fetchProfile();
         if (mounted) setUser(profile);
+      } catch (failure) {
+        if (mounted) toastApiError(failure, "Could not refresh your profile.", "Profile unavailable");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -320,6 +326,16 @@ export function ProfileScreen() {
         : "#1b7f79",
     });
   }, [languageOptions, user]);
+
+  // Keep every hook above the loading return: fetching a profile changes
+  // `loading` immediately after the first render.
+  useEffect(() => {
+    if (!isEditProfileOpen) {
+      setCurrentPassword("");
+      setPasswordError("");
+      setLanguagePicker(null);
+    }
+  }, [isEditProfileOpen]);
 
   if (loading) {
     return (
@@ -397,44 +413,6 @@ export function ProfileScreen() {
 
   const emailChanged =
     editForm.email.trim().toLowerCase() !== (user?.email || "").trim().toLowerCase();
-
-  useEffect(() => {
-    if (!isEditProfileOpen) {
-      setCurrentPassword("");
-      setPasswordError("");
-    }
-  }, [isEditProfileOpen]);
-
-  const renderLanguageChoiceContent = (
-    label: string,
-    active = false,
-    flagSize = 16
-  ) => {
-    const flagNode = (() => {
-      const isoCode = getLanguageIsoCode(label);
-      if (isoCode) {
-        return (
-          <View style={styles.languageChipFlagWrap}>
-            <CountryFlag isoCode={isoCode} size={flagSize} />
-          </View>
-        );
-      }
-      return (
-        <Text style={[styles.languageChipEmoji, active ? styles.languageChipEmojiActive : undefined]}>
-          {getLanguageFlag(label)}
-        </Text>
-      );
-    })();
-
-    return (
-      <View style={styles.languageChipContent}>
-        {flagNode}
-        <Text style={[styles.languageChipText, active ? styles.languageChipTextActive : undefined]}>
-          {label}
-        </Text>
-      </View>
-    );
-  };
 
   const renderLanguageFlagOnly = (label: string, flagSize = 18) => {
     const isoCode = getLanguageIsoCode(label);
@@ -1316,57 +1294,40 @@ export function ProfileScreen() {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Native language</Text>
-                <View style={styles.languageChips}>
-                  {languageOptions.map((option) => {
-                    const active = editForm.nativeLanguage === option.value;
-                    return (
-                      <Pressable
-                        key={`native-${option.value}`}
-                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
-                        onPress={() => updateEditField("nativeLanguage", option.value)}
-                      >
-                        {renderLanguageChoiceContent(option.label, active)}
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <ProfileLanguageSelector
+                  label="Native language"
+                  colors={colors}
+                  options={profileLanguageOptions}
+                  selected={[editForm.nativeLanguage]}
+                  expanded={languagePicker === "native"}
+                  onToggle={() => setLanguagePicker((current) => current === "native" ? null : "native")}
+                  onSelect={(value) => { updateEditField("nativeLanguage", value); setLanguagePicker(null); }}
+                />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Base translate language</Text>
-                <View style={styles.languageChips}>
-                  {languageOptions.map((option) => {
-                    const active = editForm.baseLanguage === option.value;
-                    return (
-                      <Pressable
-                        key={`base-${option.value}`}
-                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
-                        onPress={() => updateEditField("baseLanguage", option.value)}
-                      >
-                        {renderLanguageChoiceContent(option.label, active)}
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <ProfileLanguageSelector
+                  label="Translate into"
+                  colors={colors}
+                  options={profileLanguageOptions}
+                  selected={[editForm.baseLanguage]}
+                  expanded={languagePicker === "base"}
+                  onToggle={() => setLanguagePicker((current) => current === "base" ? null : "base")}
+                  onSelect={(value) => { updateEditField("baseLanguage", value); setLanguagePicker(null); }}
+                />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Practice languages</Text>
-                <View style={styles.languageChips}>
-                  {languageOptions.map((option) => {
-                    const active = editForm.practiceLanguages.includes(option.value);
-                    return (
-                      <Pressable
-                        key={`practice-${option.value}`}
-                        style={[styles.languageChip, active ? styles.languageChipActive : undefined]}
-                        onPress={() => togglePracticeLanguage(option.value)}
-                      >
-                        {renderLanguageChoiceContent(option.label, active)}
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <ProfileLanguageSelector
+                  label="Practice languages"
+                  colors={colors}
+                  options={profileLanguageOptions}
+                  selected={editForm.practiceLanguages}
+                  multiple
+                  expanded={languagePicker === "practice"}
+                  onToggle={() => setLanguagePicker((current) => current === "practice" ? null : "practice")}
+                  onSelect={togglePracticeLanguage}
+                />
               </View>
 
               {editForm.practiceLanguages.length ? (
@@ -2970,28 +2931,6 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: fontFamilies.bodySemiBold,
       textAlign: "center",
     },
-    languageChips: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    languageChip: {
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    languageChipActive: {
-      backgroundColor: colors.navy,
-      borderColor: colors.navy,
-    },
-    languageChipContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
     languageChipFlagWrap: {
       width: 18,
       height: 18,
@@ -3004,18 +2943,6 @@ const createStyles = (colors: ThemeColors) =>
     languageChipEmoji: {
       fontSize: 14,
       lineHeight: 16,
-    },
-    languageChipEmojiActive: {
-      color: "#fff",
-    },
-    languageChipText: {
-      color: colors.text,
-      fontSize: 13,
-      fontFamily: fontFamilies.bodySemiBold,
-      textTransform: "capitalize",
-    },
-    languageChipTextActive: {
-      color: "#fff",
     },
     editModalFooter: {
       flexDirection: "row",

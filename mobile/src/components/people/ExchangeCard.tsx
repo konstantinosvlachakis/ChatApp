@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../config/api";
 import { useTheme } from "../../context/ThemeContext";
 import { describeExchange, initialsFor, matchBadge, matchRelationship } from "../../features/peopleMatching";
@@ -9,8 +10,8 @@ import type { PeopleCard } from "../../types";
 import { avatarImage } from "../../utils/media";
 
 // Rendered portrait sizes (dp), also passed to avatarImage.
-export const FEATURED_PORTRAIT = 112;
-export const COMPACT_PORTRAIT = 64;
+export const FEATURED_PORTRAIT = 96;
+export const COMPACT_PORTRAIT = 76;
 
 function resolveMediaUrl(path?: string | null) {
   if (!path) return undefined;
@@ -35,6 +36,8 @@ type Props = {
 
 function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, starting, onSayHello, onViewProfile }: Props) {
   const { isDark } = useTheme();
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale > 1.3;
   const warm = warmColors(isDark);
   const styles = useMemo(() => createStyles(warm), [warm]);
   const size = featured ? FEATURED_PORTRAIT : COMPACT_PORTRAIT;
@@ -46,38 +49,41 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
   const relationship = matchRelationship(profile.match);
   const viewLabel = `View ${profile.username}'s profile`;
 
+
   return (
     <View style={[styles.card, featured ? styles.cardFeatured : styles.cardCompact]}>
       {featured ? (
         <View style={styles.matchBadge}>
+          <Ionicons name={profile.match?.reciprocal ? "sparkles" : "globe-outline"} size={14} color={warm.teal} />
           <Text style={styles.matchBadgeText}>{matchBadge(profile.match)}</Text>
         </View>
       ) : null}
-      <View style={styles.headRow}>
+      <View style={[styles.headRow, featured && styles.headFeatured]}>
         <Pressable
           onPress={() => onViewProfile(profile)}
           accessibilityRole="button"
           accessibilityLabel={viewLabel}
-          style={[styles.portrait, { width: size, height: size, borderRadius: size / 2 }, featured && styles.portraitFeatured]}
+          style={[styles.portrait, featured ? styles.portraitFeatured : { width: size, height: size }]}
         >
           {showImage && portrait ? (
-            <Image source={{ uri: portrait }} style={styles.portraitImage} onError={() => setFailedUri(portrait)} />
+            <Image source={{ uri: portrait }} resizeMode="cover" style={styles.portraitImage} onError={() => setFailedUri(portrait)} />
           ) : (
-            <Text style={[styles.initials, { fontSize: Math.round(size * 0.36) }]}>{initialsFor(profile.username)}</Text>
+            <Text style={[styles.initials, { fontSize: featured ? 34 : 27 }]}>{initialsFor(profile.username)}</Text>
           )}
         </Pressable>
-        <View style={styles.titleBlock}>
+        <View style={[styles.titleBlock, featured && styles.titleFeatured]}>
           <Text style={[styles.name, featured && styles.nameFeatured]} numberOfLines={2}>
             {profile.username}
           </Text>
           {featured ? (
             <View style={styles.nativeBadge}>
-              <Text style={styles.nativeBadgeText}>{copy.native} native</Text>
+              <Ionicons name="globe-outline" size={14} color={warm.peachInk} />
+              <Text style={styles.nativeBadgeText}>{copy.native} native speaker</Text>
             </View>
           ) : (
             <View style={[styles.inlineMatch, relationship.reciprocal && styles.inlineMatchReciprocal]}>
               <Text style={styles.inlineMatchText}>
-                <Text accessibilityElementsHidden importantForAccessibility="no">{relationship.icon} </Text>
+                <Text accessibilityElementsHidden importantForAccessibility="no">{relationship.reciprocal ? "✦" : "↗"} </Text>
                 {relationship.label}
               </Text>
             </View>
@@ -85,27 +91,28 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
         </View>
       </View>
 
-      <View style={styles.languages}>
+      <View style={[styles.languages, largeText && styles.stacked]}>
         <View style={[styles.languagePill, styles.languageNative]}>
           <Text style={styles.languageCaption}>{copy.nativeCaption}</Text>
-          <Text style={styles.languageValue} numberOfLines={1}>{copy.native}</Text>
+          <Text style={styles.languageValue}>{copy.native}</Text>
         </View>
         {copy.learning ? (
           <View style={[styles.languagePill, styles.languageLearning]}>
             <Text style={styles.languageCaption}>{copy.learningCaption}</Text>
-            <Text style={styles.languageValue} numberOfLines={1}>
-              {copy.learning}
-              {copy.level ? <Text style={styles.languageLevel}>{` · ${copy.level}`}</Text> : null}
-            </Text>
+            <Text style={styles.languageValue}>{copy.learning}</Text>
+            {copy.level ? <Text style={styles.languageLevel}>{copy.level}</Text> : null}
           </View>
         ) : null}
       </View>
 
-      <Text style={[styles.goal, featured && styles.goalFeatured]} numberOfLines={featured ? 3 : 2}>
-        {copy.goal}
-      </Text>
+      <View style={styles.goalBlock}>
+        <Ionicons name="chatbubbles-outline" size={17} color={warm.teal} style={styles.goalIcon} />
+        <Text style={[styles.goal, featured && styles.goalFeatured]} numberOfLines={largeText ? undefined : 3}>
+          {copy.goal}
+        </Text>
+      </View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, largeText && styles.stacked]}>
         <Pressable
           onPress={() => onViewProfile(profile)}
           accessibilityRole="button"
@@ -113,6 +120,7 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
           style={({ pressed }) => [styles.button, styles.buttonPrimary, pressed && styles.pressed]}
         >
           <Text style={styles.buttonPrimaryText}>View profile</Text>
+          <Ionicons name="arrow-forward" size={16} color={warm.onAction} />
         </Pressable>
         <Pressable
           onPress={() => onSayHello(profile.username)}
@@ -122,7 +130,7 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
           accessibilityState={{ disabled: busy, busy: starting }}
           style={({ pressed }) => [styles.button, styles.buttonSecondary, busy && styles.disabled, pressed && styles.pressed]}
         >
-          {starting ? <ActivityIndicator size="small" color={warm.teal} /> : null}
+          {starting ? <ActivityIndicator size="small" color={warm.teal} /> : <Ionicons name="chatbubble-ellipses-outline" size={17} color={warm.ink} />}
           <Text style={styles.buttonSecondaryText}>{starting ? "Opening…" : "Say hello"}</Text>
         </Pressable>
       </View>
@@ -136,10 +144,15 @@ const createStyles = (warm: WarmColors) =>
   StyleSheet.create({
     card: {
       borderWidth: 1,
-      padding: 18,
+      padding: 16,
+      shadowColor: warm.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 2,
     },
     cardFeatured: {
-      backgroundColor: warm.peachSoft,
+      backgroundColor: warm.paper,
       borderColor: warm.lineWarm,
       borderRadius: 28,
     },
@@ -149,33 +162,39 @@ const createStyles = (warm: WarmColors) =>
       borderRadius: 24,
     },
     matchBadge: {
-      alignSelf: "flex-start",
+      alignSelf: "center",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
       backgroundColor: warm.sage,
-      borderRadius: 999,
+      borderRadius: 12,
       paddingHorizontal: 12,
-      paddingVertical: 5,
+      paddingVertical: 8,
       marginBottom: 14,
     },
     matchBadgeText: {
       color: warm.teal,
       fontSize: 12,
       fontFamily: fontFamilies.bodyExtraBold,
+      flexShrink: 1,
     },
     headRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 14,
     },
+    headFeatured: { flexDirection: "column", alignItems: "center", gap: 12 },
     portrait: {
       overflow: "hidden",
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: warm.peachStrong,
-      borderWidth: 3,
-      borderColor: warm.paper,
+      borderRadius: 23,
     },
     portraitFeatured: {
-      borderWidth: 5,
+      width: FEATURED_PORTRAIT,
+      height: FEATURED_PORTRAIT,
+      borderRadius: 26,
     },
     portraitImage: {
       width: "100%",
@@ -191,24 +210,26 @@ const createStyles = (warm: WarmColors) =>
       alignItems: "flex-start",
       gap: 6,
     },
+    titleFeatured: { flex: 0, paddingHorizontal: 2, alignItems: "center", width: "100%" },
     name: {
       color: warm.ink,
       fontSize: 17,
       fontFamily: fontFamilies.displayBold,
     },
     nameFeatured: {
-      fontSize: 23,
+      fontSize: 21,
+      textAlign: "center",
     },
     nativeBadge: {
-      backgroundColor: warm.peach,
-      borderRadius: 999,
-      paddingHorizontal: 9,
-      paddingVertical: 4,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
     },
     nativeBadgeText: {
       color: warm.peachInk,
       fontSize: 12,
       fontFamily: fontFamilies.bodyBold,
+      flexShrink: 1,
     },
     inlineMatch: {
       borderRadius: 999,
@@ -228,13 +249,16 @@ const createStyles = (warm: WarmColors) =>
       flexDirection: "row",
       gap: 8,
       marginTop: 14,
+      alignItems: "stretch",
     },
+    stacked: { flexDirection: "column" },
     languagePill: {
       flex: 1,
       minWidth: 0,
       borderRadius: 16,
       paddingHorizontal: 11,
       paddingVertical: 8,
+      gap: 3,
     },
     languageNative: {
       backgroundColor: warm.peach,
@@ -261,9 +285,11 @@ const createStyles = (warm: WarmColors) =>
       color: warm.mutedInk,
       fontSize: 13,
       lineHeight: 20,
-      marginTop: 12,
+      flex: 1,
       fontFamily: fontFamilies.bodyRegular,
     },
+    goalBlock: { flexDirection: "row", gap: 9, marginTop: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: warm.line },
+    goalIcon: { marginTop: 2 },
     goalFeatured: {
       fontSize: 14,
       lineHeight: 21,
@@ -271,13 +297,14 @@ const createStyles = (warm: WarmColors) =>
     actions: {
       flexDirection: "row",
       gap: 8,
-      marginTop: 14,
+      marginTop: 2,
     },
     button: {
       flex: 1,
-      minHeight: 44,
-      borderRadius: 999,
-      paddingHorizontal: 14,
+      minHeight: 48,
+      borderRadius: 16,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -290,6 +317,7 @@ const createStyles = (warm: WarmColors) =>
       color: warm.onAction,
       fontSize: 14,
       fontFamily: fontFamilies.bodyBold,
+      flexShrink: 1,
     },
     buttonSecondary: {
       backgroundColor: warm.secondary,
@@ -300,6 +328,7 @@ const createStyles = (warm: WarmColors) =>
       color: warm.ink,
       fontSize: 14,
       fontFamily: fontFamilies.bodyBold,
+      flexShrink: 1,
     },
     disabled: {
       opacity: 0.6,

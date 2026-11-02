@@ -96,7 +96,7 @@ export default function ExchangeProfileCard({
           </p>
           {learning && (
             <p className="exchange-learning">
-              <span>{profile.match?.learnsMine && viewerLanguage && learning.toLowerCase() === viewerLanguage.toLowerCase() ? (featured ? "They practice your" : "Learning your language") : "Practicing"}</span>
+              <span>{!featured && profile.match?.learnsMine && viewerLanguage && learning.toLowerCase() === viewerLanguage.toLowerCase() ? "Learning your language" : "Practicing"}</span>
               <strong>{languageLabel(learning)}{level && <span className="exchange-level">{featured ? " · " : ""}{level}</span>}</strong>
             </p>
           )}

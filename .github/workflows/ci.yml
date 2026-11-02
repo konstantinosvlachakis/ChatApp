@@ -56,3 +56,7 @@ jobs:
         working-directory: mobile
       - run: npm run test:verification
         working-directory: mobile
+      - run: npm run test:profile-languages
+        working-directory: mobile
+      - run: npm run test:people
+        working-directory: mobile

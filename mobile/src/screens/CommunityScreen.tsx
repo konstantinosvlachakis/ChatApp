@@ -4,27 +4,25 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ExchangeCard } from "../components/people/ExchangeCard";
+import { PeopleDiscoveryHeader } from "../components/people/PeopleDiscoveryHeader";
+import { PerfectMatchesRail } from "../components/people/PerfectMatchesRail";
 import { PeopleFilterSheet } from "../components/people/PeopleFilterSheet";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
-  PEOPLE_SEGMENTS,
   activeFilterCount,
   filterLoadedPeople,
-  languageLabel,
   mergePeoplePages,
   nativeLanguageOptions,
+  splitPerfectMatches,
   type PeopleLevel,
   type PeopleSegment,
 } from "../features/peopleMatching";
@@ -165,8 +163,9 @@ export function CommunityScreen() {
 
   const languageOptions = useMemo(() => nativeLanguageOptions(profiles, nativeFilter), [profiles, nativeFilter]);
   const filtered = useMemo(() => filterLoadedPeople(profiles, search, nativeFilter), [profiles, search, nativeFilter]);
-  const featured = filtered[0];
-  const morePeople = useMemo(() => filtered.slice(1), [filtered]);
+  const { perfect, remaining } = useMemo(() => splitPerfectMatches(filtered), [filtered]);
+  const featured = perfect.length ? undefined : remaining[0];
+  const morePeople = useMemo(() => perfect.length ? remaining : remaining.slice(1), [perfect, remaining]);
   const filterCount = activeFilterCount(nativeFilter, level);
   const anythingToClear = filterCount > 0 || segment !== "all" || search.trim().length > 0;
 
@@ -233,91 +232,32 @@ export function CommunityScreen() {
   const countText = firstLoad
     ? "Finding people…"
     : `${filtered.length}${hasNext ? "+" : ""} ${filtered.length === 1 ? "person" : "people"} to meet`;
-  const practicingSummary = viewerPracticing.length
-    ? `${languageLabel(viewerPracticing[0])}${viewerPracticing.length > 1 ? ` +${viewerPracticing.length - 1}` : ""}`
-    : "Add a practice language";
-
   const header = (
     <View>
-      <Text style={styles.title} accessibilityRole="header">Find your next great conversation.</Text>
-      <Text style={styles.subtitle}>Meet people who speak your next language. Share a little of yours.</Text>
+      <PeopleDiscoveryHeader
+        warm={warm}
+        nativeLanguage={viewerLanguage}
+        practicingLanguages={viewerPracticing}
+        search={search}
+        onSearchChange={setSearch}
+        segment={segment}
+        onSegmentChange={(next) => changeServerFilter(next, level)}
+        filterCount={filterCount}
+        onOpenFilters={() => setSheetOpen(true)}
+        onEditLanguages={() => navigation.navigate("Profile")}
+        countText={countText}
+      />
 
-      <Pressable
-        style={styles.exchangeStrip}
-        onPress={() => navigation.navigate("Profile")}
-        accessibilityRole="button"
-        accessibilityLabel="Edit your exchange languages"
-      >
-        <View style={styles.exchangeText}>
-          <Text style={styles.exchangeCaption}>Your exchange</Text>
-          <Text style={styles.exchangeValue} numberOfLines={1}>
-            {viewerLanguage ? languageLabel(viewerLanguage) : "Add a native language"}
-            <Text accessibilityElementsHidden importantForAccessibility="no"> ↔ </Text>
-            {practicingSummary}
-          </Text>
-        </View>
-        <Text style={styles.exchangeEdit}>Edit</Text>
-      </Pressable>
-
-      <View style={styles.searchRow}>
-        <View style={styles.searchField}>
-          <Ionicons name="search" size={18} color={warm.mutedInk} />
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search people, languages or goals"
-            placeholderTextColor={warm.mutedInk}
-            accessibilityLabel="Search loaded profiles"
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {search ? (
-            <Pressable onPress={() => setSearch("")} accessibilityRole="button" accessibilityLabel="Clear search" style={styles.clearSearch}>
-              <Ionicons name="close-circle" size={18} color={warm.mutedInk} />
-            </Pressable>
-          ) : null}
-        </View>
-        <Pressable
-          style={[styles.filterButton, filterCount > 0 && styles.filterButtonActive]}
-          onPress={() => setSheetOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={filterCount > 0 ? `Filters, ${filterCount} active` : "Filters"}
-        >
-          <Ionicons name="options-outline" size={20} color={filterCount > 0 ? warm.teal : warm.ink} />
-          {filterCount > 0 ? (
-            <View style={styles.filterCount}>
-              <Text style={styles.filterCountText}>{filterCount}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-      {search.trim() ? <Text style={styles.searchHint}>Searching loaded profiles</Text> : null}
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.segments}
-        accessibilityLabel="Exchange type"
-      >
-        {PEOPLE_SEGMENTS.map((entry) => {
-          const selected = segment === entry.key;
-          return (
-            <Pressable
-              key={entry.key}
-              onPress={() => changeServerFilter(entry.key, level)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              style={[styles.segment, selected && styles.segmentSelected]}
-            >
-              <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{entry.label}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      <Text style={styles.count} accessibilityLiveRegion="polite">{countText}</Text>
-
+      {perfect.length > 0 ? (
+        <PerfectMatchesRail
+          profiles={perfect}
+          warm={warm}
+          viewerLanguage={viewerLanguage}
+          startingUsername={startingUsername}
+          onSayHello={sayHello}
+          onViewProfile={viewProfile}
+        />
+      ) : null}
       {featured ? (
         <ExchangeCard
           key={`featured-${featured.username}`}
@@ -340,7 +280,7 @@ export function CommunityScreen() {
   );
 
   let emptyState: React.ReactElement | null = null;
-  if (!featured) {
+  if (filtered.length === 0) {
     if (firstLoad) {
       emptyState = (
         <View style={styles.skeleton} accessibilityLabel="Finding your next connection" accessibilityRole="progressbar">
@@ -463,153 +403,6 @@ const createStyles = (warm: WarmColors) =>
       paddingTop: 12,
       paddingBottom: 28,
       gap: 12,
-    },
-    title: {
-      color: warm.ink,
-      fontSize: 25,
-      lineHeight: 32,
-      fontFamily: fontFamilies.displayBold,
-    },
-    subtitle: {
-      color: warm.mutedInk,
-      fontSize: 14,
-      lineHeight: 20,
-      marginTop: 4,
-      marginBottom: 14,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    exchangeStrip: {
-      minHeight: 56,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      backgroundColor: warm.paper,
-      borderColor: warm.lineWarm,
-      borderWidth: 1,
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      marginBottom: 12,
-    },
-    exchangeText: {
-      flex: 1,
-      minWidth: 0,
-    },
-    exchangeCaption: {
-      color: warm.mutedInk,
-      fontSize: 12,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    exchangeValue: {
-      color: warm.ink,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    exchangeEdit: {
-      color: warm.teal,
-      fontSize: 13,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    searchRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-    searchField: {
-      flex: 1,
-      minHeight: 48,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      backgroundColor: warm.paper,
-      borderColor: warm.line,
-      borderWidth: 1,
-      borderRadius: 999,
-      paddingLeft: 16,
-      paddingRight: 4,
-    },
-    searchInput: {
-      flex: 1,
-      minHeight: 46,
-      color: warm.ink,
-      fontSize: 15,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    clearSearch: {
-      width: 44,
-      height: 44,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    searchHint: {
-      color: warm.mutedInk,
-      fontSize: 12,
-      marginTop: 6,
-      marginLeft: 16,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    filterButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: warm.paper,
-      borderColor: warm.line,
-      borderWidth: 1,
-    },
-    filterButtonActive: {
-      backgroundColor: warm.sage,
-      borderColor: warm.teal,
-    },
-    filterCount: {
-      position: "absolute",
-      top: -4,
-      right: -4,
-      minWidth: 20,
-      height: 20,
-      borderRadius: 10,
-      paddingHorizontal: 5,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: warm.action,
-    },
-    filterCountText: {
-      color: warm.onAction,
-      fontSize: 12,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    segments: {
-      gap: 8,
-      paddingTop: 14,
-      paddingBottom: 8,
-    },
-    segment: {
-      minHeight: 44,
-      justifyContent: "center",
-      paddingHorizontal: 16,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: warm.line,
-      backgroundColor: warm.paper,
-    },
-    segmentSelected: {
-      backgroundColor: warm.sage,
-      borderColor: warm.teal,
-    },
-    segmentText: {
-      color: warm.mutedInk,
-      fontSize: 13,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    segmentTextSelected: {
-      color: warm.teal,
-    },
-    count: {
-      color: warm.mutedInk,
-      fontSize: 12,
-      marginBottom: 12,
-      fontFamily: fontFamilies.bodyMedium,
     },
     moreHeading: {
       marginTop: 22,
