@@ -445,3 +445,30 @@ class FrontendTemplateTests(SimpleTestCase):
             ["app-shell.html", "forgot-password/index.html"],
         )
         self.assertEqual(self.client.post("/profile").status_code, 405)
+
+    def test_missing_assets_are_404_not_the_app_page(self):
+        # An old tab asking for a chunk from the previous build must get a real 404,
+        # not HTML the browser refuses to execute.
+        with patch("core.views.render") as render:
+            for path in (
+                "/static/js/452.2fab7772.chunk.js",
+                "/static/css/main.old.css",
+                "/media/profile_images/missing.png",
+                "/old-chunk.js",
+                "/favicon-old.ico",
+            ):
+                with self.subTest(path=path):
+                    response = self.client.get(path)
+                    self.assertEqual(response.status_code, 404)
+                    # /media/ may be answered by the local media route instead (also a 404).
+                    if not path.startswith("/media/"):
+                        self.assertTrue(response["Content-Type"].startswith("text/plain"))
+            render.assert_not_called()
+
+    def test_pages_are_never_cached(self):
+        with patch("core.views.render") as render:
+            render.return_value = HttpResponse("ok")
+            response = self.client.get("/community")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no-cache", response["Cache-Control"])
+        self.assertIn("must-revalidate", response["Cache-Control"])

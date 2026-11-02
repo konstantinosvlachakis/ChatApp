@@ -4,7 +4,8 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.http import HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponseNotAllowed, HttpResponseNotFound, JsonResponse
+from django.utils.cache import patch_cache_control
 from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
@@ -27,6 +28,21 @@ FRONTEND_BUILD_DIR = Path(settings.TEMPLATES[0]["DIRS"][0])
 
 
 APP_SHELL_TEMPLATE = "app-shell.html"
+
+# Paths that name a file rather than a page. Existing ones are served earlier
+# (WhiteNoise for /static/, Cloudinary or the media route for /media/).
+ASSET_PATH_PREFIXES = ("/static/", "/media/")
+ASSET_EXTENSIONS = {
+    ".js", ".mjs", ".css", ".map", ".json", ".txt", ".xml", ".ico", ".png", ".jpg",
+    ".jpeg", ".gif", ".webp", ".svg", ".avif", ".woff", ".woff2", ".ttf", ".otf",
+    ".mp3", ".mp4", ".webm", ".wasm",
+}
+
+
+def is_asset_request(request_path):
+    if request_path.startswith(ASSET_PATH_PREFIXES):
+        return True
+    return Path(request_path).suffix.lower() in ASSET_EXTENSIONS
 
 
 def resolve_frontend_template(request_path):
@@ -61,8 +77,16 @@ def front(request, checkout_session_id=None, weblid=None, errorType=None):
     # non-API path is an error, not a 200 with index.html.
     if request.method not in ("GET", "HEAD"):
         return HttpResponseNotAllowed(["GET", "HEAD"])
-    context = {}
-    return render(request, resolve_frontend_template(request.path), context)
+    # A missing build asset (e.g. an old chunk after a deploy) must be a real 404:
+    # served as HTML, the browser refuses it ("MIME type text/html") instead of
+    # letting the app notice the failed chunk and reload.
+    if is_asset_request(request.path):
+        return HttpResponseNotFound("Not found", content_type="text/plain")
+    response = render(request, resolve_frontend_template(request.path), {})
+    # The HTML names the current build's hashed bundles, so browsers must revalidate
+    # it on every load; otherwise a cached page keeps asking for deleted chunks.
+    patch_cache_control(response, no_cache=True, must_revalidate=True)
+    return response
 
 
 @csrf_exempt

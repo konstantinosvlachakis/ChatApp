@@ -3,6 +3,7 @@ import { useQueryErrorResetBoundary } from "react-query";
 import { useLocation } from "react-router-dom";
 import { captureException } from "../lib/sentry";
 import { logger } from "../lib/logger";
+import { isChunkLoadError, reloadForNewBuild } from "../lib/staleBuild";
 
 type BoundaryProps = {
   /** Changing this resets the boundary (route-level boundaries pass the pathname). */
@@ -14,8 +15,6 @@ type BoundaryProps = {
 
 type BoundaryState = { error: Error | null };
 
-const isChunkLoadError = (error: Error | null) =>
-  Boolean(error && (error.name === "ChunkLoadError" || /Loading (CSS )?chunk \d+ failed/i.test(error.message)));
 
 /** Catches render errors below it and shows a friendly "Retry" panel. */
 export class ErrorBoundary extends React.Component<BoundaryProps, BoundaryState> {
@@ -26,6 +25,9 @@ export class ErrorBoundary extends React.Component<BoundaryProps, BoundaryState>
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // A new deploy replaced the chunk this tab asked for: fetch the new build
+    // instead of showing the error panel (only once, see lib/staleBuild).
+    if (isChunkLoadError(error) && reloadForNewBuild()) return;
     if (process.env.NODE_ENV !== "production") {
       logger.warn("Render error caught by ErrorBoundary", error);
     }
