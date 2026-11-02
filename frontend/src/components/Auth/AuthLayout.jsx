@@ -86,15 +86,18 @@ const RESET_PASSWORD_PREFIX = "/reset-password/";
 
 const AuthLayout = () => {
   const location = useLocation();
-  const { user, loading } = useUser();
+  const { user } = useUser();
   const isResetLink = location.pathname.startsWith(RESET_PASSWORD_PREFIX);
   const content = isResetLink
     ? resetPasswordContent
     : contentByPath[location.pathname] || contentByPath["/login"];
 
   // Signed-in users have no reason to see login/register; send them into the app.
-  // An emailed reset link still works while signed in (e.g. a shared computer).
-  if (!loading && user && !isResetLink) {
+  // A remembered user (UserContext's cached profile) goes straight away instead of
+  // seeing the form while the session check runs; if that check fails, UserContext
+  // clears the cache and returns to /login once. An emailed reset link still works
+  // while signed in (e.g. a shared computer).
+  if (user && !isResetLink) {
     return <Navigate to="/profile" replace />;
   }
 

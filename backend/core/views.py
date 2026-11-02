@@ -4,7 +4,12 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.http import HttpResponseNotAllowed, HttpResponseNotFound, JsonResponse
+from django.http import (
+    HttpResponseNotAllowed,
+    HttpResponseNotFound,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.utils.cache import patch_cache_control
 from django.middleware.csrf import get_token
 from django.shortcuts import render
@@ -37,6 +42,25 @@ ASSET_EXTENSIONS = {
     ".jpeg", ".gif", ".webp", ".svg", ".avif", ".woff", ".woff2", ".ttf", ".otf",
     ".mp3", ".mp4", ".webm", ".wasm",
 }
+
+
+# Entry pages a signed-in user never needs: the server sends them to the app
+# before the page loads, instead of the login form showing until the SPA has
+# checked the session (an access token is usually expired, so that check takes
+# a 401 + refresh + retry).
+SIGNED_OUT_ENTRY_PATHS = {"/", "/login", "/login/", "/register", "/register/"}
+SIGNED_IN_HOME = "/profile"
+
+
+def signed_in_redirect_applies(request):
+    if request.path not in SIGNED_OUT_ENTRY_PATHS:
+        return False
+    raw_refresh = request.COOKIES.get(settings.AUTH_COOKIE_REFRESH)
+    if not raw_refresh:
+        return False
+    from chatapp.tokens import has_active_session  # chatapp imports core at load time
+
+    return has_active_session(raw_refresh)
 
 
 def is_asset_request(request_path):
@@ -82,7 +106,10 @@ def front(request, checkout_session_id=None, weblid=None, errorType=None):
     # letting the app notice the failed chunk and reload.
     if is_asset_request(request.path):
         return HttpResponseNotFound("Not found", content_type="text/plain")
-    response = render(request, resolve_frontend_template(request.path), {})
+    if signed_in_redirect_applies(request):
+        response = HttpResponseRedirect(SIGNED_IN_HOME)
+    else:
+        response = render(request, resolve_frontend_template(request.path), {})
     # The HTML names the current build's hashed bundles, so browsers must revalidate
     # it on every load; otherwise a cached page keeps asking for deleted chunks.
     patch_cache_control(response, no_cache=True, must_revalidate=True)
