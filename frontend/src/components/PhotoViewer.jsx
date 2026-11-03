@@ -31,7 +31,7 @@ export const usePhotoViewer = () => {
 
 /**
  * Full-screen photo viewer (lightbox) on a native <dialog> opened with showModal(), like
- * Community's FilterSheet: the page behind is inert. Escape, backdrop click and the close
+ * Community's PeopleFilterPanel: the page behind is inert. Escape, backdrop click and the close
  * button close it; ←/→, the arrow buttons and horizontal swipes page through several photos.
  * Native pinch-zoom is left alone (no touch-action / preventDefault on touch).
  */

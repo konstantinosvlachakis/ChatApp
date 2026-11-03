@@ -1,26 +1,15 @@
-// Pure helpers for the People (partner matching) screen. Mirrors the web People page
-// (`frontend/src/pages/Community/page.tsx`, `components/ExchangeProfileCard.tsx`,
-// `components/FilterSheet.tsx`). No React Native imports so it stays trivially reviewable
-// and runnable under plain Node (type stripping).
+// Pure helpers for the People screen. Mirrors the web People page
+// (`frontend/src/pages/Community/page.tsx`, `utils/peopleQuery.ts`,
+// `components/{ExchangeProfileCard,PhotoExchangeCard,PeopleFilterPanel}.tsx`). No React Native
+// imports so it stays reviewable and runnable under plain Node (type stripping).
+//
+// Two feeds share every filter (backend `profile_data_view` + `chatapp/people_filters.py`):
+// `section=perfect` (the rail, always best fit) and `section=others` ("More people to meet",
+// with the include switches and sort).
 
 import type { PeopleCard, PeopleMatch } from "../types";
 
 export const PEOPLE_PAGE_SIZE = 24;
-
-/**
- * Server match modes for `GET /api/profile/data?match=` (same keys and labels as web), no
- * overlap in meaning ("you speak" = your native language or one at Advanced/Fluent):
- * reciprocal = Perfect exchange (default; shown in the rail), teaches_me = native speakers of
- * a language you practise, learns_mine = practising a language you speak, all = everyone.
- */
-export type PeopleSegment = "reciprocal" | "teaches_me" | "learns_mine" | "all";
-export const DEFAULT_PEOPLE_SEGMENT: PeopleSegment = "reciprocal";
-export const PEOPLE_SEGMENTS: ReadonlyArray<{ key: PeopleSegment; label: string }> = [
-  { key: "reciprocal", label: "Perfect exchange" },
-  { key: "teaches_me", label: "Native speakers" },
-  { key: "learns_mine", label: "Learning your language" },
-  { key: "all", label: "Everyone" },
-];
 
 /** Practised languages at these levels count as languages you speak (backend `partner_language_sets`). */
 const SPOKEN_PRACTICE_LEVELS = new Set(["advanced", "fluent"]);
@@ -53,32 +42,167 @@ export function viewerExchangeLanguages(user?: {
   return { spoken, practising };
 }
 
-/** "" = any level. The server `level` filter is their level in the viewer's native language. */
-export type PeopleLevel = "" | "beginner" | "intermediate" | "advanced" | "fluent";
-export const LEVEL_OPTIONS: ReadonlyArray<PeopleLevel> = ["", "beginner", "intermediate", "advanced", "fluent"];
+// ---------------------------------------------------------------------------------------------
+// Query state and params (same as web `utils/peopleQuery.ts`).
 
-export type PeopleQuery = {
-  page: number;
-  pageSize?: number;
-  segment: PeopleSegment;
-  level: PeopleLevel;
+export type LevelFilter = "" | "beginner" | "intermediate" | "advanced_plus";
+export type SortOrder = "best" | "active" | "newest";
+export type IncludeGroup = "native" | "learners" | "rest";
+
+export type PanelFilters = {
+  /** Languages the viewer is learning that they must speak natively; null = all. */
+  theySpeak: string[] | null;
+  /** Languages the viewer speaks that they must be learning; null = all. */
+  theyLearn: string[] | null;
+  level: LevelFilter;
+  include: Record<IncludeGroup, boolean>;
+  sort: SortOrder;
 };
 
-/** Query params for `GET /api/profile/data` (no trailing slash), exactly as web sends them. */
-export function buildPeopleParams({ page, pageSize = PEOPLE_PAGE_SIZE, segment, level }: PeopleQuery) {
-  const params: { page: number; page_size: number; match: PeopleSegment; level?: PeopleLevel } = {
-    page,
-    page_size: pageSize,
-    match: segment,
-  };
-  if (level) params.level = level;
+export type QuickFilters = { near: boolean; active: boolean; newMembers: boolean; myLevel: boolean };
+
+export type FilterMeta = {
+  theySpeakOptions: string[];
+  theyLearnOptions: string[];
+  nearAvailable: boolean;
+  nearCity: string;
+  nearScope: "city" | "country" | "";
+  myLevelAvailable: boolean;
+};
+
+export const INCLUDE_GROUPS: IncludeGroup[] = ["native", "learners", "rest"];
+export const DEFAULT_PANEL_FILTERS: PanelFilters = {
+  theySpeak: null,
+  theyLearn: null,
+  level: "",
+  include: { native: true, learners: true, rest: true },
+  sort: "best",
+};
+export const DEFAULT_QUICK_FILTERS: QuickFilters = { near: false, active: false, newMembers: false, myLevel: false };
+
+export const LEVEL_FILTER_OPTIONS: ReadonlyArray<{ value: LevelFilter; label: string }> = [
+  { value: "", label: "Any" },
+  { value: "beginner", label: "Beginner" },
+  { value: "intermediate", label: "Intermediate" },
+  { value: "advanced_plus", label: "Advanced+" },
+];
+export const SORT_OPTIONS: ReadonlyArray<{ value: SortOrder; label: string }> = [
+  { value: "best", label: "Best fit" },
+  { value: "active", label: "Recently active" },
+  { value: "newest", label: "Newest" },
+];
+export const INCLUDE_LABELS: Record<IncludeGroup, string> = {
+  native: "Native speakers who aren't learning your languages",
+  learners: "People learning your languages",
+  rest: "Everyone else",
+};
+export const QUICK_FILTER_KEYS: ReadonlyArray<keyof QuickFilters> = ["near", "active", "newMembers", "myLevel"];
+
+/** "Near you · Athens" when the viewer has a city. */
+export function quickFilterLabel(key: keyof QuickFilters, city?: string) {
+  if (key === "near") return city ? `Near you · ${city}` : "Near you";
+  if (key === "active") return "Active today";
+  if (key === "newMembers") return "New members";
+  return "Your level";
+}
+
+/** Toggle one language chip. The last selected chip can't be switched off; all on = null. */
+export function toggleLanguage(selected: string[] | null, language: string, options: string[]): string[] | null {
+  const current = selected ?? options;
+  const next = current.includes(language) ? current.filter((entry) => entry !== language) : [...current, language];
+  if (!next.length) return selected;
+  const ordered = options.filter((option) => next.includes(option));
+  return ordered.length === options.length ? null : ordered;
+}
+
+export const isLanguageOn = (selected: string[] | null, language: string) => !selected || selected.includes(language);
+export const includesEverything = (include: PanelFilters["include"]) => INCLUDE_GROUPS.every((group) => include[group]);
+export const includesNothing = (include: PanelFilters["include"]) => INCLUDE_GROUPS.every((group) => !include[group]);
+
+/** Panel filters that differ from the defaults (the filter button's badge). */
+export const activePanelFilterCount = (filters: PanelFilters) =>
+  Number(Boolean(filters.theySpeak)) +
+  Number(Boolean(filters.theyLearn)) +
+  Number(Boolean(filters.level)) +
+  Number(!includesEverything(filters.include)) +
+  Number(filters.sort !== "best");
+
+export type PeopleParams = Record<string, string | number>;
+
+export function sharedParams(filters: PanelFilters, quick: QuickFilters): PeopleParams {
+  const params: PeopleParams = {};
+  if (filters.theySpeak) params.they_speak = filters.theySpeak.join(",");
+  if (filters.theyLearn) params.they_learn = filters.theyLearn.join(",");
+  if (filters.level) params.level = filters.level;
+  if (quick.near) params.near = 1;
+  if (quick.active) params.active = 1;
+  if (quick.newMembers) params.new = 1;
+  if (quick.myLevel) params.my_level = 1;
   return params;
 }
+
+/** Perfect exchanges: always best fit, the include switches don't apply. */
+export const perfectParams = (filters: PanelFilters, quick: QuickFilters, page: number, pageSize = PEOPLE_PAGE_SIZE): PeopleParams => ({
+  page,
+  page_size: pageSize,
+  section: "perfect",
+  ...sharedParams(filters, quick),
+});
+
+/** "More people to meet": everyone who isn't a perfect exchange. */
+export function othersParams(filters: PanelFilters, quick: QuickFilters, page: number, pageSize = PEOPLE_PAGE_SIZE): PeopleParams {
+  const params: PeopleParams = { page, page_size: pageSize, section: "others", ...sharedParams(filters, quick) };
+  if (!includesEverything(filters.include)) params.include = INCLUDE_GROUPS.filter((group) => filters.include[group]).join(",");
+  if (filters.sort !== "best") params.sort = filters.sort;
+  return params;
+}
+
+/** "Show N people" preview: one small request whose `counts` cover both sections. */
+export const countParams = (filters: PanelFilters, quick: QuickFilters): PeopleParams => ({ ...othersParams(filters, quick, 1, 1), counts: 1 });
+
+export function previewTotal(counts: { perfect?: number; others?: number } | undefined, filters: PanelFilters) {
+  if (!counts) return null;
+  return (counts.perfect || 0) + (includesNothing(filters.include) ? 0 : counts.others || 0);
+}
+
+export function parseFilterMeta(raw: unknown): FilterMeta | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const strings = (entry: unknown) => (Array.isArray(entry) ? entry.filter((item): item is string => typeof item === "string" && Boolean(item)) : []);
+  return {
+    theySpeakOptions: strings(value.they_speak_options),
+    theyLearnOptions: strings(value.they_learn_options),
+    nearAvailable: Boolean(value.near_available),
+    nearCity: typeof value.near_city === "string" ? value.near_city : "",
+    nearScope: value.near_scope === "city" || value.near_scope === "country" ? value.near_scope : "",
+    myLevelAvailable: Boolean(value.my_level_available),
+  };
+}
+
+export const cityFromLocation = (location?: string | null) => String(location || "").split(",")[0]?.trim() || "";
 
 export const languageLabel = (value?: string | null) => {
   const text = String(value || "").trim();
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Not specified";
 };
+
+/** "Greek or English" / "Greek, English or Spanish". */
+export function joinOr(values: string[]) {
+  const labels = values.map((value) => languageLabel(value));
+  if (labels.length <= 1) return labels[0] || "";
+  return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
+}
+
+/** Header subtitle naming the rule, e.g. "They speak Russian and are learning Greek or English." */
+export function exchangeRule(learning: string[], spoken: string[]) {
+  if (!learning.length && !spoken.length) return "Add your languages to find people to practise with.";
+  if (!learning.length) return `They're learning ${joinOr(spoken)}.`;
+  if (!spoken.length) return `They speak ${joinOr(learning)}.`;
+  return `They speak ${joinOr(learning)} and are learning ${joinOr(spoken)}.`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Card copy.
 
 const sameLanguage = (left?: string | null, right?: string | null) =>
   Boolean(left && right && left.trim().toLowerCase() === right.trim().toLowerCase());
@@ -89,13 +213,6 @@ export function languageLevel(levels: Record<string, string> | undefined, langua
   return key && levels ? languageLabel(levels[key]) : "";
 }
 
-/** Featured card badge (web `badge`). */
-export function matchBadge(match?: PeopleMatch | null) {
-  if (match?.reciprocal) return "Perfect exchange";
-  if (match?.teaches_me) return "Native speaker for you";
-  return "Meet someone new";
-}
-
 /** "your native language" / "which you speak fluently" / "which you speak at an advanced level". */
 export function youSpeakPhrase(level?: string | null) {
   if (level === "native") return "your native language";
@@ -104,25 +221,13 @@ export function youSpeakPhrase(level?: string | null) {
   return "";
 }
 
-/** Compact card inline label (web `relationship`); the icon is "↔" only for reciprocal. */
-export function matchRelationship(match?: PeopleMatch | null) {
-  if (match?.reciprocal) return { icon: "↔", label: "Perfect exchange", reciprocal: true };
-  if (match?.teaches_me) return { icon: "•", label: "Native speaker for you", reciprocal: false };
-  if (match?.learns_mine) {
-    // Same copy as web `learningYourLanguageLabel`.
-    const language = match.they_learn ? languageLabel(match.they_learn) : "";
-    const how =
-      match.you_speak === "native"
-        ? "your native language"
-        : match.you_speak === "fluent"
-          ? "you speak it fluently"
-          : match.you_speak === "advanced"
-            ? "you speak it well"
-            : "";
-    const label = !language ? "Learning your language" : how ? `Learning ${language} · ${how}` : `Learning ${language}`;
-    return { icon: "•", label, reciprocal: false };
-  }
-  return { icon: "•", label: "Open to exchange", reciprocal: false };
+/** Tag at the top of a plain card: why this person is in your feed (web `relationshipTag`). */
+export function relationshipTag(profile: PeopleCard) {
+  const match = profile.match;
+  if (match?.reciprocal) return "Perfect exchange";
+  if (match?.learns_mine) return match.they_learn ? `Learning ${languageLabel(match.they_learn)}` : "Learning your language";
+  if (match?.teaches_me) return `Native ${languageLabel(match.they_teach || profile.native_language)} speaker`;
+  return "Open to exchange";
 }
 
 /**
@@ -140,45 +245,34 @@ export function pickLearningLanguage(profile: PeopleCard, viewerLanguage?: strin
   );
 }
 
-/**
- * "Why you'll click" lines for featured cards (web `buildMatchFacts`):
- * "They speak Russian (native)", "They're learning English, which you speak fluently".
- */
-export function matchExplanation(profile: PeopleCard): string[] {
-  const lines: string[] = [];
-  const match = profile.match;
-  const teach = match?.they_teach || (match?.teaches_me ? profile.native_language : "");
-  if (teach) lines.push(`They speak ${languageLabel(teach)} (native)`);
-  if (match?.they_learn) {
-    const how = youSpeakPhrase(match.you_speak);
-    lines.push(`They're learning ${languageLabel(match.they_learn)}${how ? `, ${how}` : ""}`);
-  }
-  return lines;
+/** Plain card chips: practised languages with level (max 3), then Active today / New member. */
+export function profileChips(profile: PeopleCard) {
+  const languages = (profile.languages_practicing || []).slice(0, 3).map((language) => {
+    const level = languageLevel(profile.practice_language_levels, language);
+    return level ? `${languageLabel(language)} · ${level}` : languageLabel(language);
+  });
+  const status = [profile.active_label === "Active today" ? "Active today" : "", profile.is_new ? "New member" : ""].filter(Boolean);
+  return [...languages, ...status];
 }
 
-/** Card copy for the native/learning rows and the goal line (web ExchangeProfileCard). */
-export function describeExchange(profile: PeopleCard, viewerLanguage?: string | null, featured = false) {
-  const learning = pickLearningLanguage(profile, viewerLanguage);
-  const level = learning ? languageLevel(profile.practice_language_levels, learning) : "";
-  const learnsViewerLanguage = Boolean(
-    profile.match?.learns_mine && learning && (sameLanguage(learning, profile.match?.they_learn) || sameLanguage(learning, viewerLanguage))
-  );
+/** The server's default avatar path means "no photo" (warm tinted fallback). */
+export const hasOwnPhoto = (url?: string | null) => Boolean(url) && !/\/MainAfter\.[a-z0-9]+(\?.*)?$/i.test(url || "");
+
+/** Photo card chip: "Active today" / "New member" when they apply, else their level in your language. */
+export function photoCardChip(profile: PeopleCard, viewerLanguage?: string | null) {
+  if (profile.active_label === "Active today") return "Active today";
+  if (profile.is_new) return "New member";
+  const theyLearn = profile.match?.they_learn || "";
+  const language = theyLearn || (profile.languages_practicing || []).find((entry) => sameLanguage(entry, viewerLanguage)) || "";
+  const level = language ? languageLevel(profile.practice_language_levels, language) : "";
+  return level ? `${level} ${languageLabel(language)}` : "";
+}
+
+/** Photo card stats: "Speaks <native> | Learning <language of yours>". */
+export function photoCardStats(profile: PeopleCard, viewerLanguage?: string | null) {
   return {
-    nativeCaption: featured ? (profile.match?.teaches_me ? "You can practice" : "Speaks") : "Native language",
-    native: languageLabel(profile.native_language),
-    learningCaption:
-      learnsViewerLanguage && !featured
-        ? profile.match?.you_speak && profile.match.you_speak !== "native"
-          ? "Learning a language you speak"
-          : "Learning your language"
-        : "Practicing",
-    learning: learning ? languageLabel(learning) : "",
-    level,
-    goal:
-      (profile.learning_goal || "").trim() ||
-      (profile.match?.reciprocal
-        ? "You speak the language they’re learning. They speak one of yours. A great place to start."
-        : "Get to know each other through a new language and everyday conversation."),
+    speaks: languageLabel(profile.match?.they_teach || profile.native_language),
+    learning: pickLearningLanguage(profile, viewerLanguage) ? languageLabel(pickLearningLanguage(profile, viewerLanguage)) : "",
   };
 }
 
@@ -191,51 +285,16 @@ export function mergePeoplePages(previous: PeopleCard[], next: PeopleCard[], rep
   return Array.from(byUsername.values());
 }
 
-export const PERFECT_RAIL_LIMIT = 8;
-
-/** Spotlight actual mutual exchanges, without repeating them in the main feed. */
-export function splitPerfectMatches(profiles: PeopleCard[]) {
-  const perfect = profiles.filter((profile) => profile.match?.reciprocal).slice(0, PERFECT_RAIL_LIMIT);
-  const highlighted = new Set(perfect.map((profile) => profile.username));
-  return { perfect, remaining: profiles.filter((profile) => !highlighted.has(profile.username)) };
-}
-
-/**
- * What the People screen shows for a segment. Perfect exchange: the rail (first 8 mutual
- * exchanges) plus any further mutual exchanges as a list, never one-way matches. Every other
- * segment: a plain card list, no rail.
- */
-export function peopleSections(profiles: PeopleCard[], segment: PeopleSegment) {
-  if (segment !== "reciprocal") return { rail: [] as PeopleCard[], list: profiles };
-  const { perfect, remaining } = splitPerfectMatches(profiles);
-  return { rail: perfect, list: remaining.filter((profile) => profile.match?.reciprocal) };
-}
-
-/** Native-language options from the loaded profiles (+ the selected one), sorted. */
-export function nativeLanguageOptions(profiles: PeopleCard[], selected: string) {
-  const seen = new Map<string, string>();
-  for (const value of [selected, ...profiles.map((profile) => profile.native_language || "")]) {
-    const key = value.trim().toLowerCase();
-    if (key && !seen.has(key)) seen.set(key, value.trim());
-  }
-  return Array.from(seen.values()).sort((left, right) => languageLabel(left).localeCompare(languageLabel(right)));
-}
-
-/** Client-side filters over loaded profiles: search ("Search loaded profiles") + their native language. */
-export function filterLoadedPeople(profiles: PeopleCard[], search: string, nativeFilter: string) {
+/** Text search over loaded profiles ("Search loaded profiles"). */
+export function filterLoadedPeople(profiles: PeopleCard[], search: string) {
   const query = search.trim().toLowerCase();
-  return profiles.filter((profile) => {
-    if (nativeFilter && !sameLanguage(profile.native_language, nativeFilter)) return false;
-    if (!query) return true;
-    return [profile.username, profile.native_language || "", profile.learning_goal || "", ...(profile.languages_practicing || [])].some(
+  if (!query) return profiles;
+  return profiles.filter((profile) =>
+    [profile.username, profile.native_language || "", profile.learning_goal || "", profile.city || "", ...(profile.languages_practicing || [])].some(
       (value) => value.toLowerCase().includes(query)
-    );
-  });
+    )
+  );
 }
-
-/** Count shown on the Filters button: their native language + their level (segment excluded, as on web). */
-export const activeFilterCount = (nativeFilter: string, level: PeopleLevel) =>
-  Number(Boolean(nativeFilter)) + Number(Boolean(level));
 
 /** Portrait fallback when there is no photo (or it fails to load). */
 export function initialsFor(username: string) {

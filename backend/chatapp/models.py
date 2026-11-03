@@ -61,7 +61,7 @@ class Profile(AbstractBaseUser):
     avatar_ring_color = models.CharField(max_length=7, default="#1b7f79")
     password = models.CharField(max_length=128, blank=True, null=True)
     is_online = models.BooleanField(default=False, db_index=True)
-    last_seen = models.DateTimeField(null=True, blank=True)
+    last_seen = models.DateTimeField(null=True, blank=True, db_index=True)
     ws_connection_count = models.PositiveIntegerField(default=0)
     # Embedded as the "tv" claim in every JWT (chatapp/tokens.py); bumping it
     # revokes all of the user's access and refresh tokens.
@@ -70,6 +70,9 @@ class Profile(AbstractBaseUser):
     # chatapp/email_verification.py); cleared when the email changes. New
     # accounts start unverified and can't message people or use the coach.
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    # When the account was created (People "New members"). Accounts that existed
+    # before migration 0037 stay NULL (never "new"); new rows get the time now.
+    date_joined = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True)
 
     objects = ProfileManager()
 

@@ -14,6 +14,8 @@ export interface CloudinaryImageOptions {
   crop?: CloudinaryCrop;
   /** Device pixel ratio override (tests); defaults to the screen's, bucketed to 1 or 2. */
   dpr?: number;
+  /** Large photo slots: best automatic quality plus a light sharpen after resizing. */
+  sharpen?: boolean;
 }
 
 const UPLOAD_PATH = /^\/([^/]+)\/image\/upload\/(.*)$/;
@@ -60,10 +62,12 @@ export const cloudinaryImage = (url: string | null | undefined, options: Cloudin
   const dpr = devicePixelRatio(options.dpr);
   const crop = options.crop ?? "fill";
   const width = pixels(options.width, dpr);
-  const transformation =
+  const quality = options.sharpen ? "q_auto:best" : "q_auto";
+  const size =
     crop === "fill"
-      ? `f_auto,q_auto,c_fill,g_face,w_${width},h_${pixels(options.height ?? options.width, dpr)}`
-      : `f_auto,q_auto,c_limit,w_${width}`;
+      ? `c_fill,g_face,w_${width},h_${pixels(options.height ?? options.width, dpr)}`
+      : `c_limit,w_${width}`;
+  const transformation = `f_auto,${quality},${size}${options.sharpen ? "/e_sharpen:60" : ""}`;
   parsed.pathname = `/${cloud}/image/upload/${transformation}/${rest}`;
   return parsed.toString();
 };

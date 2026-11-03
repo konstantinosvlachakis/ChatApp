@@ -59,6 +59,6 @@
   --lv-font-text-emoji: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, var(--lv-emoji-font);
 
   /* Shell */
-  --lv-header-height: 64px;
+  --lv-header-height: 56px;
   --lv-tabbar-height: 60px;
 }

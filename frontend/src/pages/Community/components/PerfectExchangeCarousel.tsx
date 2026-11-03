@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import ExchangeProfileCard, { ExchangeProfile } from "./ExchangeProfileCard";
+import { ExchangeProfile } from "./ExchangeProfileCard";
+import PhotoExchangeCard from "./PhotoExchangeCard";
 
 interface Props {
   profiles: ExchangeProfile[];
@@ -9,64 +10,67 @@ interface Props {
   busy: boolean;
   startingUsername: string;
   onSayHello: (username: string, starter?: string) => void;
+  /** Called when the front card is one of the last two loaded (load the next page). */
+  onReachEnd?: () => void;
 }
 
-/** Above this many slides the dots give way to the "2 / 8" counter alone. */
-const MAX_DOTS = 10;
+/** A horizontal swipe longer than this (px) moves one card. */
+const SWIPE_PX = 40;
 
-const prefersReducedMotion = () => {
-  try {
-    return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return false;
-  }
+/** "1–3 of 8" (or "2 of 8" with one card per view). */
+export const carouselRange = (index: number, perView: number, count: number) => {
+  const first = Math.min(index + 1, count);
+  const last = Math.min(index + perView, count);
+  return first === last ? `${first} of ${count}` : `${first}–${last} of ${count}`;
+};
+
+/** Signed distance from the front card on a loop: the last card sits left of the first. */
+export const loopOffset = (position: number, index: number, count: number) => {
+  if (count < 3) return position - index;
+  const forward = (((position - index) % count) + count) % count;
+  return forward > count / 2 ? forward - count : forward;
 };
 
 /**
- * Perfect exchanges as a horizontal scroll-snap row of featured cards, one card wide.
- * Swipe/trackpad scroll natively; prev/next buttons, dots and ←/→ keys move one slide.
- * The current slide follows the scroll position, so swiping keeps the counter in sync.
+ * Where a card sits relative to the front one: "front", "left"/"right" (just behind),
+ * "far-left"/"far-right" (further back, wide screens only) or hidden.
  */
-export default function PerfectExchangeCarousel({ profiles, viewerLanguage, busy, startingUsername, onSayHello }: Props) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
+export const coverflowPosition = (position: number, index: number, count: number) => {
+  const offset = loopOffset(position, index, count);
+  if (offset === 0) return "front";
+  if (offset === -1) return "left";
+  if (offset === 1) return "right";
+  if (offset === -2) return "far-left";
+  if (offset === 2) return "far-right";
+  return offset < 0 ? "gone-left" : "gone-right";
+};
+
+/**
+ * Perfect exchanges as a coverflow: one card in front, the previous and next ones smaller
+ * behind it, and on wide screens two more further back (community.css). From three matches
+ * up it loops, so both sides are always filled. Prev/next buttons, ←/→, a swipe, or a click on a side card
+ * move one card. Only the front card is interactive; the others are inert.
+ */
+export default function PerfectExchangeCarousel({ profiles, viewerLanguage, busy, startingUsername, onSayHello, onReachEnd }: Props) {
   const [index, setIndex] = useState(0);
+  const swipeStart = useRef<number | null>(null);
   const count = profiles.length;
   const last = Math.max(count - 1, 0);
+  const loops = count >= 3;
 
   // A shorter list (search, filter) must not leave the index past the end.
   useEffect(() => {
     setIndex((current) => Math.min(current, last));
   }, [last]);
 
-  const goTo = useCallback(
-    (next: number) => {
-      const target = Math.max(0, Math.min(next, last));
-      setIndex(target);
-      const track = trackRef.current;
-      const slide = slideRefs.current[target];
-      if (track && slide && typeof track.scrollTo === "function") {
-        track.scrollTo({ left: slide.offsetLeft - track.offsetLeft, behavior: prefersReducedMotion() ? "auto" : "smooth" });
-      }
-    },
-    [last]
-  );
+  useEffect(() => {
+    if (count && index >= count - 2) onReachEnd?.();
+  }, [index, count, onReachEnd]);
 
-  const onScroll = () => {
-    const track = trackRef.current;
-    if (!track) return;
-    let nearest = 0;
-    let distance = Infinity;
-    slideRefs.current.slice(0, count).forEach((slide, position) => {
-      if (!slide) return;
-      const gap = Math.abs(slide.offsetLeft - track.offsetLeft - track.scrollLeft);
-      if (gap < distance) {
-        distance = gap;
-        nearest = position;
-      }
-    });
-    setIndex((current) => (current === nearest ? current : nearest));
-  };
+  const goTo = useCallback(
+    (next: number) => setIndex(loops ? ((next % count) + count) % count : Math.max(0, Math.min(next, last))),
+    [loops, count, last]
+  );
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -79,68 +83,78 @@ export default function PerfectExchangeCarousel({ profiles, viewerLanguage, busy
     }
   };
 
+  const onTouchStart = (event: React.TouchEvent) => {
+    swipeStart.current = event.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (event: React.TouchEvent) => {
+    const end = event.changedTouches[0]?.clientX;
+    if (swipeStart.current === null || end === undefined) return;
+    const distance = end - swipeStart.current;
+    swipeStart.current = null;
+    if (Math.abs(distance) >= SWIPE_PX) goTo(index + (distance < 0 ? 1 : -1));
+  };
+
   if (!count) return null;
+  const range = carouselRange(index, 1, count);
 
   return (
     <section className="people-carousel" aria-roledescription="carousel" aria-label="Perfect exchanges" onKeyDown={onKeyDown}>
-      <div className="people-carousel-header">
-        <div>
-          <h2>Your perfect exchanges</h2>
-          <p>They speak a language you're learning, and they're learning one you speak.</p>
-        </div>
-        {count > 1 && (
-          <div className="people-carousel-controls">
-            <button type="button" className="people-carousel-arrow" onClick={() => goTo(index - 1)} disabled={index === 0} aria-label="Previous match">
-              <ChevronLeftRoundedIcon aria-hidden="true" />
-            </button>
-            <span className="people-carousel-counter" aria-live="polite" aria-atomic="true">
-              <span className="lv-visually-hidden">Match </span>
-              {index + 1} / {count}
-            </span>
-            <button type="button" className="people-carousel-arrow" onClick={() => goTo(index + 1)} disabled={index === last} aria-label="Next match">
-              <ChevronRightRoundedIcon aria-hidden="true" />
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="people-carousel-track" ref={trackRef} onScroll={onScroll} tabIndex={0} aria-label="Perfect exchange cards. Use the left and right arrow keys to move between matches.">
-        {profiles.map((profile, position) => (
-          <div
-            key={profile.username}
-            ref={(element) => {
-              slideRefs.current[position] = element;
-            }}
-            className="people-carousel-slide"
-            role="group"
-            aria-roledescription="slide"
-            aria-label={`${position + 1} of ${count}: ${profile.username}`}
-            aria-current={position === index ? "true" : undefined}
-          >
-            <ExchangeProfileCard
-              profile={profile}
-              featured
-              viewerLanguage={viewerLanguage}
-              busy={busy}
-              starting={startingUsername === profile.username}
-              onSayHello={onSayHello}
-              imageLoading={position === 0 ? "eager" : "lazy"}
-            />
-          </div>
-        ))}
-      </div>
-      {count > 1 && count <= MAX_DOTS && (
-        <div className="people-carousel-dots" role="group" aria-label="Choose a match">
-          {profiles.map((profile, position) => (
-            <button
-              type="button"
-              key={profile.username}
-              aria-label={`Show match ${position + 1}: ${profile.username}`}
-              aria-current={position === index ? "true" : undefined}
-              onClick={() => goTo(position)}
-            />
-          ))}
+      {count > 1 && (
+        <div className="people-carousel-controls">
+          <button type="button" className="people-carousel-arrow" onClick={() => goTo(index - 1)} disabled={!loops && index === 0} aria-label="Previous match">
+            <ChevronLeftRoundedIcon aria-hidden="true" />
+          </button>
+          <span className="people-carousel-counter" aria-live="polite" aria-atomic="true">
+            <span className="lv-visually-hidden">Showing </span>
+            {range}
+          </span>
+          <button type="button" className="people-carousel-arrow" onClick={() => goTo(index + 1)} disabled={!loops && index >= last} aria-label="Next match">
+            <ChevronRightRoundedIcon aria-hidden="true" />
+          </button>
         </div>
       )}
+      <div
+        className="people-coverflow"
+        tabIndex={0}
+        aria-label="Perfect exchange cards. Use the left and right arrow keys to move between matches."
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={() => {
+          swipeStart.current = null;
+        }}
+      >
+        <svg className="people-coverflow-route" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <path d="M-20 330 C 200 200, 360 160, 500 230 S 780 300, 1020 90" />
+        </svg>
+        {profiles.map((profile, position) => {
+          const place = coverflowPosition(position, index, count);
+          return (
+            <div
+              key={profile.username}
+              className={`people-coverflow-slide is-${place}`}
+              role="group"
+              aria-roledescription="slide"
+              aria-label={`${position + 1} of ${count}: ${profile.username}`}
+              aria-current={place === "front" ? "true" : undefined}
+              aria-hidden={place === "front" ? undefined : true}
+              // `inert` (not yet in React 18's types) keeps the cards behind out of the tab order.
+              {...(place === "front" ? {} : { inert: "" })}
+            >
+              <PhotoExchangeCard
+                profile={profile}
+                viewerLanguage={viewerLanguage}
+                busy={busy}
+                starting={startingUsername === profile.username}
+                onSayHello={onSayHello}
+                imageLoading={Math.abs(loopOffset(position, index, count)) <= 2 ? "eager" : "lazy"}
+              />
+            </div>
+          );
+        })}
+        {/* Click targets over the cards behind (inert slides take no clicks); keyboard users have the arrows. */}
+        {(loops || index > 0) && <button type="button" className="people-coverflow-peek is-left" tabIndex={-1} aria-hidden="true" onClick={() => goTo(index - 1)} />}
+        {(loops || index < last) && <button type="button" className="people-coverflow-peek is-right" tabIndex={-1} aria-hidden="true" onClick={() => goTo(index + 1)} />}
+      </div>
     </section>
   );
 }

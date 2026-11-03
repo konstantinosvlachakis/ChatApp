@@ -1,172 +1,126 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
-import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
+import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
-import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
-import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRounded";
-import { BASE_URL } from "../../constants/constants";
-import api, { getErrorMessage, isAbortError } from "../../lib/api";
+import api, { getErrorMessage } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
 import { createOrGetConversation } from "./api/conversation";
-import ExchangeProfileCard, { ExchangeProfile, languageLabel, languageLevel } from "./components/ExchangeProfileCard";
-import FilterSheet from "./components/FilterSheet";
+import ExchangeProfileCard, { ExchangeProfile } from "./components/ExchangeProfileCard";
+import PeopleFilterPanel from "./components/PeopleFilterPanel";
 import PerfectExchangeCarousel from "./components/PerfectExchangeCarousel";
 import { viewerExchangeLanguages } from "./utils/exchangeLanguages";
+import {
+  DEFAULT_PANEL_FILTERS,
+  DEFAULT_QUICK_FILTERS,
+  PanelFilters,
+  QuickFilters,
+  activePanelFilterCount,
+  cityFromLocation,
+  countParams,
+  exchangeRule,
+  includesNothing,
+  othersParams,
+  perfectParams,
+  previewTotal,
+} from "./utils/peopleQuery";
+import { PEOPLE_PAGE_SIZE, usePeopleFeed } from "./usePeopleFeed";
 import { saveChatDraft } from "../Conversations/utils/chatDrafts";
 import "./community.css";
 
-const PAGE_SIZE = 24;
-// Four server match modes, no overlap in meaning ("you speak" = native or Advanced/Fluent):
-// reciprocal = Perfect exchange (native in a language you practise AND practising one you
-// speak), teaches_me = native in a language you practise, learns_mine = practising a
-// language you speak, all = everyone ranked by score.
-const PERFECT_EXCHANGE = "reciprocal";
-const segments = [
-  { key: PERFECT_EXCHANGE, label: "Perfect exchange", Icon: SwapHorizRoundedIcon },
-  { key: "teaches_me", label: "Native speakers", Icon: RecordVoiceOverRoundedIcon },
-  { key: "learns_mine", label: "Learning your language", Icon: SchoolRoundedIcon },
-  { key: "all", label: "Everyone", Icon: PeopleAltRoundedIcon },
-];
-/** Perfect exchanges beyond this many go in the "More perfect exchanges" grid below the carousel. */
-const CAROUSEL_LIMIT = 8;
+const stripPage = ({ page, page_size, ...rest }: Record<string, string | number>) => rest;
 
-const toPartnerMatch = (match: any): ExchangeProfile["match"] => {
-  if (!match) return undefined;
-  const youSpeak = ["native", "advanced", "fluent"].includes(match.you_speak) ? match.you_speak : undefined;
-  return {
-    teachesMe: Boolean(match.teaches_me),
-    learnsMine: Boolean(match.learns_mine),
-    reciprocal: Boolean(match.reciprocal),
-    ...(typeof match.they_teach === "string" && match.they_teach ? { theyTeach: match.they_teach } : {}),
-    ...(typeof match.they_learn === "string" && match.they_learn ? { theyLearn: match.they_learn } : {}),
-    ...(youSpeak ? { youSpeak } : {}),
-  };
-};
-const levels = ["beginner", "intermediate", "advanced", "fluent"];
+/** Three bars of decreasing width (a funnel-like "filters" glyph). */
+const FilterBarsIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" focusable="false">
+    <path d="M4 7h16M7 12h10M10 17h4" />
+  </svg>
+);
 
-// Accept API media paths and HTTP(S) URLs, never executable URL schemes.
-const mediaUrl = (value?: string) => {
-  if (!value) return undefined;
-  try {
-    const path = /^(https?:\/\/|\/)/i.test(value) ? value : `/media/${value.replace(/^media\//, "")}`;
-    const url = new URL(path, BASE_URL || window.location.origin);
-    return ["http:", "https:"].includes(url.protocol) ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-};
+const matchesSearch = (profile: ExchangeProfile, query: string) =>
+  !query || [profile.username, profile.nativeLanguage, profile.learningGoal, profile.city || "", ...profile.languagesPracticing].some((value) => value.toLowerCase().includes(query));
 
 export default function CommunityPage() {
   const { user } = useUser();
   const navigate = useNavigate();
-  const [profiles, setProfiles] = useState<ExchangeProfile[]>([]);
   const [search, setSearch] = useState("");
-  const [filterLang, setFilterLang] = useState("");
-  const [segment, setSegment] = useState(PERFECT_EXCHANGE);
-  const [level, setLevel] = useState("");
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [requestAttempt, setRequestAttempt] = useState(0);
+  const [filters, setFilters] = useState<PanelFilters>(DEFAULT_PANEL_FILTERS);
+  const [quick, setQuick] = useState<QuickFilters>(DEFAULT_QUICK_FILTERS);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [quickHint, setQuickHint] = useState<"" | "near" | "myLevel">("");
   const [startingUsername, setStartingUsername] = useState("");
   const [conversationError, setConversationError] = useState("");
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
-      setLoading(true);
-      setError("");
-      try {
-        // No trailing slash: profile/data is the one API path without it.
-        const payload = await api.get<any>("/api/profile/data", {
-          params: { page, page_size: PAGE_SIZE, match: segment, ...(level ? { level } : {}) },
-          signal: controller.signal,
-        });
-        const next: ExchangeProfile[] = (payload.profiles || []).map((profile: any) => ({
-          username: profile.username,
-          nativeLanguage: profile.native_language || "",
-          languagesPracticing: profile.languages_practicing || [],
-          practiceLanguageLevels: profile.practice_language_levels || {},
-          learningGoal: profile.learning_goal || "",
-          profileImage: mediaUrl(profile.profile_image_url),
-          match: toPartnerMatch(profile.match),
-        }));
-        if (!controller.signal.aborted) {
-          setProfiles((previous) => Array.from(new Map((page === 1 ? next : [...previous, ...next]).map((profile) => [profile.username, profile])).values()));
-          setTotalCount(payload.pagination?.total_count ?? next.length);
-          setHasNextPage(Boolean(payload.pagination?.has_next));
-        }
-      } catch (failure) {
-        if (!controller.signal.aborted && !isAbortError(failure)) {
-          setError(getErrorMessage(failure, "Could not load people. Please try again."));
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    load();
-    return () => controller.abort();
-  }, [page, segment, level, requestAttempt]);
+  const perfectBase = useMemo(() => stripPage(perfectParams(filters, quick, 1, PEOPLE_PAGE_SIZE)), [filters, quick]);
+  const othersBase = useMemo(() => (includesNothing(filters.include) ? null : stripPage(othersParams(filters, quick, 1, PEOPLE_PAGE_SIZE))), [filters, quick]);
+  const perfect = usePeopleFeed(perfectBase);
+  const others = usePeopleFeed(othersBase);
+  const meta = perfect.meta || others.meta;
 
-  const changeServerFilter = (nextSegment: string, nextLevel: string) => {
-    setProfiles([]);
-    setHasNextPage(false);
-    setPage(1);
-    setSegment(nextSegment);
-    setLevel(nextLevel);
-    setError("");
-    setLoading(true);
-  };
-
-  const languageOptions = useMemo(() => Array.from(new Set([filterLang, ...profiles.map((profile) => profile.nativeLanguage)].filter(Boolean))).sort(), [profiles, filterLang]);
-  const filteredProfiles = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return profiles.filter((profile) => (!filterLang || profile.nativeLanguage.toLowerCase() === filterLang.toLowerCase()) && (!query || [profile.username, profile.nativeLanguage, profile.learningGoal, ...profile.languagesPracticing].some((value) => value.toLowerCase().includes(query))));
-  }, [profiles, search, filterLang]);
-  const perfectView = segment === PERFECT_EXCHANGE;
-  // Perfect exchange never mixes in one-way or unrelated people.
-  const perfectMatches = useMemo(() => (perfectView ? filteredProfiles.filter((profile) => profile.match?.reciprocal) : []), [perfectView, filteredProfiles]);
+  const exchange = useMemo(() => viewerExchangeLanguages(user), [user]);
   const nativeLanguage = user?.native_language || "";
-  const exchangeLanguages = useMemo(() => viewerExchangeLanguages(user), [user]);
-  const spokenSummary = exchangeLanguages.spoken.map((entry) => languageLabel(entry.language)).join(", ");
-  const practisingSummary = exchangeLanguages.practising.length
-    ? `${languageLabel(exchangeLanguages.practising[0].language)}${exchangeLanguages.practising.length > 1 ? ` +${exchangeLanguages.practising.length - 1}` : ""}`
-    : "";
-  const activeFilters = Number(Boolean(filterLang)) + Number(Boolean(level));
-  const clientFiltered = Boolean(search.trim() || filterLang);
-  const visibleCount = perfectView ? perfectMatches.length : filteredProfiles.length;
-  const countNoun = perfectView ? (visibleCount === 1 ? "perfect exchange" : "perfect exchanges") : `${visibleCount === 1 ? "person" : "people"} to meet`;
+  const learningNames = exchange.practising.length ? exchange.practising.map((entry) => entry.language) : meta?.theySpeakOptions || [];
+  const spokenNames = exchange.spoken.map((entry) => entry.language);
+  const city = meta?.nearCity || cityFromLocation((user as any)?.location);
+  const nearAvailable = meta ? meta.nearAvailable : Boolean(city);
+  const myLevelAvailable = meta ? meta.myLevelAvailable : true;
+  const panelCount = activePanelFilterCount(filters);
+  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel;
 
-  const resetFilters = () => {
+  const query = search.trim().toLowerCase();
+  const perfectShown = useMemo(() => perfect.profiles.filter((profile) => matchesSearch(profile, query)), [perfect.profiles, query]);
+  const othersShown = useMemo(() => others.profiles.filter((profile) => matchesSearch(profile, query)), [others.profiles, query]);
+
+  const toggleQuick = (key: keyof QuickFilters) => {
+    if (key === "near" && !nearAvailable && !quick.near) {
+      setQuickHint("near");
+      return;
+    }
+    if (key === "myLevel" && !myLevelAvailable && !quick.myLevel) {
+      setQuickHint("myLevel");
+      return;
+    }
+    setQuickHint("");
+    setQuick((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const clearAll = () => {
     setSearch("");
-    setFilterLang("");
-    if (segment !== PERFECT_EXCHANGE || level) changeServerFilter(PERFECT_EXCHANGE, "");
+    setFilters(DEFAULT_PANEL_FILTERS);
+    setQuick(DEFAULT_QUICK_FILTERS);
+    setQuickHint("");
   };
 
-  const showEveryone = () => {
-    setSearch("");
-    setFilterLang("");
-    changeServerFilter("all", "");
-  };
+  const countFor = useCallback(
+    async (draft: PanelFilters, signal: AbortSignal) => {
+      const payload = await api.get<any>("/api/profile/data", { params: countParams(draft, quick), signal });
+      return previewTotal(payload?.counts, draft);
+    },
+    [quick]
+  );
 
-  const applySheetFilters = (next: { nativeFilter: string; level: string }) => {
-    setFilterLang(next.nativeFilter);
-    if (next.level !== level) changeServerFilter(segment, next.level);
-    setSheetOpen(false);
-  };
+  // Infinite scroll for "More people to meet" (the Load more button stays as a fallback).
+  const { hasNext: othersHasNext, loading: othersLoading, loadMore: othersLoadMore } = others;
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver !== "function" || !othersHasNext || othersLoading) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) othersLoadMore();
+    }, { rootMargin: "400px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [othersHasNext, othersLoading, othersLoadMore]);
 
-  const resetSheetFilters = () => {
-    setFilterLang("");
-    if (level) changeServerFilter(segment, "");
-    setSheetOpen(false);
-  };
+  const { hasNext: perfectHasNext, loading: perfectLoading, loadMore: perfectLoadMore } = perfect;
+  const loadMorePerfect = useCallback(() => {
+    if (perfectHasNext && !perfectLoading) perfectLoadMore();
+  }, [perfectHasNext, perfectLoading, perfectLoadMore]);
 
-  // `starter`: a "Try opening with" line, handed to the chat as a ready-to-send draft.
+  // `starter`: an opening line, handed to the chat as a ready-to-send draft.
   const sayHello = async (username: string, starter?: string) => {
     if (startingUsername) return;
     setStartingUsername(username);
@@ -183,79 +137,133 @@ export default function CommunityPage() {
     }
   };
 
+  const quickPills: Array<{ key: keyof QuickFilters; label: string; Icon: typeof PlaceOutlinedIcon }> = [
+    { key: "near", label: city ? `Near you · ${city}` : "Near you", Icon: PlaceOutlinedIcon },
+    { key: "active", label: "Active today", Icon: ScheduleRoundedIcon },
+    { key: "newMembers", label: "New members", Icon: AutoAwesomeOutlinedIcon },
+    { key: "myLevel", label: "Your level", Icon: BarChartRoundedIcon },
+  ];
+
+  const perfectEmpty = () => {
+    if (query && perfect.profiles.length) {
+      return <><h3>No perfect exchanges in this search</h3><p>Try another name, language or goal.</p><button type="button" className="people-button people-button-secondary" onClick={() => setSearch("")}>Clear search</button></>;
+    }
+    if (quick.near) {
+      return <><h3>No perfect exchanges near you</h3><p>Try turning off Near you to meet exchanges anywhere.</p><button type="button" className="people-button people-button-secondary" onClick={() => toggleQuick("near")}>Turn off Near you</button></>;
+    }
+    if (anyQuick || panelCount) {
+      return <><h3>No perfect exchanges match these filters</h3><p>Loosen a filter or two and they'll show up here.</p><button type="button" className="people-button people-button-secondary" onClick={clearAll}>Clear filters</button></>;
+    }
+    return <><h3>No perfect exchanges yet</h3><p>Nobody right now speaks a language you're learning and is learning one you speak. The people below are a great place to start.</p><Link to="/profile/edit" className="people-button people-button-secondary">Edit languages</Link></>;
+  };
+
   return (
     <div className="people-page">
-      <aside className="people-sidebar" aria-label="Your exchange and filters">
-        <div className="people-mobile-exchange">
-          <div><span>Your exchange</span><strong>{spokenSummary || "Add a native language"}<span aria-hidden="true"> ↔ </span>{practisingSummary || "Add a practice language"}</strong></div>
-          <Link to="/profile/edit" aria-label="Edit your exchange languages">Edit ↗</Link>
-        </div>
-        <section className="people-exchange-summary">
-          <h2>Your exchange</h2>
-          {spokenSummary ? (
-            <div className="people-summary-language people-summary-native">
-              <span>You speak</span>
-              <strong>{spokenSummary}</strong>
-            </div>
-          ) : <Link to="/profile/edit">Add your native language</Link>}
-          {exchangeLanguages.practising.length > 0 && (
-            <div className="people-summary-language people-summary-learning">
-              <span>You practise</span>
-              {exchangeLanguages.practising.map(({ language }) => {
-                const currentLevel = languageLevel(user?.practice_language_levels || {}, language);
-                return <strong key={language}>{languageLabel(language)}{currentLevel && <small> · {currentLevel}</small>}</strong>;
-              })}
-            </div>
-          )}
-          {!user?.languages_practicing?.length && <Link to="/profile/edit" className="people-summary-add">Add a language to find your exchange</Link>}
-          <Link to="/profile/edit" className="people-exchange-edit">Edit languages <span aria-hidden="true">↗</span></Link>
-        </section>
-        <section className="people-filters">
-          <div className="people-filter-heading"><h2>Filters{activeFilters > 0 && <span className="people-filter-count">{activeFilters}</span>}</h2></div>
-          <div className="people-filter-fields">
-            <label htmlFor="people-native-language">Their native language</label>
-            <select id="people-native-language" value={filterLang} onChange={(event) => setFilterLang(event.target.value)}><option value="">All languages</option>{languageOptions.map((language) => <option key={language} value={language}>{languageLabel(language)}</option>)}</select>
-            <label htmlFor="people-practice-level">{nativeLanguage ? `Their ${languageLabel(nativeLanguage)} level` : "Their practice level"}</label>
-            <select id="people-practice-level" value={level} disabled={!nativeLanguage} onChange={(event) => changeServerFilter(segment, event.target.value)}><option value="">Any level</option>{levels.map((entry) => <option key={entry} value={entry}>{languageLabel(entry)}</option>)}</select>
-            <p className="people-filter-note">Find someone you can learn with, at a pace that feels right.</p>
-            {(activeFilters > 0 || segment !== PERFECT_EXCHANGE || search) && <button type="button" className="people-text-button" onClick={resetFilters}>Reset filters</button>}
-          </div>
-        </section>
-      </aside>
+      <div className="people-top">
+        <header className="people-intro">
+          <h1 id="people-heading">People to practise with</h1>
+          <p>
+            {exchangeRule(learningNames, spokenNames)}{" "}
+            <Link to="/profile/edit" className="people-inline-link">Edit languages</Link>
+          </p>
+        </header>
 
-      <section className="people-discovery" aria-labelledby="people-heading">
-        <div className="people-intro"><p className="people-eyebrow">A little exchange. A new connection.</p><h1 id="people-heading">Find your next great conversation.</h1><p>Meet people who speak your next language. Share a little of yours.</p></div>
         <div className="people-search-row">
-          <div className="people-search"><SearchRoundedIcon aria-hidden="true" /><input aria-label="Search loaded profiles" type="search" placeholder="Search people, languages or learning goals" value={search} onChange={(event) => setSearch(event.target.value)} /><span className="people-search-hint">Search loaded profiles</span></div>
-          <button type="button" className="people-filter-button" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-label={activeFilters > 0 ? `Filters, ${activeFilters} active` : "Filters"}>
-            <TuneRoundedIcon aria-hidden="true" />
-            {activeFilters > 0 && <span className="people-filter-button-count" aria-hidden="true">{activeFilters}</span>}
+          <div className="people-search">
+            <SearchRoundedIcon aria-hidden="true" />
+            <input aria-label="Search loaded profiles" type="search" placeholder="Search people, languages or goals" value={search} onChange={(event) => setSearch(event.target.value)} />
+          </div>
+          <button type="button" className="people-filter-button" onClick={() => setPanelOpen(true)} aria-haspopup="dialog" aria-label={panelCount > 0 ? `Filters, ${panelCount} active` : "Filters"}>
+            <FilterBarsIcon />
+            {panelCount > 0 && <span className="people-filter-button-count" aria-hidden="true">{panelCount}</span>}
           </button>
         </div>
-        <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} nativeFilter={filterLang} level={level} languageOptions={languageOptions} viewerLanguage={nativeLanguage} onApply={applySheetFilters} onReset={resetSheetFilters} />
-        <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}><entry.Icon className="people-segment-icon" aria-hidden="true" />{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${visibleCount}${hasNextPage ? "+" : ""} ${countNoun}`}</p></div>
-        {conversationError && <p className="people-error" role="alert">{conversationError}</p>}
-        {loading && !profiles.length ? (
-          <div className="people-loading" role="status"><div className="people-loading-portrait" /><div><span /><span /><span /><p>Finding your next connection…</p></div></div>
-        ) : perfectView ? (
-          perfectMatches.length > 0 ? (
-            <>
-              <PerfectExchangeCarousel profiles={perfectMatches.slice(0, CAROUSEL_LIMIT)} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} startingUsername={startingUsername} onSayHello={sayHello} />
-              {perfectMatches.length > CAROUSEL_LIMIT && <section className="people-more" aria-labelledby="people-more-matches-heading"><div className="people-section-heading"><h2 id="people-more-matches-heading">More perfect exchanges</h2><span>Every one of them is a two-way exchange</span></div><div className="people-card-grid">{perfectMatches.slice(CAROUSEL_LIMIT).map((profile) => <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />)}</div></section>}
-            </>
-          ) : !error && (clientFiltered && profiles.length > 0 ? (
-            <div className="people-empty"><span aria-hidden="true">↔</span><h2>No perfect exchanges in this search.</h2><p>Try another name or language, or clear your filters.</p><button type="button" className="people-button people-button-primary" onClick={() => { setSearch(""); setFilterLang(""); }}>Clear search and filters</button></div>
-          ) : (
-            <div className="people-empty"><span aria-hidden="true">↔</span><h2>No perfect exchanges yet</h2><p>Nobody right now is native in a language you practise and learning one you speak. Native speakers of your languages are a great place to start.</p><button type="button" className="people-button people-button-primary" onClick={() => changeServerFilter("teaches_me", level)}>See native speakers</button><Link to="/profile/edit">Edit languages</Link></div>
-          ))
-        ) : filteredProfiles.length > 0 ? (
-          <>
-            <section className="people-more people-more-only" aria-label={segments.find((entry) => entry.key === segment)?.label || "People"}><div className="people-card-grid">{filteredProfiles.map((profile) => <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />)}</div></section>
-          </>
-        ) : !error && <div className="people-empty"><span aria-hidden="true">↔</span><h2>No people in this view yet.</h2><p>Try another language or a wider exchange filter. You might find an unexpected connection.</p><button type="button" className="people-button people-button-primary" onClick={showEveryone}>Explore all people</button><Link to="/profile/edit">Update your languages</Link></div>}
-        {error && <div className="people-error" role="alert"><p>{error}</p><button type="button" className="people-button people-button-secondary" onClick={() => setRequestAttempt((attempt) => attempt + 1)}>Try again</button></div>}
-        {hasNextPage && !error && <div className="people-load-more"><button type="button" className="people-button people-button-secondary" disabled={loading} onClick={() => setPage((previous) => previous + 1)}>{loading ? "Finding more people…" : "Meet more people"}</button><p>{profiles.length} of {totalCount} profiles loaded</p></div>}
+      </div>
+
+      <div className="people-quick" role="group" aria-label="Quick filters">
+        {quickPills.map((pill) => (
+          <button key={pill.key} type="button" className="people-quick-pill" aria-pressed={quick[pill.key]} onClick={() => toggleQuick(pill.key)}>
+            <pill.Icon aria-hidden="true" />
+            {pill.label}
+          </button>
+        ))}
+      </div>
+      {quickHint === "near" && (
+        <p className="people-quick-hint" role="status">Add your city to see people near you. <Link to="/profile/edit" className="people-inline-link">Set your city</Link></p>
+      )}
+      {quickHint === "myLevel" && (
+        <p className="people-quick-hint" role="status">Add your level in the languages you're learning to use Your level. <Link to="/profile/edit" className="people-inline-link">Edit languages</Link></p>
+      )}
+      {quick.near && meta?.nearScope === "country" && (
+        <p className="people-quick-hint" role="status">Nobody else in {city} yet, so you're seeing people in your country.</p>
+      )}
+      {conversationError && <p className="people-error" role="alert">{conversationError}</p>}
+
+      <div className="people-section people-section-perfect">
+        <div className="people-section-heading">
+          <h2 id="people-perfect-heading">
+            <span className="people-section-icon" aria-hidden="true"><SwapHorizRoundedIcon /></span>
+            Perfect exchanges
+          </h2>
+        </div>
+        {perfect.loading && !perfect.profiles.length ? (
+          <div className="people-loading-row" role="status" aria-label="Finding perfect exchanges"><span /><span /><span /></div>
+        ) : perfect.error && !perfect.profiles.length ? (
+          <div className="people-error" role="alert"><p>{perfect.error}</p><button type="button" className="people-button people-button-secondary" onClick={perfect.retry}>Try again</button></div>
+        ) : perfectShown.length ? (
+          <PerfectExchangeCarousel profiles={perfectShown} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} startingUsername={startingUsername} onSayHello={sayHello} onReachEnd={query ? undefined : loadMorePerfect} />
+        ) : (
+          <div className="people-empty">{perfectEmpty()}</div>
+        )}
+      </div>
+
+      <section className="people-section" aria-labelledby="people-more-heading">
+        <div className="people-section-heading">
+          <h2 id="people-more-heading">More people to meet</h2>
+          {othersBase && others.total > 0 && <span>{others.total} {others.total === 1 ? "person" : "people"}</span>}
+        </div>
+        {!othersBase ? (
+          <div className="people-empty"><h3>Nobody else is included</h3><p>Switch on a group under “In More people, include” in Filters.</p><button type="button" className="people-button people-button-secondary" onClick={() => setPanelOpen(true)}>Open filters</button></div>
+        ) : others.loading && !others.profiles.length ? (
+          <div className="people-loading-row" role="status" aria-label="Finding more people"><span /><span /><span /></div>
+        ) : others.error && !others.profiles.length ? (
+          <div className="people-error" role="alert"><p>{others.error}</p><button type="button" className="people-button people-button-secondary" onClick={others.retry}>Try again</button></div>
+        ) : othersShown.length ? (
+          <div className="people-card-grid">
+            {othersShown.map((profile) => (
+              <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />
+            ))}
+          </div>
+        ) : (
+          <div className="people-empty">
+            <h3>{query ? "Nobody in this search" : "Nobody else matches yet"}</h3>
+            <p>{query ? "Try another name, language or goal." : "Try a wider filter. You might find an unexpected connection."}</p>
+            {(query || anyQuick || panelCount > 0) && <button type="button" className="people-button people-button-secondary" onClick={clearAll}>Clear filters</button>}
+          </div>
+        )}
+        {othersBase && others.error && others.profiles.length > 0 && (
+          <div className="people-error" role="alert"><p>{others.error}</p><button type="button" className="people-button people-button-secondary" onClick={others.retry}>Try again</button></div>
+        )}
+        {othersBase && others.hasNext && !others.error && (
+          <div className="people-load-more" ref={sentinelRef}>
+            <button type="button" className="people-button people-button-secondary" disabled={others.loading} onClick={others.loadMore}>{others.loading ? "Finding more people…" : "Load more"}</button>
+            <p>{others.profiles.length} of {others.total} loaded</p>
+          </div>
+        )}
       </section>
+
+      <PeopleFilterPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        filters={filters}
+        theySpeakOptions={meta?.theySpeakOptions || []}
+        theyLearnOptions={meta?.theyLearnOptions || []}
+        countFor={countFor}
+        onApply={(next) => {
+          setFilters(next);
+          setPanelOpen(false);
+        }}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { api, UPLOAD_TIMEOUT_MS } from "./client";
 import { tokenStorage } from "../storage";
 import { clearConversationsCache } from "./conversations";
 import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
-import { buildPeopleParams, type PeopleQuery } from "../../features/peopleMatching";
+import type { PeopleParams } from "../../features/peopleMatching";
 
 export async function register(payload: {
   username: string;
@@ -112,13 +112,15 @@ export async function fetchPublicProfile(username: string) {
 }
 
 /**
- * People list with server matching (same params as web): `page`, `page_size`, `match`
- * (all | reciprocal | teaches_me) and optional `level` (their level in my native language).
+ * People list (same params as web): `page`, `page_size`, `section=perfect|others`, optional
+ * `include`, `they_speak`, `they_learn`, `level`, `near`, `active`, `new`, `my_level`, `sort`,
+ * `counts` (built by `features/peopleMatching` perfectParams/othersParams/countParams).
+ * Older builds send `match`, which the server still accepts.
  * No trailing slash: profile/data is the one API path without it.
  */
-export async function fetchPeople(query: PeopleQuery, options: { signal?: AbortSignal } = {}) {
+export async function fetchPeople(params: PeopleParams, options: { signal?: AbortSignal } = {}) {
   const response = await api.get<ProfileListResponse>("/profile/data", {
-    params: buildPeopleParams(query),
+    params,
     signal: options.signal,
   });
   return response.data;

@@ -1,12 +1,13 @@
-import React, { useId, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
-import WavingHandRoundedIcon from "@mui/icons-material/WavingHandRounded";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import RecordVoiceOverOutlinedIcon from "@mui/icons-material/RecordVoiceOverOutlined";
 import type { PartnerMatch } from "../../../components/Cards";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
-import { buildConversationStarters, buildMatchFacts, languageTheyLearnFromViewer } from "../utils/conversationStarters";
+import { languageTheyLearnFromViewer } from "../utils/conversationStarters";
 
 export interface ExchangeProfile {
   username: string;
@@ -16,6 +17,11 @@ export interface ExchangeProfile {
   learningGoal: string;
   profileImage?: string;
   match?: PartnerMatch;
+  /** City only (server `city`), never the full location. */
+  city?: string;
+  /** Coarse activity (server `active_label`): "Active today" / "Active this week". */
+  activeLabel?: string;
+  isNew?: boolean;
 }
 
 export const languageLabel = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : "Not specified";
@@ -25,148 +31,96 @@ export const languageLevel = (levels: Record<string, string>, language: string) 
   return key ? languageLabel(levels[key]) : "";
 };
 
-/** "Learning English · you speak it fluently" (compact cards, "Learning your language" tab). */
-export const learningYourLanguageLabel = (language: string, youSpeak: string) => {
-  if (!language) return "Learning your language";
-  const how = youSpeak === "native" ? "your native language" : youSpeak === "fluent" ? "you speak it fluently" : youSpeak === "advanced" ? "you speak it well" : "";
-  return how ? `Learning ${languageLabel(language)} · ${how}` : `Learning ${languageLabel(language)}`;
+/** Tag at the top of a plain card: why this person is in your feed. */
+export const relationshipTag = (profile: ExchangeProfile, viewerLanguage?: string) => {
+  const match = profile.match;
+  if (match?.reciprocal) return "Perfect exchange";
+  if (match?.learnsMine) {
+    const mine = languageTheyLearnFromViewer(profile, viewerLanguage);
+    return mine.language ? `Learning ${languageLabel(mine.language)}` : "Learning your language";
+  }
+  if (match?.teachesMe) return `Native ${languageLabel(match.theyTeach || profile.nativeLanguage)} speaker`;
+  return "Open to exchange";
 };
 
-const FEATURED_PORTRAIT_PX = 176;
-const COMPACT_PORTRAIT_PX = 64;
+/** Chips: the languages they practise (with level), then Active today / New member. */
+export const profileChips = (profile: ExchangeProfile) => {
+  const languages = profile.languagesPracticing.slice(0, 3).map((language) => {
+    const level = languageLevel(profile.practiceLanguageLevels, language);
+    return level ? `${languageLabel(language)} · ${level}` : languageLabel(language);
+  });
+  const status = [profile.activeLabel === "Active today" ? "Active today" : "", profile.isNew ? "New member" : ""].filter(Boolean);
+  return [...languages, ...status];
+};
+
+const PORTRAIT_PX = 76;
 
 interface Props {
   profile: ExchangeProfile;
-  featured?: boolean;
   viewerLanguage?: string;
   busy: boolean;
   starting: boolean;
-  /** `starter`: an opening line to prefill in the chat's composer. */
   onSayHello: (username: string, starter?: string) => void;
-  /** Image loading for the featured portrait (carousel slides after the first are lazy). */
-  imageLoading?: "eager" | "lazy";
 }
 
-export default function ExchangeProfileCard({
-  profile,
-  featured = false,
-  viewerLanguage,
-  busy,
-  starting,
-  onSayHello,
-  imageLoading,
-}: Props) {
+/**
+ * "More people to meet" card: portrait on the left with Profile and Say hello stacked at the
+ * bottom (level with the goal); tag, name, native language and city, practised-language chips
+ * and the goal on the right.
+ */
+export default function ExchangeProfileCard({ profile, viewerLanguage, busy, starting, onSayHello }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
-  const panelId = useId();
-  // Largest rendered portrait (community.css): featured 176px on desktop, compact 64px.
-  const portrait = avatarImage(profile.profileImage, featured ? FEATURED_PORTRAIT_PX : COMPACT_PORTRAIT_PX);
-  // Prefer the viewer's language that they practise (server `match.they_learn`).
-  const mine = languageTheyLearnFromViewer(profile, viewerLanguage);
-  const learning = mine.language || profile.languagesPracticing[0];
-  const level = learning ? languageLevel(profile.practiceLanguageLevels, learning) : "";
-  const badge = profile.match?.reciprocal ? "Perfect exchange" : profile.match?.teachesMe ? "Native speaker for you" : "Meet someone new";
-  const relationship = profile.match?.reciprocal
-    ? "Perfect exchange"
-    : profile.match?.teachesMe
-      ? "Native speaker for you"
-      : profile.match?.learnsMine
-        ? learningYourLanguageLabel(mine.language, mine.youSpeak)
-        : "Open to exchange";
+  const portrait = avatarImage(profile.profileImage, PORTRAIT_PX);
   const profilePath = `/people/${encodeURIComponent(profile.username)}`;
-  const profileLabel = `View ${profile.username}'s profile`;
-  const starters = featured ? buildConversationStarters(profile, viewerLanguage) : [];
-  const facts = featured ? buildMatchFacts(profile, viewerLanguage) : [];
+  const tag = relationshipTag(profile, viewerLanguage);
+  const chips = profileChips(profile);
+  const goal = profile.learningGoal.trim();
 
   return (
-    <article className={`exchange-card ${featured ? "exchange-card-featured" : "exchange-card-compact"}`}>
-      {featured && <span className="exchange-match-label">{badge}</span>}
-      <Link to={profilePath} state={{ profile }} className="exchange-portrait" aria-label={profileLabel}>
-        <img
-          src={portrait && !imageFailed ? portrait : DEFAULT_AVATAR_URL}
-          alt=""
-          loading={imageLoading || (featured ? "eager" : "lazy")}
-          decoding="async"
-          onError={() => {
-            if (portrait && !imageFailed) setImageFailed(true);
-          }}
-        />
-      </Link>
-      <div className="exchange-card-content">
-        <div className="exchange-card-title">
-          <h2>{profile.username}</h2>
-          {featured && <span className="exchange-native-badge">{languageLabel(profile.nativeLanguage)} native</span>}
-        </div>
-        {!featured && (
-          <span className={`exchange-inline-match ${profile.match?.reciprocal ? "is-reciprocal" : ""}`}>
-            <span aria-hidden="true">{profile.match?.reciprocal ? "↔" : "•"}</span>
-            {relationship}
-          </span>
-        )}
-        <div className="exchange-languages">
-          <p className="exchange-native">
-            <span>{featured ? (profile.match?.teachesMe ? "You can practice" : "Speaks") : "Native language"}</span>
-            <strong>{languageLabel(profile.nativeLanguage)}</strong>
-          </p>
-          {learning && (
-            <p className="exchange-learning">
-              <span>{!featured && profile.match?.learnsMine && mine.language ? (mine.youSpeak === "native" ? "Learning your language" : "Learning a language you speak") : "Practicing"}</span>
-              <strong>{languageLabel(learning)}{level && <span className="exchange-level">{featured ? " · " : ""}{level}</span>}</strong>
-            </p>
-          )}
-        </div>
-        <p className="exchange-bio">{profile.learningGoal || (profile.match?.reciprocal ? "You speak the language they’re learning. They speak one of yours. A great place to start." : "Get to know each other through a new language and everyday conversation.")}</p>
+    <article className="exchange-card">
+      <div className="exchange-card-side">
+        <Link to={profilePath} state={{ profile }} className="exchange-portrait" tabIndex={-1} aria-hidden="true">
+          <img
+            src={portrait && !imageFailed ? portrait : DEFAULT_AVATAR_URL}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => {
+              if (portrait && !imageFailed) setImageFailed(true);
+            }}
+          />
+        </Link>
         <div className="exchange-card-actions">
-          <Link
-            className="people-button people-button-primary"
-            to={profilePath}
-            state={{ profile }}
-            aria-label={profileLabel}
-          >
+          <Link to={profilePath} state={{ profile }} className="people-button people-button-secondary exchange-card-button" aria-label={`View ${profile.username}'s profile`}>
             <PersonOutlineRoundedIcon className="people-button-icon" aria-hidden="true" />
-            View profile
+            Profile
           </Link>
           <button
-            className="people-button people-button-secondary"
+            className="people-button people-button-primary exchange-card-button"
             type="button"
             disabled={busy}
             onClick={() => onSayHello(profile.username)}
             aria-label={`Say hello to ${profile.username}`}
           >
-            <WavingHandRoundedIcon className="people-button-icon" aria-hidden="true" />
+            <ChatBubbleOutlineRoundedIcon className="people-button-icon" aria-hidden="true" />
             {starting ? "Opening…" : "Say hello"}
           </button>
         </div>
       </div>
-      {featured && (
-        // Wide screens only (community.css, >= 1100px): fills the card's right side.
-        <aside className="exchange-panel" aria-labelledby={`${panelId}-why`}>
-          {facts.length > 0 && (
-            <>
-              <h3 id={`${panelId}-why`}>Why you'll click</h3>
-              <dl className="exchange-panel-facts">
-                {facts.map((fact) => (
-                  <div key={fact.label}>
-                    <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </>
-          )}
-          <h3 id={facts.length ? `${panelId}-try` : `${panelId}-why`}>Try opening with</h3>
-          <p id={`${panelId}-hint`} className="exchange-panel-hint">Tap one to open a chat with {profile.username}, ready to send.</p>
-          <ul className="exchange-starters">
-            {starters.map((starter) => (
-              <li key={starter}>
-                <button type="button" disabled={busy} aria-describedby={`${panelId}-hint`} onClick={() => onSayHello(profile.username, starter)}>
-                  <ChatBubbleOutlineRoundedIcon aria-hidden="true" />
-                  <span>{starter}</span>
-                </button>
-              </li>
-            ))}
+      <div className="exchange-card-main">
+        <span className={`exchange-tag${profile.match?.learnsMine ? " is-learns" : ""}`}>{tag}</span>
+        <h3 className="exchange-card-name">{profile.username}</h3>
+        <p className="exchange-card-facts">
+          <span><RecordVoiceOverOutlinedIcon aria-hidden="true" />{languageLabel(profile.nativeLanguage)} native</span>
+          {profile.city && <span><PlaceOutlinedIcon aria-hidden="true" />{profile.city}</span>}
+        </p>
+        {chips.length > 0 && (
+          <ul className="exchange-chips" aria-label="Practising">
+            {chips.map((chip) => <li key={chip}>{chip}</li>)}
           </ul>
-        </aside>
-      )}
+        )}
+        {goal && <p className="exchange-card-goal"><span>{goal}</span></p>}
+      </div>
     </article>
   );
 }

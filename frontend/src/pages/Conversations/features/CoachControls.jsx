@@ -184,7 +184,7 @@ export const CoachPopover = ({ anchorRef, onClose, children }) => {
 };
 
 /**
- * Phone bottom sheet, same pattern as Community's FilterSheet: a native <dialog> opened with
+ * Phone bottom sheet, same pattern as Community's PeopleFilterPanel: a native <dialog> opened with
  * showModal() (inert background, focus contained), Escape and backdrop close it.
  */
 export const CoachSheet = ({ onClose, children }) => {

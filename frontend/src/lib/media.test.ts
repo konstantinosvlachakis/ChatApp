@@ -57,6 +57,12 @@ describe("cloudinaryImage", () => {
     expect(cloudinaryImage(undefined, { width: 48 })).toBe("");
   });
 
+  test("sharpen asks for best quality and sharpens after the resize", () => {
+    expect(cloudinaryImage(`${CLOUD}/image/upload/v1/a.jpg`, { width: 280, sharpen: true, dpr: 2 })).toBe(
+      `${CLOUD}/image/upload/f_auto,q_auto:best,c_fill,g_face,w_560,h_560/e_sharpen:60/v1/a.jpg`
+    );
+  });
+
   test("avatarImage is a square fill", () => {
     expect(avatarImage(`${CLOUD}/image/upload/v1/a.jpg`, 36)).toMatch(/\/f_auto,q_auto,c_fill,g_face,w_36,h_36\//);
   });

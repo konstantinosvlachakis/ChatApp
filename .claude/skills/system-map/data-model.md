@@ -55,8 +55,9 @@ Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by
 | avatar_ring_palette | Char(20) choices teal/blush/gold/lavender/slate, null. Legacy: the views use `avatar_ring_color` instead |
 | avatar_ring_color | Char(7), default `"#1b7f79"`. Views require `#[0-9a-f]{6}` |
 | is_online | Bool, default False, db_index |
-| last_seen | DateTime, null |
+| last_seen | DateTime, null, db_index (migration `0037`; People "Active today" filter / "Recently active" sort). Never exposed exactly in People lists (`active_label` only) |
 | ws_connection_count | PositiveInt, default 0 |
+| date_joined | DateTime, null, default `timezone.now`, db_index (migration `0037_profile_date_joined`: AddField without default so existing rows stay NULL, then AlterField adds the default). Set by registration; People "New members" = within 7 days; NULL = account older than the field, never new |
 | token_version | PositiveInt, default 0 (migration `0034_profile_token_version`). Embedded as the `tv` claim in every JWT; `tokens.revoke_user_tokens` bumps it (password reset, email change, log out of all devices, account deletion) so every older access/refresh token and socket is rejected. Tokens without the claim count as 0 |
 
 Meta: index `profile_username_upper_idx` on `Upper("username")` (for `username__iexact`).
@@ -151,3 +152,4 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 - security/abuse-limits: removed the `Token` model (migration 0033); profile image references are server-set only and replaced files are deleted.
 - security/sessions: `Profile.token_version` (migration 0034) and the SimpleJWT `token_blacklist` tables (`OutstandingToken` / `BlacklistedToken`).
 - feat/practice-levels: `PracticeLanguageProgress` (migration 0036); practice difficulty is per language and accuracy based, XP is score only.
+- feat/people-feed: `Profile.date_joined` (nullable, default now for new rows, existing rows NULL) and an index on `Profile.last_seen` (migration 0037).

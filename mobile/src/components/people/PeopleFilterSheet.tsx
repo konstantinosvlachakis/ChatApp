@@ -1,43 +1,81 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
-import { LEVEL_OPTIONS, languageLabel, type PeopleLevel } from "../../features/peopleMatching";
+import {
+  DEFAULT_PANEL_FILTERS,
+  INCLUDE_GROUPS,
+  INCLUDE_LABELS,
+  LEVEL_FILTER_OPTIONS,
+  SORT_OPTIONS,
+  isLanguageOn,
+  languageLabel,
+  toggleLanguage,
+  type PanelFilters,
+} from "../../features/peopleMatching";
 import { fontFamilies } from "../../theme/typography";
 import { warmColors, type WarmColors } from "../../theme/warm";
+
+const COUNT_DEBOUNCE_MS = 250;
 
 type Props = {
   visible: boolean;
   onClose: () => void;
-  /** Applied filters; the sheet edits a draft and only applies on "Show people". */
-  nativeFilter: string;
-  level: PeopleLevel;
-  languageOptions: string[];
-  /** Viewer's native language: the level filter is "their <viewer language> level". */
-  viewerLanguage: string;
-  onApply: (next: { nativeFilter: string; level: PeopleLevel }) => void;
-  onReset: () => void;
+  /** Applied filters; the sheet edits a draft and applies it on "Show N people". */
+  filters: PanelFilters;
+  theySpeakOptions: string[];
+  theyLearnOptions: string[];
+  onApply: (next: PanelFilters) => void;
+  /** People matching a draft (both sections), or null. Aborted when the draft changes. */
+  countFor: (draft: PanelFilters, signal: AbortSignal) => Promise<number | null>;
 };
 
-/** "Find your exchange" bottom sheet (mirrors web `FilterSheet`). */
-export function PeopleFilterSheet({ visible, onClose, nativeFilter, level, languageOptions, viewerLanguage, onApply, onReset }: Props) {
+/** Filters bottom sheet (mirrors web `PeopleFilterPanel`, mockup F). */
+export function PeopleFilterSheet({ visible, onClose, filters, theySpeakOptions, theyLearnOptions, onApply, countFor }: Props) {
   const { isDark } = useTheme();
   const warm = warmColors(isDark);
   const styles = useMemo(() => createStyles(warm), [warm]);
-  const [draftNative, setDraftNative] = useState(nativeFilter);
-  const [draftLevel, setDraftLevel] = useState<PeopleLevel>(level);
+  const [draft, setDraft] = useState<PanelFilters>(filters);
+  const [count, setCount] = useState<number | null>(null);
 
   // Re-sync the draft only when the sheet opens (applied values may change underneath it).
   useEffect(() => {
-    if (!visible) return;
-    setDraftNative(nativeFilter);
-    setDraftLevel(level);
+    if (visible) setDraft(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const levelTitle = viewerLanguage ? `Their ${languageLabel(viewerLanguage)} level` : "Their practice level";
-  const nativeChoices = ["", ...languageOptions];
+  useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    setCount(null);
+    const timer = setTimeout(() => {
+      countFor(draft, controller.signal)
+        .then((total) => {
+          if (!controller.signal.aborted) setCount(total);
+        })
+        .catch(() => {});
+    }, COUNT_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [visible, draft, countFor]);
+
+  const update = (patch: Partial<PanelFilters>) => setDraft((current) => ({ ...current, ...patch }));
+  const showLabel = count === null ? "Show people" : `Show ${count} ${count === 1 ? "person" : "people"}`;
+
+  const chip = (key: string, label: string, selected: boolean, onPress: () => void) => (
+    <Pressable
+      key={key}
+      onPress={onPress}
+      accessibilityRole="togglebutton"
+      accessibilityState={{ checked: selected }}
+      style={[styles.pill, selected && styles.pillSelected]}
+    >
+      <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{label}</Text>
+    </Pressable>
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -46,73 +84,73 @@ export function PeopleFilterSheet({ visible, onClose, nativeFilter, level, langu
         <SafeAreaView edges={["bottom"]} style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.handle} />
           <View style={styles.heading}>
-            <Text style={styles.title} accessibilityRole="header">Find your exchange</Text>
+            <Text style={styles.title} accessibilityRole="header">Filters</Text>
             <Pressable onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close filters" hitSlop={4}>
               <Ionicons name="close" size={22} color={warm.ink} />
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.body} bounces={false}>
-            <Text style={styles.label}>Their native language</Text>
-            <View style={styles.pillRow} accessibilityRole="radiogroup" accessibilityLabel="Their native language">
-              {nativeChoices.map((language) => {
-                const selected = language.toLowerCase() === draftNative.toLowerCase();
-                return (
-                  <Pressable
-                    key={language || "all"}
-                    onPress={() => setDraftNative(language)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected, checked: selected }}
-                    style={[styles.pill, selected && styles.pillSelected]}
-                  >
-                    <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
-                      {language ? languageLabel(language) : "All languages"}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            {theySpeakOptions.length ? (
+              <>
+                <Text style={styles.label} accessibilityRole="header">They speak</Text>
+                <View style={styles.pillRow}>
+                  {theySpeakOptions.map((language) =>
+                    chip(language, languageLabel(language), isLanguageOn(draft.theySpeak, language), () =>
+                      update({ theySpeak: toggleLanguage(draft.theySpeak, language, theySpeakOptions) })
+                    )
+                  )}
+                </View>
+              </>
+            ) : null}
+            {theyLearnOptions.length ? (
+              <>
+                <Text style={styles.label} accessibilityRole="header">They’re learning</Text>
+                <View style={styles.pillRow}>
+                  {theyLearnOptions.map((language) =>
+                    chip(language, languageLabel(language), isLanguageOn(draft.theyLearn, language), () =>
+                      update({ theyLearn: toggleLanguage(draft.theyLearn, language, theyLearnOptions) })
+                    )
+                  )}
+                </View>
+              </>
+            ) : null}
+            <Text style={styles.label} accessibilityRole="header">Their level in your language</Text>
+            <View style={styles.pillRow}>
+              {LEVEL_FILTER_OPTIONS.map((option) => chip(option.value || "any", option.label, draft.level === option.value, () => update({ level: option.value })))}
             </View>
-            <Text style={styles.hint}>From the profiles loaded so far.</Text>
-
-            <Text style={styles.label}>{levelTitle}</Text>
-            <View style={styles.pillRow} accessibilityRole="radiogroup" accessibilityLabel={levelTitle}>
-              {LEVEL_OPTIONS.map((entry) => {
-                const selected = draftLevel === entry;
-                const disabled = !viewerLanguage && entry !== "";
-                return (
-                  <Pressable
-                    key={entry || "any"}
-                    onPress={() => setDraftLevel(entry)}
-                    disabled={disabled}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected, checked: selected, disabled }}
-                    style={[styles.pill, selected && styles.pillSelected, disabled && styles.pillDisabled]}
-                  >
-                    <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{entry ? languageLabel(entry) : "Any"}</Text>
-                  </Pressable>
-                );
-              })}
+            <Text style={styles.label} accessibilityRole="header">In “More people”, include</Text>
+            {INCLUDE_GROUPS.map((group) => (
+              <View key={group} style={styles.switchRow}>
+                <Text style={styles.switchLabel}>{INCLUDE_LABELS[group]}</Text>
+                <Switch
+                  value={draft.include[group]}
+                  onValueChange={(value) => update({ include: { ...draft.include, [group]: value } })}
+                  accessibilityLabel={INCLUDE_LABELS[group]}
+                  trackColor={{ true: warm.action, false: warm.lineWarm }}
+                  thumbColor={warm.paper}
+                />
+              </View>
+            ))}
+            <Text style={styles.label} accessibilityRole="header">Sort by</Text>
+            <View style={styles.pillRow}>
+              {SORT_OPTIONS.map((option) => chip(option.value, option.label, draft.sort === option.value, () => update({ sort: option.value })))}
             </View>
-            {!viewerLanguage ? <Text style={styles.hint}>Add your native language to filter by level.</Text> : null}
+            <Text style={styles.hint}>Perfect exchanges always show your best fit first.</Text>
           </ScrollView>
           <View style={styles.footer}>
             <Pressable
-              onPress={() => {
-                setDraftNative("");
-                setDraftLevel("");
-                onReset();
-              }}
+              onPress={() => setDraft(DEFAULT_PANEL_FILTERS)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.footerButton, styles.resetButton, pressed && styles.pressed]}
             >
               <Text style={styles.resetText}>Reset</Text>
             </Pressable>
             <Pressable
-              onPress={() => onApply({ nativeFilter: draftNative, level: draftLevel })}
+              onPress={() => onApply(draft)}
               accessibilityRole="button"
               style={({ pressed }) => [styles.footerButton, styles.applyButton, pressed && styles.pressed]}
             >
-              <Text style={styles.applyText}>Show people</Text>
-              <Ionicons name="arrow-forward" size={16} color={warm.onAction} />
+              <Text style={styles.applyText}>{showLabel}</Text>
             </Pressable>
           </View>
         </SafeAreaView>
@@ -123,125 +161,27 @@ export function PeopleFilterSheet({ visible, onClose, nativeFilter, level, langu
 
 const createStyles = (warm: WarmColors) =>
   StyleSheet.create({
-    backdrop: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: warm.scrim,
-    },
-    sheet: {
-      maxHeight: "82%",
-      backgroundColor: warm.paper,
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      paddingHorizontal: 20,
-      paddingTop: 10,
-    },
-    handle: {
-      alignSelf: "center",
-      width: 40,
-      height: 5,
-      borderRadius: 999,
-      backgroundColor: warm.lineWarm,
-      marginBottom: 6,
-    },
-    heading: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    title: {
-      color: warm.ink,
-      fontSize: 22,
-      fontFamily: fontFamilies.displayBold,
-    },
-    closeButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    body: {
-      paddingBottom: 8,
-    },
-    label: {
-      color: warm.ink,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-      marginTop: 14,
-      marginBottom: 10,
-    },
-    hint: {
-      color: warm.mutedInk,
-      fontSize: 12,
-      marginTop: 8,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    pillRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    pill: {
-      minHeight: 44,
-      justifyContent: "center",
-      paddingHorizontal: 16,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: warm.lineWarm,
-      backgroundColor: warm.secondary,
-    },
-    pillSelected: {
-      backgroundColor: warm.sage,
-      borderColor: warm.teal,
-    },
-    pillDisabled: {
-      opacity: 0.45,
-    },
-    pillText: {
-      color: warm.ink,
-      fontSize: 13,
-      fontFamily: fontFamilies.bodySemiBold,
-    },
-    pillTextSelected: {
-      color: warm.teal,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    footer: {
-      flexDirection: "row",
-      gap: 10,
-      paddingTop: 12,
-      paddingBottom: 14,
-    },
-    footerButton: {
-      minHeight: 48,
-      borderRadius: 999,
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "row",
-      gap: 8,
-    },
-    resetButton: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: warm.lineWarm,
-      backgroundColor: warm.secondary,
-    },
-    resetText: {
-      color: warm.ink,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    applyButton: {
-      flex: 1.6,
-      backgroundColor: warm.action,
-    },
-    applyText: {
-      color: warm.onAction,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    pressed: {
-      opacity: 0.85,
-    },
+    backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: warm.scrim },
+    sheet: { maxHeight: "88%", backgroundColor: warm.paper, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 10 },
+    handle: { alignSelf: "center", width: 40, height: 5, borderRadius: 999, backgroundColor: warm.lineWarm, marginBottom: 6 },
+    heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    title: { color: warm.ink, fontSize: 22, fontFamily: fontFamilies.displayBold },
+    closeButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+    body: { paddingBottom: 8 },
+    label: { color: warm.ink, fontSize: 14, fontFamily: fontFamilies.bodyExtraBold, marginTop: 16, marginBottom: 10 },
+    hint: { color: warm.mutedInk, fontSize: 12, marginTop: 8, fontFamily: fontFamilies.bodyMedium },
+    pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    pill: { minHeight: 44, justifyContent: "center", paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: warm.lineWarm, backgroundColor: warm.secondary },
+    pillSelected: { backgroundColor: warm.sage, borderColor: warm.teal },
+    pillText: { color: warm.ink, fontSize: 13, fontFamily: fontFamilies.bodySemiBold },
+    pillTextSelected: { color: warm.teal, fontFamily: fontFamilies.bodyBold },
+    switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 48 },
+    switchLabel: { flex: 1, color: warm.ink, fontSize: 14, lineHeight: 20, fontFamily: fontFamilies.bodySemiBold },
+    footer: { flexDirection: "row", gap: 10, paddingTop: 12, paddingBottom: 14 },
+    footerButton: { minHeight: 48, borderRadius: 999, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+    resetButton: { flex: 1, borderWidth: 1, borderColor: warm.lineWarm, backgroundColor: warm.secondary },
+    resetText: { color: warm.ink, fontSize: 14, fontFamily: fontFamilies.bodyBold },
+    applyButton: { flex: 1.6, backgroundColor: warm.action },
+    applyText: { color: warm.onAction, fontSize: 14, fontFamily: fontFamilies.bodyBold },
+    pressed: { opacity: 0.85 },
   });
