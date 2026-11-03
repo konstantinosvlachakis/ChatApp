@@ -26,6 +26,8 @@ const MessageInput = ({
   editingMessage = null,
   replyingMessage = null,
   disabled = false,
+  // Bumped by the chat when it hands over a draft (e.g. an opening line): reload it.
+  draftVersion = 0,
 }) => {
   const draftStorageKey = draftStorageKeyFor(conversationId);
   const [message, setMessage] = useState(() => localStorage.getItem(draftStorageKey) || "");
@@ -113,7 +115,7 @@ const MessageInput = ({
         input.setSelectionRange?.(draft.length, draft.length);
       });
     }
-  }, [conversationId, draftStorageKey]);
+  }, [conversationId, draftStorageKey, draftVersion]);
 
   useEffect(() => {
     if (editingMessage) {

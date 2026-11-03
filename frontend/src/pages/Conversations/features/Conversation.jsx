@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ChatOpeners from "./ChatOpeners";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -384,6 +385,8 @@ const Conversation = ({
   matchedSearchMessageIds = [],
   activeSearchMessageId = null,
   unreadAnchorMessageId = null,
+  conversationId = null,
+  onPickOpener = null,
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
   const [copyFeedback, setCopyFeedback] = useState("");
@@ -744,7 +747,11 @@ const Conversation = ({
           );
         })
       ) : (
-        <p className="cv-messages-status">No messages yet. Say hello!</p>
+        conversationId && onPickOpener ? (
+          <ChatOpeners conversationId={conversationId} onPick={onPickOpener} />
+        ) : (
+          <p className="cv-messages-status">No messages yet. Say hello!</p>
+        )
       )}
 
       {messageActionsMenu && (

@@ -1,4 +1,4 @@
-import React, { useMemo, type ReactNode, type RefObject } from "react";
+import React, { useCallback, useMemo, type ReactNode, type RefObject } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,6 +20,7 @@ import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { ChatStyles } from "../../components/chat/chatStyles";
 import { Composer, type ComposerHandle } from "../../components/chat/Composer";
+import { ChatOpeners } from "../../components/chat/ChatOpeners";
 import type { PickedAttachment } from "../../components/chat/attachments";
 import { unreadBadgeText } from "../../components/chat/conversationList";
 import { fontFamilies } from "../../theme/typography";
@@ -92,6 +93,8 @@ type ChatRoomViewProps = {
   onJumpToLatest: () => void;
   // Composer
   composerRef: RefObject<ComposerHandle | null>;
+  /** The open conversation (empty chats load opening-line ideas for it). */
+  conversationId: number;
   currentUserId?: number;
   replyTarget: ChatMessage | null;
   sending: boolean;
@@ -140,6 +143,8 @@ export function ChatRoomView(props: ChatRoomViewProps) {
   );
   const listFooter = useMemo(() => <View style={styles.footerSpacer} />, [styles.footerSpacer]);
   const otherName = props.otherUser.username;
+  const { conversationId, composerRef } = props;
+  const pickOpener = useCallback((line: string) => composerRef.current?.setDraft(line), [composerRef]);
   const listEmpty = useMemo(
     () => (
       <View style={styles.empty}>
@@ -153,9 +158,10 @@ export function ChatRoomView(props: ChatRoomViewProps) {
           Start with a greeting in the language you’re practising — double-tap any message they send to
           translate it.
         </Text>
+        <ChatOpeners conversationId={conversationId} warm={warm} onPick={pickOpener} />
       </View>
     ),
-    [otherName, styles]
+    [otherName, styles, conversationId, warm, pickOpener]
   );
 
   return (

@@ -83,6 +83,7 @@ from .throttles import (
     UPLOAD_THROTTLES,
     AuthRateThrottle,
     BlockRateThrottle,
+    ChatOpenersRateThrottle,
     MessageSendDailyRateThrottle,
     MessageSendRateThrottle,
     PeopleRateThrottle,
@@ -2601,6 +2602,37 @@ class ConversationListView(APIView):
             bump_conversation_list_cache_version(participant.id)
 
         return Response({"id": conversation.id})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ChatOpenersRateThrottle])
+def conversation_openers_view(request, conversation_id):
+    """Three opening lines for an empty chat: {"openers": [str], "source": "ai"|"template"}.
+
+    AI lines are cached per chat and viewer and capped per user and globally; unverified
+    accounts and AI failures get the rule-based lines (no 403, so the chat doesn't prompt).
+    """
+    from .openers import conversation_openers
+
+    conversation = get_object_or_404(
+        Conversation.objects.select_related("sender", "receiver"), id=conversation_id
+    )
+    if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+        return error_response(
+            "You are not a participant in this conversation.", "not_participant", status.HTTP_403_FORBIDDEN
+        )
+    partner = conversation.receiver if conversation.sender_id == request.user.id else conversation.sender
+    blocked_by_me, blocked_me = get_block_state(request.user.id, partner.id)
+    lines, source = conversation_openers(
+        conversation.id,
+        request.user,
+        partner,
+        allow_ai=bool(request.user.email_verified) and not (blocked_by_me or blocked_me),
+        # The Gemini call can take seconds; don't hold a pooled connection for it.
+        before_ai=release_db_connection,
+    )
+    return Response({"openers": lines, "source": source})
 
 
 @api_view(["PATCH"])

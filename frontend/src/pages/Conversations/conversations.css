@@ -232,6 +232,19 @@
 .cv-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 24px; background: var(--lv-paper); }
 .cv-messages-status { padding: 16px; color: var(--lv-muted-ink); font-size: 13px; text-align: center; }
 
+/* Empty-chat ideas (ChatOpeners): centred card with three tappable opening lines. */
+.cv-openers { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 520px; margin: auto; padding: 28px 16px; text-align: center; }
+.cv-openers-icon { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: 4px; border-radius: 50%; background: var(--lv-peach); color: var(--lv-peach-ink); }
+.cv-openers h2 { font-family: var(--lv-font-display); font-size: 18px; font-weight: 700; color: var(--lv-ink); }
+.cv-openers > p { color: var(--lv-muted-ink); font-size: 13px; line-height: 1.55; }
+.cv-openers-list { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 12px 0 0; padding: 0; list-style: none; }
+.cv-opener { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--lv-line-warm); border-radius: 16px; background: var(--lv-paper); color: var(--lv-ink); font-size: 14px; line-height: 1.5; text-align: left; transition: border-color .15s, background-color .15s; }
+.cv-opener svg { flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; color: var(--lv-peach-ink); }
+.cv-opener:hover { border-color: var(--lv-peach-strong); background: var(--lv-peach-soft); }
+.cv-opener:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+.cv-opener-skeleton { display: block; height: 46px; border-radius: 16px; background: var(--lv-cream-deep); }
+@media (prefers-reduced-motion: reduce) { .cv-opener { transition: none; } }
+
 /* Pinned bar */
 .cv-pinned { position: sticky; top: 0; z-index: 20; display: flex; justify-content: center; padding-top: 4px; margin-bottom: 8px; }
 .cv-pinned-inner { position: relative; width: 100%; max-width: 480px; }

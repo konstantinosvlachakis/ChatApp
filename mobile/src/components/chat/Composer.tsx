@@ -23,6 +23,8 @@ export type ComposerHandle = {
   /** Focuses the input with the cursor at the end (used after swipe/double-tap to reply). */
   activate: () => void;
   isFocused: () => boolean;
+  /** Replaces the text with `text` and focuses the input (e.g. an empty-chat opening line). */
+  setDraft: (text: string) => void;
 };
 
 type ComposerProps = {
@@ -98,6 +100,11 @@ export const Composer = React.memo(
       () => ({
         activate: activateMessageInput,
         isFocused: () => Boolean(messageInputRef.current?.isFocused()),
+        setDraft: (text: string) => {
+          messageTextRef.current = text;
+          setMessageText(text);
+          activateMessageInput();
+        },
       }),
       [activateMessageInput]
     );

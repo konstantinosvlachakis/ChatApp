@@ -1530,6 +1530,7 @@ export function ConversationsScreen() {
           jumpUnreadCount={jumpUnreadCount}
           onJumpToLatest={jumpToLatest}
           composerRef={composerRef}
+          conversationId={selectedConversation.id}
           currentUserId={currentUserId}
           replyTarget={replyTarget}
           sending={sending}
