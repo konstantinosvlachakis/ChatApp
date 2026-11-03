@@ -18,11 +18,13 @@ import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
+  DEFAULT_PEOPLE_SEGMENT,
   activeFilterCount,
   filterLoadedPeople,
   mergePeoplePages,
   nativeLanguageOptions,
-  splitPerfectMatches,
+  peopleSections,
+  viewerExchangeLanguages,
   type PeopleLevel,
   type PeopleSegment,
 } from "../features/peopleMatching";
@@ -49,10 +51,10 @@ export function CommunityScreen() {
   const warm = warmColors(isDark);
   const styles = useMemo(() => createStyles(warm), [warm]);
   const viewerLanguage = user?.native_language || "";
-  const viewerPracticing = user?.languages_practicing || [];
+  const exchangeLanguages = useMemo(() => viewerExchangeLanguages(user), [user]);
 
   // Server query.
-  const [segment, setSegment] = useState<PeopleSegment>("all");
+  const [segment, setSegment] = useState<PeopleSegment>(DEFAULT_PEOPLE_SEGMENT);
   const [level, setLevel] = useState<PeopleLevel>("");
   const [reloadKey, setReloadKey] = useState(0);
   // Client-side filters over loaded profiles.
@@ -134,6 +136,9 @@ export function CommunityScreen() {
     if (!prefillLanguage) return;
     setNativeFilter(String(prefillLanguage));
     setSearch("");
+    // The default Perfect exchange tab would hide one-way native speakers.
+    changeServerFilter("teaches_me", level);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.fromMissionAt, route.params?.prefillLanguage]);
 
   const changeServerFilter = (nextSegment: PeopleSegment, nextLevel: PeopleLevel) => {
@@ -163,16 +168,19 @@ export function CommunityScreen() {
 
   const languageOptions = useMemo(() => nativeLanguageOptions(profiles, nativeFilter), [profiles, nativeFilter]);
   const filtered = useMemo(() => filterLoadedPeople(profiles, search, nativeFilter), [profiles, search, nativeFilter]);
-  const { perfect, remaining } = useMemo(() => splitPerfectMatches(filtered), [filtered]);
-  const featured = perfect.length ? undefined : remaining[0];
-  const morePeople = useMemo(() => perfect.length ? remaining : remaining.slice(1), [perfect, remaining]);
+  // Perfect exchange: the rail (+ further mutual exchanges below it), never one-way matches.
+  // Every other segment: a plain card list.
+  const { rail: perfect, list: morePeople } = useMemo(() => peopleSections(filtered, segment), [filtered, segment]);
+  const perfectView = segment === "reciprocal";
+  const visibleCount = perfect.length + morePeople.length;
   const filterCount = activeFilterCount(nativeFilter, level);
-  const anythingToClear = filterCount > 0 || segment !== "all" || search.trim().length > 0;
+  const clientFiltered = filterCount > 0 || search.trim().length > 0;
+  const anythingToClear = clientFiltered || segment !== DEFAULT_PEOPLE_SEGMENT;
 
   const clearFilters = () => {
     setSearch("");
     setNativeFilter("");
-    changeServerFilter("all", "");
+    changeServerFilter(DEFAULT_PEOPLE_SEGMENT, "");
   };
 
   const applySheet = (next: { nativeFilter: string; level: PeopleLevel }) => {
@@ -231,13 +239,13 @@ export function CommunityScreen() {
   const firstLoad = loading && profiles.length === 0;
   const countText = firstLoad
     ? "Finding people…"
-    : `${filtered.length}${hasNext ? "+" : ""} ${filtered.length === 1 ? "person" : "people"} to meet`;
+    : `${visibleCount}${hasNext ? "+" : ""} ${perfectView ? (visibleCount === 1 ? "perfect exchange" : "perfect exchanges") : `${visibleCount === 1 ? "person" : "people"} to meet`}`;
   const header = (
     <View>
       <PeopleDiscoveryHeader
         warm={warm}
-        nativeLanguage={viewerLanguage}
-        practicingLanguages={viewerPracticing}
+        spokenLanguages={exchangeLanguages.spoken.map((entry) => entry.language)}
+        practicingLanguages={exchangeLanguages.practising.map((entry) => entry.language)}
         search={search}
         onSearchChange={setSearch}
         segment={segment}
@@ -258,29 +266,17 @@ export function CommunityScreen() {
           onViewProfile={viewProfile}
         />
       ) : null}
-      {featured ? (
-        <ExchangeCard
-          key={`featured-${featured.username}`}
-          profile={featured}
-          featured
-          viewerLanguage={viewerLanguage}
-          busy={Boolean(startingUsername)}
-          starting={startingUsername === featured.username}
-          onSayHello={sayHello}
-          onViewProfile={viewProfile}
-        />
-      ) : null}
-      {morePeople.length > 0 ? (
+      {perfectView && perfect.length > 0 && morePeople.length > 0 ? (
         <View style={styles.moreHeading}>
-          <Text style={styles.moreTitle} accessibilityRole="header">More people to meet</Text>
-          <Text style={styles.moreSubtitle}>A new perspective in every conversation</Text>
+          <Text style={styles.moreTitle} accessibilityRole="header">More perfect exchanges</Text>
+          <Text style={styles.moreSubtitle}>Every one of them is a two-way exchange</Text>
         </View>
       ) : null}
     </View>
   );
 
   let emptyState: React.ReactElement | null = null;
-  if (filtered.length === 0) {
+  if (visibleCount === 0) {
     if (firstLoad) {
       emptyState = (
         <View style={styles.skeleton} accessibilityLabel="Finding your next connection" accessibilityRole="progressbar">
@@ -303,6 +299,24 @@ export function CommunityScreen() {
           <Text style={styles.panelText}>{error}</Text>
           <Pressable style={styles.primaryButton} onPress={() => setReloadKey((value) => value + 1)} accessibilityRole="button">
             <Text style={styles.primaryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    } else if (perfectView && !clientFiltered) {
+      emptyState = (
+        <View style={styles.panel}>
+          <Text style={styles.panelIcon} accessibilityElementsHidden importantForAccessibility="no">↔</Text>
+          <Text style={styles.panelTitle}>No perfect exchanges yet</Text>
+          <Text style={styles.panelText}>
+            {hasNext
+              ? "None in the profiles loaded so far. Meet more people below."
+              : "Nobody right now is native in a language you practise and learning one you speak. Native speakers of your languages are a great place to start."}
+          </Text>
+          <Pressable style={styles.primaryButton} onPress={() => changeServerFilter("teaches_me", level)} accessibilityRole="button">
+            <Text style={styles.primaryButtonText}>See native speakers</Text>
+          </Pressable>
+          <Pressable style={styles.textButton} onPress={() => navigation.navigate("Profile")} accessibilityRole="button">
+            <Text style={styles.textButtonText}>Edit languages</Text>
           </Pressable>
         </View>
       );

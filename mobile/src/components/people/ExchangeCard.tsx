@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, useWindowDimensi
 import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../../config/api";
 import { useTheme } from "../../context/ThemeContext";
-import { describeExchange, initialsFor, matchBadge, matchRelationship } from "../../features/peopleMatching";
+import { describeExchange, initialsFor, matchBadge, matchExplanation, matchRelationship } from "../../features/peopleMatching";
 import { fontFamilies } from "../../theme/typography";
 import { warmColors, type WarmColors } from "../../theme/warm";
 import type { PeopleCard } from "../../types";
@@ -47,6 +47,7 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
   const showImage = Boolean(portrait) && failedUri !== portrait;
   const copy = describeExchange(profile, viewerLanguage, featured);
   const relationship = matchRelationship(profile.match);
+  const explanation = featured ? matchExplanation(profile) : [];
   const viewLabel = `View ${profile.username}'s profile`;
 
 
@@ -104,6 +105,15 @@ function ExchangeCardBase({ profile, featured = false, viewerLanguage, busy, sta
           </View>
         ) : null}
       </View>
+
+      {explanation.length ? (
+        <View style={styles.explanation}>
+          <Text style={styles.explanationTitle} accessibilityRole="header">Why you'll click</Text>
+          {explanation.map((line) => (
+            <Text key={line} style={styles.explanationLine}>{line}</Text>
+          ))}
+        </View>
+      ) : null}
 
       <View style={styles.goalBlock}>
         <Ionicons name="chatbubbles-outline" size={17} color={warm.teal} style={styles.goalIcon} />
@@ -171,6 +181,24 @@ const createStyles = (warm: WarmColors) =>
       paddingHorizontal: 12,
       paddingVertical: 8,
       marginBottom: 14,
+    },
+    explanation: {
+      marginTop: 12,
+      padding: 12,
+      gap: 4,
+      borderRadius: 18,
+      backgroundColor: warm.sage,
+    },
+    explanationTitle: {
+      color: warm.teal,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyExtraBold,
+    },
+    explanationLine: {
+      color: warm.ink,
+      fontSize: 13,
+      lineHeight: 19,
+      fontFamily: fontFamilies.bodySemiBold,
     },
     matchBadgeText: {
       color: warm.teal,

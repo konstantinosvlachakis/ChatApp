@@ -124,7 +124,9 @@ PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
 PROFILE_LIST_CACHE_TIMEOUT_SECONDS = 30
 PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
 PROFILE_LIST_MAX_PAGE_SIZE = 100
-PROFILE_MATCH_MODES = {"all", "reciprocal", "teaches_me"}
+# all: everyone ranked by score; reciprocal: Perfect exchange; teaches_me: native
+# speakers of a language I practise; learns_mine: people practising a language I speak.
+PROFILE_MATCH_MODES = {"all", "reciprocal", "teaches_me", "learns_mine"}
 PRACTICE_LEVELS = {"beginner", "intermediate", "advanced", "fluent"}
 PROFILE_CACHE_VERSION_KEY_TEMPLATE = "profile:version:user:{user_id}"
 PROFILE_CACHE_TIMEOUT_SECONDS = 60 * 5
@@ -616,35 +618,114 @@ def get_blocked_user_ids(user_id):
     return blocked_ids
 
 
+# Practice levels at which a practised language counts as one the user "speaks"
+# (alongside their native language) for partner matching.
+SPOKEN_PRACTICE_LEVELS = {"advanced", "fluent"}
+# Language values used inside match queries (JSON text match on the quoted value).
+MATCH_LANGUAGE_PATTERN = re.compile(r"[a-z][a-z \-]{0,49}")
+
+
+def _normalized_language(value):
+    return str(value).strip().lower() if isinstance(value, str) else ""
+
+
+def partner_language_sets(user):
+    """Return (spoken, learning, spoken_levels) for partner matching.
+
+    spoken: the native language, then every practised language at Advanced or
+    Fluent (``Profile.practice_language_levels``, keys matched case-insensitively).
+    learning: every practised language at any level (an Advanced/Fluent learner
+    still wants native speakers); falls back to ``base_translate_language``.
+    spoken_levels: {language: "native" | "advanced" | "fluent"} for ``spoken``.
+    All values are lowercase, de-duplicated and in profile order.
+    """
+    levels = {}
+    raw_levels = getattr(user, "practice_language_levels", None) or {}
+    if isinstance(raw_levels, dict):
+        for key, value in raw_levels.items():
+            language = _normalized_language(key)
+            if language and language not in levels:
+                levels[language] = str(value or "").strip().lower()
+
+    learning = []
+    for language in getattr(user, "languages_practicing", None) or []:
+        normalized = _normalized_language(language)
+        if normalized and normalized not in learning:
+            learning.append(normalized)
+    if not learning:
+        fallback_language = _normalized_language(user.base_translate_language or "")
+        if fallback_language:
+            learning = [fallback_language]
+
+    spoken_levels = {}
+    native_language = _normalized_language(user.native_language or "")
+    if native_language:
+        spoken_levels[native_language] = "native"
+    for language in learning:
+        if language not in spoken_levels and levels.get(language) in SPOKEN_PRACTICE_LEVELS:
+            spoken_levels[language] = levels[language]
+    return list(spoken_levels), learning, spoken_levels
+
+
 def build_partner_match_filters(user):
     """Return (teaches_me_q, learns_mine_q, native_language) for partner matching.
 
-    teaches_me: the other person is native in a language the user practices.
-    learns_mine: the other person practices the user's native language.
+    teaches_me: the other person is native in a language the user practises
+    (any level).
+    learns_mine: the other person practises (any level) a language the user
+    speaks: their native language or one they practise at Advanced/Fluent.
     """
-    practicing_languages = [
-        str(language).strip().lower()
-        for language in (getattr(user, "languages_practicing", []) or [])
-        if isinstance(language, str) and str(language).strip()
-    ]
-    if not practicing_languages:
-        fallback_language = (user.base_translate_language or "").strip().lower()
-        if fallback_language:
-            practicing_languages = [fallback_language]
+    spoken, learning, _ = partner_language_sets(user)
 
     teaches_me_q = Q(pk__in=[])
-    for language in practicing_languages:
+    for language in learning:
         teaches_me_q |= Q(native_language__iexact=language)
 
-    native_language = (user.native_language or "").strip().lower()
-    if not re.fullmatch(r"[a-z][a-z \-]{0,49}", native_language):
-        native_language = ""
     learns_mine_q = Q(pk__in=[])
-    if native_language:
-        # JSON text match on the quoted value so "english" doesn't match "old english".
-        learns_mine_q = Q(languages_practicing__icontains=f'"{native_language}"')
+    for language in spoken:
+        if MATCH_LANGUAGE_PATTERN.fullmatch(language):
+            # JSON text match on the quoted value so "english" doesn't match
+            # "old english". icontains is case-insensitive on both backends
+            # (SQLite LIKE for ASCII, UPPER() on Postgres' jsonb::text); the
+            # pattern keeps values ASCII so JSON escaping can't differ.
+            learns_mine_q |= Q(languages_practicing__icontains=f'"{language}"')
+
+    native_language = _normalized_language(user.native_language or "")
+    if not MATCH_LANGUAGE_PATTERN.fullmatch(native_language):
+        native_language = ""
 
     return teaches_me_q, learns_mine_q, native_language
+
+
+def describe_partner_match(profile, spoken, learning, spoken_levels):
+    """Which language each side brings, for the People card's explanation.
+
+    they_teach: their native language when it is one the viewer practises.
+    they_learn: the first language they practise that the viewer speaks.
+    you_speak: how the viewer speaks ``they_learn`` (native/advanced/fluent).
+    """
+    native = (profile.native_language or "").strip()
+    they_teach = native if native and native.lower() in learning else None
+    spoken_set = set(spoken)
+    they_learn = None
+    for language in profile.languages_practicing or []:
+        if isinstance(language, str) and language.strip().lower() in spoken_set:
+            they_learn = language.strip()
+            break
+    return {
+        "they_teach": they_teach,
+        "they_learn": they_learn,
+        "you_speak": spoken_levels.get(they_learn.lower()) if they_learn else None,
+    }
+
+
+def partner_language_cache_token(spoken_levels, learning, native_language):
+    """Short digest of the viewer's language profile for the People list cache key,
+    so editing languages or levels is reflected at once for that viewer."""
+    raw = json.dumps(
+        [sorted(spoken_levels.items()), learning, native_language], sort_keys=True
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
 def users_are_blocked(user_a_id, user_b_id):
@@ -1107,9 +1188,18 @@ def profile_data_view(request):
         page_size = PROFILE_LIST_DEFAULT_PAGE_SIZE
     page_size = max(1, min(page_size, PROFILE_LIST_MAX_PAGE_SIZE))
 
+    my_spoken, my_learning, my_spoken_levels = partner_language_sets(request.user)
+    teaches_me_q, learns_mine_q, my_native_language = build_partner_match_filters(
+        request.user
+    )
     cache_version = get_profile_list_cache_version()
+    # `lang:` = the viewer's spoken/learning sets: editing their own languages or
+    # levels takes effect at once without bumping everyone's list version.
+    language_token = partner_language_cache_token(
+        my_spoken_levels, my_learning, my_native_language
+    )
     cache_key = (
-        f"profile_data:v{cache_version}:user:{request.user.id}:"
+        f"profile_data:v{cache_version}:user:{request.user.id}:lang:{language_token}:"
         f"page:{page}:size:{page_size}:match:{match_mode}:level:{level_filter or '-'}"
     )
     cached_payload = cache.get(cache_key)
@@ -1121,9 +1211,6 @@ def profile_data_view(request):
     if blocked_user_ids:
         profiles_qs = profiles_qs.exclude(id__in=blocked_user_ids)
 
-    teaches_me_q, learns_mine_q, my_native_language = build_partner_match_filters(
-        request.user
-    )
     profiles_qs = profiles_qs.annotate(
         teaches_me=Case(When(teaches_me_q, then=Value(1)), default=Value(0)),
         learns_mine=Case(When(learns_mine_q, then=Value(1)), default=Value(0)),
@@ -1133,6 +1220,8 @@ def profile_data_view(request):
         profiles_qs = profiles_qs.filter(teaches_me=1)
     elif match_mode == "reciprocal":
         profiles_qs = profiles_qs.filter(teaches_me=1, learns_mine=1)
+    elif match_mode == "learns_mine":
+        profiles_qs = profiles_qs.filter(learns_mine=1)
     if level_filter and my_native_language:
         profiles_qs = profiles_qs.filter(
             **{f"practice_language_levels__{my_native_language}": level_filter}
@@ -1181,6 +1270,9 @@ def profile_data_view(request):
                 "learns_mine": bool(profile.learns_mine),
                 "reciprocal": bool(profile.teaches_me and profile.learns_mine),
                 "score": profile.match_score,
+                **describe_partner_match(
+                    profile, my_spoken, my_learning, my_spoken_levels
+                ),
             },
         }
         for profile in page_obj

@@ -41,14 +41,26 @@ describe("buildMatchFacts", () => {
   test("lists match type, native language and their level in the viewer's language", () => {
     expect(buildMatchFacts(base, "english")).toEqual([
       { label: "Match", value: "Perfect exchange" },
-      { label: "Speaks", value: "Spanish (native)" },
+      { label: "They speak", value: "Spanish (native)" },
+      { label: "They're learning", value: "English, your native language" },
       { label: "Their English", value: "Intermediate" },
     ]);
   });
 
+  test("uses the server's they_learn / you_speak for a language the viewer speaks fluently", () => {
+    const match = { ...base.match!, theyTeach: "spanish", theyLearn: "french", youSpeak: "fluent" as const };
+    expect(buildMatchFacts({ ...base, match, practiceLanguageLevels: { french: "beginner" } }, "greek")).toEqual([
+      { label: "Match", value: "Perfect exchange" },
+      { label: "They speak", value: "Spanish (native)" },
+      { label: "They're learning", value: "French, which you speak fluently" },
+      { label: "Their French", value: "Beginner" },
+    ]);
+    expect(buildConversationStarters({ ...base, match }, "greek")).toContain("I speak fluent French. Want to practice together?");
+  });
+
   test("omits unknown match types and levels", () => {
-    expect(buildMatchFacts({ ...base, match: undefined, practiceLanguageLevels: {} }, "english")).toEqual([
-      { label: "Speaks", value: "Spanish (native)" },
+    expect(buildMatchFacts({ ...base, match: undefined, practiceLanguageLevels: {} }, "german")).toEqual([
+      { label: "They speak", value: "Spanish (native)" },
     ]);
   });
 });

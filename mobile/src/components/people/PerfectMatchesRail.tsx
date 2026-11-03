@@ -23,9 +23,9 @@ export function PerfectMatchesRail({ profiles, warm, viewerLanguage, startingUse
     <View style={styles.section}>
       <View style={styles.heading}>
         <Text style={styles.eyebrow}>BETTER TOGETHER</Text>
-        <Text style={styles.title} accessibilityRole="header">Perfect matches</Text>
-        <Text style={styles.subtitle}>You speak their language. They speak yours.</Text>
-        {profiles.length > 1 ? <Text style={styles.hint}>Swipe to meet your matches →</Text> : null}
+        <Text style={styles.title} accessibilityRole="header">Perfect exchanges</Text>
+        <Text style={styles.subtitle}>They speak a language you’re learning. They’re learning one you speak.</Text>
+        {profiles.length > 1 ? <Text style={styles.hint}>Swipe to meet your exchanges →</Text> : null}
       </View>
       <FlatList
         horizontal

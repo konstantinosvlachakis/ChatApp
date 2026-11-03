@@ -6,7 +6,7 @@ import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineR
 import type { PartnerMatch } from "../../../components/Cards";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
-import { buildConversationStarters, buildMatchFacts } from "../utils/conversationStarters";
+import { buildConversationStarters, buildMatchFacts, languageTheyLearnFromViewer } from "../utils/conversationStarters";
 
 export interface ExchangeProfile {
   username: string;
@@ -25,6 +25,13 @@ export const languageLevel = (levels: Record<string, string>, language: string) 
   return key ? languageLabel(levels[key]) : "";
 };
 
+/** "Learning English · you speak it fluently" (compact cards, "Learning your language" tab). */
+export const learningYourLanguageLabel = (language: string, youSpeak: string) => {
+  if (!language) return "Learning your language";
+  const how = youSpeak === "native" ? "your native language" : youSpeak === "fluent" ? "you speak it fluently" : youSpeak === "advanced" ? "you speak it well" : "";
+  return how ? `Learning ${languageLabel(language)} · ${how}` : `Learning ${languageLabel(language)}`;
+};
+
 const FEATURED_PORTRAIT_PX = 176;
 const COMPACT_PORTRAIT_PX = 64;
 
@@ -36,6 +43,8 @@ interface Props {
   starting: boolean;
   /** `starter`: an opening line to prefill in the chat's composer. */
   onSayHello: (username: string, starter?: string) => void;
+  /** Image loading for the featured portrait (carousel slides after the first are lazy). */
+  imageLoading?: "eager" | "lazy";
 }
 
 export default function ExchangeProfileCard({
@@ -45,12 +54,15 @@ export default function ExchangeProfileCard({
   busy,
   starting,
   onSayHello,
+  imageLoading,
 }: Props) {
   const [imageFailed, setImageFailed] = useState(false);
   const panelId = useId();
   // Largest rendered portrait (community.css): featured 176px on desktop, compact 64px.
   const portrait = avatarImage(profile.profileImage, featured ? FEATURED_PORTRAIT_PX : COMPACT_PORTRAIT_PX);
-  const learning = profile.languagesPracticing.find((language) => language.toLowerCase() === viewerLanguage?.toLowerCase()) || profile.languagesPracticing[0];
+  // Prefer the viewer's language that they practise (server `match.they_learn`).
+  const mine = languageTheyLearnFromViewer(profile, viewerLanguage);
+  const learning = mine.language || profile.languagesPracticing[0];
   const level = learning ? languageLevel(profile.practiceLanguageLevels, learning) : "";
   const badge = profile.match?.reciprocal ? "Perfect exchange" : profile.match?.teachesMe ? "Native speaker for you" : "Meet someone new";
   const relationship = profile.match?.reciprocal
@@ -58,7 +70,7 @@ export default function ExchangeProfileCard({
     : profile.match?.teachesMe
       ? "Native speaker for you"
       : profile.match?.learnsMine
-        ? "Learning your language"
+        ? learningYourLanguageLabel(mine.language, mine.youSpeak)
         : "Open to exchange";
   const profilePath = `/people/${encodeURIComponent(profile.username)}`;
   const profileLabel = `View ${profile.username}'s profile`;
@@ -72,7 +84,7 @@ export default function ExchangeProfileCard({
         <img
           src={portrait && !imageFailed ? portrait : DEFAULT_AVATAR_URL}
           alt=""
-          loading={featured ? "eager" : "lazy"}
+          loading={imageLoading || (featured ? "eager" : "lazy")}
           decoding="async"
           onError={() => {
             if (portrait && !imageFailed) setImageFailed(true);
@@ -97,7 +109,7 @@ export default function ExchangeProfileCard({
           </p>
           {learning && (
             <p className="exchange-learning">
-              <span>{!featured && profile.match?.learnsMine && viewerLanguage && learning.toLowerCase() === viewerLanguage.toLowerCase() ? "Learning your language" : "Practicing"}</span>
+              <span>{!featured && profile.match?.learnsMine && mine.language ? (mine.youSpeak === "native" ? "Learning your language" : "Learning a language you speak") : "Practicing"}</span>
               <strong>{languageLabel(learning)}{level && <span className="exchange-level">{featured ? " · " : ""}{level}</span>}</strong>
             </p>
           )}

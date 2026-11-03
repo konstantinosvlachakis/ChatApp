@@ -8,6 +8,12 @@ interface PartnerMatch {
   teachesMe: boolean;
   learnsMine: boolean;
   reciprocal: boolean;
+  /** Their native language, when it is one the viewer practises (`match.they_teach`). */
+  theyTeach?: string;
+  /** A language they practise that the viewer speaks (`match.they_learn`). */
+  theyLearn?: string;
+  /** How the viewer speaks `theyLearn` (`match.you_speak`). */
+  youSpeak?: "native" | "advanced" | "fluent";
 }
 
 interface ProfileCardProps {

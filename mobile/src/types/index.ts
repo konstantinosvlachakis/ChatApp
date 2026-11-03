@@ -100,13 +100,19 @@ export interface Conversation {
 
 /** `match` on each People card (server-computed for the viewer). */
 export interface PeopleMatch {
-  /** Their native language is one I practice. */
+  /** Their native language is one I practise (any level). */
   teaches_me: boolean;
-  /** They practice my native language. */
+  /** They practise a language I speak (my native one, or one I practise at Advanced/Fluent). */
   learns_mine: boolean;
   /** Both of the above ("Perfect exchange"). */
   reciprocal: boolean;
   score?: number;
+  /** Their native language when it is one I practise. */
+  they_teach?: string | null;
+  /** First language they practise that I speak. */
+  they_learn?: string | null;
+  /** How I speak `they_learn`. */
+  you_speak?: "native" | "advanced" | "fluent" | null;
 }
 
 /** Item of `GET /api/profile/data` (PeopleCard in system-map). No id, bio or presence. */
