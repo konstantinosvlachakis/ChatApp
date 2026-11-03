@@ -34,3 +34,19 @@ test("featured card offers conversation starters that open the chat with the lin
   fireEvent.click(screen.getByRole("button", { name: "What's a Spanish phrase you use every day?" }));
   expect(onSayHello).toHaveBeenCalledWith("lucia", "What's a Spanish phrase you use every day?");
 });
+
+test("a one-way learner's card says which of your languages they're learning", () => {
+  render(
+    <MemoryRouter>
+      <ExchangeProfileCard
+        profile={{ ...profile, nativeLanguage: "japanese", languagesPracticing: ["french"], practiceLanguageLevels: {}, match: { teachesMe: false, learnsMine: true, reciprocal: false, theyLearn: "french", youSpeak: "fluent" } }}
+        viewerLanguage="greek"
+        busy={false}
+        starting={false}
+        onSayHello={jest.fn()}
+      />
+    </MemoryRouter>
+  );
+  expect(screen.getByText("Learning French · you speak it fluently")).toBeInTheDocument();
+  expect(screen.getByText("Learning a language you speak")).toBeInTheDocument();
+});

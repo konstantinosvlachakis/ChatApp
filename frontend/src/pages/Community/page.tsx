@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
-import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
 import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRounded";
 import { BASE_URL } from "../../constants/constants";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
@@ -11,15 +12,38 @@ import { useUser } from "../../context/UserContext";
 import { createOrGetConversation } from "./api/conversation";
 import ExchangeProfileCard, { ExchangeProfile, languageLabel, languageLevel } from "./components/ExchangeProfileCard";
 import FilterSheet from "./components/FilterSheet";
+import PerfectExchangeCarousel from "./components/PerfectExchangeCarousel";
+import { viewerExchangeLanguages } from "./utils/exchangeLanguages";
 import { saveChatDraft } from "../Conversations/utils/chatDrafts";
 import "./community.css";
 
 const PAGE_SIZE = 24;
+// Four server match modes, no overlap in meaning ("you speak" = native or Advanced/Fluent):
+// reciprocal = Perfect exchange (native in a language you practise AND practising one you
+// speak), teaches_me = native in a language you practise, learns_mine = practising a
+// language you speak, all = everyone ranked by score.
+const PERFECT_EXCHANGE = "reciprocal";
 const segments = [
-  { key: "all", label: "Best matches", Icon: AutoAwesomeRoundedIcon },
-  { key: "reciprocal", label: "Perfect exchange", Icon: SwapHorizRoundedIcon },
+  { key: PERFECT_EXCHANGE, label: "Perfect exchange", Icon: SwapHorizRoundedIcon },
   { key: "teaches_me", label: "Native speakers", Icon: RecordVoiceOverRoundedIcon },
+  { key: "learns_mine", label: "Learning your language", Icon: SchoolRoundedIcon },
+  { key: "all", label: "Everyone", Icon: PeopleAltRoundedIcon },
 ];
+/** Perfect exchanges beyond this many go in the "More perfect exchanges" grid below the carousel. */
+const CAROUSEL_LIMIT = 8;
+
+const toPartnerMatch = (match: any): ExchangeProfile["match"] => {
+  if (!match) return undefined;
+  const youSpeak = ["native", "advanced", "fluent"].includes(match.you_speak) ? match.you_speak : undefined;
+  return {
+    teachesMe: Boolean(match.teaches_me),
+    learnsMine: Boolean(match.learns_mine),
+    reciprocal: Boolean(match.reciprocal),
+    ...(typeof match.they_teach === "string" && match.they_teach ? { theyTeach: match.they_teach } : {}),
+    ...(typeof match.they_learn === "string" && match.they_learn ? { theyLearn: match.they_learn } : {}),
+    ...(youSpeak ? { youSpeak } : {}),
+  };
+};
 const levels = ["beginner", "intermediate", "advanced", "fluent"];
 
 // Accept API media paths and HTTP(S) URLs, never executable URL schemes.
@@ -40,7 +64,7 @@ export default function CommunityPage() {
   const [profiles, setProfiles] = useState<ExchangeProfile[]>([]);
   const [search, setSearch] = useState("");
   const [filterLang, setFilterLang] = useState("");
-  const [segment, setSegment] = useState("all");
+  const [segment, setSegment] = useState(PERFECT_EXCHANGE);
   const [level, setLevel] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -70,7 +94,7 @@ export default function CommunityPage() {
           practiceLanguageLevels: profile.practice_language_levels || {},
           learningGoal: profile.learning_goal || "",
           profileImage: mediaUrl(profile.profile_image_url),
-          match: profile.match ? { teachesMe: Boolean(profile.match.teaches_me), learnsMine: Boolean(profile.match.learns_mine), reciprocal: Boolean(profile.match.reciprocal) } : undefined,
+          match: toPartnerMatch(profile.match),
         }));
         if (!controller.signal.aborted) {
           setProfiles((previous) => Array.from(new Map((page === 1 ? next : [...previous, ...next]).map((profile) => [profile.username, profile])).values()));
@@ -104,14 +128,30 @@ export default function CommunityPage() {
     const query = search.trim().toLowerCase();
     return profiles.filter((profile) => (!filterLang || profile.nativeLanguage.toLowerCase() === filterLang.toLowerCase()) && (!query || [profile.username, profile.nativeLanguage, profile.learningGoal, ...profile.languagesPracticing].some((value) => value.toLowerCase().includes(query))));
   }, [profiles, search, filterLang]);
-  const [featured, ...otherProfiles] = filteredProfiles;
+  const perfectView = segment === PERFECT_EXCHANGE;
+  // Perfect exchange never mixes in one-way or unrelated people.
+  const perfectMatches = useMemo(() => (perfectView ? filteredProfiles.filter((profile) => profile.match?.reciprocal) : []), [perfectView, filteredProfiles]);
   const nativeLanguage = user?.native_language || "";
+  const exchangeLanguages = useMemo(() => viewerExchangeLanguages(user), [user]);
+  const spokenSummary = exchangeLanguages.spoken.map((entry) => languageLabel(entry.language)).join(", ");
+  const practisingSummary = exchangeLanguages.practising.length
+    ? `${languageLabel(exchangeLanguages.practising[0].language)}${exchangeLanguages.practising.length > 1 ? ` +${exchangeLanguages.practising.length - 1}` : ""}`
+    : "";
   const activeFilters = Number(Boolean(filterLang)) + Number(Boolean(level));
+  const clientFiltered = Boolean(search.trim() || filterLang);
+  const visibleCount = perfectView ? perfectMatches.length : filteredProfiles.length;
+  const countNoun = perfectView ? (visibleCount === 1 ? "perfect exchange" : "perfect exchanges") : `${visibleCount === 1 ? "person" : "people"} to meet`;
 
   const resetFilters = () => {
     setSearch("");
     setFilterLang("");
-    if (segment !== "all" || level) changeServerFilter("all", "");
+    if (segment !== PERFECT_EXCHANGE || level) changeServerFilter(PERFECT_EXCHANGE, "");
+  };
+
+  const showEveryone = () => {
+    setSearch("");
+    setFilterLang("");
+    changeServerFilter("all", "");
   };
 
   const applySheetFilters = (next: { nativeFilter: string; level: string }) => {
@@ -147,16 +187,26 @@ export default function CommunityPage() {
     <div className="people-page">
       <aside className="people-sidebar" aria-label="Your exchange and filters">
         <div className="people-mobile-exchange">
-          <div><span>Your exchange</span><strong>{nativeLanguage ? languageLabel(nativeLanguage) : "Add a native language"}<span aria-hidden="true"> ↔ </span>{user?.languages_practicing?.length ? `${languageLabel(user.languages_practicing[0])}${user.languages_practicing.length > 1 ? ` +${user.languages_practicing.length - 1}` : ""}` : "Add a practice language"}</strong></div>
+          <div><span>Your exchange</span><strong>{spokenSummary || "Add a native language"}<span aria-hidden="true"> ↔ </span>{practisingSummary || "Add a practice language"}</strong></div>
           <Link to="/profile/edit" aria-label="Edit your exchange languages">Edit ↗</Link>
         </div>
         <section className="people-exchange-summary">
           <h2>Your exchange</h2>
-          {nativeLanguage ? <div className="people-summary-language people-summary-native"><span>You speak</span><strong>{languageLabel(nativeLanguage)}</strong></div> : <Link to="/profile/edit">Add your native language</Link>}
-          {(user?.languages_practicing || []).map((language) => {
-            const currentLevel = languageLevel(user?.practice_language_levels || {}, language);
-            return <div className="people-summary-language people-summary-learning" key={language}><span>You practice</span><strong>{languageLabel(language)}{currentLevel && <small> · {currentLevel}</small>}</strong></div>;
-          })}
+          {spokenSummary ? (
+            <div className="people-summary-language people-summary-native">
+              <span>You speak</span>
+              <strong>{spokenSummary}</strong>
+            </div>
+          ) : <Link to="/profile/edit">Add your native language</Link>}
+          {exchangeLanguages.practising.length > 0 && (
+            <div className="people-summary-language people-summary-learning">
+              <span>You practise</span>
+              {exchangeLanguages.practising.map(({ language }) => {
+                const currentLevel = languageLevel(user?.practice_language_levels || {}, language);
+                return <strong key={language}>{languageLabel(language)}{currentLevel && <small> · {currentLevel}</small>}</strong>;
+              })}
+            </div>
+          )}
           {!user?.languages_practicing?.length && <Link to="/profile/edit" className="people-summary-add">Add a language to find your exchange</Link>}
           <Link to="/profile/edit" className="people-exchange-edit">Edit languages <span aria-hidden="true">↗</span></Link>
         </section>
@@ -168,7 +218,7 @@ export default function CommunityPage() {
             <label htmlFor="people-practice-level">{nativeLanguage ? `Their ${languageLabel(nativeLanguage)} level` : "Their practice level"}</label>
             <select id="people-practice-level" value={level} disabled={!nativeLanguage} onChange={(event) => changeServerFilter(segment, event.target.value)}><option value="">Any level</option>{levels.map((entry) => <option key={entry} value={entry}>{languageLabel(entry)}</option>)}</select>
             <p className="people-filter-note">Find someone you can learn with, at a pace that feels right.</p>
-            {(activeFilters > 0 || segment !== "all" || search) && <button type="button" className="people-text-button" onClick={resetFilters}>Reset filters</button>}
+            {(activeFilters > 0 || segment !== PERFECT_EXCHANGE || search) && <button type="button" className="people-text-button" onClick={resetFilters}>Reset filters</button>}
           </div>
         </section>
       </aside>
@@ -183,16 +233,26 @@ export default function CommunityPage() {
           </button>
         </div>
         <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} nativeFilter={filterLang} level={level} languageOptions={languageOptions} viewerLanguage={nativeLanguage} onApply={applySheetFilters} onReset={resetSheetFilters} />
-        <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}><entry.Icon className="people-segment-icon" aria-hidden="true" />{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${filteredProfiles.length}${hasNextPage ? "+" : ""} ${filteredProfiles.length === 1 ? "person" : "people"} to meet`}</p></div>
+        <div className="people-discovery-toolbar"><div className="people-segments" role="group" aria-label="Exchange type">{segments.map((entry) => <button type="button" key={entry.key} aria-pressed={segment === entry.key} onClick={() => { if (segment !== entry.key) changeServerFilter(entry.key, level); }}><entry.Icon className="people-segment-icon" aria-hidden="true" />{entry.label}</button>)}</div><p className="people-result-count" aria-live="polite">{loading && !profiles.length ? "Finding people…" : `${visibleCount}${hasNextPage ? "+" : ""} ${countNoun}`}</p></div>
         {conversationError && <p className="people-error" role="alert">{conversationError}</p>}
         {loading && !profiles.length ? (
           <div className="people-loading" role="status"><div className="people-loading-portrait" /><div><span /><span /><span /><p>Finding your next connection…</p></div></div>
-        ) : featured ? (
+        ) : perfectView ? (
+          perfectMatches.length > 0 ? (
+            <>
+              <PerfectExchangeCarousel profiles={perfectMatches.slice(0, CAROUSEL_LIMIT)} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} startingUsername={startingUsername} onSayHello={sayHello} />
+              {perfectMatches.length > CAROUSEL_LIMIT && <section className="people-more" aria-labelledby="people-more-matches-heading"><div className="people-section-heading"><h2 id="people-more-matches-heading">More perfect exchanges</h2><span>Every one of them is a two-way exchange</span></div><div className="people-card-grid">{perfectMatches.slice(CAROUSEL_LIMIT).map((profile) => <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />)}</div></section>}
+            </>
+          ) : !error && (clientFiltered && profiles.length > 0 ? (
+            <div className="people-empty"><span aria-hidden="true">↔</span><h2>No perfect exchanges in this search.</h2><p>Try another name or language, or clear your filters.</p><button type="button" className="people-button people-button-primary" onClick={() => { setSearch(""); setFilterLang(""); }}>Clear search and filters</button></div>
+          ) : (
+            <div className="people-empty"><span aria-hidden="true">↔</span><h2>No perfect exchanges yet</h2><p>Nobody right now is native in a language you practise and learning one you speak. Native speakers of your languages are a great place to start.</p><button type="button" className="people-button people-button-primary" onClick={() => changeServerFilter("teaches_me", level)}>See native speakers</button><Link to="/profile/edit">Edit languages</Link></div>
+          ))
+        ) : filteredProfiles.length > 0 ? (
           <>
-            <ExchangeProfileCard key={`featured-${featured.username}`} profile={featured} featured viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === featured.username} onSayHello={sayHello} />
-            {otherProfiles.length > 0 && <section className="people-more" aria-labelledby="people-more-heading"><div className="people-section-heading"><h2 id="people-more-heading">More people to meet</h2><span>A new perspective in every conversation</span></div><div className="people-card-grid">{otherProfiles.map((profile) => <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />)}</div></section>}
+            <section className="people-more people-more-only" aria-label={segments.find((entry) => entry.key === segment)?.label || "People"}><div className="people-card-grid">{filteredProfiles.map((profile) => <ExchangeProfileCard key={profile.username} profile={profile} viewerLanguage={nativeLanguage} busy={Boolean(startingUsername)} starting={startingUsername === profile.username} onSayHello={sayHello} />)}</div></section>
           </>
-        ) : !error && <div className="people-empty"><span aria-hidden="true">↔</span><h2>No people in this view yet.</h2><p>Try another language or a wider exchange filter. You might find an unexpected connection.</p><button type="button" className="people-button people-button-primary" onClick={resetFilters}>Explore all people</button><Link to="/profile/edit">Update your languages</Link></div>}
+        ) : !error && <div className="people-empty"><span aria-hidden="true">↔</span><h2>No people in this view yet.</h2><p>Try another language or a wider exchange filter. You might find an unexpected connection.</p><button type="button" className="people-button people-button-primary" onClick={showEveryone}>Explore all people</button><Link to="/profile/edit">Update your languages</Link></div>}
         {error && <div className="people-error" role="alert"><p>{error}</p><button type="button" className="people-button people-button-secondary" onClick={() => setRequestAttempt((attempt) => attempt + 1)}>Try again</button></div>}
         {hasNextPage && !error && <div className="people-load-more"><button type="button" className="people-button people-button-secondary" disabled={loading} onClick={() => setPage((previous) => previous + 1)}>{loading ? "Finding more people…" : "Meet more people"}</button><p>{profiles.length} of {totalCount} profiles loaded</p></div>}
       </section>

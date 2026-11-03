@@ -10,14 +10,17 @@ const MODE_PRESENTATION: Record<PeopleSegment, {
   icon: keyof typeof Ionicons.glyphMap;
   description: string;
 }> = {
-  all: { label: "For you", icon: "sparkles-outline", description: "Explore people for your next language exchange." },
-  reciprocal: { label: "Mutual", icon: "swap-horizontal-outline", description: "You speak their target language. They speak yours." },
+  reciprocal: { label: "Perfect", icon: "swap-horizontal-outline", description: "Native in a language you’re learning, and learning one you speak." },
   teaches_me: { label: "Native", icon: "chatbubble-ellipses-outline", description: "Meet native speakers of a language you’re learning." },
+  learns_mine: { label: "Learners", icon: "school-outline", description: "People learning a language you speak, whatever their native one." },
+  all: { label: "Everyone", icon: "people-outline", description: "Everyone, with your best exchanges first." },
 };
 
 type Props = {
   warm: WarmColors;
-  nativeLanguage: string;
+  /** Native language + languages practised at Advanced/Fluent (`viewerExchangeLanguages`). */
+  spokenLanguages: string[];
+  /** Practised languages below Advanced. */
   practicingLanguages: string[];
   search: string;
   onSearchChange: (value: string) => void;
@@ -31,7 +34,7 @@ type Props = {
 
 /** Controls stay visible without a horizontal scroller, including on narrow phones. */
 export function PeopleDiscoveryHeader({
-  warm, nativeLanguage, practicingLanguages, search, onSearchChange, segment,
+  warm, spokenLanguages, practicingLanguages, search, onSearchChange, segment,
   onSegmentChange, filterCount, onOpenFilters, onEditLanguages, countText,
 }: Props) {
   const styles = useMemo(() => createStyles(warm), [warm]);
@@ -50,7 +53,7 @@ export function PeopleDiscoveryHeader({
       <View style={styles.exchange}>
         <View style={styles.language}>
           <Text style={styles.languageCaption}>I speak</Text>
-          <Text style={styles.languageName} numberOfLines={2}>{nativeLanguage ? languageLabel(nativeLanguage) : "Add a language"}</Text>
+          <Text style={styles.languageName} numberOfLines={2}>{spokenLanguages.length ? spokenLanguages.map((language) => languageLabel(language)).join(", ") : "Add a language"}</Text>
         </View>
         <View style={styles.swapIcon} accessibilityElementsHidden importantForAccessibility="no">
           <Ionicons name="swap-horizontal-outline" size={19} color={warm.teal} />

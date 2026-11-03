@@ -1,13 +1,16 @@
 // Client-side helpers for the featured People card's "Why you'll click" panel.
 // Built only from fields the People list already returns (no extra API calls).
 
+import type { PartnerMatch } from "../../../components/Cards";
+import { youSpeakPhrase } from "./exchangeLanguages";
+
 export interface StarterProfile {
   username: string;
   nativeLanguage: string;
   languagesPracticing: string[];
   practiceLanguageLevels: Record<string, string>;
   learningGoal: string;
-  match?: { teachesMe: boolean; learnsMine: boolean; reciprocal: boolean };
+  match?: PartnerMatch;
 }
 
 export interface MatchFact {
@@ -34,19 +37,36 @@ const goalPreview = (goal: string) => {
   return `${(lastSpace > 30 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 };
 
+/**
+ * The viewer's language that they practise, and how the viewer speaks it: the server's
+ * `match.they_learn`/`you_speak` when present, else the viewer's native language.
+ */
+export function languageTheyLearnFromViewer(profile: StarterProfile, viewerLanguage = "") {
+  const practicing = profile.languagesPracticing || [];
+  const theyLearn = profile.match?.theyLearn;
+  const fromServer = theyLearn ? practicing.find((language) => same(language, theyLearn)) || theyLearn : "";
+  if (fromServer) return { language: fromServer, youSpeak: profile.match?.youSpeak || "" };
+  const native = practicing.find((language) => same(language, viewerLanguage));
+  return native ? { language: native, youSpeak: "native" } : { language: "", youSpeak: "" };
+}
+
 /** 2–3 friendly English opening lines tailored to the profile. */
 export function buildConversationStarters(profile: StarterProfile, viewerLanguage = ""): string[] {
   const native = label(profile.nativeLanguage);
   const practicing = profile.languagesPracticing || [];
-  const learningMine = practicing.find((language) => same(language, viewerLanguage));
-  const learning = learningMine || practicing[0];
+  const mine = languageTheyLearnFromViewer(profile, viewerLanguage);
+  const learning = mine.language || practicing[0];
   const starters: string[] = [];
 
   if (profile.learningGoal?.trim()) {
     starters.push(`I saw your goal: “${goalPreview(profile.learningGoal)}”. How can I help?`);
   }
-  if (learningMine && viewerLanguage) {
-    starters.push(`I'm a native ${label(viewerLanguage)} speaker. Want to practice together?`);
+  if (mine.language && mine.youSpeak === "native") {
+    starters.push(`I'm a native ${label(mine.language)} speaker. Want to practice together?`);
+  } else if (mine.language && mine.youSpeak === "fluent") {
+    starters.push(`I speak fluent ${label(mine.language)}. Want to practice together?`);
+  } else if (mine.language && mine.youSpeak === "advanced") {
+    starters.push(`I speak ${label(mine.language)} well. Want to practice together?`);
   } else if (learning) {
     starters.push(`How long have you been learning ${label(learning)}?`);
   }
@@ -58,10 +78,14 @@ export function buildConversationStarters(profile: StarterProfile, viewerLanguag
   return Array.from(new Set(starters)).slice(0, MAX_STARTERS);
 }
 
-/** Compact facts for the panel: the match type and their level in the viewer's language. */
+/**
+ * Compact facts for the panel: the match type, what they speak, which language of the
+ * viewer's they're learning (and how the viewer speaks it), and their level in it.
+ */
 export function buildMatchFacts(profile: StarterProfile, viewerLanguage = ""): MatchFact[] {
   const facts: MatchFact[] = [];
   const match = profile.match;
+  const mine = languageTheyLearnFromViewer(profile, viewerLanguage);
   const type = match?.reciprocal
     ? "Perfect exchange"
     : match?.teachesMe
@@ -70,10 +94,13 @@ export function buildMatchFacts(profile: StarterProfile, viewerLanguage = ""): M
         ? "Learning your language"
         : "";
   if (type) facts.push({ label: "Match", value: type });
-  if (profile.nativeLanguage) facts.push({ label: "Speaks", value: `${label(profile.nativeLanguage)} (native)` });
-  const viewerLevel = viewerLanguage ? levelOf(profile.practiceLanguageLevels, viewerLanguage) : "";
-  if (viewerLevel && (profile.languagesPracticing || []).some((language) => same(language, viewerLanguage))) {
-    facts.push({ label: `Their ${label(viewerLanguage)}`, value: viewerLevel });
+  const native = match?.theyTeach || profile.nativeLanguage;
+  if (native) facts.push({ label: "They speak", value: `${label(native)} (native)` });
+  if (mine.language) {
+    const how = youSpeakPhrase(mine.youSpeak);
+    facts.push({ label: "They're learning", value: how ? `${label(mine.language)}, ${how}` : label(mine.language) });
+    const theirLevel = levelOf(profile.practiceLanguageLevels, mine.language);
+    if (theirLevel) facts.push({ label: `Their ${label(mine.language)}`, value: theirLevel });
   }
   return facts;
 }
