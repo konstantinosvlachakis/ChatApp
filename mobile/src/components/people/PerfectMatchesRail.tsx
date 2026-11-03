@@ -117,8 +117,10 @@ export function PerfectMatchesRail({ profiles, viewerLanguage, startingUsername,
   const warm = warmColors(isDark);
   const themed = useMemo(() => createThemedStyles(warm), [warm]);
   const bands = useMemo(() => bandColors(/^#[0-9a-f]{6}$/i.test(warm.cream) ? warm.cream : "#f7f6f2"), [warm.cream]);
-  const cardWidth = Math.round(Math.min(width * 0.6, 260));
-  const shift = Math.round(cardWidth * 0.58);
+  const stageWidth = width - 32;
+  const cardWidth = Math.round(Math.min(stageWidth * 0.58, 260));
+  // The cards behind are drawn at 0.8 scale: shift them so they end 8dp inside the stage edge.
+  const shift = Math.round(Math.min(cardWidth * 0.62, stageWidth / 2 - 8 - cardWidth * 0.4));
   // The stage is inset 16dp each side (styles.stageShadow).
   const left = Math.round((width - 32 - cardWidth) / 2);
   const [index, setIndex] = useState(0);
