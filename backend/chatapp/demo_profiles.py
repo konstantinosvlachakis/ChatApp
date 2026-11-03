@@ -1,7 +1,8 @@
 """Visibly fictional People fixtures; safe to rerun, with no chat creation.
 
 English, Mandarin (app key ``chinese``), Russian, Spanish and Arabic are the
-requested demo languages. Portraits are randomuser.me sample images.
+requested demo languages. Portraits are 600px pravatar.cc sample photos, picked by hand
+per persona (adults, faces visible); pravatar only has 70, hence five per language.
 """
 from datetime import date
 
@@ -16,43 +17,37 @@ from .models import Profile
 DEMO_BIO_PREFIX = "Demo profile. Fictional account for exploring LangVoyage. "
 DEMO_EMAIL_DOMAIN = "people-demo.example.invalid"
 LANGUAGES = ("english", "chinese", "russian", "spanish", "arabic")
+# (username, location, pravatar.cc image id). Order is part of each fixture's identity (the
+# email is numbered by position), so keep existing personas in place.
 PERSONAS = {
     "english": (
-        ("emma_brooks", "London, UK"), ("noah_reed", "Toronto, Canada"),
-        ("olivia_bennett", "Melbourne, Australia"), ("ethan_clarke", "Bristol, UK"),
-        ("ava_morgan", "Dublin, Ireland"), ("lucas_hayes", "Vancouver, Canada"),
-        ("mia_parker", "Sydney, Australia"), ("liam_foster", "Edinburgh, UK"),
-        ("ella_wright", "Wellington, New Zealand"), ("james_turner", "Boston, USA"),
+        ("emma_brooks", "London, UK", 5), ("noah_reed", "Toronto, Canada", 8),
+        ("olivia_bennett", "Melbourne, Australia", 45), ("ethan_clarke", "Bristol, UK", 12),
+        ("ava_morgan", "Dublin, Ireland", 26),
     ),
     "chinese": (
-        ("mei_lin", "Taipei, Taiwan"), ("wei_chen", "Shanghai, China"),
-        ("xiaoyu_zhang", "Beijing, China"), ("hao_wang", "Chengdu, China"),
-        ("yue_liu", "Hangzhou, China"), ("jun_zhao", "Nanjing, China"),
-        ("jia_sun", "Kaohsiung, Taiwan"), ("bo_huang", "Suzhou, China"),
-        ("jia_xu", "Xiamen, China"), ("ming_zhou", "Tianjin, China"),
+        ("mei_lin", "Taipei, Taiwan", 25), ("wei_chen", "Shanghai, China", 62),
+        ("xiaoyu_zhang", "Beijing, China", 31), ("hao_wang", "Chengdu, China", 33),
+        ("yue_liu", "Hangzhou, China", 41),
     ),
     "russian": (
-        ("anna_sokolova", "Moscow, Russia"), ("ivan_petrov", "Saint Petersburg, Russia"),
-        ("maria_volkova", "Kazan, Russia"), ("dmitri_orlov", "Novosibirsk, Russia"),
-        ("elena_morozova", "Yekaterinburg, Russia"), ("alexei_ivanov", "Samara, Russia"),
-        ("daria_lebedeva", "Nizhny Novgorod, Russia"), ("nikita_belov", "Perm, Russia"),
-        ("sofia_egorova", "Vladivostok, Russia"), ("pavel_kozlov", "Kaliningrad, Russia"),
+        ("anna_sokolova", "Moscow, Russia", 9), ("ivan_petrov", "Saint Petersburg, Russia", 13),
+        ("maria_volkova", "Kazan, Russia", 23), ("dmitri_orlov", "Novosibirsk, Russia", 57),
+        ("elena_morozova", "Yekaterinburg, Russia", 36),
     ),
     "spanish": (
-        ("lucia_garcia", "Madrid, Spain"), ("mateo_ruiz", "Mexico City, Mexico"),
-        ("sofia_torres", "Bogota, Colombia"), ("diego_morales", "Valencia, Spain"),
-        ("valentina_rojas", "Santiago, Chile"), ("nicolas_vega", "Buenos Aires, Argentina"),
-        ("camila_castro", "Lima, Peru"), ("alejandro_soto", "Seville, Spain"),
-        ("elena_navarro", "Montevideo, Uruguay"), ("pablo_mendez", "Guadalajara, Mexico"),
+        ("lucia_garcia", "Madrid, Spain", 44), ("mateo_ruiz", "Mexico City, Mexico", 14),
+        ("sofia_torres", "Bogota, Colombia", 49), ("diego_morales", "Valencia, Spain", 61),
+        ("valentina_rojas", "Santiago, Chile", 38),
     ),
     "arabic": (
-        ("layla_haddad", "Amman, Jordan"), ("omar_nasser", "Cairo, Egypt"),
-        ("nour_khalil", "Beirut, Lebanon"), ("youssef_mansour", "Rabat, Morocco"),
-        ("salma_farouk", "Alexandria, Egypt"), ("adam_saleh", "Muscat, Oman"),
-        ("mariam_amin", "Tunis, Tunisia"), ("karim_abbas", "Doha, Qatar"),
-        ("hana_ismail", "Jeddah, Saudi Arabia"), ("sami_hassan", "Abu Dhabi, UAE"),
+        ("layla_haddad", "Amman, Jordan", 48), ("omar_nasser", "Cairo, Egypt", 59),
+        ("nour_khalil", "Beirut, Lebanon", 42), ("youssef_mansour", "Rabat, Morocco", 60),
+        ("salma_farouk", "Alexandria, Egypt", 47),
     ),
 }
+MAX_PER_LANGUAGE = 5
+PORTRAIT_URL = "https://i.pravatar.cc/600?img={}"
 INTERESTS = (
     "Bookshop browser, weekend baker and enthusiastic museum visitor.",
     "I enjoy cycling, indie films and trying new recipes.",
@@ -81,18 +76,17 @@ LEVELS = ("beginner", "intermediate", "advanced")
 RING_COLOURS = ("#1b7f79", "#bf6c4c", "#87578a", "#476b96", "#8a6a2c")
 
 
-def demo_profile_specs(per_language=8):
-    if not 5 <= per_language <= 10:
-        raise CommandError("Choose between 5 and 10 profiles per language.")
+def demo_profile_specs(per_language=MAX_PER_LANGUAGE):
+    if not 1 <= per_language <= MAX_PER_LANGUAGE:
+        raise CommandError(f"Choose between 1 and {MAX_PER_LANGUAGE} profiles per language.")
     specs = []
     for group, native in enumerate(LANGUAGES):
         others = [language for language in LANGUAGES if language != native]
         targets = ["greek", *others, "french", "german", "portuguese", *others[:2]]
-        for index, (name, location) in enumerate(PERSONAS[native][:per_language]):
+        for index, (name, location, portrait) in enumerate(PERSONAS[native][:per_language]):
             primary = targets[index]
             secondary = next(language for language in others[index % 4:] + others[:index % 4] if language != primary)
             position = group * 10 + index
-            portrait_group = "women" if index % 2 == 0 else "men"
             native_label = "Mandarin Chinese" if native == "chinese" else native.title()
             specs.append({
                 "username": f"demo_{name}",
@@ -105,14 +99,21 @@ def demo_profile_specs(per_language=8):
                 "learning_goal": GOALS[index].format(target=primary.title()),
                 "location": location,
                 "date_of_birth": date(1988 + position % 15, 1 + index % 12, 5 + index),
-                "profile_image_url": f"https://randomuser.me/api/portraits/{portrait_group}/{10 + position // 2}.jpg",
+                "profile_image_url": PORTRAIT_URL.format(portrait),
                 "avatar_ring_color": RING_COLOURS[group],
             })
     return specs
 
 
-def seed_demo_profiles(per_language=8, dry_run=False):
-    """Create missing fixtures; reject collisions and never update existing rows."""
+def _is_demo_row(user):
+    return (user.username.lower().startswith("demo_") and (user.email or "").lower().endswith("@" + DEMO_EMAIL_DOMAIN)
+            and user.bio.startswith(DEMO_BIO_PREFIX) and not user.has_usable_password())
+
+
+def seed_demo_profiles(per_language=MAX_PER_LANGUAGE, dry_run=False, refresh_photos=False, prune=False):
+    """Create missing fixtures; reject collisions. Existing rows are left alone unless
+    ``refresh_photos`` (update their portrait URL) or ``prune`` (delete demo rows that are no
+    longer in the spec, with their chats) is passed."""
     specs = demo_profile_specs(per_language)
     with transaction.atomic():
         matches = list(Profile.objects.annotate(
@@ -123,6 +124,7 @@ def seed_demo_profiles(per_language=8, dry_run=False):
         by_email = {(user.email or "").lower(): user for user in matches}
         missing = []
         existing = 0
+        stale_photos = []
         for spec in specs:
             named = by_name.get(spec["username"])
             emailed = by_email.get(spec["email"])
@@ -131,12 +133,28 @@ def seed_demo_profiles(per_language=8, dry_run=False):
                         named.has_usable_password() or not named.bio.startswith(DEMO_BIO_PREFIX)):
                     raise CommandError(f"Reserved demo identity is already in use: {spec['username']}. No data changed.")
                 existing += 1
+                if refresh_photos and named.profile_image_url != spec["profile_image_url"]:
+                    named.profile_image_url = spec["profile_image_url"]
+                    stale_photos.append(named)
             else:
                 missing.append(Profile(**spec, password=make_password(None),
                                        email_verified_at=None, is_online=False, ws_connection_count=0))
-        if not dry_run and missing:
-            Profile.objects.bulk_create(missing)
-            from .views import bump_profile_list_cache_version
-            transaction.on_commit(bump_profile_list_cache_version)
+        wanted = {spec["username"] for spec in specs}
+        extra = []
+        if prune:
+            candidates = Profile.objects.filter(username__istartswith="demo_", email__iendswith="@" + DEMO_EMAIL_DOMAIN)
+            extra = [user for user in candidates if user.username.lower() not in wanted and _is_demo_row(user)]
+        if not dry_run:
+            if missing:
+                Profile.objects.bulk_create(missing)
+            if stale_photos:
+                Profile.objects.bulk_update(stale_photos, ["profile_image_url"])
+            if extra:
+                Profile.objects.filter(pk__in=[user.pk for user in extra]).delete()
+            if missing or stale_photos or extra:
+                from .views import bump_profile_list_cache_version
+                transaction.on_commit(bump_profile_list_cache_version)
     return {"created": 0 if dry_run else len(missing), "would_create": len(missing),
-            "existing": existing, "per_language": per_language, "total": len(specs)}
+            "existing": existing, "per_language": per_language, "total": len(specs),
+            "refreshed": 0 if dry_run else len(stale_photos), "would_refresh": len(stale_photos),
+            "pruned": 0 if dry_run else len(extra), "would_prune": len(extra)}
