@@ -7,6 +7,7 @@ import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
 import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import api, { getErrorMessage } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
 import { createOrGetConversation } from "./api/conversation";
@@ -169,7 +170,10 @@ export default function CommunityPage() {
           <h1 id="people-heading">People to practise with</h1>
           <p>
             {exchangeRule(learningNames, spokenNames)}{" "}
-            <Link to="/profile/edit" className="people-inline-link">Edit languages</Link>
+            <Link to="/profile/edit" className="people-languages-button">
+              <TranslateRoundedIcon aria-hidden="true" />
+              Edit languages
+            </Link>
           </p>
         </header>
 

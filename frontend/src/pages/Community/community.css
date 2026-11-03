@@ -7,6 +7,11 @@
 .people-intro h1 { font-family: var(--lv-font-display); font-size: 24px; font-weight: 700; letter-spacing: -.8px; line-height: 1.3; color: var(--lv-ink); }
 .people-intro > p { margin-top: 2px; color: var(--lv-muted-ink); font-size: 14px; line-height: 1.55; }
 .people-inline-link { color: var(--lv-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+/* "Edit languages" after the rule line: a small soft-peach pill with a translate icon. */
+.people-languages-button { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; padding: 3px 11px 3px 8px; border: 1px solid var(--lv-peach-strong); border-radius: var(--lv-radius-pill); background: var(--lv-peach-soft); color: var(--lv-peach-deep); font-size: 12px; font-weight: 700; line-height: 1.5; text-decoration: none; vertical-align: 1px; white-space: nowrap; transition: background-color .15s, border-color .15s; }
+.people-languages-button svg { width: 15px; height: 15px; }
+.people-languages-button:hover { border-color: var(--lv-peach-ink); background: var(--lv-peach); }
+.people-languages-button:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
 
 /* Search + round filter button. */
 .people-search-row { display: flex; flex: 0 1 440px; align-items: center; gap: 8px; min-width: 0; }

@@ -39,7 +39,14 @@ export function PeopleDiscoveryHeader({
       <View style={styles.intro}>
         <Text style={styles.title} accessibilityRole="header">People to practise with</Text>
         <Text style={styles.subtitle}>{rule}</Text>
-        <Pressable onPress={onEditLanguages} accessibilityRole="button" accessibilityHint="Opens your profile" style={styles.editLink} hitSlop={6}>
+        <Pressable
+          onPress={onEditLanguages}
+          accessibilityRole="button"
+          accessibilityHint="Opens your profile"
+          style={({ pressed }) => [styles.editLink, pressed && styles.pressed]}
+          hitSlop={8}
+        >
+          <Ionicons name="language-outline" size={14} color={warm.peachDeep} />
           <Text style={styles.editLinkText}>Edit languages</Text>
         </Pressable>
       </View>
@@ -107,8 +114,9 @@ const createStyles = (warm: WarmColors) => StyleSheet.create({
   intro: { gap: 2 },
   title: { color: warm.ink, fontSize: 22, lineHeight: 29, fontFamily: fontFamilies.displayBold },
   subtitle: { color: warm.mutedInk, fontSize: 13, lineHeight: 19, fontFamily: fontFamilies.bodyMedium },
-  editLink: { alignSelf: "flex-start", minHeight: 32, justifyContent: "center" },
-  editLinkText: { color: warm.ink, fontSize: 13, fontFamily: fontFamilies.bodyBold, textDecorationLine: "underline" },
+  // A small soft-peach pill with a language icon (web `.people-languages-button`).
+  editLink: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: warm.peachStrong, backgroundColor: warm.peachSoft },
+  editLinkText: { color: warm.peachDeep, fontSize: 12, fontFamily: fontFamilies.bodyBold },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   searchRowLargeText: { flexDirection: "column", alignItems: "stretch" },
   searchField: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingLeft: 14, paddingRight: 4, borderRadius: 999, borderWidth: 1, borderColor: warm.line, backgroundColor: warm.paper },
