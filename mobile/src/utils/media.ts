@@ -14,6 +14,8 @@ export type CloudinaryImageOptions = {
   height?: number;
   /** "fill" = face-centred crop to width×height (default), "limit" = shrink to fit width. */
   crop?: CloudinaryCrop;
+  /** Large photo slots: best automatic quality plus a light sharpen after resizing. */
+  sharpen?: boolean;
 };
 
 // Plain string parsing: React Native's URL polyfill doesn't support setting `pathname`.
@@ -43,10 +45,12 @@ export function cloudinaryImage(url: string | null | undefined, options: Cloudin
   const [, prefix, path, suffix] = match;
   if (isTransformationSegment(path.split("/")[0])) return url;
   const crop = options.crop ?? "fill";
-  const transformation =
+  const quality = options.sharpen ? "q_auto:best" : "q_auto";
+  const size =
     crop === "fill"
-      ? `f_auto,q_auto,c_fill,g_face,w_${pixels(options.width)},h_${pixels(options.height ?? options.width)}`
-      : `f_auto,q_auto,c_limit,w_${pixels(options.width)}`;
+      ? `c_fill,g_face,w_${pixels(options.width)},h_${pixels(options.height ?? options.width)}`
+      : `c_limit,w_${pixels(options.width)}`;
+  const transformation = `f_auto,${quality},${size}${options.sharpen ? "/e_sharpen:60" : ""}`;
   return `${prefix}${transformation}/${path}${suffix}`;
 }
 

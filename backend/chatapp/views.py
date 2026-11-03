@@ -30,6 +30,7 @@ from .models import (
     UserReport,
 )
 from .push import PUSH_PLATFORMS, is_valid_expo_push_token, schedule_message_push
+from . import people_filters
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from .serializers import (
@@ -1099,6 +1100,7 @@ def register_view(request):
                 native_language=native_language,
                 email=email,
                 date_of_birth=parsed_date_of_birth,
+                date_joined=timezone.now(),
             )
             # No community-list bump: new users appear within its 30 s TTL.
 
@@ -1163,19 +1165,27 @@ def profile_view(request):
 @permission_classes([IsAuthenticated])
 @throttle_classes(with_default_throttles(PeopleRateThrottle))
 def profile_data_view(request):
-    page_param = request.query_params.get("page", "1")
-    page_size_param = request.query_params.get(
-        "page_size", str(PROFILE_LIST_DEFAULT_PAGE_SIZE)
-    )
-    match_only_param = request.query_params.get("match_only", "0")
-    match_only = str(match_only_param).lower() in {"1", "true", "yes"}
+    """People list. ``match`` (+ legacy ``match_only``) still works for older
+    clients; ``section`` supersedes it. Other params: see ``people_filters``."""
+    params = request.query_params
+    page_param = params.get("page", "1")
+    page_size_param = params.get("page_size", str(PROFILE_LIST_DEFAULT_PAGE_SIZE))
+    match_only = people_filters.parse_flag(params.get("match_only", "0"))
     # "match_only" predates the "match" param and maps to "teaches_me".
-    match_mode = str(request.query_params.get("match", "")).strip().lower()
+    match_mode = str(params.get("match", "")).strip().lower()
     if match_mode not in PROFILE_MATCH_MODES:
         match_mode = "teaches_me" if match_only else "all"
-    level_filter = str(request.query_params.get("level", "")).strip().lower()
-    if level_filter not in PRACTICE_LEVELS:
-        level_filter = ""
+    level_filter = people_filters.parse_choice(
+        params.get("level"), people_filters.PEOPLE_LEVEL_FILTERS
+    )
+    section = people_filters.parse_choice(params.get("section"), people_filters.PEOPLE_SECTIONS)
+    include = people_filters.parse_include(params.get("include")) if section == "others" else None
+    sort = people_filters.parse_choice(params.get("sort"), people_filters.PEOPLE_SORTS, "best")
+    near = people_filters.parse_flag(params.get("near"))
+    active_only = people_filters.parse_flag(params.get("active"))
+    new_only = people_filters.parse_flag(params.get("new"))
+    my_level_only = people_filters.parse_flag(params.get("my_level"))
+    with_counts = people_filters.parse_flag(params.get("counts"))
 
     try:
         page = max(int(page_param), 1)
@@ -1192,70 +1202,139 @@ def profile_data_view(request):
     teaches_me_q, learns_mine_q, my_native_language = build_partner_match_filters(
         request.user
     )
+    they_speak = people_filters.parse_language_subset(params.get("they_speak"), my_learning)
+    they_learn = people_filters.parse_language_subset(params.get("they_learn"), my_spoken)
+    my_levels = people_filters.viewer_levels(request.user)
+    my_city, my_country = people_filters.split_location(request.user.location)
+
     cache_version = get_profile_list_cache_version()
     # `lang:` = the viewer's spoken/learning sets: editing their own languages or
     # levels takes effect at once without bumping everyone's list version.
     language_token = partner_language_cache_token(
         my_spoken_levels, my_learning, my_native_language
     )
+    # `sel:` = everything else the result depends on: language subsets, include
+    # groups, and the viewer's location and levels (near / my_level).
+    selection_token = hashlib.sha256(
+        json.dumps(
+            [they_speak, they_learn, include, my_city.lower(), my_country.lower(),
+             sorted(my_levels.items())],
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    quick_flags = "".join(
+        "1" if flag else "0"
+        for flag in (near, active_only, new_only, my_level_only, with_counts)
+    )
     cache_key = (
         f"profile_data:v{cache_version}:user:{request.user.id}:lang:{language_token}:"
-        f"page:{page}:size:{page_size}:match:{match_mode}:level:{level_filter or '-'}"
+        f"page:{page}:size:{page_size}:match:{match_mode}:level:{level_filter or '-'}:"
+        f"sec:{section or '-'}:sort:{sort}:qf:{quick_flags}:sel:{selection_token}"
     )
     cached_payload = cache.get(cache_key)
     if cached_payload:
         return JsonResponse(cached_payload, status=200)
 
+    now = timezone.now()
     blocked_user_ids = get_blocked_user_ids(request.user.id)
     profiles_qs = Profile.objects.exclude(id=request.user.id)
     if blocked_user_ids:
         profiles_qs = profiles_qs.exclude(id__in=blocked_user_ids)
+
+    # Near you: same city, else (nobody else lives there) same country.
+    near_q = None
+    near_scope = None
+    if near and my_city:
+        near_q = people_filters.same_city_q(my_city)
+        near_scope = "city"
+        if not profiles_qs.filter(near_q).exists():
+            near_q = people_filters.same_country_q(my_country)
+            near_scope = "country"
 
     profiles_qs = profiles_qs.annotate(
         teaches_me=Case(When(teaches_me_q, then=Value(1)), default=Value(0)),
         learns_mine=Case(When(learns_mine_q, then=Value(1)), default=Value(0)),
     ).annotate(match_score=F("teaches_me") + F("learns_mine"))
 
-    if match_mode == "teaches_me":
+    # Filters shared by both sections (and by the counts).
+    spoken_for_levels = they_learn or my_spoken
+    if they_speak is not None:
+        speak_q = Q(pk__in=[])
+        for language in they_speak:
+            speak_q |= Q(native_language__iexact=language)
+        profiles_qs = profiles_qs.filter(Q(teaches_me=0) | speak_q)
+    if they_learn is not None:
+        learn_q = Q(pk__in=[])
+        for language in they_learn:
+            if MATCH_LANGUAGE_PATTERN.fullmatch(language):
+                learn_q |= Q(languages_practicing__icontains=f'"{language}"')
+        profiles_qs = profiles_qs.filter(Q(learns_mine=0) | learn_q)
+    if level_filter:
+        profiles_qs = profiles_qs.filter(
+            people_filters.their_level_q(
+                spoken_for_levels,
+                people_filters.level_filter_levels(level_filter),
+                MATCH_LANGUAGE_PATTERN,
+            )
+        )
+    if near_q is not None:
+        profiles_qs = profiles_qs.filter(near_q)
+    if active_only:
+        profiles_qs = profiles_qs.filter(
+            Q(is_online=True) | Q(last_seen__gte=now - people_filters.ACTIVE_TODAY_WINDOW)
+        )
+    if new_only:
+        profiles_qs = profiles_qs.filter(
+            date_joined__gte=now - people_filters.NEW_MEMBER_WINDOW
+        )
+    level_q = people_filters.my_level_q(
+        my_learning, my_levels, spoken_for_levels, MATCH_LANGUAGE_PATTERN
+    )
+    if my_level_only and level_q is not None:
+        profiles_qs = profiles_qs.filter(level_q)
+
+    counts = None
+    if with_counts:
+        counts = profiles_qs.aggregate(
+            perfect=Count("id", filter=people_filters.section_q("perfect", None)),
+            others=Count("id", filter=people_filters.section_q("others", include)),
+        )
+
+    if section:
+        profiles_qs = profiles_qs.filter(people_filters.section_q(section, include))
+    elif match_mode == "teaches_me":
         profiles_qs = profiles_qs.filter(teaches_me=1)
     elif match_mode == "reciprocal":
         profiles_qs = profiles_qs.filter(teaches_me=1, learns_mine=1)
     elif match_mode == "learns_mine":
         profiles_qs = profiles_qs.filter(learns_mine=1)
-    if level_filter and my_native_language:
-        profiles_qs = profiles_qs.filter(
-            **{f"practice_language_levels__{my_native_language}": level_filter}
-        )
 
-    profiles_qs = profiles_qs.order_by("-match_score", "-teaches_me", "username").only(
+    if sort == "active":
+        ordering = (F("last_seen").desc(nulls_last=True), "-match_score", "-teaches_me", "username")
+    elif sort == "newest":
+        ordering = (F("date_joined").desc(nulls_last=True), "-match_score", "-teaches_me", "username")
+    else:
+        ordering = ("-match_score", "-teaches_me", "username")
+    profiles_qs = profiles_qs.order_by(*ordering).only(
         "username",
         "native_language",
         "languages_practicing",
         "practice_language_levels",
         "learning_goal",
         "profile_image_url",
+        "location",
+        "is_online",
+        "last_seen",
+        "date_joined",
     )
     paginator = Paginator(profiles_qs, page_size)
 
-    if paginator.num_pages == 0 or page > paginator.num_pages:
-        payload = {
-            "profiles": [],
-            "pagination": {
-                "page": page if paginator.num_pages else 1,
-                "page_size": page_size,
-                "total_pages": paginator.num_pages,
-                "total_count": paginator.count,
-                "has_next": False,
-                "has_previous": page > 1 and paginator.num_pages > 0,
-            },
-        }
-        cache.set(cache_key, payload, PROFILE_LIST_CACHE_TIMEOUT_SECONDS)
-        return JsonResponse(payload, status=200)
-
-    try:
-        page_obj = paginator.page(page)
-    except EmptyPage:
-        page_obj = paginator.page(1)
+    page_obj = None
+    if paginator.num_pages and page <= paginator.num_pages:
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(1)
 
     profile_data = [
         {
@@ -1265,6 +1344,10 @@ def profile_data_view(request):
             "practice_language_levels": profile.practice_language_levels or {},
             "learning_goal": profile.learning_goal or "",
             "profile_image_url": build_media_url(request, profile.profile_image_url),
+            # City only (never the country or coordinates); coarse activity only.
+            "city": people_filters.city_of(profile.location),
+            "active_label": people_filters.active_label(profile, now),
+            "is_new": people_filters.is_new_member(profile, now),
             "match": {
                 "teaches_me": bool(profile.teaches_me),
                 "learns_mine": bool(profile.learns_mine),
@@ -1275,21 +1358,43 @@ def profile_data_view(request):
                 ),
             },
         }
-        for profile in page_obj
+        for profile in (page_obj or [])
     ]
 
-    current_page = page_obj.number
-    payload = {
-        "profiles": profile_data,
-        "pagination": {
-            "page": current_page,
+    if page_obj is not None:
+        pagination = {
+            "page": page_obj.number,
             "page_size": page_size,
             "total_pages": paginator.num_pages,
             "total_count": paginator.count,
             "has_next": page_obj.has_next(),
             "has_previous": page_obj.has_previous(),
+        }
+    else:
+        pagination = {
+            "page": page if paginator.num_pages else 1,
+            "page_size": page_size,
+            "total_pages": paginator.num_pages,
+            "total_count": paginator.count,
+            "has_next": False,
+            "has_previous": page > 1 and paginator.num_pages > 0,
+        }
+    payload = {
+        "profiles": profile_data,
+        "pagination": pagination,
+        "total": paginator.count,
+        "filters": {
+            # Chip options for the filter panel (the viewer's own languages).
+            "they_speak_options": my_learning,
+            "they_learn_options": my_spoken,
+            "near_available": bool(my_city),
+            "near_city": my_city or None,
+            "near_scope": near_scope,
+            "my_level_available": level_q is not None,
         },
     }
+    if counts is not None:
+        payload["counts"] = {"perfect": counts["perfect"], "others": counts["others"]}
     cache.set(cache_key, payload, PROFILE_LIST_CACHE_TIMEOUT_SECONDS)
     return JsonResponse(payload, status=200)
 

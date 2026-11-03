@@ -6,7 +6,7 @@ const FOCUSABLE =
 
 /**
  * Confirmation dialog on a native <dialog> opened with showModal() (like Community's
- * FilterSheet and PhotoViewer): the page behind is inert, Escape and the backdrop close it,
+ * PeopleFilterPanel and PhotoViewer): the page behind is inert, Escape and the backdrop close it,
  * Tab stays inside, and focus returns to whatever opened it.
  */
 export default function ConfirmDialog({

@@ -45,7 +45,7 @@ export default function AppHeader({ user, avatarUrl, unreadCount = 0, onLogout }
     <header className="lv-header">
       <div className="lv-header-inner">
         <Link to="/profile" className="lv-brand" aria-label="LangVoyage — go to your profile">
-          <CoachAvatar size={36} hideBadge />
+          <CoachAvatar size={32} hideBadge />
           <span>LangVoyage</span>
         </Link>
         <nav className="lv-header-nav" aria-label="Main navigation">

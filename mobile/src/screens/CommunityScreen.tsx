@@ -1,47 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { ExchangeCard } from "../components/people/ExchangeCard";
 import { PeopleDiscoveryHeader } from "../components/people/PeopleDiscoveryHeader";
 import { PerfectMatchesRail } from "../components/people/PerfectMatchesRail";
 import { PeopleFilterSheet } from "../components/people/PeopleFilterSheet";
+import { usePeopleFeed } from "../components/people/usePeopleFeed";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
-  DEFAULT_PEOPLE_SEGMENT,
-  activeFilterCount,
+  DEFAULT_PANEL_FILTERS,
+  DEFAULT_QUICK_FILTERS,
+  PEOPLE_PAGE_SIZE,
+  activePanelFilterCount,
+  cityFromLocation,
+  countParams,
+  exchangeRule,
   filterLoadedPeople,
-  mergePeoplePages,
-  nativeLanguageOptions,
-  peopleSections,
+  includesNothing,
+  othersParams,
+  perfectParams,
+  previewTotal,
   viewerExchangeLanguages,
-  type PeopleLevel,
-  type PeopleSegment,
+  type PanelFilters,
+  type QuickFilters,
 } from "../features/peopleMatching";
 import { fetchPeople } from "../services/api/auth";
-import { getErrorMessage, toApiError } from "../services/api/client";
 import { createOrGetConversation } from "../services/api/conversations";
 import { toastApiError } from "../services/toast";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
 import type { PeopleCard } from "../types";
 
-type RequestKind = "first" | "more" | "refresh";
+const withoutPage = ({ page, page_size, ...rest }: Record<string, string | number>) => rest;
 
 /**
- * People discovery with server matching (mirrors web `pages/Community/page.tsx`):
- * `match` segment and `level` are server filters (they reset pagination); the native-language
- * filter and the text search apply to the loaded profiles, as on web.
+ * People (mirrors web `pages/Community/page.tsx`): header + rule, search + filter button
+ * (bottom sheet), quick pills, the Perfect exchanges rail (`section=perfect`) and the
+ * "More people to meet" list (`section=others`) with onEndReached paging.
  */
 export function CommunityScreen() {
   const navigation = useNavigation<any>();
@@ -51,154 +50,67 @@ export function CommunityScreen() {
   const warm = warmColors(isDark);
   const styles = useMemo(() => createStyles(warm), [warm]);
   const viewerLanguage = user?.native_language || "";
-  const exchangeLanguages = useMemo(() => viewerExchangeLanguages(user), [user]);
+  const exchange = useMemo(() => viewerExchangeLanguages(user), [user]);
 
-  // Server query.
-  const [segment, setSegment] = useState<PeopleSegment>(DEFAULT_PEOPLE_SEGMENT);
-  const [level, setLevel] = useState<PeopleLevel>("");
-  const [reloadKey, setReloadKey] = useState(0);
-  // Client-side filters over loaded profiles.
+  const [filters, setFilters] = useState<PanelFilters>(DEFAULT_PANEL_FILTERS);
+  const [quick, setQuick] = useState<QuickFilters>(DEFAULT_QUICK_FILTERS);
   const [search, setSearch] = useState("");
-  const [nativeFilter, setNativeFilter] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  const [profiles, setProfiles] = useState<PeopleCard[]>([]);
-  const [hasNext, setHasNext] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  // True until the first page of the current query settles (skeleton, no empty-state flash).
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [moreError, setMoreError] = useState("");
+  const [quickHint, setQuickHint] = useState<"" | "near" | "myLevel">("");
   const [startingUsername, setStartingUsername] = useState("");
-
-  // One request at a time: a new request (filter change, refresh) aborts the previous one, and
-  // results are applied only while their controller is still the current one.
-  const requestRef = useRef<AbortController | null>(null);
-  const queryRef = useRef({ segment, level });
-  const pageRef = useRef(1);
-  const hasProfilesRef = useRef(false);
-  hasProfilesRef.current = profiles.length > 0;
   const startingRef = useRef(false);
 
-  const startRequest = useCallback(async (kind: RequestKind) => {
-    const { segment: match, level: levelFilter } = queryRef.current;
-    const page = kind === "more" ? pageRef.current + 1 : 1;
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    setLoading(kind === "first");
-    setLoadingMore(kind === "more");
-    setRefreshing(kind === "refresh");
-    // A refresh keeps the current error/list on screen until it succeeds.
-    if (kind === "more") setMoreError("");
-    else if (kind === "first") setError("");
+  const perfectBase = useMemo(() => withoutPage(perfectParams(filters, quick, 1)), [filters, quick]);
+  const othersBase = useMemo(() => (includesNothing(filters.include) ? null : withoutPage(othersParams(filters, quick, 1))), [filters, quick]);
+  const perfect = usePeopleFeed(perfectBase, PEOPLE_PAGE_SIZE);
+  const others = usePeopleFeed(othersBase, PEOPLE_PAGE_SIZE);
+  const meta = perfect.meta || others.meta;
+  const city = meta?.nearCity || cityFromLocation(user?.location);
+  const nearAvailable = meta ? meta.nearAvailable : Boolean(city);
+  const myLevelAvailable = meta ? meta.myLevelAvailable : true;
+  const learningNames = exchange.practising.length ? exchange.practising.map((entry) => entry.language) : meta?.theySpeakOptions || [];
+  const rule = exchangeRule(learningNames, exchange.spoken.map((entry) => entry.language));
+  const filterCount = activePanelFilterCount(filters);
+  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel;
 
-    try {
-      const payload = await fetchPeople({ page, segment: match, level: levelFilter }, { signal: controller.signal });
-      if (controller.signal.aborted) return;
-      const next = payload.profiles || [];
-      setProfiles((previous) => mergePeoplePages(previous, next, page === 1));
-      pageRef.current = page;
-      setHasNext(Boolean(payload.pagination?.has_next));
-      setTotalCount(payload.pagination?.total_count ?? next.length);
-      if (page === 1) setError("");
-      setMoreError("");
-    } catch (failure) {
-      if (controller.signal.aborted || toApiError(failure).isAborted) return;
-      const message = getErrorMessage(failure, "Could not load people. Please try again.");
-      if (kind === "more") setMoreError(message);
-      else if (kind === "refresh" && hasProfilesRef.current) toastApiError(failure, message, "Couldn't refresh");
-      else setError(message);
-    } finally {
-      if (requestRef.current === controller) {
-        requestRef.current = null;
-        setLoading(false);
-        setLoadingMore(false);
-        setRefreshing(false);
-      }
-    }
-  }, []);
+  const perfectShown = useMemo(() => filterLoadedPeople(perfect.profiles, search), [perfect.profiles, search]);
+  const othersShown = useMemo(() => filterLoadedPeople(others.profiles, search), [others.profiles, search]);
 
-  // Server filters (and "Try again") load page 1 of the new query.
-  useEffect(() => {
-    queryRef.current = { segment, level };
-    pageRef.current = 1;
-    startRequest("first");
-  }, [segment, level, reloadKey, startRequest]);
-
-  useEffect(() => () => requestRef.current?.abort(), []);
-
-  // "Find partners" from a Profile mission: show native speakers of that language.
+  // "Find partners" from a Profile mission: native speakers of that language.
   useEffect(() => {
     const prefillLanguage = route.params?.prefillLanguage;
     if (!prefillLanguage) return;
-    setNativeFilter(String(prefillLanguage));
     setSearch("");
-    // The default Perfect exchange tab would hide one-way native speakers.
-    changeServerFilter("teaches_me", level);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setFilters({ ...DEFAULT_PANEL_FILTERS, theySpeak: [String(prefillLanguage).trim().toLowerCase()] });
   }, [route.params?.fromMissionAt, route.params?.prefillLanguage]);
 
-  const changeServerFilter = (nextSegment: PeopleSegment, nextLevel: PeopleLevel) => {
-    if (nextSegment === segment && nextLevel === level) return;
-    // Detach the old request so its `finally` can't clear `loading` before the new one starts.
-    requestRef.current?.abort();
-    requestRef.current = null;
-    setProfiles([]);
-    setHasNext(false);
-    setTotalCount(0);
-    setError("");
-    setMoreError("");
-    setLoading(true);
-    setSegment(nextSegment);
-    setLevel(nextLevel);
+  const toggleQuick = (key: keyof QuickFilters) => {
+    if (key === "near" && !nearAvailable && !quick.near) return setQuickHint("near");
+    if (key === "myLevel" && !myLevelAvailable && !quick.myLevel) return setQuickHint("myLevel");
+    setQuickHint("");
+    setQuick((current) => ({ ...current, [key]: !current[key] }));
   };
 
-  const loadMore = () => {
-    if (requestRef.current || loading || refreshing || !hasNext || error || moreError) return;
-    startRequest("more");
-  };
-
-  const refresh = () => {
-    if (loading) return;
-    startRequest("refresh");
-  };
-
-  const languageOptions = useMemo(() => nativeLanguageOptions(profiles, nativeFilter), [profiles, nativeFilter]);
-  const filtered = useMemo(() => filterLoadedPeople(profiles, search, nativeFilter), [profiles, search, nativeFilter]);
-  // Perfect exchange: the rail (+ further mutual exchanges below it), never one-way matches.
-  // Every other segment: a plain card list.
-  const { rail: perfect, list: morePeople } = useMemo(() => peopleSections(filtered, segment), [filtered, segment]);
-  const perfectView = segment === "reciprocal";
-  const visibleCount = perfect.length + morePeople.length;
-  const filterCount = activeFilterCount(nativeFilter, level);
-  const clientFiltered = filterCount > 0 || search.trim().length > 0;
-  const anythingToClear = clientFiltered || segment !== DEFAULT_PEOPLE_SEGMENT;
-
-  const clearFilters = () => {
+  const clearAll = () => {
     setSearch("");
-    setNativeFilter("");
-    changeServerFilter(DEFAULT_PEOPLE_SEGMENT, "");
+    setFilters(DEFAULT_PANEL_FILTERS);
+    setQuick(DEFAULT_QUICK_FILTERS);
+    setQuickHint("");
   };
 
-  const applySheet = (next: { nativeFilter: string; level: PeopleLevel }) => {
-    setNativeFilter(next.nativeFilter);
-    changeServerFilter(segment, next.level);
-    setSheetOpen(false);
-  };
-
-  const resetSheet = () => {
-    setNativeFilter("");
-    changeServerFilter(segment, "");
-    setSheetOpen(false);
-  };
+  const countFor = useCallback(
+    async (draft: PanelFilters, signal: AbortSignal) => {
+      const payload = await fetchPeople(countParams(draft, quick), { signal });
+      return previewTotal(payload.counts, draft);
+    },
+    [quick]
+  );
 
   const viewProfile = useCallback(
     (profile: PeopleCard) => navigation.navigate("PublicProfile", { username: profile.username, profile }),
     [navigation]
   );
+  const editLanguages = () => navigation.navigate("Profile");
 
   const sayHello = useCallback(
     async (username: string) => {
@@ -236,138 +148,148 @@ export function CommunityScreen() {
     [viewerLanguage, startingUsername, sayHello, viewProfile]
   );
 
-  const firstLoad = loading && profiles.length === 0;
-  const countText = firstLoad
-    ? "Finding people…"
-    : `${visibleCount}${hasNext ? "+" : ""} ${perfectView ? (visibleCount === 1 ? "perfect exchange" : "perfect exchanges") : `${visibleCount === 1 ? "person" : "people"} to meet`}`;
-  const header = (
-    <View>
-      <PeopleDiscoveryHeader
-        warm={warm}
-        spokenLanguages={exchangeLanguages.spoken.map((entry) => entry.language)}
-        practicingLanguages={exchangeLanguages.practising.map((entry) => entry.language)}
-        search={search}
-        onSearchChange={setSearch}
-        segment={segment}
-        onSegmentChange={(next) => changeServerFilter(next, level)}
-        filterCount={filterCount}
-        onOpenFilters={() => setSheetOpen(true)}
-        onEditLanguages={() => navigation.navigate("Profile")}
-        countText={countText}
-      />
+  const refreshing = perfect.refreshing || others.refreshing;
+  const refresh = () => {
+    perfect.refresh();
+    others.refresh();
+  };
 
-      {perfect.length > 0 ? (
-        <PerfectMatchesRail
-          profiles={perfect}
-          warm={warm}
-          viewerLanguage={viewerLanguage}
-          startingUsername={startingUsername}
-          onSayHello={sayHello}
-          onViewProfile={viewProfile}
-        />
+  const panel = (title: string, text: string, action?: { label: string; onPress: () => void }, link?: { label: string; onPress: () => void }) => (
+    <View style={styles.panel}>
+      <Text style={styles.panelTitle}>{title}</Text>
+      <Text style={styles.panelText}>{text}</Text>
+      {action ? (
+        <Pressable style={styles.secondaryButton} onPress={action.onPress} accessibilityRole="button">
+          <Text style={styles.secondaryButtonText}>{action.label}</Text>
+        </Pressable>
       ) : null}
-      {perfectView && perfect.length > 0 && morePeople.length > 0 ? (
-        <View style={styles.moreHeading}>
-          <Text style={styles.moreTitle} accessibilityRole="header">More perfect exchanges</Text>
-          <Text style={styles.moreSubtitle}>Every one of them is a two-way exchange</Text>
-        </View>
+      {link ? (
+        <Pressable style={styles.textButton} onPress={link.onPress} accessibilityRole="button">
+          <Text style={styles.textButtonText}>{link.label}</Text>
+        </Pressable>
       ) : null}
     </View>
   );
 
+  let perfectContent: React.ReactElement;
+  if (perfect.loading && !perfect.profiles.length) {
+    perfectContent = <View style={styles.skeletonPhoto} accessibilityRole="progressbar" accessibilityLabel="Finding perfect exchanges" />;
+  } else if (perfect.error && !perfect.profiles.length) {
+    perfectContent = panel("We couldn't load perfect exchanges.", perfect.error, { label: "Try again", onPress: perfect.retry });
+  } else if (perfectShown.length) {
+    perfectContent = (
+      <PerfectMatchesRail
+        profiles={perfectShown}
+        viewerLanguage={viewerLanguage}
+        startingUsername={startingUsername}
+        onSayHello={sayHello}
+        onViewProfile={viewProfile}
+        onEndReached={search.trim() ? undefined : perfect.loadMore}
+      />
+    );
+  } else if (search.trim() && perfect.profiles.length) {
+    perfectContent = panel("No perfect exchanges in this search", "Try another name, language or goal.", { label: "Clear search", onPress: () => setSearch("") });
+  } else if (quick.near) {
+    perfectContent = panel("No perfect exchanges near you", "Try turning off Near you to meet exchanges anywhere.", { label: "Turn off Near you", onPress: () => toggleQuick("near") });
+  } else if (anyQuick || filterCount) {
+    perfectContent = panel("No perfect exchanges match these filters", "Loosen a filter or two and they'll show up here.", { label: "Clear filters", onPress: clearAll });
+  } else {
+    perfectContent = panel(
+      "No perfect exchanges yet",
+      "Nobody right now speaks a language you're learning and is learning one you speak. The people below are a great place to start.",
+      undefined,
+      { label: "Edit languages", onPress: editLanguages }
+    );
+  }
+
+  const header = (
+    <View>
+      <PeopleDiscoveryHeader
+        warm={warm}
+        rule={rule}
+        search={search}
+        onSearchChange={setSearch}
+        filterCount={filterCount}
+        onOpenFilters={() => setSheetOpen(true)}
+        onEditLanguages={editLanguages}
+        quick={quick}
+        city={city}
+        onToggleQuick={toggleQuick}
+      />
+      {quickHint === "near" ? (
+        <Pressable onPress={editLanguages} accessibilityRole="button" style={styles.hint}>
+          <Text style={styles.hintText}>Add your city to see people near you. <Text style={styles.hintLink}>Set your city</Text></Text>
+        </Pressable>
+      ) : null}
+      {quickHint === "myLevel" ? (
+        <Pressable onPress={editLanguages} accessibilityRole="button" style={styles.hint}>
+          <Text style={styles.hintText}>Add your level in the languages you're learning to use Your level. <Text style={styles.hintLink}>Edit languages</Text></Text>
+        </Pressable>
+      ) : null}
+      {quick.near && meta?.nearScope === "country" ? (
+        <Text style={[styles.hintText, styles.hint]} accessibilityLiveRegion="polite">Nobody else in {city} yet, so you're seeing people in your country.</Text>
+      ) : null}
+
+      <View style={styles.perfectHeading}>
+        <View style={styles.sectionIcon}>
+          <Ionicons name="swap-horizontal" size={15} color={warm.peachInk} />
+        </View>
+        <Text style={[styles.sectionTitle, styles.sectionTitleInline]} accessibilityRole="header">Perfect exchanges</Text>
+      </View>
+      {perfectContent}
+
+      <View style={styles.moreHeading}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">More people to meet</Text>
+        {othersBase && others.total > 0 ? <Text style={styles.sectionCount}>{others.total} {others.total === 1 ? "person" : "people"}</Text> : null}
+      </View>
+    </View>
+  );
+
   let emptyState: React.ReactElement | null = null;
-  if (visibleCount === 0) {
-    if (firstLoad) {
-      emptyState = (
-        <View style={styles.skeleton} accessibilityLabel="Finding your next connection" accessibilityRole="progressbar">
-          <View style={styles.skeletonRow}>
-            <View style={styles.skeletonPortrait} />
-            <View style={styles.skeletonLines}>
-              <View style={styles.skeletonLine} />
-              <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
-            </View>
-          </View>
-          <View style={styles.skeletonLine} />
-          <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
-          <Text style={styles.skeletonText}>Finding your next connection…</Text>
-        </View>
-      );
-    } else if (error) {
-      emptyState = (
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>We couldn't load people.</Text>
-          <Text style={styles.panelText}>{error}</Text>
-          <Pressable style={styles.primaryButton} onPress={() => setReloadKey((value) => value + 1)} accessibilityRole="button">
-            <Text style={styles.primaryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
-      );
-    } else if (perfectView && !clientFiltered) {
-      emptyState = (
-        <View style={styles.panel}>
-          <Text style={styles.panelIcon} accessibilityElementsHidden importantForAccessibility="no">↔</Text>
-          <Text style={styles.panelTitle}>No perfect exchanges yet</Text>
-          <Text style={styles.panelText}>
-            {hasNext
-              ? "None in the profiles loaded so far. Meet more people below."
-              : "Nobody right now is native in a language you practise and learning one you speak. Native speakers of your languages are a great place to start."}
-          </Text>
-          <Pressable style={styles.primaryButton} onPress={() => changeServerFilter("teaches_me", level)} accessibilityRole="button">
-            <Text style={styles.primaryButtonText}>See native speakers</Text>
-          </Pressable>
-          <Pressable style={styles.textButton} onPress={() => navigation.navigate("Profile")} accessibilityRole="button">
-            <Text style={styles.textButtonText}>Edit languages</Text>
-          </Pressable>
-        </View>
-      );
-    } else {
-      emptyState = (
-        <View style={styles.panel}>
-          <Text style={styles.panelIcon} accessibilityElementsHidden importantForAccessibility="no">↔</Text>
-          <Text style={styles.panelTitle}>No people in this view yet.</Text>
-          <Text style={styles.panelText}>
-            {hasNext
-              ? "Nobody in the profiles loaded so far. Meet more people below, or try a wider filter."
-              : "Try another language or a wider exchange filter. You might find an unexpected connection."}
-          </Text>
-          {anythingToClear ? (
-            <Pressable style={styles.primaryButton} onPress={clearFilters} accessibilityRole="button">
-              <Text style={styles.primaryButtonText}>Clear filters</Text>
-            </Pressable>
-          ) : null}
-          <Pressable style={styles.textButton} onPress={() => navigation.navigate("Profile")} accessibilityRole="button">
-            <Text style={styles.textButtonText}>Update your languages</Text>
-          </Pressable>
-        </View>
-      );
-    }
+  if (!othersBase) {
+    emptyState = panel("Nobody else is included", "Switch on a group under “In More people, include” in Filters.", { label: "Open filters", onPress: () => setSheetOpen(true) });
+  } else if (others.loading && !others.profiles.length) {
+    emptyState = (
+      <View style={styles.skeleton} accessibilityRole="progressbar" accessibilityLabel="Finding more people">
+        <View style={styles.skeletonLine} />
+        <View style={[styles.skeletonLine, styles.skeletonLineShort]} />
+      </View>
+    );
+  } else if (others.error) {
+    emptyState = panel("We couldn't load people.", others.error, { label: "Try again", onPress: others.retry });
+  } else {
+    emptyState = panel(
+      search.trim() ? "Nobody in this search" : "Nobody else matches yet",
+      search.trim() ? "Try another name, language or goal." : "Try a wider filter. You might find an unexpected connection.",
+      search.trim() || anyQuick || filterCount ? { label: "Clear filters", onPress: clearAll } : undefined
+    );
   }
 
   let footer: React.ReactElement | null = null;
-  if (loadingMore) {
+  if (othersBase && others.loadingMore) {
     footer = (
       <View style={styles.footer}>
         <ActivityIndicator color={warm.teal} />
         <Text style={styles.footerText}>Finding more people…</Text>
       </View>
     );
-  } else if (moreError) {
+  } else if (othersBase && others.moreError) {
     footer = (
       <View style={styles.footer}>
-        <Text style={styles.footerText}>{moreError}</Text>
-        <Pressable style={styles.secondaryButton} onPress={() => startRequest("more")} accessibilityRole="button">
+        <Text style={styles.footerText}>{others.moreError}</Text>
+        <Pressable style={styles.secondaryButton} onPress={others.retryMore} accessibilityRole="button">
           <Text style={styles.secondaryButtonText}>Try again</Text>
         </Pressable>
       </View>
     );
-  } else if (hasNext && !loading && !error) {
+  } else if (othersBase && others.hasNext && !others.loading && !others.error) {
     footer = (
       <View style={styles.footer}>
-        <Pressable style={styles.secondaryButton} onPress={loadMore} accessibilityRole="button">
-          <Text style={styles.secondaryButtonText}>Meet more people</Text>
+        <Pressable style={styles.secondaryButton} onPress={others.loadMore} accessibilityRole="button">
+          <Text style={styles.secondaryButtonText}>Load more</Text>
         </Pressable>
         <Text style={styles.footerText}>
-          {profiles.length} of {totalCount} profiles loaded
+          {others.profiles.length} of {others.total} loaded
         </Text>
       </View>
     );
@@ -377,30 +299,30 @@ export function CommunityScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <VerifyEmailBanner />
       <FlatList
-        data={morePeople}
+        data={othersBase ? othersShown : []}
         keyExtractor={(item) => item.username}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={header}
         ListEmptyComponent={emptyState ?? undefined}
         ListFooterComponent={footer ?? undefined}
-        onEndReached={loadMore}
+        onEndReached={others.loadMore}
         onEndReachedThreshold={0.6}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={warm.teal} colors={[warm.action]} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={warm.teal} colors={[warm.action]} />}
       />
       <PeopleFilterSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        nativeFilter={nativeFilter}
-        level={level}
-        languageOptions={languageOptions}
-        viewerLanguage={viewerLanguage}
-        onApply={applySheet}
-        onReset={resetSheet}
+        filters={filters}
+        theySpeakOptions={meta?.theySpeakOptions || []}
+        theyLearnOptions={meta?.theyLearnOptions || []}
+        countFor={countFor}
+        onApply={(next) => {
+          setFilters(next);
+          setSheetOpen(false);
+        }}
       />
     </SafeAreaView>
   );
@@ -408,68 +330,21 @@ export function CommunityScreen() {
 
 const createStyles = (warm: WarmColors) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: warm.cream,
-    },
-    listContent: {
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 28,
-      gap: 12,
-    },
-    moreHeading: {
-      marginTop: 22,
-      marginBottom: 0,
-    },
-    moreTitle: {
-      color: warm.ink,
-      fontSize: 19,
-      fontFamily: fontFamilies.displayBold,
-    },
-    moreSubtitle: {
-      color: warm.mutedInk,
-      fontSize: 13,
-      marginTop: 2,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    skeleton: {
-      backgroundColor: warm.peachSoft,
-      borderColor: warm.lineWarm,
-      borderWidth: 1,
-      borderRadius: 28,
-      padding: 18,
-      gap: 12,
-    },
-    skeletonRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 14,
-    },
-    skeletonPortrait: {
-      width: 112,
-      height: 112,
-      borderRadius: 56,
-      backgroundColor: warm.peachStrong,
-    },
-    skeletonLines: {
-      flex: 1,
-      gap: 12,
-    },
-    skeletonLine: {
-      height: 14,
-      borderRadius: 7,
-      backgroundColor: warm.skeleton,
-    },
-    skeletonLineShort: {
-      width: "60%",
-    },
-    skeletonText: {
-      color: warm.mutedInk,
-      fontSize: 13,
-      marginTop: 6,
-      fontFamily: fontFamilies.bodyMedium,
-    },
+    container: { flex: 1, backgroundColor: warm.cream },
+    listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28, gap: 12 },
+    sectionTitle: { color: warm.ink, fontSize: 18, marginTop: 14, marginBottom: 10, fontFamily: fontFamilies.displayBold },
+    perfectHeading: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14, marginBottom: 10 },
+    sectionTitleInline: { marginTop: 0, marginBottom: 0 },
+    sectionIcon: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: warm.peach },
+    moreHeading: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 },
+    sectionCount: { color: warm.mutedInk, fontSize: 13, fontFamily: fontFamilies.bodyMedium },
+    hint: { marginTop: 10 },
+    hintText: { color: warm.inkSoft, fontSize: 13, lineHeight: 19, fontFamily: fontFamilies.bodyMedium },
+    hintLink: { color: warm.ink, fontFamily: fontFamilies.bodyBold, textDecorationLine: "underline" },
+    skeletonPhoto: { height: 330, width: "60%", alignSelf: "center", borderRadius: 20, backgroundColor: warm.peachSoft },
+    skeleton: { backgroundColor: warm.paper, borderColor: warm.line, borderWidth: 1, borderRadius: 24, padding: 18, gap: 12 },
+    skeletonLine: { height: 14, borderRadius: 7, backgroundColor: warm.skeleton },
+    skeletonLineShort: { width: "60%" },
     panel: {
       alignItems: "center",
       backgroundColor: warm.paper,
@@ -477,41 +352,11 @@ const createStyles = (warm: WarmColors) =>
       borderWidth: 1,
       borderRadius: 28,
       paddingHorizontal: 20,
-      paddingVertical: 28,
+      paddingVertical: 24,
       gap: 10,
     },
-    panelIcon: {
-      color: warm.peachInk,
-      fontSize: 28,
-      fontFamily: fontFamilies.displayBold,
-    },
-    panelTitle: {
-      color: warm.ink,
-      fontSize: 18,
-      textAlign: "center",
-      fontFamily: fontFamilies.displayBold,
-    },
-    panelText: {
-      color: warm.mutedInk,
-      fontSize: 14,
-      lineHeight: 20,
-      textAlign: "center",
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    primaryButton: {
-      minHeight: 44,
-      borderRadius: 999,
-      paddingHorizontal: 22,
-      marginTop: 6,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: warm.action,
-    },
-    primaryButtonText: {
-      color: warm.onAction,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
+    panelTitle: { color: warm.ink, fontSize: 17, textAlign: "center", fontFamily: fontFamilies.displayBold },
+    panelText: { color: warm.mutedInk, fontSize: 14, lineHeight: 20, textAlign: "center", fontFamily: fontFamilies.bodyMedium },
     secondaryButton: {
       minHeight: 44,
       borderRadius: 999,
@@ -522,30 +367,9 @@ const createStyles = (warm: WarmColors) =>
       borderColor: warm.lineWarm,
       borderWidth: 1,
     },
-    secondaryButtonText: {
-      color: warm.ink,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    textButton: {
-      minHeight: 44,
-      justifyContent: "center",
-      paddingHorizontal: 12,
-    },
-    textButtonText: {
-      color: warm.teal,
-      fontSize: 14,
-      fontFamily: fontFamilies.bodyBold,
-    },
-    footer: {
-      alignItems: "center",
-      gap: 8,
-      paddingVertical: 16,
-    },
-    footerText: {
-      color: warm.mutedInk,
-      fontSize: 12,
-      textAlign: "center",
-      fontFamily: fontFamilies.bodyMedium,
-    },
+    secondaryButtonText: { color: warm.ink, fontSize: 14, fontFamily: fontFamilies.bodyBold },
+    textButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12 },
+    textButtonText: { color: warm.ink, fontSize: 14, fontFamily: fontFamilies.bodyBold },
+    footer: { alignItems: "center", gap: 8, paddingVertical: 16 },
+    footerText: { color: warm.mutedInk, fontSize: 12, textAlign: "center", fontFamily: fontFamilies.bodyMedium },
   });

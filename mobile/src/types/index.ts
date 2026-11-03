@@ -115,7 +115,7 @@ export interface PeopleMatch {
   you_speak?: "native" | "advanced" | "fluent" | null;
 }
 
-/** Item of `GET /api/profile/data` (PeopleCard in system-map). No id, bio or presence. */
+/** Item of `GET /api/profile/data` (PeopleCard in system-map). No id, bio or exact presence. */
 export interface PeopleCard {
   username: string;
   native_language?: string;
@@ -124,10 +124,31 @@ export interface PeopleCard {
   learning_goal?: string;
   profile_image_url?: string | null;
   match?: PeopleMatch;
+  /** City only (first part of their location), never the country or coordinates. */
+  city?: string | null;
+  /** Coarse activity: "Active today" / "Active this week" / null. */
+  active_label?: string | null;
+  /** Joined in the last 7 days. */
+  is_new?: boolean;
+}
+
+/** `filters` in the People payload: chip options and quick-filter availability. */
+export interface PeopleFilterInfo {
+  they_speak_options?: string[];
+  they_learn_options?: string[];
+  near_available?: boolean;
+  near_city?: string | null;
+  near_scope?: "city" | "country" | null;
+  my_level_available?: boolean;
 }
 
 export interface ProfileListResponse {
   profiles: PeopleCard[];
+  /** Total for the current filters (same as pagination.total_count). */
+  total?: number;
+  filters?: PeopleFilterInfo;
+  /** Only with `counts=1`: both sections for the current filters. */
+  counts?: { perfect: number; others: number };
   pagination: {
     page: number;
     page_size: number;
