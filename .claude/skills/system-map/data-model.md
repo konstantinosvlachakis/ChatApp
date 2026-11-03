@@ -135,7 +135,7 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
   - Heartbeats (~20 s) refresh `last_seen` at most every `PRESENCE_TOUCH_INTERVAL_SECONDS` (60).
   - `mark_presence_offline_view` (logout) zeroes the counters. The `reset_presence` command (run in the Procfile release phase) zeroes all counters.
 - **JWT auth** (SimpleJWT: access 1 h, refresh 7 d, cookies `lv_access`/`lv_refresh`) doesn't touch any model. There is no token blacklist table.
-- `load_dummy_data` is legacy: it creates `username="Alma"`, "John Doe", etc. with no email. Dev only.
+- `load_dummy_data` (`chatapp/demo_profiles.py`): 5 non-login demo profiles per language (english, chinese, russian, spanish, arabic) with `demo_` usernames, `@people-demo.example.invalid` emails (numbered by persona position, so keep persona order), "Demo profile." bios and 600px `i.pravatar.cc` portraits (allowed in the CSP `img-src`). Never updates existing rows unless `--refresh-photos` (portrait URL only) or `--prune` (deletes demo rows no longer listed, with their chats); `--dry-run` reports counts.
 
 ## Media
 - Fields: `Message.attachment` (FileField → `default_storage`, upload name forced to `<uuid4hex><ext>`). `Profile.profile_image_url` and `complementary_image_{1,2}_url` are **plain CharFields holding URLs or paths**, not FileFields.

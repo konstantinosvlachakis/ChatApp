@@ -16,7 +16,8 @@ def build_content_security_policy():
         "blob:",
         "https://res.cloudinary.com",
         "https://flagcdn.com",
-        "https://randomuser.me",
+        "https://randomuser.me",  # old demo portraits, until `load_dummy_data --refresh-photos` runs
+        "https://i.pravatar.cc",  # demo portraits (chatapp/demo_profiles.py)
         *settings.CSP_EXTRA_IMG_SRC,
     ]
     directives = {

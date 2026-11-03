@@ -5,7 +5,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from chatapp.demo_profiles import LANGUAGES, demo_profile_specs, seed_demo_profiles
+from django.contrib.auth.hashers import make_password
+
+from chatapp.demo_profiles import DEMO_EMAIL_DOMAIN, LANGUAGES, demo_profile_specs, seed_demo_profiles
 from chatapp.models import Conversation, Message, Profile
 from .factory import make_conversation, make_message, make_user
 
@@ -13,9 +15,9 @@ from .factory import make_conversation, make_message, make_user
 class DemoProfileTests(TestCase):
     def test_default_population_is_complete_and_non_login(self):
         result = seed_demo_profiles()
-        self.assertEqual(result["created"], 40)
-        self.assertEqual(Counter(Profile.objects.values_list("native_language", flat=True)), dict.fromkeys(LANGUAGES, 8))
-        self.assertEqual(len(set(Profile.objects.values_list("profile_image_url", flat=True))), 40)
+        self.assertEqual(result["created"], 25)
+        self.assertEqual(Counter(Profile.objects.values_list("native_language", flat=True)), dict.fromkeys(LANGUAGES, 5))
+        self.assertEqual(len(set(Profile.objects.values_list("profile_image_url", flat=True))), 25)
         for user in Profile.objects.all():
             self.assertFalse(user.has_usable_password())
             self.assertFalse(user.email_verified)
@@ -25,7 +27,7 @@ class DemoProfileTests(TestCase):
             self.assertTrue(user.learning_goal)
             self.assertTrue(user.location)
             self.assertGreaterEqual(user.age, 18)
-            self.assertTrue(user.profile_image_url.startswith("https://randomuser.me/api/portraits/"))
+            self.assertRegex(user.profile_image_url, r"^https://i\.pravatar\.cc/600\?img=\d+$")
             self.assertEqual(set(user.languages_practicing), set(user.practice_language_levels))
             self.assertNotIn(user.native_language, user.languages_practicing)
         self.assertEqual(Conversation.objects.count(), 0)
@@ -39,10 +41,10 @@ class DemoProfileTests(TestCase):
         first = Profile.objects.get(username="demo_emma_brooks")
         Profile.objects.filter(pk=first.pk).update(location="Edited fixture location")
         result = seed_demo_profiles()
-        self.assertEqual((result["created"], result["existing"]), (0, 40))
+        self.assertEqual((result["created"], result["existing"]), (0, 25))
         first.refresh_from_db()
         self.assertEqual(first.location, "Edited fixture location")
-        self.assertEqual(seed_demo_profiles(10)["created"], 10)
+        self.assertEqual(seed_demo_profiles(3)["created"], 0)
         user.refresh_from_db()
         self.assertEqual(user.bio, "A real profile")
         message.refresh_from_db()
@@ -53,7 +55,7 @@ class DemoProfileTests(TestCase):
     def test_dry_run_writes_nothing(self):
         output = StringIO()
         call_command("load_dummy_data", "--dry-run", stdout=output)
-        self.assertIn("Would create 40", output.getvalue())
+        self.assertIn("Would create 25", output.getvalue())
         self.assertFalse(Profile.objects.exists())
 
     def test_case_insensitive_username_collision_aborts_every_insert(self):
@@ -82,9 +84,51 @@ class DemoProfileTests(TestCase):
         self.assertTrue(any(row["username"] == "demo_emma_brooks" for row in response.json()["profiles"]))
 
     def test_bounds_and_management_command(self):
-        for invalid in (0, 4, 11, 1000):
+        for invalid in (0, 6, 1000):
             with self.assertRaises(CommandError):
                 seed_demo_profiles(invalid)
         output = StringIO()
-        call_command("load_dummy_data", per_language=5, stdout=output)
-        self.assertIn("Created 25", output.getvalue())
+        call_command("load_dummy_data", per_language=2, stdout=output)
+        self.assertIn("Created 10", output.getvalue())
+
+    def _old_fixture(self, **changes):
+        """A row as an earlier, larger seed left it (randomuser portrait, persona beyond five)."""
+        spec = {**demo_profile_specs()[0], "username": "demo_lucas_hayes", "email": f"english.06@{DEMO_EMAIL_DOMAIN}",
+                "profile_image_url": "https://randomuser.me/api/portraits/men/12.jpg", **changes}
+        return Profile.objects.create(**spec, password=make_password(None))
+
+    def test_refresh_photos_updates_only_existing_demo_portraits(self):
+        seed_demo_profiles()
+        Profile.objects.filter(username="demo_emma_brooks").update(
+            profile_image_url="https://randomuser.me/api/portraits/women/10.jpg", location="Edited")
+        real = make_user(profile_image_url="https://example.com/me.jpg")
+        self.assertEqual(seed_demo_profiles()["refreshed"], 0)
+        dry = seed_demo_profiles(dry_run=True, refresh_photos=True)
+        self.assertEqual((dry["refreshed"], dry["would_refresh"]), (0, 1))
+        self.assertEqual(seed_demo_profiles(refresh_photos=True)["refreshed"], 1)
+        emma = Profile.objects.get(username="demo_emma_brooks")
+        self.assertEqual(emma.profile_image_url, "https://i.pravatar.cc/600?img=5")
+        self.assertEqual(emma.location, "Edited")
+        real.refresh_from_db()
+        self.assertEqual(real.profile_image_url, "https://example.com/me.jpg")
+
+    def test_prune_deletes_only_demo_rows_outside_the_list(self):
+        seed_demo_profiles()
+        old = self._old_fixture()
+        lookalike = make_user(username="demo_fan", email=f"fan@{DEMO_EMAIL_DOMAIN}")  # has a password
+        conversation = make_conversation(old)
+        make_message(conversation, old)
+        self.assertEqual(seed_demo_profiles(dry_run=True, prune=True)["would_prune"], 1)
+        self.assertTrue(Profile.objects.filter(pk=old.pk).exists())
+        result = seed_demo_profiles(prune=True)
+        self.assertEqual(result["pruned"], 1)
+        self.assertFalse(Profile.objects.filter(pk=old.pk).exists())
+        self.assertTrue(Profile.objects.filter(pk=lookalike.pk).exists())
+        self.assertEqual(Profile.objects.filter(username__startswith="demo_", email__endswith=DEMO_EMAIL_DOMAIN).count(), 26)
+
+    def test_command_flags(self):
+        seed_demo_profiles()
+        self._old_fixture()
+        output = StringIO()
+        call_command("load_dummy_data", "--refresh-photos", "--prune", "--dry-run", stdout=output)
+        self.assertIn("Would refresh 0 photos; would prune 1.", output.getvalue())
