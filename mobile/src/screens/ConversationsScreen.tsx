@@ -1322,7 +1322,12 @@ export function ConversationsScreen() {
       // Follow new messages when already at the bottom, or when the newest one is ours.
       const newest = latestMessageRef.current;
       if (isNearBottomRef.current || (newest && newest.sender?.id === currentUserId)) {
-        scrollToBottom(true);
+        isNearBottomRef.current = true;
+        userScrolledRef.current = false;
+        // The first message replaces the (tall) empty state, so the measured content height is
+        // stale until the next onContentSizeChange, which scrolls with the real one; scrolling
+        // now would overshoot past the message.
+        if (previousCount > 0) scrollToBottom(true);
       }
     }
     previousMessageCountRef.current = messageCount;
