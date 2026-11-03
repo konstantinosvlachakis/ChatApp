@@ -19,6 +19,7 @@ from rest_framework.test import APIClient, APIRequestFactory
 
 from chatapp.models import (
     BlockedUser,
+    Follow,
     Conversation,
     Message,
     MessageReaction,
@@ -30,6 +31,20 @@ from chatapp.serializers import MessageSerializer, with_message_relations
 from chatapp.views import get_block_state
 
 from .factory import make_conversation, make_user
+
+
+class FollowingQueryCountTests(TestCase):
+    def test_following_list_queries_are_bounded(self):
+        me = make_user(native_language="english")
+        client = APIClient()
+        client.force_authenticate(me)
+        for count in (2, 20):
+            others = [make_user(native_language="greek") for _ in range(count)]
+            Follow.objects.bulk_create([Follow(follower=me, following=user) for user in others])
+            with CaptureQueriesContext(connection) as queries:
+                response = client.get("/api/profile/following/", {"page_size": 50})
+            self.assertEqual(response.status_code, 200)
+            self.assertLessEqual(len(queries), 6)
 
 # Upper bounds (queries per request). They must not depend on data size.
 MAX_QUERIES = {

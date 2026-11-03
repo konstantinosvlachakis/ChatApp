@@ -169,7 +169,7 @@ test("quick filters apply to both sections and show the city", async () => {
   await screen.findByRole("region", { name: "Perfect exchanges" });
   const group = screen.getByRole("group", { name: "Quick filters" });
   const near = within(group).getByRole("button", { name: "Near you · Athens" });
-  expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["Near you · Athens", "Active today", "New members", "Your level"]);
+  expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["Near you · Athens", "Active today", "New members", "Your level", "Following"]);
 
   fireEvent.click(near);
   expect(near).toHaveAttribute("aria-pressed", "true");

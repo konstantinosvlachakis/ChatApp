@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CountryFlag from "react-native-country-flag";
 import { useAuth } from "../context/AuthContext";
@@ -25,12 +25,12 @@ import { useTheme } from "../context/ThemeContext";
 import { ProfileLanguageSelector } from "../components/ProfileLanguageSelector";
 import { getProfileLanguageOptions } from "../features/profileLanguages";
 import { getCoachLanguageOptions } from "../features/coachConversation";
-import { fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
+import { fetchFollowing, fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
 import { toastApiError } from "../services/toast";
 import { RESEND_COOLDOWN_SECONDS } from "../features/emailVerification";
 import { setResendAvailableIn } from "../services/emailVerification";
 import { ApiError, getErrorMessage } from "../services/api/errors";
-import type { Profile } from "../types";
+import type { PeopleCard, Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { API_BASE_URL } from "../config/api";
 import type { ProfilePhotoSlot } from "../services/api/auth";
@@ -255,6 +255,26 @@ export function ProfileScreen() {
   const [uploadingSlot, setUploadingSlot] = useState<ProfilePhotoSlot | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [following, setFollowing] = useState<PeopleCard[]>([]);
+  const [followingPage, setFollowingPage] = useState(0);
+  const [followingHasNext, setFollowingHasNext] = useState(false);
+  const [followingBusy, setFollowingBusy] = useState(false);
+  const [followingError, setFollowingError] = useState("");
+  const loadFollowing = React.useCallback(async (page: number) => {
+    setFollowingBusy(true);
+    try {
+      const payload = await fetchFollowing(page);
+      setFollowing((current) => page === 1 ? payload.profiles : [...current, ...payload.profiles]);
+      setFollowingPage(page);
+      setFollowingHasNext(Boolean(payload.pagination?.has_next));
+      setFollowingError("");
+    } catch (failure) {
+      setFollowingError(getErrorMessage(failure, "Could not load the people you follow."));
+    } finally {
+      setFollowingBusy(false);
+    }
+  }, []);
+  useFocusEffect(React.useCallback(() => { loadFollowing(1); }, [loadFollowing]));
   const [languagePicker, setLanguagePicker] = useState<"native" | "base" | "practice" | null>(null);
   const [isMissionCatalogOpen, setIsMissionCatalogOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -792,6 +812,23 @@ export function ProfileScreen() {
               </Text>
             </Pressable>
           </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="people-outline" size={18} color={colors.primary} />
+            <Text style={styles.sectionTitle}>People you follow</Text>
+          </View>
+          {followingError ? <Text>{followingError}</Text> : null}
+          {!following.length && !followingBusy && !followingError ? <Text>You're not following anyone yet.</Text> : null}
+          {following.map((person) => <Pressable key={person.username} style={styles.recentViewerRow}
+            onPress={() => navigation.navigate("People", { screen: "PublicProfile", params: { username: person.username } })}>
+            <Image source={{ uri: avatarImage(resolveMediaUrl(person.profile_image_url), 52) }} style={styles.recentViewerAvatar} />
+            <Text style={styles.recentViewerName}>{person.username}</Text>
+          </Pressable>)}
+          {followingHasNext ? <Pressable onPress={() => loadFollowing(followingPage + 1)} disabled={followingBusy}>
+            <Text style={styles.sectionSubtitle}>{followingBusy ? "Loading…" : "Show all"}</Text>
+          </Pressable> : null}
         </View>
 
         <View style={styles.sectionCard}>

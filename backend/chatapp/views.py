@@ -21,6 +21,7 @@ from django.shortcuts import get_object_or_404
 from .models import (
     BlockedUser,
     Conversation,
+    Follow,
     Message,
     MessageTranslation,
     MessageReaction,
@@ -29,7 +30,12 @@ from .models import (
     PushDevice,
     UserReport,
 )
-from .push import PUSH_PLATFORMS, is_valid_expo_push_token, schedule_message_push
+from .push import (
+    PUSH_PLATFORMS,
+    is_valid_expo_push_token,
+    schedule_follow_push,
+    schedule_message_push,
+)
 from . import people_filters
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
@@ -43,7 +49,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError, OperationalError, connections
 from django.db.models import IntegerField, Q
-from django.db.models import Case, Count, F, OuterRef, Subquery, Value, When
+from django.db.models import Case, Count, Exists, F, OuterRef, Subquery, Value, When
 from django.db.models.functions import Coalesce
 from django.core.files.storage import default_storage
 import os
@@ -73,6 +79,7 @@ from .gemini import (
 )
 from .throttles import (
     CONVERSATION_CREATE_THROTTLES,
+    FOLLOW_THROTTLES,
     UPLOAD_THROTTLES,
     AuthRateThrottle,
     BlockRateThrottle,
@@ -99,7 +106,7 @@ from .tokens import (
     issue_token_pair,
     revoke_user_tokens,
 )
-from .email_verification import RequireVerifiedEmail, send_verification_email
+from .email_verification import EMAIL_UNVERIFIED_CODE, RequireVerifiedEmail, send_verification_email
 from .practice_library import PRACTICE_LIBRARY
 from .practice_progress import (
     challenge_bucket,
@@ -135,6 +142,15 @@ CONVERSATION_LIST_CACHE_VERSION_KEY_TEMPLATE = (
     "conversation_list:version:user:{user_id}"
 )
 CONVERSATION_LIST_CACHE_TIMEOUT_SECONDS = 20
+# Bumped for both people on follow/unfollow/block: the People list cache key
+# embeds it, so `is_following` / `follows_you` / `following=1` are never stale.
+FOLLOW_CACHE_VERSION_KEY_TEMPLATE = "follow:version:user:{user_id}"
+# A follow notifies the followed person at most once per pair in this window
+# (unfollow + follow again doesn't re-notify). The cache fails open, so during a
+# Redis outage a repeat follow can notify again.
+FOLLOW_NOTIFY_KEY_TEMPLATE = "follow:notified:v1:{follower_id}:{following_id}"
+FOLLOW_NOTIFY_INTERVAL_SECONDS = 60 * 60 * 24
+FOLLOWING_LIST_DEFAULT_PAGE_SIZE = 24
 PRACTICE_XP_CORRECT = 15
 PRACTICE_XP_WRONG = 3
 PRACTICE_POINTS_CORRECT = 10
@@ -495,6 +511,27 @@ def bump_profile_cache_version(user_id):
         pass
 
 
+def get_follow_cache_version(user_id):
+    key = FOLLOW_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+    version = cache.get(key)
+    if version is None:
+        version = 1
+        cache.set(key, version, None)
+    return int(version)
+
+
+def bump_follow_cache_version(*user_ids):
+    for user_id in user_ids:
+        key = FOLLOW_CACHE_VERSION_KEY_TEMPLATE.format(user_id=user_id)
+        try:
+            cache.incr(key)
+        except ValueError:
+            cache.set(key, 2, None)
+        except Exception:
+            # Best-effort invalidation.
+            pass
+
+
 def build_recent_profile_viewers(request, user, limit=12):
     recent_views = (
         ProfileView.objects.filter(viewed_profile=user)
@@ -748,6 +785,121 @@ def get_block_state(viewer_id, profile_id):
         ).values_list("blocker_id", flat=True)
     )
     return viewer_id in blocker_ids, profile_id in blocker_ids
+
+
+def get_follow_state(viewer_id, profile_id):
+    """(is_following, follows_you) for the viewer and a profile, in one query."""
+    if not viewer_id or not profile_id or viewer_id == profile_id:
+        return False, False
+    follower_ids = set(
+        Follow.objects.filter(
+            Q(follower_id=viewer_id, following_id=profile_id)
+            | Q(follower_id=profile_id, following_id=viewer_id)
+        ).values_list("follower_id", flat=True)
+    )
+    return viewer_id in follower_ids, profile_id in follower_ids
+
+
+def partner_match_flags(profile, spoken, learning):
+    """(teaches_me, learns_mine) in Python, mirroring ``build_partner_match_filters``
+    for lists that aren't annotated (People you follow)."""
+    native = _normalized_language(profile.native_language or "")
+    teaches_me = bool(native) and native in learning
+    spoken_set = set(spoken)
+    learns_mine = any(
+        _normalized_language(language) in spoken_set
+        for language in profile.languages_practicing or []
+    )
+    return teaches_me, learns_mine
+
+
+# Profile columns a People card reads (``.only()`` on the list querysets).
+PEOPLE_CARD_FIELDS = (
+    "username",
+    "native_language",
+    "languages_practicing",
+    "practice_language_levels",
+    "learning_goal",
+    "profile_image_url",
+    "location",
+    "is_online",
+    "last_seen",
+    "date_joined",
+)
+
+
+def build_people_card(
+    request, profile, now, viewer_languages, teaches_me, learns_mine,
+    is_following, follows_you,
+):
+    """The PeopleCard payload (People feed and People you follow)."""
+    spoken, learning, spoken_levels = viewer_languages
+    return {
+        "username": profile.username,
+        "native_language": profile.native_language,
+        "languages_practicing": profile.languages_practicing or [],
+        "practice_language_levels": profile.practice_language_levels or {},
+        "learning_goal": profile.learning_goal or "",
+        "profile_image_url": build_media_url(request, profile.profile_image_url),
+        # City only (never the country or coordinates); coarse activity only.
+        "city": people_filters.city_of(profile.location),
+        "active_label": people_filters.active_label(profile, now),
+        "is_new": people_filters.is_new_member(profile, now),
+        # Private to the viewer: there are no public follower counts.
+        "is_following": bool(is_following),
+        "follows_you": bool(follows_you),
+        "match": {
+            "teaches_me": bool(teaches_me),
+            "learns_mine": bool(learns_mine),
+            "reciprocal": bool(teaches_me and learns_mine),
+            "score": int(bool(teaches_me)) + int(bool(learns_mine)),
+            **describe_partner_match(profile, spoken, learning, spoken_levels),
+        },
+    }
+
+
+def build_page_payload(paginator, page_obj, page, page_size):
+    """The hand-rolled ``pagination`` dict (an out-of-range page is empty, not 404)."""
+    if page_obj is not None:
+        return {
+            "page": page_obj.number,
+            "page_size": page_size,
+            "total_pages": paginator.num_pages,
+            "total_count": paginator.count,
+            "has_next": page_obj.has_next(),
+            "has_previous": page_obj.has_previous(),
+        }
+    return {
+        "page": page if paginator.num_pages else 1,
+        "page_size": page_size,
+        "total_pages": paginator.num_pages,
+        "total_count": paginator.count,
+        "has_next": False,
+        "has_previous": page > 1 and paginator.num_pages > 0,
+    }
+
+
+def paginate(queryset, page, page_size):
+    paginator = Paginator(queryset, page_size)
+    page_obj = None
+    if paginator.num_pages and page <= paginator.num_pages:
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(1)
+    return paginator, page_obj
+
+
+def parse_page_params(params, default_size):
+    try:
+        page = max(int(params.get("page", "1")), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(params.get("page_size", str(default_size)))
+    except (TypeError, ValueError):
+        page_size = default_size
+    return page, max(1, min(page_size, PROFILE_LIST_MAX_PAGE_SIZE))
 
 
 def broadcast_message_status_update(
@@ -1168,8 +1320,7 @@ def profile_data_view(request):
     """People list. ``match`` (+ legacy ``match_only``) still works for older
     clients; ``section`` supersedes it. Other params: see ``people_filters``."""
     params = request.query_params
-    page_param = params.get("page", "1")
-    page_size_param = params.get("page_size", str(PROFILE_LIST_DEFAULT_PAGE_SIZE))
+    page, page_size = parse_page_params(params, PROFILE_LIST_DEFAULT_PAGE_SIZE)
     match_only = people_filters.parse_flag(params.get("match_only", "0"))
     # "match_only" predates the "match" param and maps to "teaches_me".
     match_mode = str(params.get("match", "")).strip().lower()
@@ -1186,17 +1337,7 @@ def profile_data_view(request):
     new_only = people_filters.parse_flag(params.get("new"))
     my_level_only = people_filters.parse_flag(params.get("my_level"))
     with_counts = people_filters.parse_flag(params.get("counts"))
-
-    try:
-        page = max(int(page_param), 1)
-    except (TypeError, ValueError):
-        page = 1
-
-    try:
-        page_size = int(page_size_param)
-    except (TypeError, ValueError):
-        page_size = PROFILE_LIST_DEFAULT_PAGE_SIZE
-    page_size = max(1, min(page_size, PROFILE_LIST_MAX_PAGE_SIZE))
+    following_only = people_filters.parse_flag(params.get("following"))
 
     my_spoken, my_learning, my_spoken_levels = partner_language_sets(request.user)
     teaches_me_q, learns_mine_q, my_native_language = build_partner_match_filters(
@@ -1224,12 +1365,16 @@ def profile_data_view(request):
     ).hexdigest()[:12]
     quick_flags = "".join(
         "1" if flag else "0"
-        for flag in (near, active_only, new_only, my_level_only, with_counts)
+        for flag in (near, active_only, new_only, my_level_only, with_counts, following_only)
     )
+    # `fv:` = the viewer's follow version (bumped when they follow/unfollow or
+    # someone follows them), so is_following / follows_you / following=1 are fresh.
+    follow_version = get_follow_cache_version(request.user.id)
     cache_key = (
         f"profile_data:v{cache_version}:user:{request.user.id}:lang:{language_token}:"
         f"page:{page}:size:{page_size}:match:{match_mode}:level:{level_filter or '-'}:"
-        f"sec:{section or '-'}:sort:{sort}:qf:{quick_flags}:sel:{selection_token}"
+        f"sec:{section or '-'}:sort:{sort}:qf:{quick_flags}:sel:{selection_token}:"
+        f"fv:{follow_version}"
     )
     cached_payload = cache.get(cache_key)
     if cached_payload:
@@ -1254,6 +1399,12 @@ def profile_data_view(request):
     profiles_qs = profiles_qs.annotate(
         teaches_me=Case(When(teaches_me_q, then=Value(1)), default=Value(0)),
         learns_mine=Case(When(learns_mine_q, then=Value(1)), default=Value(0)),
+        is_following=Exists(
+            Follow.objects.filter(follower_id=request.user.id, following_id=OuterRef("pk"))
+        ),
+        follows_you=Exists(
+            Follow.objects.filter(follower_id=OuterRef("pk"), following_id=request.user.id)
+        ),
     ).annotate(match_score=F("teaches_me") + F("learns_mine"))
 
     # Filters shared by both sections (and by the counts).
@@ -1292,6 +1443,9 @@ def profile_data_view(request):
     )
     if my_level_only and level_q is not None:
         profiles_qs = profiles_qs.filter(level_q)
+    if following_only:
+        # Both sections (and the counts) narrow to people the viewer follows.
+        profiles_qs = profiles_qs.filter(is_following=True)
 
     counts = None
     if with_counts:
@@ -1315,70 +1469,19 @@ def profile_data_view(request):
         ordering = (F("date_joined").desc(nulls_last=True), "-match_score", "-teaches_me", "username")
     else:
         ordering = ("-match_score", "-teaches_me", "username")
-    profiles_qs = profiles_qs.order_by(*ordering).only(
-        "username",
-        "native_language",
-        "languages_practicing",
-        "practice_language_levels",
-        "learning_goal",
-        "profile_image_url",
-        "location",
-        "is_online",
-        "last_seen",
-        "date_joined",
-    )
-    paginator = Paginator(profiles_qs, page_size)
+    profiles_qs = profiles_qs.order_by(*ordering).only(*PEOPLE_CARD_FIELDS)
+    paginator, page_obj = paginate(profiles_qs, page, page_size)
 
-    page_obj = None
-    if paginator.num_pages and page <= paginator.num_pages:
-        try:
-            page_obj = paginator.page(page)
-        except EmptyPage:
-            page_obj = paginator.page(1)
-
+    viewer_languages = (my_spoken, my_learning, my_spoken_levels)
     profile_data = [
-        {
-            "username": profile.username,
-            "native_language": profile.native_language,
-            "languages_practicing": profile.languages_practicing or [],
-            "practice_language_levels": profile.practice_language_levels or {},
-            "learning_goal": profile.learning_goal or "",
-            "profile_image_url": build_media_url(request, profile.profile_image_url),
-            # City only (never the country or coordinates); coarse activity only.
-            "city": people_filters.city_of(profile.location),
-            "active_label": people_filters.active_label(profile, now),
-            "is_new": people_filters.is_new_member(profile, now),
-            "match": {
-                "teaches_me": bool(profile.teaches_me),
-                "learns_mine": bool(profile.learns_mine),
-                "reciprocal": bool(profile.teaches_me and profile.learns_mine),
-                "score": profile.match_score,
-                **describe_partner_match(
-                    profile, my_spoken, my_learning, my_spoken_levels
-                ),
-            },
-        }
+        build_people_card(
+            request, profile, now, viewer_languages,
+            profile.teaches_me, profile.learns_mine,
+            profile.is_following, profile.follows_you,
+        )
         for profile in (page_obj or [])
     ]
-
-    if page_obj is not None:
-        pagination = {
-            "page": page_obj.number,
-            "page_size": page_size,
-            "total_pages": paginator.num_pages,
-            "total_count": paginator.count,
-            "has_next": page_obj.has_next(),
-            "has_previous": page_obj.has_previous(),
-        }
-    else:
-        pagination = {
-            "page": page if paginator.num_pages else 1,
-            "page_size": page_size,
-            "total_pages": paginator.num_pages,
-            "total_count": paginator.count,
-            "has_next": False,
-            "has_previous": page > 1 and paginator.num_pages > 0,
-        }
+    pagination = build_page_payload(paginator, page_obj, page, page_size)
     payload = {
         "profiles": profile_data,
         "pagination": pagination,
@@ -1411,7 +1514,7 @@ def public_profile_view(request, username):
     cache_version = get_profile_cache_version(profile.id)
     cache_key = (
         f"public_profile:v{cache_version}:user:{profile.id}:viewer:{request.user.id}:"
-        f"host:{request.get_host()}"
+        f"host:{request.get_host()}:fv:{get_follow_cache_version(request.user.id)}"
     )
     cached_payload = cache.get(cache_key)
     if cached_payload:
@@ -1437,6 +1540,9 @@ def public_profile_view(request, username):
         "is_blocked_by_me": is_blocked_by_me,
         "has_blocked_me": has_blocked_me,
     }
+    profile_data["is_following"], profile_data["follows_you"] = get_follow_state(
+        request.user.id, profile.id
+    )
     cache.set(cache_key, profile_data, PROFILE_CACHE_TIMEOUT_SECONDS)
     return JsonResponse(profile_data, status=200)
 
@@ -1782,6 +1888,81 @@ def delete_account_view(request):
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def following_list_view(request):
+    page, page_size = parse_page_params(request.query_params, FOLLOWING_LIST_DEFAULT_PAGE_SIZE)
+    blocked_ids = get_blocked_user_ids(request.user.id)
+    links = Follow.objects.filter(follower_id=request.user.id).exclude(
+        following_id__in=blocked_ids
+    ).select_related("following").annotate(follows_you=Exists(
+        Follow.objects.filter(follower_id=OuterRef("following_id"), following_id=request.user.id)
+    )).order_by("-created_at", "-id")
+    paginator, page_obj = paginate(links, page, page_size)
+    viewer_languages = partner_language_sets(request.user)
+    now = timezone.now()
+    profiles = []
+    for link in page_obj or []:
+        profile = link.following
+        teaches_me, learns_mine = partner_match_flags(
+            profile, viewer_languages[0], viewer_languages[1]
+        )
+        profiles.append(build_people_card(
+            request, profile, now, viewer_languages, teaches_me, learns_mine,
+            True, bool(getattr(link, "follows_you", False)),
+        ))
+    return Response({"profiles": profiles, "pagination": build_page_payload(
+        paginator, page_obj, page, page_size
+    )})
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(*FOLLOW_THROTTLES))
+def follow_user_view(request, username):
+    target = get_profile_by_username_or_404(username)
+    if target.id == request.user.id:
+        return error_response("You cannot follow yourself.", "cannot_follow_self", status_code=400)
+    if users_are_blocked(request.user.id, target.id):
+        return error_response("This user is unavailable.", "blocked", status_code=403)
+    if request.method == "POST" and not RequireVerifiedEmail().has_permission(request, None):
+        return error_response("Verify your email to follow people.", EMAIL_UNVERIFIED_CODE, status_code=403)
+
+    if request.method == "DELETE":
+        deleted, _ = Follow.objects.filter(follower=request.user, following=target).delete()
+        if deleted:
+            bump_follow_cache_version(request.user.id, target.id)
+        return Response({"is_following": False})
+
+    _, created = Follow.objects.get_or_create(follower=request.user, following=target)
+    if created:
+        bump_follow_cache_version(request.user.id, target.id)
+        notify_key = FOLLOW_NOTIFY_KEY_TEMPLATE.format(
+            follower_id=request.user.id, following_id=target.id
+        )
+        try:
+            should_notify = cache.add(notify_key, 1, FOLLOW_NOTIFY_INTERVAL_SECONDS)
+        except Exception:
+            # A cache outage must not undo a successful follow.
+            should_notify = True
+        if should_notify:
+            follows_back = Follow.objects.filter(
+                follower=target, following=request.user
+            ).exists()
+            broadcast(f"presence_user_{target.id}", {
+                "type": "user_followed_event",
+                "username": request.user.username,
+                "profile_image_url": build_media_url(request, request.user.profile_image_url),
+                "is_following": follows_back,
+            })
+            schedule_follow_push(
+                follower_id=request.user.id,
+                follower_username=request.user.username,
+                recipient_id=target.id,
+            )
+    return Response({"is_following": True})
+
+
 @api_view(["POST", "DELETE"])
 @permission_classes([IsAuthenticated])
 @throttle_classes(with_default_throttles(BlockRateThrottle))
@@ -1796,6 +1977,11 @@ def block_user_view(request, username):
 
     if request.method == "POST":
         BlockedUser.objects.get_or_create(blocker=request.user, blocked=target)
+        Follow.objects.filter(
+            Q(follower=request.user, following=target)
+            | Q(follower=target, following=request.user)
+        ).delete()
+        bump_follow_cache_version(request.user.id, target.id)
         Conversation.objects.filter(
             Q(sender=request.user, receiver=target)
             | Q(sender=target, receiver=request.user)

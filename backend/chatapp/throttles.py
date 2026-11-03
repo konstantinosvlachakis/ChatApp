@@ -120,6 +120,16 @@ class BlockRateThrottle(ScopedUserThrottle):
     scope = "block"
 
 
+class FollowRateThrottle(ScopedUserThrottle):
+    """Follow + unfollow (a new follow sends a push and a realtime event)."""
+
+    scope = "follow"
+
+
+class FollowDailyRateThrottle(ScopedUserThrottle):
+    scope = "follow_daily"
+
+
 class PracticeSubmitRateThrottle(ScopedUserThrottle):
     scope = "practice_submit"
 
@@ -149,6 +159,7 @@ CONVERSATION_CREATE_THROTTLES = (
     ConversationCreateDailyRateThrottle,
 )
 UPLOAD_THROTTLES = (UploadRateThrottle, UploadDailyRateThrottle)
+FOLLOW_THROTTLES = (FollowRateThrottle, FollowDailyRateThrottle)
 
 
 class MultiWindowRateMixin:

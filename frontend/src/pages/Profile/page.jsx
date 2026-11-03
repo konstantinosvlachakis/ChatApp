@@ -27,6 +27,41 @@ import { useUser } from "../../context/UserContext";
 
 const VISITORS_PREVIEW = 3;
 
+const FollowingCard = () => {
+  const [people, setPeople] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const load = async (nextPage) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const data = await api.get("/api/profile/following/", { params: { page: nextPage, page_size: 6 } });
+      setPeople((current) => nextPage === 1 ? data.profiles : [...current, ...data.profiles]);
+      setPage(nextPage);
+      setHasNext(Boolean(data.pagination?.has_next));
+      setError("");
+    } catch (failure) {
+      setError(getErrorMessage(failure, "Could not load the people you follow."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <ProfileCard title="People you follow">
+    {error && <p role="alert">{error}</p>}
+    {!busy && !people.length && !error && <p>You're not following anyone yet. <Link to="/community" className="pf-link">Explore people</Link></p>}
+    <ul className="pf-people">{people.map((person) => <li key={person.username}>
+      <Link className="pf-person" to={`/people/${encodeURIComponent(person.username)}`}>
+        <img src={avatarImage(resolveMediaUrl(person.profile_image_url), 40) || DEFAULT_AVATAR_URL} alt="" loading="lazy" onError={handleAvatarError} />
+        <span><strong>{person.username}</strong><small>{person.native_language ? `Speaks ${describeLanguage(person.native_language).name}` : ""}</small></span>
+      </Link>
+    </li>)}</ul>
+    {hasNext && <button className="pf-link" type="button" disabled={busy} onClick={() => load(page + 1)}>{busy ? "Loading…" : "Show all"}</button>}
+  </ProfileCard>;
+};
+
 const PracticeCard = ({ practice }) => {
   if (!practice?.stats) return null;
   const { level = 1, xp = 0, accuracy = 0, correct_answers: correct = 0 } = practice.stats;
@@ -371,6 +406,7 @@ const ProfilePage = () => {
         <div className="pf-col">
           <PracticeCard practice={practice} />
           <VisitorsCard user={user} />
+          <FollowingCard />
         </div>
         <div className="pf-col">
           <StrengthCard user={user} onStep={handleStrengthStep} />

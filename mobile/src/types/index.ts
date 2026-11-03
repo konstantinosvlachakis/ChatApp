@@ -21,6 +21,8 @@ export interface Profile {
   support_email?: string;
   is_blocked_by_me?: boolean;
   has_blocked_me?: boolean;
+  is_following?: boolean;
+  follows_you?: boolean;
   reviews?: Array<{
     author?: string;
     rating?: number;
@@ -118,6 +120,8 @@ export interface PeopleMatch {
 /** Item of `GET /api/profile/data` (PeopleCard in system-map). No id, bio or exact presence. */
 export interface PeopleCard {
   username: string;
+  is_following?: boolean;
+  follows_you?: boolean;
   native_language?: string;
   languages_practicing?: string[];
   practice_language_levels?: Record<string, string>;

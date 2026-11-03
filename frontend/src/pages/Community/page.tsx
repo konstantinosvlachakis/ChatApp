@@ -5,6 +5,7 @@ import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import BarChartRoundedIcon from "@mui/icons-material/BarChartRounded";
+import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import api, { getErrorMessage } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
@@ -69,7 +70,7 @@ export default function CommunityPage() {
   const nearAvailable = meta ? meta.nearAvailable : Boolean(city);
   const myLevelAvailable = meta ? meta.myLevelAvailable : true;
   const panelCount = activePanelFilterCount(filters);
-  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel;
+  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel || quick.following;
 
   const query = search.trim().toLowerCase();
   const perfectShown = useMemo(() => perfect.profiles.filter((profile) => matchesSearch(profile, query)), [perfect.profiles, query]);
@@ -142,9 +143,13 @@ export default function CommunityPage() {
     { key: "active", label: "Active today", Icon: ScheduleRoundedIcon },
     { key: "newMembers", label: "New members", Icon: AutoAwesomeOutlinedIcon },
     { key: "myLevel", label: "Your level", Icon: BarChartRoundedIcon },
+    { key: "following", label: "Following", Icon: PersonAddAltOutlinedIcon },
   ];
 
   const perfectEmpty = () => {
+    if (quick.following && !perfect.profiles.length && !others.profiles.length && !perfect.loading && !others.loading) {
+      return <><h3>You're not following anyone yet</h3><p>Visit a profile and choose Follow to keep them here.</p><button type="button" className="people-button people-button-secondary" onClick={() => toggleQuick("following")}>Explore people</button></>;
+    }
     if (query && perfect.profiles.length) {
       return <><h3>No perfect exchanges in this search</h3><p>Try another name, language or goal.</p><button type="button" className="people-button people-button-secondary" onClick={() => setSearch("")}>Clear search</button></>;
     }
@@ -236,7 +241,7 @@ export default function CommunityPage() {
           </div>
         ) : (
           <div className="people-empty">
-            <h3>{query ? "Nobody in this search" : "Nobody else matches yet"}</h3>
+            <h3>{query ? "Nobody in this search" : quick.following ? "No other people you follow match" : "Nobody else matches yet"}</h3>
             <p>{query ? "Try another name, language or goal." : "Try a wider filter. You might find an unexpected connection."}</p>
             {(query || anyQuick || panelCount > 0) && <button type="button" className="people-button people-button-secondary" onClick={clearAll}>Clear filters</button>}
           </div>

@@ -32,6 +32,13 @@ test("language chips: all on is null and the last one can't be removed", () => {
   expect(toggleLanguage(["english"], "greek", options)).toBeNull();
 });
 
+test("Following filters both sections and count preview", () => {
+  const quick = { ...DEFAULT_QUICK_FILTERS, following: true };
+  expect(perfectParams(DEFAULT_PANEL_FILTERS, quick, 1, 24).following).toBe(1);
+  expect(othersParams(DEFAULT_PANEL_FILTERS, quick, 1, 24).following).toBe(1);
+  expect(countParams(DEFAULT_PANEL_FILTERS, quick).following).toBe(1);
+});
+
 test("badge count, preview total and the rule line", () => {
   expect(activePanelFilterCount(DEFAULT_PANEL_FILTERS)).toBe(0);
   expect(activePanelFilterCount({ ...DEFAULT_PANEL_FILTERS, theyLearn: ["greek"], sort: "active" })).toBe(2);

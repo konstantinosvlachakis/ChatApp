@@ -28,6 +28,20 @@ describe("Toast system", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  test("follow toast actions run and dismiss the notification", () => {
+    const viewProfile = jest.fn();
+    const followBack = jest.fn();
+    render(<ToastViewport />);
+    act(() => { showToast("maria followed you", { actions: [
+      { label: "View profile", onClick: viewProfile },
+      { label: "Follow back", onClick: followBack },
+    ] }); });
+    fireEvent.click(screen.getByRole("button", { name: "Follow back" }));
+    expect(followBack).toHaveBeenCalledTimes(1);
+    expect(viewProfile).not.toHaveBeenCalled();
+    expect(screen.queryByText("maria followed you")).not.toBeInTheDocument();
+  });
+
   test("top placement renders in the centred stack and auto-dismisses", () => {
     render(<ToastViewport />);
     act(() => {

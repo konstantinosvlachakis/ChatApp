@@ -4,6 +4,7 @@ import { createOrGetConversation } from "../Community/api/conversation";
 import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
 import IosShareRoundedIcon from "@mui/icons-material/IosShareRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { toastApiError } from "../../components/Toast";
@@ -55,6 +56,8 @@ const PublicProfileView = ({ username }) => {
   const [loading, setLoading] = useState(!stateProfile);
   const [error, setError] = useState("");
   const [isStartingConversation, setIsStartingConversation] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState("");
   const isStartingConversationRef = useRef(false);
   const viewer = usePhotoViewer();
 
@@ -105,6 +108,24 @@ const PublicProfileView = ({ username }) => {
     } finally {
       isStartingConversationRef.current = false;
       setIsStartingConversation(false);
+    }
+  };
+
+  const toggleFollow = async () => {
+    if (!profile?.username || followBusy) return;
+    const previous = Boolean(profile.is_following);
+    setProfile((current) => ({ ...current, is_following: !previous }));
+    setFollowError("");
+    setFollowBusy(true);
+    try {
+      const path = `/api/profile/public/${encodeURIComponent(profile.username)}/follow/`;
+      const result = previous ? await api.delete(path) : await api.post(path);
+      setProfile((current) => ({ ...current, is_following: result.is_following }));
+    } catch (err) {
+      setProfile((current) => ({ ...current, is_following: previous }));
+      setFollowError(getErrorMessage(err, "Could not update your follow."));
+    } finally {
+      setFollowBusy(false);
     }
   };
 
@@ -176,11 +197,20 @@ const PublicProfileView = ({ username }) => {
             Message
           </button>
         )}
+        {!isOwnProfile && (
+          <button type="button" className="pf-btn pf-follow" onClick={toggleFollow}
+            aria-pressed={Boolean(profile.is_following)} aria-label={profile.is_following ? `Unfollow ${ownerName}` : `Follow ${ownerName}`}
+            disabled={followBusy} aria-busy={followBusy || undefined}>
+            {profile.is_following ? <CheckRoundedIcon aria-hidden="true" /> : <PersonAddAltOutlinedIcon aria-hidden="true" />}
+            {profile.is_following ? <><span className="pf-follow-default">Following</span><span className="pf-follow-hover">Unfollow</span></> : <span>{profile.follows_you ? "Follow back" : "Follow"}</span>}
+          </button>
+        )}
         <button type="button" className="pf-btn" onClick={() => shareProfileLink(profile.username)}>
           <IosShareRoundedIcon aria-hidden="true" />
           Share
         </button>
       </ProfileHero>
+      {followError && <p className="pf-state" role="alert">{followError}</p>}
 
       <div className="pf-grid">
         <div className="pf-col">

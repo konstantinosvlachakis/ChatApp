@@ -1,8 +1,10 @@
 # Caching (backend, web, mobile)
 
 Purpose: every cache layer, its keys, TTLs and what invalidates each one, so you can change data flows without stale-data bugs.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged), `perf/list-refetch` (#32, list refetch policy) and `fix/chat-races` (pending: `practice:scored`).**
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29, merged), `perf/list-refetch` (#32, list refetch policy), `fix/chat-races` (pending: `practice:scored`) and `feat/follow` (pending, 2026-11-03).**
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/settings.py backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/throttles.py frontend/src/libs frontend/src/pages/Conversations/api frontend/src/pages/Conversations/features/ChatRoom.jsx frontend/src/pages/Conversations/features/ConversationList.jsx frontend/src/layout/Layout.jsx frontend/src/context/UserContext.tsx frontend/src/utils/auth.ts mobile/src/services mobile/src/features`. Re-read only the files that changed, then update this file. To find new keys: `grep -rn "cache\.\(get\|set\|add\|incr\|delete\)" backend/chatapp`.
+
+`feat/follow` pending (2026-11-03): `follow:version:user:<id>` is bumped for both users on follow/unfollow/block and included in the People feed and public profile cache keys so viewer-relative follow flags stay fresh. `follow:notified:v1:<follower_id>:<following_id>` uses `cache.add` with a 24-hour TTL to suppress repeat notifications after unfollow/refollow. Resilient cache failure is open, so an outage can permit an extra notification. Neither key contains private profile data.
 
 ## Backend infrastructure (core/settings.py)
 | Setting | `USE_REDIS_REALTIME=true` **and** `REDIS_URL`/`REDISCLOUD_URL` set | Otherwise (default; includes local and tests) |

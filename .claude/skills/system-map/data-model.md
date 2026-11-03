@@ -1,7 +1,8 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard) and `feat/mobile-push` (pending: `PushDevice`).** Latest migration: `0032_pushdevice`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03).** Latest migration: `0038_follow`.
+`feat/follow` pending (2026-11-03): migration `0038_follow` is now latest. `Follow(follower -> Profile, following -> Profile, created_at)` has a unique pair constraint, a no-self check, an index on `(follower, -created_at)` for the following list, and `(following, follower)` for reverse checks. A block deletes links in both directions. No public counts or feed.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
 
 DB: SQLite locally (`backend/db.sqlite3`); Postgres in production (`NEON_DATABASE_URL` or `DATABASE_URL`, psycopg3 pool, see caching.md). `AUTH_USER_MODEL = "chatapp.Profile"`, `TIME_ZONE = "UTC"`, `USE_TZ = True`. `admin.py` registers only `PushDevice` (token excluded; the admin is unusable anyway, see Profile).

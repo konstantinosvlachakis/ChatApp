@@ -5,6 +5,8 @@ description: Current state of the LangVoyage React web app (frontend/) — route
 
 # Web status (React, CRA)
 
+Last verified for follow: 2026-11-03 on `feat/follow` (pending, uncommitted). PublicProfile Follow/Following/Follow back button with optimistic rollback; Community Following quick filter; own Profile following list; Layout follow toast actions. REST calls go through `lib/api.ts`. See system-map for paths and event.
+
 Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `feat/people-redesign`, `feat/conversations-redesign`, `fix/redesign-polish`, `perf/media` (#30), `fix/live-avatar` (#31), `perf/list-refetch` (#32), `fix/chat-races` (#34), `feat/web-polish` (#35) and `feat/password-reset` (#37). Refresh: `git log --oneline b57487f..HEAD -- frontend` — re-read only changed files, then update this file.
 
 ## Routes (`src/AppRoutes.jsx`; public-only build uses `src/PublicAppRoutes.jsx`)

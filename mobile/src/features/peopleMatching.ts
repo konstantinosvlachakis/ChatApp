@@ -59,7 +59,7 @@ export type PanelFilters = {
   sort: SortOrder;
 };
 
-export type QuickFilters = { near: boolean; active: boolean; newMembers: boolean; myLevel: boolean };
+export type QuickFilters = { near: boolean; active: boolean; newMembers: boolean; myLevel: boolean; following: boolean };
 
 export type FilterMeta = {
   theySpeakOptions: string[];
@@ -78,7 +78,7 @@ export const DEFAULT_PANEL_FILTERS: PanelFilters = {
   include: { native: true, learners: true, rest: true },
   sort: "best",
 };
-export const DEFAULT_QUICK_FILTERS: QuickFilters = { near: false, active: false, newMembers: false, myLevel: false };
+export const DEFAULT_QUICK_FILTERS: QuickFilters = { near: false, active: false, newMembers: false, myLevel: false, following: false };
 
 export const LEVEL_FILTER_OPTIONS: ReadonlyArray<{ value: LevelFilter; label: string }> = [
   { value: "", label: "Any" },
@@ -96,10 +96,11 @@ export const INCLUDE_LABELS: Record<IncludeGroup, string> = {
   learners: "People learning your languages",
   rest: "Everyone else",
 };
-export const QUICK_FILTER_KEYS: ReadonlyArray<keyof QuickFilters> = ["near", "active", "newMembers", "myLevel"];
+export const QUICK_FILTER_KEYS: ReadonlyArray<keyof QuickFilters> = ["near", "active", "newMembers", "myLevel", "following"];
 
 /** "Near you · Athens" when the viewer has a city. */
 export function quickFilterLabel(key: keyof QuickFilters, city?: string) {
+  if (key === "following") return "Following";
   if (key === "near") return city ? `Near you · ${city}` : "Near you";
   if (key === "active") return "Active today";
   if (key === "newMembers") return "New members";
@@ -138,6 +139,7 @@ export function sharedParams(filters: PanelFilters, quick: QuickFilters): People
   if (quick.active) params.active = 1;
   if (quick.newMembers) params.new = 1;
   if (quick.myLevel) params.my_level = 1;
+  if (quick.following) params.following = 1;
   return params;
 }
 

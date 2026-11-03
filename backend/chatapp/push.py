@@ -10,6 +10,9 @@ most 100 messages (5 s timeout) and deactivates tokens whose ticket says
 
 Payloads carry only the sender's username, a short preview and
 ``{type: "message", conversation_id}`` (no emails or other profile data).
+
+New follows (``follow_user_view``) use the same path via ``schedule_follow_push``:
+"<username> followed you" with ``{type: "follow", username}``.
 """
 
 import json
@@ -118,8 +121,9 @@ def _pair_is_blocked(user_a_id, user_b_id):
     ).exists()
 
 
-def deliver_message_push(*, conversation_id, sender_id, recipient_id, title, body):
-    """Send one message notification to the recipient's active devices."""
+def _deliver_to_user(*, sender_id, recipient_id, build_message, label):
+    """Send to the recipient's active devices; ``build_message(token)`` makes one
+    Expo message. Skips self and blocked pairs (either direction)."""
     try:
         if not recipient_id or recipient_id == sender_id:
             return
@@ -138,12 +142,7 @@ def deliver_message_push(*, conversation_id, sender_id, recipient_id, title, bod
         unregistered = []
         for start in range(0, len(tokens), EXPO_PUSH_BATCH_SIZE):
             batch_tokens = tokens[start : start + EXPO_PUSH_BATCH_SIZE]
-            messages = [
-                build_expo_message(
-                    token, title=title, body=body, conversation_id=conversation_id
-                )
-                for token in batch_tokens
-            ]
+            messages = [build_message(token) for token in batch_tokens]
             tickets = send_expo_push_batch(messages)
             # Tickets come back in request order.
             for token, ticket in zip(batch_tokens, tickets):
@@ -160,9 +159,46 @@ def deliver_message_push(*, conversation_id, sender_id, recipient_id, title, bod
         if unregistered:
             PushDevice.objects.filter(token__in=unregistered).update(is_active=False)
     except Exception:
-        logger.exception("Message push delivery failed")
+        logger.exception("%s push delivery failed", label)
     finally:
         _release_connections()
+
+
+def deliver_message_push(*, conversation_id, sender_id, recipient_id, title, body):
+    """Send one message notification to the recipient's active devices."""
+    _deliver_to_user(
+        sender_id=sender_id,
+        recipient_id=recipient_id,
+        build_message=lambda token: build_expo_message(
+            token, title=title, body=body, conversation_id=conversation_id
+        ),
+        label="Message",
+    )
+
+
+def build_expo_follow_message(token, *, follower_username):
+    return {
+        "to": token,
+        "title": "New follower",
+        "body": f"{follower_username} followed you",
+        "data": {"type": "follow", "username": follower_username},
+        "sound": "default",
+        "channelId": PUSH_CHANNEL_ID,
+        "threadId": "followers",
+        "priority": "high",
+    }
+
+
+def deliver_follow_push(*, follower_id, follower_username, recipient_id):
+    """Tell the followed person on their active devices."""
+    _deliver_to_user(
+        sender_id=follower_id,
+        recipient_id=recipient_id,
+        build_message=lambda token: build_expo_follow_message(
+            token, follower_username=follower_username
+        ),
+        label="Follow",
+    )
 
 
 def _submit(func, **kwargs):
@@ -187,3 +223,18 @@ def schedule_message_push(
         transaction.on_commit(lambda: _submit(deliver_message_push, **kwargs))
     except Exception:
         logger.exception("Could not schedule message push")
+
+
+def schedule_follow_push(*, follower_id, follower_username, recipient_id):
+    """Queue a "<username> followed you" notification. Never raises, no queries."""
+    if not push_enabled() or not recipient_id or recipient_id == follower_id:
+        return
+    try:
+        kwargs = {
+            "follower_id": follower_id,
+            "follower_username": str(follower_username or "Someone"),
+            "recipient_id": recipient_id,
+        }
+        transaction.on_commit(lambda: _submit(deliver_follow_push, **kwargs))
+    except Exception:
+        logger.exception("Could not schedule follow push")

@@ -55,6 +55,7 @@ const ToastViewport = () => {
             className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg ${VARIANT_CLASSES[toast.variant]}`}
           >
             <p className="flex-1 leading-snug">{toast.message}</p>
+            {toast.actions?.map((action) => <button key={action.label} type="button" className="underline font-semibold" onClick={() => { action.onClick(); dismissToast(toast.id); }}>{action.label}</button>)}
             <DismissButton
               id={toast.id}
               className="-mr-1 rounded p-1 text-current opacity-60 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current"

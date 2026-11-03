@@ -111,6 +111,17 @@ export async function fetchPublicProfile(username: string) {
   return response.data;
 }
 
+export async function setFollowing(username: string, following: boolean) {
+  const path = `/profile/public/${encodeURIComponent(username)}/follow/`;
+  const response = following ? await api.post<{ is_following: boolean }>(path) : await api.delete<{ is_following: boolean }>(path);
+  return response.data;
+}
+
+export async function fetchFollowing(page = 1, pageSize = 6) {
+  const response = await api.get<ProfileListResponse>("/profile/following/", { params: { page, page_size: pageSize } });
+  return response.data;
+}
+
 /**
  * People list (same params as web): `page`, `page_size`, `section=perfect|others`, optional
  * `include`, `they_speak`, `they_learn`, `level`, `near`, `active`, `new`, `my_level`, `sort`,

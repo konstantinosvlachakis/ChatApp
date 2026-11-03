@@ -7,7 +7,8 @@ export type PresenceEvent =
   | { type: "initial_online_users"; user_ids?: number[]; userIds?: number[] }
   | { type: "presence_update"; user_id: number; is_online: boolean }
   | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
-  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number };
+  | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number }
+  | { type: "user_followed"; username: string; profile_image_url?: string | null; is_following?: boolean };
 
 export type PresenceEventHandler = (event: PresenceEvent) => void;
 

@@ -24,8 +24,10 @@ let openConversationId: number | null = null;
 let warnedMissingProjectId = false;
 let registerInFlight: Promise<void> | null = null;
 let pendingOpenConversationId: number | null = null;
+let pendingOpenProfileUsername: string | null = null;
 const handledResponseIds = new Set<string>();
 const openListeners = new Set<(conversationId: number) => void>();
+const profileOpenListeners = new Set<(username: string) => void>();
 
 const logOnce = (message: string) => {
   if (__DEV__) console.warn(`[push] ${message}`);
@@ -50,6 +52,12 @@ function handleResponse(response: Notifications.NotificationResponse | null) {
   if (handledResponseIds.has(identifier)) return;
   handledResponseIds.add(identifier);
   if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+  const data = response.notification.request.content.data;
+  if (data?.type === "follow" && typeof data.username === "string" && data.username) {
+    if (!profileOpenListeners.size) pendingOpenProfileUsername = data.username;
+    else profileOpenListeners.forEach((listener) => listener(data.username as string));
+    return;
+  }
   const conversationId = messageConversationId(response.notification.request.content.data);
   if (!conversationId) return;
   if (openListeners.size === 0) {
@@ -58,6 +66,15 @@ function handleResponse(response: Notifications.NotificationResponse | null) {
     return;
   }
   openListeners.forEach((listener) => listener(conversationId));
+}
+
+export function subscribeToFollowNotificationOpens(listener: (username: string) => void) {
+  profileOpenListeners.add(listener);
+  if (pendingOpenProfileUsername) {
+    listener(pendingOpenProfileUsername);
+    pendingOpenProfileUsername = null;
+  }
+  return () => { profileOpenListeners.delete(listener); };
 }
 
 /** Called by AppTabs (mounted only when authenticated); replays a tap that arrived earlier. */

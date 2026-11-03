@@ -71,7 +71,7 @@ export function CommunityScreen() {
   const learningNames = exchange.practising.length ? exchange.practising.map((entry) => entry.language) : meta?.theySpeakOptions || [];
   const rule = exchangeRule(learningNames, exchange.spoken.map((entry) => entry.language));
   const filterCount = activePanelFilterCount(filters);
-  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel;
+  const anyQuick = quick.near || quick.active || quick.newMembers || quick.myLevel || quick.following;
 
   const perfectShown = useMemo(() => filterLoadedPeople(perfect.profiles, search), [perfect.profiles, search]);
   const othersShown = useMemo(() => filterLoadedPeople(others.profiles, search), [others.profiles, search]);
@@ -189,6 +189,8 @@ export function CommunityScreen() {
     );
   } else if (search.trim() && perfect.profiles.length) {
     perfectContent = panel("No perfect exchanges in this search", "Try another name, language or goal.", { label: "Clear search", onPress: () => setSearch("") });
+  } else if (quick.following && !others.profiles.length && !others.loading) {
+    perfectContent = panel("You're not following anyone yet", "Visit a profile and choose Follow to keep them here.", { label: "Explore people", onPress: () => toggleQuick("following") });
   } else if (quick.near) {
     perfectContent = panel("No perfect exchanges near you", "Try turning off Near you to meet exchanges anywhere.", { label: "Turn off Near you", onPress: () => toggleQuick("near") });
   } else if (anyQuick || filterCount) {
@@ -259,7 +261,7 @@ export function CommunityScreen() {
     emptyState = panel("We couldn't load people.", others.error, { label: "Try again", onPress: others.retry });
   } else {
     emptyState = panel(
-      search.trim() ? "Nobody in this search" : "Nobody else matches yet",
+      search.trim() ? "Nobody in this search" : quick.following ? "No other people you follow match" : "Nobody else matches yet",
       search.trim() ? "Try another name, language or goal." : "Try a wider filter. You might find an unexpected connection.",
       search.trim() || anyQuick || filterCount ? { label: "Clear filters", onPress: clearAll } : undefined
     );

@@ -14,6 +14,7 @@ export type Toast = {
   variant: ToastVariant;
   placement: ToastPlacement;
   durationMs: number;
+  actions?: Array<{ label: string; onClick: () => void }>;
 };
 
 export const MAX_TOASTS = 3;
@@ -52,7 +53,7 @@ export const dismissToast = (id: number) => {
 
 export const showToast = (
   message: string,
-  options: { variant?: ToastVariant; durationMs?: number; placement?: ToastPlacement } = {}
+  options: { variant?: ToastVariant; durationMs?: number; placement?: ToastPlacement; actions?: Toast["actions"] } = {}
 ) => {
   const text = String(message || "").trim();
   if (!text) return null;
@@ -67,6 +68,7 @@ export const showToast = (
     variant,
     placement: options.placement || "corner",
     durationMs: options.durationMs ?? DEFAULT_DURATION_MS[variant],
+    actions: options.actions,
   };
   let next = [...toasts, toast];
   while (next.length > MAX_TOASTS) {
