@@ -6,11 +6,21 @@ import ChatRoom from "./ChatRoom";
 import CoachChatRoom from "./CoachChatRoom";
 import { COACH_CONVERSATION_ID } from "./coachConversation";
 
+// Below this the panel stays blank while the detail loads, instead of flashing "Loading chat…".
+const LOADING_TEXT_DELAY_MS = 400;
+
 const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   const { id } = useParams(); // ✅ Extract conversation ID from URL
   const [conversation, setConversation] = useState(null);
   const [error, setError] = useState(null);
+  const [slow, setSlow] = useState(false);
   const isCoachConversation = id === COACH_CONVERSATION_ID;
+
+  useEffect(() => {
+    setSlow(false);
+    const timer = window.setTimeout(() => setSlow(true), LOADING_TEXT_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [id]);
 
   useEffect(() => {
     if (isCoachConversation) return undefined;
@@ -56,7 +66,7 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
 
   if (error) return <p className="cv-chat-status is-error" role="alert">{error}</p>;
   if (!currentConversation) {
-    return <p className="cv-chat-status" role="status">Loading chat…</p>;
+    return slow ? <p className="cv-chat-status" role="status">Loading chat…</p> : null;
   }
 
   return (

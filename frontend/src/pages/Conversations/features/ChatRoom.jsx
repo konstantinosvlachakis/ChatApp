@@ -1749,7 +1749,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
         ref={messagesContainerRef}
         className="cv-messages"
       >
-        {loadingHistory ? (
+        {/* The detail already carries the latest messages; only an empty start shows the loader. */}
+        {loadingHistory && !messages.length && !Array.isArray(conversation.messages) ? (
           <p className="cv-messages-status" role="status">Loading chat history…</p>
         ) : (
           <>
