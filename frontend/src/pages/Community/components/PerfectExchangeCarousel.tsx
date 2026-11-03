@@ -124,6 +124,15 @@ export default function PerfectExchangeCarousel({ profiles, viewerLanguage, busy
         }}
       >
         <svg className="people-coverflow-route" viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          {/* Fades in and out so the route never ends at the stage's edge. */}
+          <defs>
+            <linearGradient id="people-route-fade" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stopColor="#f5cfb1" stopOpacity="0" />
+              <stop offset=".22" stopColor="#f5cfb1" stopOpacity=".6" />
+              <stop offset=".78" stopColor="#f5cfb1" stopOpacity=".6" />
+              <stop offset="1" stopColor="#f5cfb1" stopOpacity="0" />
+            </linearGradient>
+          </defs>
           <path d="M-20 330 C 200 200, 360 160, 500 230 S 780 300, 1020 90" />
         </svg>
         {profiles.map((profile, position) => {
