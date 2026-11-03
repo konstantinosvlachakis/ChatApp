@@ -466,6 +466,7 @@ REST_FRAMEWORK = {
             # Follow + unfollow (a new follow notifies the other person).
             "follow": "60/hour",
             "follow_daily": "300/day",
+            "chat_openers": "30/hour",
             # Endpoints that call paid / third-party APIs.
             "translate": "20/minute",
             "translate_daily": "500/day",

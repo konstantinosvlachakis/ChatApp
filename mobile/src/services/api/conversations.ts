@@ -151,3 +151,10 @@ export async function translateConversationMessage(messageId: number, targetLang
   });
   return response.data;
 }
+
+/** Three opening lines for an empty chat (AI, or rule-based when AI isn't available). */
+export async function fetchChatOpeners(conversationId: number, signal?: AbortSignal): Promise<string[]> {
+  const response = await api.get<{ openers?: unknown; source?: string }>(`/conversations/${conversationId}/openers/`, { signal });
+  const openers = response.data?.openers;
+  return Array.isArray(openers) ? openers.filter((line): line is string => typeof line === "string") : [];
+}

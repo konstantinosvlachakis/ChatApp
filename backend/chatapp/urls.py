@@ -74,6 +74,11 @@ urlpatterns = [
         name="conversation_messages",  # Send and receive messages
     ),
     path(
+        "conversations/<int:conversation_id>/openers/",
+        conversation_openers_view,
+        name="conversation_openers",
+    ),
+    path(
         "conversations/<int:conversation_id>/read/",
         mark_conversation_read_view,
         name="mark_conversation_read",

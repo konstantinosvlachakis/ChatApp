@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
+import { saveChatDraft } from "../utils/chatDrafts";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
 import api from "../../../lib/api";
@@ -126,6 +127,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const [isSearchingMessages, setIsSearchingMessages] = useState(false);
   const [unreadAnchorMessageId, setUnreadAnchorMessageId] = useState(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  // Bumped when an opening line is handed to the composer as its draft (MessageInput reloads it).
+  const [draftVersion, setDraftVersion] = useState(0);
 
   const socket = useRef(null);
   const reconnectTimeoutRef = useRef(null);
@@ -1445,6 +1448,14 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     onConversationTypingChange?.(conversation.id, false);
   }, [conversation?.id, onConversationTypingChange, onlineUserIds, otherUser?.id]);
 
+  const handlePickOpener = useCallback(
+    (line) => {
+      saveChatDraft(conversation.id, line, { focus: true });
+      setDraftVersion((version) => version + 1);
+    },
+    [conversation.id]
+  );
+
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
       logger.error("Cannot send message: user is undefined.");
@@ -1865,6 +1876,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               matchedSearchMessageIds={searchResultIds}
               activeSearchMessageId={activeSearchMessageId}
               unreadAnchorMessageId={unreadAnchorMessageId}
+              conversationId={conversation.id}
+              onPickOpener={handlePickOpener}
             />
           </>
         )}
@@ -1899,6 +1912,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           onSaveEdit={handleSaveEditedMessage}
           onTyping={handleTyping}
           onStopTyping={handleStopTyping}
+          draftVersion={draftVersion}
         />
       </div>
 

@@ -138,3 +138,7 @@ Connect a socket → `increment_presence` (if the user just came online → `pre
 - feat/practice-levels: new §15 Practice difficulty (per-language progress, promotion/demotion, client banners).
 - feat/best-matches: §People — spoken/learning sets, `learns_mine` mode, `match.they_teach/they_learn/you_speak`, four client segments with Perfect exchange as default.
 - feat/people-feed: §10 rewritten — two feeds (`section=perfect|others`), panel and quick filters, near/active/new/my_level definitions, `counts` preview, photo cards vs plain cards; segments removed.
+
+## Empty-chat opening lines (`feat/chat-openers`, pending)
+
+An empty chat asks `GET /api/conversations/<id>/openers/` once per chat per session (web `features/ChatOpeners.jsx` from `Conversation.jsx`'s empty state; mobile `components/chat/ChatOpeners.tsx` inside `ChatRoomView`'s empty state). The server returns cached AI lines, or calls Gemini (`gemini.generate_conversation_openers`: viewer languages + partner languages, goal, bio minus the demo prefix, city; strict JSON, English, validated by `openers.clean_openers`) within the per-user/global caps, else the rule-based `template_openers`. Picking a line saves it as the chat draft: web `saveChatDraft(id, line, {focus})` + `MessageInput` `draftVersion` bump; mobile `ComposerHandle.setDraft`.

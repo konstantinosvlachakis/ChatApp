@@ -130,6 +130,12 @@ class FollowDailyRateThrottle(ScopedUserThrottle):
     scope = "follow_daily"
 
 
+class ChatOpenersRateThrottle(ScopedUserThrottle):
+    """Opening-line suggestions for an empty chat (may call Gemini)."""
+
+    scope = "chat_openers"
+
+
 class PracticeSubmitRateThrottle(ScopedUserThrottle):
     scope = "practice_submit"
 
