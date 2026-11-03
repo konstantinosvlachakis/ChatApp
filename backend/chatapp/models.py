@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.functions import Upper
 from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
@@ -355,6 +355,43 @@ class BlockedUser(models.Model):
 
     def __str__(self):
         return f"Block({self.blocker_id}->{self.blocked_id})"
+
+
+class Follow(models.Model):
+    """A quiet bookmark: ``follower`` keeps ``following`` in their list.
+
+    There are no public counts; the followed person only gets a notification.
+    Blocking either way deletes the pair's follows (``block_user_view``).
+    """
+
+    follower = models.ForeignKey(
+        Profile, related_name="following_links", on_delete=models.CASCADE
+    )
+    following = models.ForeignKey(
+        Profile, related_name="follower_links", on_delete=models.CASCADE
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "following"], name="uniq_follow_pair"
+            ),
+            models.CheckConstraint(
+                condition=~Q(follower=F("following")), name="follow_not_self"
+            ),
+        ]
+        indexes = [
+            # "People you follow", newest first.
+            models.Index(
+                fields=["follower", "-created_at"], name="follow_follower_created_idx"
+            ),
+            # "Who follows X" (follows_you / Follow back).
+            models.Index(fields=["following", "follower"], name="follow_following_idx"),
+        ]
+
+    def __str__(self):
+        return f"Follow({self.follower_id}->{self.following_id})"
 
 
 class UserReport(models.Model):

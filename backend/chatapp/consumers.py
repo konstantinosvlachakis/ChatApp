@@ -953,3 +953,16 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 }
             )
         )
+
+    async def user_followed_event(self, event):
+        # Sent by follow_user_view (once per new follow, at most daily per pair).
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "user_followed",
+                    "username": event.get("username"),
+                    "profile_image_url": event.get("profile_image_url"),
+                    "is_following": bool(event.get("is_following")),
+                }
+            )
+        )

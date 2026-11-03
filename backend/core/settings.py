@@ -463,6 +463,9 @@ REST_FRAMEWORK = {
             "uploads": "30/hour",
             "uploads_daily": "200/day",
             "block": "30/hour",
+            # Follow + unfollow (a new follow notifies the other person).
+            "follow": "60/hour",
+            "follow_daily": "300/day",
             # Endpoints that call paid / third-party APIs.
             "translate": "20/minute",
             "translate_daily": "500/day",

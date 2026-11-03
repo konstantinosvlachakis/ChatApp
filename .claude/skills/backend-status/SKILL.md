@@ -5,6 +5,8 @@ description: Current state of the LangVoyage Django backend (backend/) — model
 
 # Backend status (Django + DRF + Channels)
 
+Last verified for follow: 2026-11-03 on `feat/follow` (pending, uncommitted). `Follow` model and migration `0038_follow`; follow/unfollow, following list and viewer-relative People/public profile fields in `views.py`; follow push in `push.py`, `user_followed` in `consumers.py`, scoped follow throttles. See system-map for exact contract. Tests: `test_follow.py` and query-count regression.
+
 Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `fix/chat-races` (#34), `feat/password-reset` (#37) and `feat/mobile-push` (#39, pending). Refresh: `git log --oneline b57487f..HEAD -- backend` — re-read only changed files, then update this file.
 
 ## Map

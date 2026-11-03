@@ -2,8 +2,10 @@
 
 Purpose: every websocket endpoint and event type across backend, web and mobile, so you don't have to re-read `consumers.py` / `ChatRoom.jsx` / `ConversationsScreen.tsx`.
 
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` (server-broadcast messages, close codes, reconnect backoff, mobile heartbeat), `perf/backend-db` (#29, merged: worker-thread DB calls, connect ordering), `perf/mobile-chat` (#33, merged: single mobile presence socket + `services/presenceEvents.ts` fan-out, coalesced refetches) and `perf/list-refetch` (web `conversation_update` handling).
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` (server-broadcast messages, close codes, reconnect backoff, mobile heartbeat), `perf/backend-db` (#29, merged: worker-thread DB calls, connect ordering), `perf/mobile-chat` (#33, merged: single mobile presence socket + `services/presenceEvents.ts` fan-out, coalesced refetches), `perf/list-refetch` (web `conversation_update` handling) and `feat/follow` (pending, 2026-11-03).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/consumers.py backend/chatapp/views.py frontend/src mobile/src`, then update only the affected rows and bump the commit line.
+
+`feat/follow` (pending, 2026-11-03): a newly created follow broadcasts `user_followed_event` to `presence_user_<followed_id>`; `PresenceConsumer` sends `{type:"user_followed", username, profile_image_url, is_following}` (`is_following` means the receiver already follows the sender). Web `layout/Layout.jsx` shows an actionable toast; mobile `navigation/RootNavigator.tsx` shows a banner. Repeated follows and unfollow/refollow within 24 hours do not notify while the cache is healthy. Expo push carries `{type:"follow", username}`; mobile `services/push.ts` opens PublicProfile on tap.
 
 ## Email verification (2026-10-31; security/email-verification, based on 77b0f5f)
 

@@ -1,10 +1,12 @@
 # API contract (REST) — backend ↔ web ↔ mobile
 
 Purpose: every REST endpoint, its payload shape, and which client code depends on which fields, so you don't have to re-explore views/serializers/clients.
-Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `fix/chat-races` (#34), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending: `/api/push/devices/`).
+Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/backend-db` (#29), `fix/chat-races` (#34), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending), `feat/mobile-push` (#39, pending: `/api/push/devices/`) and `feat/follow` (pending, 2026-11-03).
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/core/urls.py backend/core/views.py backend/core/exceptions.py backend/chatapp/urls.py backend/chatapp/views.py backend/chatapp/auth_views.py backend/chatapp/serializers.py frontend/src mobile/src/services`, then update the affected rows.
 
 People web caller notes below refreshed on 2026-10-27 against the working tree based on `5fb6498`; backend payloads are unchanged by the discovery redesign.
+
+Follow contract (`feat/follow`, pending, 2026-11-03): authenticated `POST`/`DELETE /api/profile/public/<username>/follow/` return `{is_following:boolean}` and are idempotent. POST requires a verified email; self returns 400 `cannot_follow_self`, a block in either direction 403 `blocked`, an unknown user 404 `not_found`. Authenticated `GET /api/profile/following/?page=&page_size=` returns `{profiles:PeopleCard[], pagination}` newest first, excluding blocked users. Public profile and PeopleCard add viewer-relative `is_following` and `follows_you` booleans. `GET /api/profile/data?following=1` restricts both sections and counts. Web callers: PublicProfile/page.jsx, Profile/page.jsx, Community/peopleQuery.ts, Layout.jsx. Mobile callers: services/api/auth.ts, PublicProfileScreen.tsx, ProfileScreen.tsx, features/peopleMatching.ts, RootNavigator.tsx. No follower counts are exposed. Follow writes use scopes `follow` 60/hour and `follow_daily` 300/day, plus default throttles.
 
 Paths: backend views are in `backend/chatapp/views.py` unless noted. Web = `frontend/src/...`, mobile = `mobile/src/...`.
 

@@ -22,6 +22,7 @@ export interface QuickFilters {
   active: boolean;
   newMembers: boolean;
   myLevel: boolean;
+  following: boolean;
 }
 
 /** Server-reported filter context (`filters` in the people payload). */
@@ -44,7 +45,7 @@ export const DEFAULT_PANEL_FILTERS: PanelFilters = {
   sort: "best",
 };
 
-export const DEFAULT_QUICK_FILTERS: QuickFilters = { near: false, active: false, newMembers: false, myLevel: false };
+export const DEFAULT_QUICK_FILTERS: QuickFilters = { near: false, active: false, newMembers: false, myLevel: false, following: false };
 
 export const LEVEL_FILTER_OPTIONS: Array<{ value: LevelFilter; label: string }> = [
   { value: "", label: "Any" },
@@ -105,6 +106,7 @@ export function sharedParams(filters: PanelFilters, quick: QuickFilters): People
   if (quick.active) params.active = 1;
   if (quick.newMembers) params.new = 1;
   if (quick.myLevel) params.my_level = 1;
+  if (quick.following) params.following = 1;
   return params;
 }
 

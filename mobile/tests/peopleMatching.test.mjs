@@ -53,6 +53,13 @@ test("no old segment params are sent", () => {
   assert.equal("match" in params, false);
 });
 
+test("Following is shared across both sections and counts", () => {
+  const quick = { ...DEFAULT_QUICK_FILTERS, following: true };
+  assert.equal(perfectParams(DEFAULT_PANEL_FILTERS, quick, 1).following, 1);
+  assert.equal(othersParams(DEFAULT_PANEL_FILTERS, quick, 1).following, 1);
+  assert.equal(countParams(DEFAULT_PANEL_FILTERS, quick).following, 1);
+});
+
 test("language chips: all on = null, last chip stays on; badge counts changed panel filters", () => {
   const options = ["english", "russian"];
   assert.deepEqual(toggleLanguage(null, "english", options), ["russian"]);
@@ -69,7 +76,7 @@ test("Show N people adds both sections unless More people is switched off", () =
 });
 
 test("quick filter labels include the city; filter meta is parsed defensively", () => {
-  assert.deepEqual(QUICK_FILTER_KEYS.map((key) => quickFilterLabel(key, "Athens")), ["Near you · Athens", "Active today", "New members", "Your level"]);
+  assert.deepEqual(QUICK_FILTER_KEYS.map((key) => quickFilterLabel(key, "Athens")), ["Near you · Athens", "Active today", "New members", "Your level", "Following"]);
   assert.equal(quickFilterLabel("near", ""), "Near you");
   assert.deepEqual(parseFilterMeta({ they_speak_options: ["russian", 3], near_available: true, near_city: "Athens", near_scope: "moon" }), {
     theySpeakOptions: ["russian"],

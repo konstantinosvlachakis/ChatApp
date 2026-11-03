@@ -8,6 +8,7 @@ const QUICK_ICONS: Record<keyof QuickFilters, React.ComponentProps<typeof Ionico
   active: "time-outline",
   newMembers: "sparkles-outline",
   myLevel: "bar-chart-outline",
+  following: "person-add-outline",
 };
 import { fontFamilies } from "../../theme/typography";
 import type { WarmColors } from "../../theme/warm";

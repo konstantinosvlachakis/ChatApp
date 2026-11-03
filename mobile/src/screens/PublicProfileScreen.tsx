@@ -23,6 +23,7 @@ import {
   blockUser,
   fetchPublicProfile,
   reportUser,
+  setFollowing,
   unblockUser,
 } from "../services/api/auth";
 import { createOrGetConversation } from "../services/api/conversations";
@@ -125,6 +126,7 @@ export function PublicProfileScreen() {
   const [blocking, setBlocking] = React.useState(false);
   const [reporting, setReporting] = React.useState(false);
   const [startingConversation, setStartingConversation] = React.useState(false);
+  const [followBusy, setFollowBusy] = React.useState(false);
   const [reportModalOpen, setReportModalOpen] = React.useState(false);
   const [profileActionsOpen, setProfileActionsOpen] = React.useState(false);
   const previewScrollRef = React.useRef<ScrollViewInstance | null>(null);
@@ -229,7 +231,7 @@ export function PublicProfileScreen() {
         } else {
           await blockUser(profile.username);
           setProfile((prev) =>
-            prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false } : prev
+            prev ? { ...prev, is_blocked_by_me: true, has_blocked_me: false, is_following: false, follows_you: false } : prev
           );
         }
       } catch (error) {
@@ -238,6 +240,22 @@ export function PublicProfileScreen() {
         setBlocking(false);
       }
     })();
+  };
+
+  const toggleFollow = async () => {
+    if (!profile?.username || followBusy) return;
+    const previous = Boolean(profile.is_following);
+    setProfile((current) => current ? { ...current, is_following: !previous } : current);
+    setFollowBusy(true);
+    try {
+      const result = await setFollowing(profile.username, !previous);
+      setProfile((current) => current ? { ...current, is_following: result.is_following } : current);
+    } catch (failure) {
+      setProfile((current) => current ? { ...current, is_following: previous } : current);
+      toastApiError(failure, "Could not update your follow.", "Follow failed");
+    } finally {
+      setFollowBusy(false);
+    }
   };
 
   const submitReport = async (reason: string, details = "") => {
@@ -490,8 +508,14 @@ export function PublicProfileScreen() {
 
       {!isOwnProfile ? (
         <View style={styles.floatingActionWrap}>
+          <Pressable style={[styles.floatingActionButton, { flex: 1, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.primary }]}
+            onPress={toggleFollow} disabled={followBusy} accessibilityRole="button" accessibilityState={{ selected: Boolean(profile.is_following), busy: followBusy }}
+            accessibilityLabel={`${profile.is_following ? "Unfollow" : "Follow"} ${profile.username}`}>
+            <Ionicons name={profile.is_following ? "checkmark" : "person-add-outline"} size={18} color={colors.primary} />
+            <Text style={[styles.floatingActionText, { color: colors.primary }]}>{profile.is_following ? "Following" : profile.follows_you ? "Follow back" : "Follow"}</Text>
+          </Pressable>
           <Pressable
-            style={styles.floatingActionButton}
+            style={[styles.floatingActionButton, { flex: 1 }]}
             onPress={handleStartConversation}
             disabled={startingConversation}
           >
@@ -1046,6 +1070,8 @@ const createStyles = (colors: ThemeColors) =>
       left: 16,
       right: 16,
       bottom: 14,
+      flexDirection: "row",
+      gap: 10,
     },
     floatingActionButton: {
       minHeight: 54,

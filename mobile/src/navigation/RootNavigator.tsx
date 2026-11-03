@@ -40,6 +40,7 @@ import {
 import {
   registerForPushNotifications,
   subscribeToNotificationOpens,
+  subscribeToFollowNotificationOpens,
   watchPushTokenChanges,
 } from "../services/push";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
@@ -349,6 +350,10 @@ function AppTabs() {
     [navigation, setEmailVerified]
   );
 
+  React.useEffect(() => subscribeToFollowNotificationOpens((username) => {
+    navigation.navigate("People", { screen: "PublicProfile", params: { username } });
+  }), [navigation]);
+
   // Push: register after login / on start (asks permission once, a moment after the tabs
   // appear), re-register when the device token rotates.
   React.useEffect(() => {
@@ -441,6 +446,11 @@ function AppTabs() {
           if (payload?.type === "conversation_update") {
             scheduleUnreadRefresh();
           }
+          if (payload?.type === "user_followed" && payload.username) {
+            showBanner(`${payload.username} followed you`, "View profile", payload.profile_image_url, () => {
+              navigation.navigate("People", { screen: "PublicProfile", params: { username: payload.username } });
+            });
+          }
           publishPresenceEvent(payload);
         } catch {
           // Ignore malformed payloads.
@@ -490,7 +500,7 @@ function AppTabs() {
       resetPresenceEvents();
       setSocketReconnecting(false);
     };
-  }, [scheduleUnreadRefresh, setEmailVerified, user?.user_id, wsBaseUrl]);
+  }, [navigation, scheduleUnreadRefresh, setEmailVerified, showBanner, user?.user_id, wsBaseUrl]);
 
   React.useEffect(() => {
     const latestViewer = user?.recent_profile_viewers?.[0];

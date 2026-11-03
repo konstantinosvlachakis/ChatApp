@@ -14,6 +14,7 @@ import { BASE_URL, getWebSocketBaseUrl } from "../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../constants/avatar";
 import { RouteErrorBoundary } from "../components/ErrorBoundary";
 import api from "../lib/api";
+import { showToast, toastApiError } from "../components/Toast";
 import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
 import AppHeader from "./AppHeader";
 import EmailVerificationGate from "../components/EmailVerification/EmailVerificationGate";
@@ -200,6 +201,17 @@ const Layout = () => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "email_verified") refreshUserProfile();
+          if (data.type === "user_followed" && typeof data.username === "string") {
+            const username = data.username;
+            showToast(`${username} followed you`, { durationMs: 8000, actions: [
+              { label: "View profile", onClick: () => navigate(`/people/${encodeURIComponent(username)}`) },
+              ...(!data.is_following ? [{ label: "Follow back", onClick: () => {
+                api.post(`/api/profile/public/${encodeURIComponent(username)}/follow/`)
+                  .then(() => showToast(`You're following ${username}`, { variant: "success" }))
+                  .catch((error) => toastApiError(error, "Could not follow back"));
+              } }] : []),
+            ] });
+          }
           if (data.type === "initial_online_users") {
             setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
             return;

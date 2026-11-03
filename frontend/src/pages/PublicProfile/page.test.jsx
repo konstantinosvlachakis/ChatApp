@@ -49,6 +49,29 @@ const renderAt = (path) =>
 beforeEach(() => jest.clearAllMocks());
 
 describe("public profile", () => {
+  test("Follow back updates optimistically and rolls back on failure", async () => {
+    api.get.mockResolvedValue({ user_id: 2, username: "maria", native_language: "Spanish", follows_you: true, is_following: false });
+    let rejectFollow;
+    api.post.mockImplementation(() => new Promise((_, reject) => { rejectFollow = reject; }));
+    renderAt("/people/maria");
+    const button = await screen.findByRole("button", { name: "Follow maria" });
+    expect(button).toHaveTextContent("Follow back");
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Unfollow maria" })).toHaveAttribute("aria-pressed", "true");
+    await act(async () => rejectFollow(new Error("Network error")));
+    expect(screen.getByRole("button", { name: "Follow maria" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  test("Following can be unfollowed", async () => {
+    api.get.mockResolvedValue({ user_id: 2, username: "maria", native_language: "Spanish", is_following: true });
+    api.delete.mockResolvedValue({ is_following: false });
+    renderAt("/people/maria");
+    const button = await screen.findByRole("button", { name: "Unfollow maria" });
+    expect(button).toHaveTextContent("Following");
+    fireEvent.click(button);
+    expect(await screen.findByRole("button", { name: "Follow maria" })).toHaveAttribute("aria-pressed", "false");
+  });
   test("shows a perfect match, online status and a Message action", async () => {
     api.get.mockResolvedValue({
       user_id: 2,
