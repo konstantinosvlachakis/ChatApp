@@ -559,7 +559,9 @@
   border-radius: var(--lv-radius-pill);
   color: var(--lv-muted-ink);
 }
-.cv-media-search:focus-within { border-color: var(--lv-focus); }
+/* The pill shows focus (2px teal ring); the input inside skips the app-wide ring so it isn't doubled. */
+.cv-media-search:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 1px var(--lv-focus); }
+.lv-shell .cv-media-search input:focus-visible { outline: none; }
 .cv-media-search input { flex: 1; min-width: 0; min-height: 38px; border: 0; outline: 0; background: transparent; color: var(--lv-ink); font: inherit; }
 .cv-media-search svg { width: 20px; height: 20px; }
 .cv-media-status { padding: 16px; color: var(--lv-muted-ink); font-size: 13px; text-align: center; }
