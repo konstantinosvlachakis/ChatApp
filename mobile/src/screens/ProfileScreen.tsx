@@ -1,5 +1,5 @@
 import type { ScrollViewInstance } from "react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -38,6 +38,9 @@ import { API_BASE_URL } from "../config/api";
 import type { ProfilePhotoSlot } from "../services/api/auth";
 import { fontFamilies } from "../theme/typography";
 import { avatarImage } from "../utils/media";
+import { isPlaceholderAvatar, ProfileAvatarImage } from "../components/ProfileAvatarImage";
+import { MissionBoardingPass } from "../components/profile/MissionBoardingPass";
+import { useMissionStats } from "../components/profile/useMissionStats";
 
 // Photo slots are a third of the card row (flex: 1, square); ~120dp on large phones.
 const PHOTO_SLOT_DP = 120;
@@ -359,6 +362,12 @@ export function ProfileScreen() {
     }
   }, [isEditProfileOpen]);
 
+  const missionLanguages = useMemo(
+    () => (user?.languages_practicing || []).map((language) => String(language).trim().toLowerCase()).filter(Boolean),
+    [user?.languages_practicing]
+  );
+  const missionStats = useMissionStats(missionLanguages);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
@@ -367,10 +376,11 @@ export function ProfileScreen() {
     );
   }
 
-  const resolveMediaUrl = (path?: string | null, withDefault = true) => {
-    if (!path) {
-      return withDefault ? `${API_BASE_URL}/media/profile_images/MainAfter.jpg` : "";
-    }
+  // "" for no photo (incl. the server's MainAfter placeholder, which isn't served in production);
+  // ProfileAvatarImage shows the bundled default portrait instead.
+  const resolveMediaUrl = (path?: string | null) => {
+    if (isPlaceholderAvatar(path)) return "";
+    path = path as string;
     if (path.startsWith("http")) return path;
     if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
     return `${API_BASE_URL}/media/${path}`;
@@ -380,8 +390,8 @@ export function ProfileScreen() {
   const avatarRingColor = isValidHexColor(user?.avatar_ring_color || "")
     ? String(user?.avatar_ring_color).toLowerCase()
     : "#1b7f79";
-  const complementaryOne = resolveMediaUrl(user?.complementary_image_1_url, false);
-  const complementaryTwo = resolveMediaUrl(user?.complementary_image_2_url, false);
+  const complementaryOne = resolveMediaUrl(user?.complementary_image_1_url);
+  const complementaryTwo = resolveMediaUrl(user?.complementary_image_2_url);
   const practicingLanguages = user?.languages_practicing || [];
   const complementaryCards: Array<{ key: ProfilePhotoSlot; image: string }> = [
     { key: "complementary_1", image: complementaryOne },
@@ -753,6 +763,7 @@ export function ProfileScreen() {
           <View style={styles.heroMediaRow}>
             <Pressable
               onPress={() => {
+                if (!previewImages.length) return; // no photos to show yet
                 setPreviewIndex(0);
                 setIsPreviewOpen(true);
                 requestAnimationFrame(() => {
@@ -761,7 +772,8 @@ export function ProfileScreen() {
               }}
               style={styles.avatarShell}
             >
-              <Image source={{ uri: avatarImage(profileImage, 108) }} style={[styles.avatar, { borderColor: avatarRingColor }]} />
+              <ProfileAvatarImage url={profileImage} transform={(url) => avatarImage(url, 108)}
+                style={[styles.avatar, { borderColor: avatarRingColor }]} accessibilityIgnoresInvertColors />
             </Pressable>
             <View style={styles.heroIdentity}>
               <View style={styles.heroEyebrowRow}>
@@ -771,7 +783,8 @@ export function ProfileScreen() {
                   <Text style={styles.heroStatusText}>Ready to connect</Text>
                 </View>
               </View>
-              <Text style={styles.heroTitle}>
+              <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
+                accessibilityRole="header">
                 {user?.username || "Profile"}
                 {ageLabel ? `, ${ageLabel}` : ""}
               </Text>
@@ -841,7 +854,8 @@ export function ProfileScreen() {
           {!following.length && !followingBusy && !followingError ? <Text>You're not following anyone yet.</Text> : null}
           {following.map((person) => <Pressable key={person.username} style={styles.recentViewerRow}
             onPress={() => navigation.navigate("People", { screen: "PublicProfile", params: { username: person.username } })}>
-            <Image source={{ uri: avatarImage(resolveMediaUrl(person.profile_image_url), 52) }} style={styles.recentViewerAvatar} />
+            <ProfileAvatarImage url={resolveMediaUrl(person.profile_image_url)} transform={(url) => avatarImage(url, 52)}
+              style={styles.recentViewerAvatar} accessibilityIgnoresInvertColors />
             <Text style={styles.recentViewerName}>{person.username}</Text>
           </Pressable>)}
           {followingHasNext ? <Pressable onPress={() => loadFollowing(followingPage + 1)} disabled={followingBusy}>
@@ -903,7 +917,8 @@ export function ProfileScreen() {
                     }
                   >
                     <View style={styles.recentViewerIdentity}>
-                      <Image source={{ uri: avatarImage(viewerAvatar, 52) }} style={styles.recentViewerAvatar} />
+                      <ProfileAvatarImage url={viewerAvatar} transform={(url) => avatarImage(url, 52)}
+                        style={styles.recentViewerAvatar} accessibilityIgnoresInvertColors />
                       <View style={styles.recentViewerCopy}>
                         <Text style={styles.recentViewerName}>{viewer.username}</Text>
                         <View style={styles.recentViewerMetaRow}>
@@ -956,133 +971,28 @@ export function ProfileScreen() {
           </View>
           {practiceLanguageCards.length ? (
             <View style={styles.languageCardsColumn}>
-              {practiceLanguageCards.map((item, index) => (
-                <View
+              {practiceLanguageCards.map((item) => (
+                <MissionBoardingPass
                   key={item.language}
-                  style={[
-                    styles.practiceLanguageRow,
-                    {
-                      borderColor: item.tone.panelBorder,
-                      backgroundColor: item.tone.chip,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.practiceLanguageGlow,
-                      { backgroundColor: item.tone.glow },
-                    ]}
-                  />
-                  <View style={styles.practiceLanguageTopMeta}>
-                    <View
-                      style={[
-                        styles.practiceLanguageMissionTag,
-                        { backgroundColor: item.tone.panel },
-                      ]}
-                    >
-                      <Text style={[styles.practiceLanguageMissionTagText, { color: item.tone.text }]}>
-                        Mission {String(index + 1).padStart(2, "0")}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.practiceLanguageLevelBadge,
-                        {
-                          backgroundColor: item.tone.panel,
-                          borderColor: item.tone.panelBorder,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.practiceLanguageLevelBadgeCode, { color: item.tone.text }]}>
-                        {item.levelCode}
-                      </Text>
-                      <Text style={[styles.practiceLanguageLevelBadgeLabel, { color: item.tone.text }]}>
-                        {item.levelTitle}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.practiceLanguageHeader}>
-                    <View style={styles.practiceLanguageIdentity}>
-                      <View
-                        style={[
-                          styles.practiceLanguageFlagWrap,
-                          {
-                            backgroundColor: item.tone.panel,
-                            borderColor: item.tone.panelBorder,
-                          },
-                        ]}
-                      >
-                        {item.isoCode ? (
-                          <CountryFlag isoCode={item.isoCode} size={26} />
-                        ) : (
-                          <Text style={styles.practiceLanguageFlag}>{item.flag}</Text>
-                        )}
-                      </View>
-                      <View style={styles.practiceLanguageMain}>
-                        <Text style={styles.practiceLanguageName}>{item.language}</Text>
-                        <View style={styles.practiceLanguageMissionMeta}>
-                          <View
-                            style={[
-                              styles.practiceLanguageMissionDot,
-                              { backgroundColor: item.tone.text },
-                            ]}
-                          />
-                          <Text style={styles.practiceLanguageMissionText}>
-                            {item.missionLabel}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    <Pressable
-                      style={styles.practiceLanguageMenuButton}
-                      onPress={() => openMissionActions(item.language)}
-                    >
-                      <Ionicons name="ellipsis-vertical" size={14} color={colors.mutedText} />
-                    </Pressable>
-                  </View>
-
-                  <Text style={styles.practiceLanguageSubtitle}>{item.levelSubtitle}</Text>
-                  <Pressable
-                    style={styles.missionPeopleButton}
-                    onPress={() => handleExploreMissionPeople(item.language)}
-                    disabled={removingMissionLanguage === item.language}
-                  >
-                    <Ionicons name="people-outline" size={15} color="#fff" />
-                    <Text style={styles.missionPeopleButtonText}>
-                      Let&apos;s explore people for this mission
-                    </Text>
-                  </Pressable>
-                  <View style={styles.missionBadgeRow}>
-                    {item.missionBadges.map((badge) => (
-                      <View
-                        key={`${item.language}-${badge.label}`}
-                        style={[
-                          styles.missionBadge,
-                          badge.active
-                            ? [styles.missionBadgeActive, { backgroundColor: item.tone.panel, borderColor: item.tone.panelBorder }]
-                            : styles.missionBadgeMuted,
-                        ]}
-                      >
-                        <Ionicons
-                          name={badge.active ? "checkmark-circle" : "lock-closed"}
-                          size={12}
-                          color={badge.active ? item.tone.text : colors.mutedText}
-                        />
-                        <Text
-                          style={[
-                            styles.missionBadgeText,
-                            badge.active
-                              ? [styles.missionBadgeTextActive, { color: item.tone.text }]
-                              : styles.missionBadgeTextMuted,
-                          ]}
-                        >
-                          {badge.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
+                  from={{
+                    language: nativeLanguage,
+                    isoCode: getLanguageIsoCode(nativeLanguage),
+                    flag: getLanguageFlag(nativeLanguage),
+                  }}
+                  to={{ language: item.language, isoCode: item.isoCode, flag: item.flag }}
+                  level={item.levelValue}
+                  seat={item.levelCode}
+                  gate={item.levelTitle}
+                  next={item.missionBadges.find((badge) => !badge.active)?.label ?? null}
+                  stats={missionStats[item.language.toLowerCase()]}
+                  backdrop={colors.surface}
+                  busy={removingMissionLanguage === item.language}
+                  onPractise={() =>
+                    navigation.navigate("Practice", { language: item.language.toLowerCase(), requestedAt: Date.now() })
+                  }
+                  onBoard={() => handleExploreMissionPeople(item.language)}
+                  onMenu={() => openMissionActions(item.language)}
+                />
               ))}
             </View>
           ) : (
@@ -1470,7 +1380,8 @@ export function ProfileScreen() {
                       { borderColor: isValidHexColor(editForm.avatarRingColor) ? editForm.avatarRingColor : "#1b7f79" },
                     ]}
                   >
-                    <Image source={{ uri: avatarImage(profileImage, 74) }} style={styles.avatarAccentPreviewImage} />
+                    <ProfileAvatarImage url={profileImage} transform={(url) => avatarImage(url, 74)}
+                      style={styles.avatarAccentPreviewImage} accessibilityIgnoresInvertColors />
                   </View>
                   <View style={styles.avatarAccentTextWrap}>
                     <Text style={styles.avatarAccentTitle}>Avatar ring color</Text>
@@ -1819,7 +1730,9 @@ const createStyles = (colors: ThemeColors) =>
     heroStatCard: {
       flex: 1,
       borderRadius: 16,
-      backgroundColor: "rgba(255,255,255,0.56)",
+      // Theme surface, not translucent white: in dark mode white over the navy hero turned
+      // grey and washed out the labels (Native / Base / Active) and values.
+      backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
       paddingVertical: 10,
@@ -1832,7 +1745,7 @@ const createStyles = (colors: ThemeColors) =>
       borderRadius: 14,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "rgba(255,255,255,0.62)",
+      backgroundColor: colors.surfaceMuted,
       marginBottom: 10,
     },
     heroStatIcon: {
@@ -1845,7 +1758,9 @@ const createStyles = (colors: ThemeColors) =>
       textTransform: "capitalize",
     },
     heroStatLabel: {
-      color: colors.mutedText,
+      // Main text colour softened: >= 6:1 on the card in both themes (mutedText was 4.4:1 in light).
+      color: colors.text,
+      opacity: 0.75,
       fontSize: 10,
       marginBottom: 5,
       letterSpacing: 0.6,
@@ -2107,207 +2022,10 @@ const createStyles = (colors: ThemeColors) =>
       gap: 8,
       marginTop: 2,
     },
+    // 44dp touch target; the negative margin keeps the dots in line with the card's edge.
     languageCardsColumn: {
       gap: 14,
       marginTop: 6,
-    },
-    practiceLanguageRow: {
-      borderRadius: 22,
-      borderWidth: 1,
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-      gap: 12,
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.07,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 3,
-      overflow: "hidden",
-      position: "relative",
-    },
-    practiceLanguageGlow: {
-      position: "absolute",
-      width: 124,
-      height: 124,
-      borderRadius: 62,
-      top: -48,
-      right: -38,
-      opacity: 0.65,
-    },
-    practiceLanguageTopMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-    },
-    practiceLanguageMissionTag: {
-      borderRadius: 999,
-      paddingHorizontal: 11,
-      paddingVertical: 6,
-      borderWidth: 1,
-      borderColor: "transparent",
-      alignSelf: "flex-start",
-    },
-    practiceLanguageMissionTagText: {
-      fontSize: 10,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      fontFamily: fontFamilies.bodyBold,
-    },
-    practiceLanguageLevelBadge: {
-      minWidth: 84,
-      borderRadius: 16,
-      borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    practiceLanguageLevelBadgeCode: {
-      fontSize: 24,
-      lineHeight: 26,
-      fontFamily: fontFamilies.displayBold,
-    },
-    practiceLanguageLevelBadgeLabel: {
-      marginTop: 1,
-      fontSize: 9,
-      letterSpacing: 1,
-      textTransform: "uppercase",
-      fontFamily: fontFamilies.bodyBold,
-    },
-    practiceLanguageHeader: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      gap: 12,
-    },
-    practiceLanguageIdentity: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      flex: 1,
-      minWidth: 0,
-    },
-    practiceLanguageFlagWrap: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      overflow: "hidden",
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.08,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 1,
-    },
-    practiceLanguageFlag: {
-      fontSize: 24,
-    },
-    practiceLanguageMain: {
-      flex: 1,
-      minWidth: 0,
-    },
-    practiceLanguageName: {
-      color: colors.text,
-      fontSize: 22,
-      fontFamily: fontFamilies.displayBold,
-      textTransform: "capitalize",
-      flexShrink: 1,
-    },
-    practiceLanguageMissionMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      marginTop: 2,
-    },
-    practiceLanguageMissionDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-    },
-    practiceLanguageMissionText: {
-      color: colors.mutedText,
-      fontSize: 12,
-      fontFamily: fontFamilies.bodySemiBold,
-    },
-    practiceLanguageMenuButton: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    practiceLanguageSubtitle: {
-      color: colors.mutedText,
-      fontSize: 14,
-      lineHeight: 21,
-      marginLeft: 62,
-      marginRight: 4,
-      fontFamily: fontFamilies.bodyMedium,
-    },
-    missionPeopleButton: {
-      marginLeft: 62,
-      minHeight: 42,
-      borderRadius: 14,
-      backgroundColor: colors.navy,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.08,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 5 },
-      elevation: 2,
-    },
-    missionPeopleButtonText: {
-      color: "#fff",
-      fontSize: 13,
-      fontFamily: fontFamilies.bodyBold,
-      textAlign: "center",
-    },
-    missionBadgeRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginLeft: 62,
-    },
-    missionBadge: {
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flex: 1,
-    },
-    missionBadgeActive: {
-      shadowColor: colors.cardShadow,
-      shadowOpacity: 0.03,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 3 },
-    },
-    missionBadgeMuted: {
-      backgroundColor: colors.surfaceMuted,
-    },
-    missionBadgeText: {
-      color: colors.text,
-      fontSize: 11,
-      lineHeight: 13,
-      fontFamily: fontFamilies.bodyBold,
-      textTransform: "uppercase",
-      flexShrink: 1,
-    },
-    missionBadgeTextActive: {
-      letterSpacing: 0.3,
-    },
-    missionBadgeTextMuted: {
-      color: colors.mutedText,
     },
     emptyLanguageState: {
       borderRadius: 20,
