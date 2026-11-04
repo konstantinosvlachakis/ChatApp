@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import MyLocationOutlinedIcon from "@mui/icons-material/MyLocationOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -131,11 +131,15 @@ const LevelPicker = ({ language, value, onChange }) => {
 
 const EditProfilePage = () => {
   const { user, refreshUserProfile } = useUser();
+  const location = useLocation();
+  const profileReady = Boolean(user);
   const [saving, setSaving] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [error, setError] = useState("");
   const initial = useMemo(() => formFromUser(user), [user]);
   const [form, setForm] = useState(initial);
+  const [hydratedInitial, setHydratedInitial] = useState(initial);
+  const focusedLanguageEntry = useRef(null);
   // Changing the email (the login) needs the current password; it is never kept in `form`.
   const [currentPassword, setCurrentPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -143,9 +147,25 @@ const EditProfilePage = () => {
   // Re-hydrate when the user loads or after a save refreshes it.
   useEffect(() => {
     setForm(initial);
+    setHydratedInitial(initial);
     setCurrentPassword("");
     setPasswordError("");
   }, [initial]);
+
+  useEffect(() => {
+    if (location.hash !== "#edit-languages") {
+      focusedLanguageEntry.current = null;
+      return;
+    }
+    // Wait until the saved languages are rendered, so the focused chip is not removed by hydration.
+    if (!profileReady || hydratedInitial !== initial || focusedLanguageEntry.current === location.key) return;
+    const section = document.getElementById("edit-languages");
+    if (!section) return;
+    section.scrollIntoView?.({ block: "start" });
+    const addLanguageButton = section.querySelector('[aria-label="Add a language"] button');
+    (addLanguageButton || section).focus({ preventScroll: true });
+    focusedLanguageEntry.current = location.key;
+  }, [location.hash, location.key, profileReady, hydratedInitial, initial]);
 
   const changes = countChanges(form, initial);
   const ringValid = isValidHexColor(form.avatar_ring_color);
@@ -474,7 +494,7 @@ const EditProfilePage = () => {
             </div>
           </section>
 
-          <section className="pf-card pe-section" id="edit-languages" aria-labelledby="edit-languages-title">
+          <section className="pf-card pe-section" id="edit-languages" aria-labelledby="edit-languages-title" tabIndex={-1}>
             <div className="pe-section-head">
               <h2 id="edit-languages-title">Languages</h2>
               <p>Levels help People find you the right partners.</p>

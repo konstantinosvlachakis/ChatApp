@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
@@ -49,7 +49,12 @@ export default function CommunityPage() {
   const { user } = useUser();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<PanelFilters>(DEFAULT_PANEL_FILTERS);
+  // `?they_speak=spanish` (e.g. a profile boarding pass's "Board") starts with that language.
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState<PanelFilters>(() => {
+    const language = (searchParams.get("they_speak") || "").trim().toLowerCase();
+    return language ? { ...DEFAULT_PANEL_FILTERS, theySpeak: [language] } : DEFAULT_PANEL_FILTERS;
+  });
   const [quick, setQuick] = useState<QuickFilters>(DEFAULT_QUICK_FILTERS);
   const [panelOpen, setPanelOpen] = useState(false);
   const [quickHint, setQuickHint] = useState<"" | "near" | "myLevel">("");

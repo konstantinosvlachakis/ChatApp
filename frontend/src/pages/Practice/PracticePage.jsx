@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import api, { getErrorMessage } from "../../lib/api";
 import { useUser } from "../../context/UserContext";
@@ -104,11 +105,15 @@ const PracticePage = () => {
     }
   }, []);
 
+  // `?language=` (e.g. from a profile boarding pass) picks the starting language.
+  const [searchParams] = useSearchParams();
+  const requestedLanguage = (searchParams.get("language") || "").trim().toLowerCase();
+
   useEffect(() => {
     if (!user) return;
-    bootstrapPractice(languageOptions[0] || "english");
+    bootstrapPractice(requestedLanguage || languageOptions[0] || "english");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, languageOptions.length]);
+  }, [user, languageOptions.length, requestedLanguage]);
 
   const loadNextChallenge = useCallback(async () => {
     const seq = ++requestSeqRef.current;

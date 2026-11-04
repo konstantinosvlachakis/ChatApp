@@ -10,6 +10,7 @@ import PhotoCameraOutlinedIcon from "@mui/icons-material/PhotoCameraOutlined";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
 import { LEVELS, describeLanguage, learningLanguages, levelFor } from "./profileUtils";
+import { ProfileBoardingPass } from "./ProfileBoardingPass";
 import "./profile.css";
 
 // Rendered sizes from profile.css: hero avatar 160px; photo slots are a third of a card (≤ ~160px).
@@ -55,9 +56,15 @@ export const ProfileHero = ({
   avatarMenuOpen = false,
   avatarButtonRef,
   avatarBusy = false,
+  // One focused boarding pass replaces the banner; all learning languages remain selectable.
+  // Own profile: `passStats` (progress, partners) and `passesInteractive` (Practise / partners).
+  passStats,
+  passesInteractive = false,
   children,
 }) => {
-  const learning = learningLanguages(profile).map((lang) => describeLanguage(lang).name);
+  const learningKeys = learningLanguages(profile);
+  const learning = learningKeys.map((lang) => describeLanguage(lang).name);
+  const showPasses = Boolean(profile?.native_language) && learningKeys.length > 0;
   const native = profile?.native_language ? describeLanguage(profile.native_language).name : "";
   const avatar = (
     <img
@@ -71,8 +78,22 @@ export const ProfileHero = ({
   );
 
   return (
-    <header className="pf-hero">
-      <HeroBanner fromLabel={native} toLabel={learning.join(" · ")} />
+    <header className={`pf-hero${showPasses ? " has-passes" : ""}`}>
+      {showPasses ? (
+        <ProfileBoardingPass
+          profileKey={profile.user_id ?? profile.id ?? profile.username}
+          passenger={profile.username}
+          native={profile.native_language}
+          languages={learningKeys}
+          levels={Object.fromEntries(
+            learningKeys.map((lang) => [lang, levelFor(profile.practice_language_levels, lang)])
+          )}
+          stats={passStats}
+          interactive={passesInteractive}
+        />
+      ) : (
+        <HeroBanner fromLabel={native} toLabel={learning.join(" · ")} />
+      )}
       <div className="pf-hero-body">
         <div className={`pf-avatar${avatarBusy ? " is-busy" : ""}`} style={{ background: ringColor }}>
           <div className="pf-avatar-inner">

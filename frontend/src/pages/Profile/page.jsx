@@ -25,6 +25,7 @@ import {
 import { shareProfileLink } from "./features/shareProfile";
 import AvatarPhotoMenu from "./features/AvatarPhotoMenu";
 import { useUser } from "../../context/UserContext";
+import { usePassStats } from "./features/usePassStats";
 
 const VISITORS_PREVIEW = 3;
 
@@ -283,6 +284,10 @@ const ProfilePage = () => {
     detectLocation();
   }, [user]);
 
+  // Boarding passes: practice progress + partner counts per language (hooks stay above the returns).
+  const passLanguages = learningLanguages(user);
+  const passStats = usePassStats(passLanguages, Boolean(user?.native_language));
+
   if (loading) return <div className="pf-state">Loading profile…</div>;
   if (error) return <div className="pf-state" role="alert">{error}</div>;
   if (!user) return null;
@@ -377,6 +382,8 @@ const ProfilePage = () => {
     <div className="pf-page">
       <ProfileHero
         profile={user}
+        passStats={passStats}
+        passesInteractive
         avatarUrl={resolveMediaUrl(user.profile_image_url)}
         ringColor={validRingColor(user.avatar_ring_color)}
         statusItems={statusItems}

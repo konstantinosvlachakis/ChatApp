@@ -26,20 +26,53 @@ const mockUser = {
   avatar_ring_color: "#1b7f79",
   profile_image_url: null,
 };
+let mockCurrentUser = mockUser;
 jest.mock("../../context/UserContext", () => ({
-  useUser: () => ({ user: mockUser, refreshUserProfile: mockRefresh }),
+  useUser: () => ({ user: mockCurrentUser, refreshUserProfile: mockRefresh }),
 }));
 
-const renderPage = () =>
+const renderPage = (entry = "/profile/edit") =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <EditProfilePage />
     </MemoryRouter>
   );
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCurrentUser = mockUser;
+});
 
 describe("EditProfilePage", () => {
+  test("the language deep link scrolls to the editor and focuses an add-language control", () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderPage("/profile/edit#edit-languages");
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+      expect(scrollIntoView.mock.instances[0]).toBe(document.getElementById("edit-languages"));
+      expect(screen.getByRole("button", { name: "+ English" })).toHaveFocus();
+    } finally {
+      if (originalScrollIntoView) HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      else delete HTMLElement.prototype.scrollIntoView;
+    }
+  });
+
+  test("the language deep link waits for saved languages when the profile loads later", () => {
+    mockCurrentUser = null;
+    const view = renderPage("/profile/edit#edit-languages");
+    expect(screen.getByText("Loading profile editor…")).toBeInTheDocument();
+    mockCurrentUser = mockUser;
+    view.rerender(
+      <MemoryRouter initialEntries={["/profile/edit#edit-languages"]}>
+        <EditProfilePage />
+      </MemoryRouter>
+    );
+    expect(screen.queryByRole("button", { name: "+ Spanish" })).toBeNull();
+    expect(screen.getByRole("button", { name: "+ English" })).toHaveFocus();
+  });
+
   test("starts clean with the saved level selected", () => {
     renderPage();
     expect(screen.getAllByText("No unsaved changes")).toHaveLength(2);
