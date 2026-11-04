@@ -42,7 +42,7 @@ export const buildSeenBy = (messages = [], reads = {}, participants = [], viewer
       const readAt = toTime(reads[participant.user.id] ?? participant.last_read_at);
       return readAt !== null && sentAt !== null && readAt >= sentAt;
     })
-    .map((participant) => participant.user.username);
+    .map((participant) => participant.nickname || participant.user.username);
 
   let label = "Sent";
   if (others.length && readers.length === others.length) {

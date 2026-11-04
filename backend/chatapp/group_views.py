@@ -45,6 +45,7 @@ from .views import (
 )
 
 MAX_INVITEES = MAX_GROUP_MEMBERS - 1
+MAX_NICKNAME_LENGTH = 40
 
 
 # ---------------------------------------------------------------- helpers
@@ -439,6 +440,35 @@ def remove_member_view(request, conversation_id, username):
     if not target:
         return error_response("They aren't in this group.", "not_a_member", status.HTTP_404_NOT_FOUND)
     return leave_or_remove(request, conversation, target)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def set_member_nickname_view(request, conversation_id, username):
+    """Set or clear a group-visible nickname for an active member."""
+    conversation = _load_group(conversation_id)
+    members = group_participant_rows(conversation, statuses=(ACTIVE,))
+    if not any(row.user_id == request.user.id for row in members):
+        return error_response(
+            "You are not a participant in this conversation.", "not_participant", status.HTTP_403_FORBIDDEN
+        )
+    target = next((row for row in members if row.user.username.lower() == username.lower()), None)
+    if target is None:
+        return error_response("They aren't in this group.", "not_a_member", status.HTTP_404_NOT_FOUND)
+    raw = request.data.get("nickname")
+    if not isinstance(raw, str) or any(ord(character) < 32 for character in raw):
+        return error_response("Send a valid nickname.", "invalid_nickname", status.HTTP_400_BAD_REQUEST)
+    nickname = " ".join(raw.split())
+    if len(nickname) > MAX_NICKNAME_LENGTH:
+        return error_response(
+            f"Nicknames can be at most {MAX_NICKNAME_LENGTH} characters.",
+            "invalid_nickname", status.HTTP_400_BAD_REQUEST,
+        )
+    if target.nickname != nickname:
+        ConversationParticipant.objects.filter(pk=target.pk).update(nickname=nickname)
+        _notify_members(conversation, "group_members", request.user.id)
+        broadcast_group_updated(conversation.id, "nickname", request.user.id)
+    return Response({"username": target.user.username, "nickname": nickname})
 
 
 def rename_group(request, conversation_id):

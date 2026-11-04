@@ -102,14 +102,16 @@ export const createChatStyles = (warm: WarmColors) =>
     // ---- Reaction picker (above the bubble)
     reactionPicker: {
       position: "absolute",
-      top: -50,
+      top: -96,
       zIndex: 20,
       flexDirection: "row",
+      flexWrap: "wrap",
+      width: 284,
       gap: 2,
       backgroundColor: warm.paper,
       borderWidth: 1,
       borderColor: warm.lineWarm,
-      borderRadius: 999,
+      borderRadius: 20,
       paddingHorizontal: 4,
       paddingVertical: 2,
       shadowColor: warm.shadow,
@@ -133,6 +135,13 @@ export const createChatStyles = (warm: WarmColors) =>
     },
     reactionPickerItemActive: {
       backgroundColor: warm.peach,
+    },
+    reactionPickerInput: {
+      width: 90,
+      height: 44,
+      paddingHorizontal: 6,
+      color: warm.ink,
+      fontSize: 14,
     },
     reactionPickerEmoji: {
       fontSize: 22,

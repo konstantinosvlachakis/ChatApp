@@ -102,6 +102,39 @@ class NonParticipantAuthorizationTests(TestCase):
         self.assertEqual(translate.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(mark_read.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_participant_can_toggle_multiple_emoji_reactions(self):
+        self.client.force_authenticate(user=self.bob)
+        url = f"/api/messages/{self.message.id}/react/"
+
+        for emoji in ("🔥", "🎉", "😍", "🤔", "😎", "👏"):
+            response = self.client.post(url, {"emoji": emoji}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertIn(emoji, [reaction["emoji"] for reaction in response.data["reactions"]])
+
+        toggled = self.client.post(url, {"emoji": "🎉"}, format="json")
+        self.assertEqual(toggled.status_code, status.HTTP_200_OK)
+        self.assertNotIn("🎉", [reaction["emoji"] for reaction in toggled.data["reactions"]])
+        self.assertIn("🔥", [reaction["emoji"] for reaction in toggled.data["reactions"]])
+
+        fresh = self.client.post(url, {"emoji": "🦄"}, format="json")
+        self.assertEqual(fresh.status_code, status.HTTP_200_OK)
+        self.assertIn("🦄", [reaction["emoji"] for reaction in fresh.data["reactions"]])
+
+        self.client.force_authenticate(user=self.alice)
+        another_user = self.client.post(url, {"emoji": "🔥"}, format="json")
+        self.assertEqual(sum(reaction["emoji"] == "🔥" for reaction in another_user.data["reactions"]), 2)
+        self.client.force_authenticate(user=self.bob)
+        decremented = self.client.post(url, {"emoji": "🔥"}, format="json")
+        self.assertEqual(sum(reaction["emoji"] == "🔥" for reaction in decremented.data["reactions"]), 1)
+
+        complex_emoji = self.client.post(url, {"emoji": "👩🏽‍💻"}, format="json")
+        self.assertEqual(complex_emoji.status_code, status.HTTP_200_OK)
+
+        rejected = self.client.post(url, {"emoji": "hello"}, format="json")
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+        multi = self.client.post(url, {"emoji": "🔥🎉"}, format="json")
+        self.assertEqual(multi.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_cannot_update_another_users_profile_image(self):
         image = SimpleUploadedFile("a.png", b"\x89PNG\r\n", content_type="image/png")
 

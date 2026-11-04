@@ -362,6 +362,7 @@ class ConversationParticipantSerializer(serializers.Serializer):
     user = ProfileSerializer(read_only=True)
     role = serializers.CharField()
     status = serializers.CharField()
+    nickname = serializers.CharField(allow_blank=True)
     joined_at = serializers.DateTimeField(allow_null=True)
     last_read_at = serializers.DateTimeField(allow_null=True)
 

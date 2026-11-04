@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import Conversation from "./Conversation";
+import api from "../../../lib/api";
 
 jest.mock("../../../lib/api", () => {
   const actual = jest.requireActual("../../../lib/apiError");
@@ -50,6 +51,25 @@ describe("Conversation message grouping", () => {
     expect(screen.queryByRole("dialog", { name: "Message actions" })).toBeNull();
     expect(toggles[2]).toHaveFocus();
   });
+
+  test("offers a plus button for the emoji picker", () => {
+    render(<Conversation messages={messages} userId={1} onDeleteMessage={jest.fn()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Message actions" })[0]);
+    expect(screen.getAllByRole("button", { name: "Add reaction" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /^React with / })).toBeNull();
+  });
+
+  test("reaction chips add or remove this user's count independently", () => {
+    const reacted = [{ ...messages[0], reactions: [
+      { id: 1, user_id: 1, emoji: "🔥" },
+      { id: 2, user_id: 2, emoji: "🎉" },
+    ] }];
+    render(<Conversation messages={reacted} userId={1} onDeleteMessage={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "🔥 1, remove your reaction" }));
+    fireEvent.click(screen.getByRole("button", { name: "🎉 1, add your reaction" }));
+    expect(api.post).toHaveBeenCalledWith("/api/messages/1/react/", { emoji: "🔥" });
+    expect(api.post).toHaveBeenCalledWith("/api/messages/1/react/", { emoji: "🎉" });
+  });
 });
 
 describe("Conversation in a group chat", () => {
@@ -78,6 +98,12 @@ describe("Conversation in a group chat", () => {
     ]);
     expect(screen.getByText("Seen by ana")).toBeInTheDocument();
     expect(container.querySelector(".cv-ticks")).toBeNull();
+  });
+
+  test("shows the group nickname as a message sender", () => {
+    render(<Conversation messages={groupMessages} userId={1} onDeleteMessage={jest.fn()}
+      isGroup groupNicknames={{ 3: "Annie" }} />);
+    expect(screen.getByText("Annie")).toBeInTheDocument();
   });
 
   test("an empty group invites everyone to say hello (no openers)", () => {
