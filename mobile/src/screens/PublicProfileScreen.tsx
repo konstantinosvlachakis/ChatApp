@@ -32,6 +32,7 @@ import type { Profile } from "../types";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
 import { cloudinaryImage } from "../utils/media";
+import { isPlaceholderAvatar, ProfileAvatarImage } from "../components/ProfileAvatarImage";
 
 // Photo Moments tiles: up to ~140dp wide at aspect ratio 0.92 (large tile on a big phone).
 const GALLERY_TILE = { width: 140, height: 152 };
@@ -160,10 +161,11 @@ export function PublicProfileScreen() {
     };
   }, [routeProfile, routeUsername]);
 
-  const resolveMediaUrl = (path?: string | null, withDefault = true) => {
-    if (!path) {
-      return withDefault ? `${API_BASE_URL}/media/profile_images/MainAfter.jpg` : "";
-    }
+  // "" for no photo (incl. the server's MainAfter placeholder, which isn't served in production);
+  // ProfileAvatarImage shows the bundled default portrait instead.
+  const resolveMediaUrl = (path?: string | null) => {
+    if (isPlaceholderAvatar(path)) return "";
+    path = path as string;
     if (path.startsWith("http")) return path;
     if (path.startsWith("/media/")) return `${API_BASE_URL}${path}`;
     return `${API_BASE_URL}/media/${path}`;
@@ -190,8 +192,8 @@ export function PublicProfileScreen() {
   }
 
   const profileImage = resolveMediaUrl(profile.profile_image_url);
-  const complementaryOne = resolveMediaUrl(profile.complementary_image_1_url, false);
-  const complementaryTwo = resolveMediaUrl(profile.complementary_image_2_url, false);
+  const complementaryOne = resolveMediaUrl(profile.complementary_image_1_url);
+  const complementaryTwo = resolveMediaUrl(profile.complementary_image_2_url);
   const previewImages = [profileImage, complementaryOne, complementaryTwo].filter(Boolean);
   const practicingLanguages = profile.languages_practicing || [];
   const isOwnProfile = user?.username === profile.username;
@@ -310,6 +312,7 @@ export function PublicProfileScreen() {
           <View style={styles.heroMediaRow}>
             <Pressable
               onPress={() => {
+                if (!previewImages.length) return; // no photos to show yet
                 setPreviewIndex(0);
                 setIsPreviewOpen(true);
                 requestAnimationFrame(() => {
@@ -318,7 +321,8 @@ export function PublicProfileScreen() {
               }}
               style={styles.avatarShell}
             >
-              <Image source={{ uri: cloudinaryImage(profileImage, { width: 108 }) }} style={styles.avatar} />
+              <ProfileAvatarImage url={profileImage} transform={(url) => cloudinaryImage(url, { width: 108 })}
+                style={styles.avatar} accessibilityIgnoresInvertColors />
             </Pressable>
             <View style={styles.heroIdentity}>
               <View style={styles.heroEyebrowRow}>
@@ -328,7 +332,8 @@ export function PublicProfileScreen() {
                   <Text style={styles.heroStatusText}>Open to chat</Text>
                 </View>
               </View>
-              <Text style={styles.heroTitle}>
+              <Text style={styles.heroTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}
+                accessibilityRole="header">
                 {profile.username}
                 {ageLabel ? `, ${ageLabel}` : ""}
               </Text>

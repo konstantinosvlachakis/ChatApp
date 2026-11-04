@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRoute } from "@react-navigation/native";
 import * as Speech from "expo-speech";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -410,6 +411,16 @@ export function PracticeScreen() {
     setLanguage(nextLanguage);
     await bootstrapPractice(nextLanguage);
   };
+
+  // Opened from a profile boarding pass ("Practise"): switch to that language. `requestedAt`
+  // makes a second tap on the same language reload it too.
+  const route = useRoute();
+  const routeParams = (route.params || {}) as { language?: string; requestedAt?: number };
+  useEffect(() => {
+    if (!routeParams.language || !routeParams.requestedAt) return;
+    handleLanguageChange(String(routeParams.language).toLowerCase()).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeParams.requestedAt]);
 
   const loadNextChallenge = async (nextLanguage = language) => {
     const seq = ++requestSeqRef.current;
