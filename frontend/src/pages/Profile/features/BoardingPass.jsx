@@ -15,6 +15,16 @@ const Flag = ({ language }) => {
 // Travel class from how many languages someone is learning.
 const travelClass = (count) => (count >= 3 ? "Polyglot" : count === 2 ? "Voyager" : "Explorer");
 
+// The plane and dashed route share these SVG coordinates at every screen size.
+const FLIGHT_PATH = "M45 239C132 58 365 19 495 107";
+// MUI FlightRounded's 24-unit glyph, drawn directly to share the atlas coordinate system.
+const FLIGHT_ICON_PATH = "M21 14.58c0-.36-.19-.69-.49-.89L13 9V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-7.51 4.69c-.3.19-.49.53-.49.89 0 .7.68 1.21 1.36 1L10 13.5V19l-1.8 1.35c-.13.09-.2.24-.2.4v.59c0 .33.32.57.64.48L11.5 21l2.86.82c.32.09.64-.15.64-.48v-.59c0-.16-.07-.31-.2-.4L13 19v-5.5l6.64 2.08c.68.21 1.36-.3 1.36-1";
+const FlightPlane = () => (
+  <g className="bp-plane-icon" transform="rotate(90) scale(1.333333) translate(-12 -12)">
+    <path d={FLIGHT_ICON_PATH} />
+  </g>
+);
+
 const JourneyArtwork = () => (
   <div className="bp-atlas" aria-hidden="true">
     <svg viewBox="0 0 540 320" fill="none">
@@ -31,12 +41,18 @@ const JourneyArtwork = () => (
         <path d="m196 94 21-10 18 7 9 17-13 14 4 17-15 8-8 22-16-5-4-24-14-12 5-20Zm31 80 24 3 13 20-8 27-17 26-10-15 3-25-14-19Z" />
         <path d="m282 89 22-5 14 12 25-3 21 18-10 18-25-1-10 17-19-5-4-19-20-10Zm-5 52 25 7 14 22-11 34-17 15-16-25-8-29Zm58 68 20-7 16 16-5 13-25-3Z" />
       </g>
-      <path className="bp-orbit" d="M45 239C132 58 365 19 495 107" />
+      <path className="bp-orbit" d={FLIGHT_PATH} />
       <path className="bp-orbit-fine" d="M75 267C198 288 385 250 476 142" />
       <circle className="bp-orbit-point" cx="45" cy="239" r="5" />
       <circle className="bp-orbit-point" cx="495" cy="107" r="5" />
+      <g className="bp-flight-motion">
+        <FlightPlane />
+        <animateMotion path={FLIGHT_PATH} dur="1.8s" rotate="auto" fill="freeze" />
+      </g>
+      <g className="bp-flight-rest" transform="translate(495 107) rotate(34.095)">
+        <FlightPlane />
+      </g>
     </svg>
-    <FlightRoundedIcon className="bp-atlas-plane" />
   </div>
 );
 
@@ -124,7 +140,7 @@ export const BoardingPass = ({ passenger, native, language, level, stats, learni
 
       <div className="bp-body">
         <div className="bp-journey">
-          <JourneyArtwork />
+          <JourneyArtwork key={`${origin.key}:${destination.key}`} />
           <div className="bp-origin">
             <span className="bp-node" aria-hidden="true" />
             <span className="bp-label">From</span>

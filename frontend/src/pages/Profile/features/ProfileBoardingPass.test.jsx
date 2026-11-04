@@ -32,15 +32,21 @@ beforeEach(() => window.localStorage.clear());
 afterEach(() => jest.restoreAllMocks());
 
 test("focusing a language changes the complete pass, progress and destination actions", () => {
-  render(passTree());
+  const view = render(passTree());
   const switcher = screen.getByRole("group", { name: "Boarding pass language" });
   const spanish = within(switcher).getByRole("button", { name: "Focus on Spanish" });
   const french = within(switcher).getByRole("button", { name: "Focus on French" });
   expect(spanish).toHaveAttribute("aria-pressed", "true");
   const initial = screen.getByRole("article", { name: "Boarding pass: English to Spanish" });
+  const initialFlight = initial.querySelector(".bp-atlas > svg");
   expect(within(initial).getByLabelText("Level B1")).toBeInTheDocument();
   expect(within(initial).getByRole("progressbar", { name: "Practice progress in Spanish" })).toHaveAttribute("aria-valuenow", "60");
   expect(screen.getByRole("link", { name: /Add language/i })).toHaveAttribute("href", "/profile/edit#edit-languages");
+
+  // New progress must not interrupt or replay an in-flight journey.
+  view.rerender(passTree({ stats: { ...defaults.stats, spanish: { progress: progress(12), partners: 128 } } }));
+  expect(initial.querySelector(".bp-atlas > svg")).toBe(initialFlight);
+  expect(within(initial).getByRole("progressbar", { name: "Practice progress in Spanish" })).toHaveAttribute("aria-valuenow", "80");
 
   fireEvent.click(french);
 
@@ -48,6 +54,8 @@ test("focusing a language changes the complete pass, progress and destination ac
   expect(spanish).toHaveAttribute("aria-pressed", "false");
   expect(screen.getAllByRole("article")).toHaveLength(1);
   const focused = screen.getByRole("article", { name: "Boarding pass: English to French" });
+  expect(focused.querySelector(".bp-atlas > svg")).not.toBe(initialFlight);
+  expect(initialFlight.isConnected).toBe(false);
   expect(within(focused).getByLabelText("Level C1")).toBeInTheDocument();
   expect(within(focused).getByText("Accent Adventurer")).toBeInTheDocument();
   expect(within(focused).getByRole("progressbar", { name: "Practice progress in French" })).toHaveAttribute("aria-valuenow", "20");
