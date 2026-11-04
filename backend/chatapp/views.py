@@ -36,6 +36,11 @@ from .push import (
     schedule_follow_push,
     schedule_message_push,
 )
+from .conversation_members import (
+    conversation_member_ids,
+    create_direct_conversation,
+    is_conversation_member,
+)
 from . import people_filters
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
@@ -2102,7 +2107,10 @@ def mark_messages_delivered(messages_qs, user):
     broadcast the status change per conversation and invalidate both
     participants' conversation list caches so ticks are not stale.
     """
-    messages_to_deliver = messages_qs.filter(status="sent").exclude(sender=user)
+    # Direct chats only: groups track reads per member (ConversationParticipant.last_read_at).
+    messages_to_deliver = messages_qs.filter(
+        status="sent", conversation__kind=Conversation.KIND_DIRECT
+    ).exclude(sender=user)
     rows = list(
         messages_to_deliver.values_list(
             "id",
@@ -2134,7 +2142,7 @@ class MessageListView(APIView):
             Conversation,
             id=conversation_id,
         )
-        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+        if not is_conversation_member(request.user.id, conversation):
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2219,12 +2227,13 @@ class MessageListView(APIView):
             Conversation,
             id=conversation_id,
         )
-        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+        if not is_conversation_member(request.user.id, conversation):
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if users_are_blocked(conversation.sender_id, conversation.receiver_id):
+        # Groups don't stop on a block between two members (invites check blocks).
+        if not conversation.is_group and users_are_blocked(conversation.sender_id, conversation.receiver_id):
             return Response(
                 {"error": "You cannot message a blocked user.", "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2304,10 +2313,10 @@ class MessageListView(APIView):
                 except Exception:
                     logger.warning("Could not remove orphaned attachment upload")
             raise
-        bump_conversation_list_cache_version(conversation.sender_id)
-        bump_conversation_list_cache_version(conversation.receiver_id)
+        for member_id in conversation_member_ids(conversation):
+            bump_conversation_list_cache_version(member_id)
         broadcast_conversation_update(
-            [conversation.sender_id, conversation.receiver_id],
+            conversation_member_ids(conversation),
             conversation.id,
             "message_created",
             actor_id=request.user.id,
@@ -2347,13 +2356,13 @@ class MessageDeleteView(APIView):
         conversation = message.conversation
         deleted_message_id = message.id
         message.delete()
-        bump_conversation_list_cache_version(conversation.sender_id)
-        bump_conversation_list_cache_version(conversation.receiver_id)
+        for member_id in conversation_member_ids(conversation):
+            bump_conversation_list_cache_version(member_id)
         broadcast_chat_room_event(
             conversation.id, "message_deleted_event", message_id=deleted_message_id
         )
         broadcast_conversation_update(
-            [conversation.sender_id, conversation.receiver_id],
+            conversation_member_ids(conversation),
             conversation.id,
             "message_deleted",
             actor_id=request.user.id,
@@ -2395,10 +2404,10 @@ class MessageEditView(APIView):
         message.save(update_fields=["text", "edited_at"])
 
         conversation = message.conversation
-        bump_conversation_list_cache_version(conversation.sender_id)
-        bump_conversation_list_cache_version(conversation.receiver_id)
+        for member_id in conversation_member_ids(conversation):
+            bump_conversation_list_cache_version(member_id)
         broadcast_conversation_update(
-            [conversation.sender_id, conversation.receiver_id],
+            conversation_member_ids(conversation),
             conversation.id,
             "message_updated",
             actor_id=request.user.id,
@@ -2428,7 +2437,7 @@ class ConversationDetailView(APIView):
             Conversation.objects.select_related("sender", "receiver"),
             id=conversation_id,
         )
-        if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+        if not is_conversation_member(request.user.id, conversation):
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2447,7 +2456,7 @@ class ConversationDetailView(APIView):
 
     def delete(self, request, conversation_id):
         conversation = get_object_or_404(Conversation, id=conversation_id)
-        participant_ids = [conversation.sender_id, conversation.receiver_id]
+        participant_ids = conversation_member_ids(conversation)
         if request.user.id not in participant_ids:
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
@@ -2592,9 +2601,7 @@ class ConversationListView(APIView):
                 # Opening an existing chat is free; only new conversations count
                 # (raises Throttled -> 429, the transaction rolls back).
                 check_throttles(request, self, CONVERSATION_CREATE_THROTTLES)
-                conversation = Conversation.objects.create(
-                    sender=user, receiver=participant
-                )
+                conversation = create_direct_conversation(user, participant)
                 created = True
 
         if created:
@@ -2618,10 +2625,13 @@ def conversation_openers_view(request, conversation_id):
     conversation = get_object_or_404(
         Conversation.objects.select_related("sender", "receiver"), id=conversation_id
     )
-    if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+    if not is_conversation_member(request.user.id, conversation):
         return error_response(
             "You are not a participant in this conversation.", "not_participant", status.HTTP_403_FORBIDDEN
         )
+    if conversation.is_group:
+        # Openers are written for one partner; group chats don't offer them.
+        return Response({"openers": [], "source": "template"})
     partner = conversation.receiver if conversation.sender_id == request.user.id else conversation.sender
     blocked_by_me, blocked_me = get_block_state(request.user.id, partner.id)
     lines, source = conversation_openers(
@@ -2643,7 +2653,7 @@ def mark_conversation_read_view(request, conversation_id):
         id=conversation_id,
     )
 
-    if request.user.id not in (conversation.sender_id, conversation.receiver_id):
+    if not is_conversation_member(request.user.id, conversation):
         return Response(
             {"error": "You are not a participant in this conversation.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
@@ -2658,13 +2668,13 @@ def mark_conversation_read_view(request, conversation_id):
     updated = 0
     if read_ids:
         updated = messages_to_mark.update(status="read")
-        bump_conversation_list_cache_version(conversation.sender_id)
-        bump_conversation_list_cache_version(conversation.receiver_id)
+        for member_id in conversation_member_ids(conversation):
+            bump_conversation_list_cache_version(member_id)
         broadcast_message_status_update(
             conversation.id, read_ids, "read", request.user.id
         )
         broadcast_conversation_update(
-            [conversation.sender_id, conversation.receiver_id],
+            conversation_member_ids(conversation),
             conversation.id,
             "messages_read",
             actor_id=request.user.id,
@@ -2863,11 +2873,7 @@ def translate_message_view(request):
         message = get_object_or_404(
             Message.objects.select_related("conversation"), id=message_id
         )
-        participants = {
-            message.conversation.sender_id,
-            message.conversation.receiver_id,
-        }
-        if request.user.id not in participants:
+        if not is_conversation_member(request.user.id, message.conversation):
             return Response(
                 {"error": "You do not have access to this message.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -3029,8 +3035,7 @@ def react_to_message_view(request, message_id):
     message = get_object_or_404(
         Message.objects.select_related("conversation"), id=message_id
     )
-    participants = {message.conversation.sender_id, message.conversation.receiver_id}
-    if request.user.id not in participants:
+    if not is_conversation_member(request.user.id, message.conversation):
         return Response(
             {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
@@ -3072,9 +3077,7 @@ def pin_message_view(request, message_id):
         Message.objects.select_related("conversation"), id=message_id
     )
     conversation = message.conversation
-    participants = {conversation.sender_id, conversation.receiver_id}
-
-    if request.user.id not in participants:
+    if not is_conversation_member(request.user.id, conversation):
         return Response(
             {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
@@ -3098,10 +3101,10 @@ def pin_message_view(request, message_id):
 
     message.save(update_fields=update_fields)
 
-    bump_conversation_list_cache_version(conversation.sender_id)
-    bump_conversation_list_cache_version(conversation.receiver_id)
+    for member_id in conversation_member_ids(conversation):
+        bump_conversation_list_cache_version(member_id)
     broadcast_conversation_update(
-        [conversation.sender_id, conversation.receiver_id],
+        conversation_member_ids(conversation),
         conversation.id,
         trigger,
         actor_id=request.user.id,

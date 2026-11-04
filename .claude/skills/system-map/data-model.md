@@ -1,7 +1,8 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03).** Latest migration: `0038_follow`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03).** Latest migration: `0039_group_conversations`.
+`feat/group-participants` pending (2026-11-04, based on `c0a7e06`): `Conversation.kind`/`name`, nullable `receiver` (check constraint), `ConversationParticipant`; membership checks go through `chatapp/conversation_members.py`. Groundwork only: nothing creates groups yet.
 `feat/follow` pending (2026-11-03): migration `0038_follow` is now latest. `Follow(follower -> Profile, following -> Profile, created_at)` has a unique pair constraint, a no-self check, an index on `(follower, -created_at)` for the following list, and `(following, follower)` for reverse checks. A block deletes links in both directions. No public counts or feed.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
 
@@ -18,6 +19,9 @@ erDiagram
     Profile ||--o| PracticeStats : "practice_stats"
     Profile ||--o{ Conversation : "sent_conversations (sender)"
     Profile ||--o{ Conversation : "received_conversations (receiver)"
+    Conversation ||--o{ ConversationParticipant : "participants"
+    Profile ||--o{ ConversationParticipant : "conversation_memberships (user)"
+    Profile |o--o{ ConversationParticipant : "sent_conversation_invites (invited_by, SET_NULL)"
     Conversation ||--o{ Message : "messages"
     Profile ||--o{ Message : "sent_messages (sender)"
     Profile |o--o{ Message : "pinned_messages (pinned_by, SET_NULL)"
@@ -34,7 +38,7 @@ erDiagram
     Profile ||--o{ ProfileView : "profile_views_received (viewed_profile)"
     Profile ||--o{ PushDevice : "push_devices"
 ```
-Every FK is `on_delete=CASCADE` except `Message.reply_to` and `Message.pinned_by` (SET_NULL). Deleting a Profile removes their conversations, messages, reactions, translations, blocks, reports and views.
+Every FK is `on_delete=CASCADE` except `Message.reply_to`, `Message.pinned_by` and `ConversationParticipant.invited_by` (SET_NULL). Deleting a Profile removes their conversations, messages, reactions, translations, blocks, reports and views.
 
 ## Models
 
@@ -77,8 +81,11 @@ Every refresh token issued through `chatapp/tokens.py` gets an `OutstandingToken
 Dropped by migration `0033_delete_legacy_token` together with `/api/login/` and `CustomTokenAuthentication` (they authenticated nothing).
 
 ### Conversation
-`sender` FK→Profile (`sent_conversations`), `receiver` FK→Profile (`received_conversations`, **`default=1`**, legacy), created_at auto_now_add, updated_at auto_now.
-`save()`: legacy fallback that sets the receiver to the user named `"alma"` if no receiver is set. Never hit in normal flows.
+`kind` Char(10) `direct`|`group` (default `direct`), `name` Char(60) blank (groups), `sender` FK→Profile (`sent_conversations`; for groups the creator), `receiver` FK→Profile (`received_conversations`, **nullable**: NULL exactly for groups, enforced by check constraint `conv_kind_receiver_check`), created_at auto_now_add, updated_at auto_now. The old `default=1` and the "alma" fallback in `save()` are gone (migration 0039). Property `is_group`.
+
+### ConversationParticipant (migration 0039)
+`conversation` FK (`participants`), `user` FK→Profile (`conversation_memberships`), `role` `owner`|`member` (default member), `status` `pending`|`active` (default active; pending = invited to a group, not accepted, has no access), `invited_by` FK→Profile null (`sent_conversation_invites`, SET_NULL), `joined_at` null, `last_read_at` null (group read receipts; direct chats keep `Message.status`), created_at. Unique `uniq_conversation_participant` (conversation, user); index `conv_part_user_status_idx` (user, status). Leaving/removal deletes the row.
+Every conversation has rows: migration 0039 backfilled two `active` member rows per existing chat (`joined_at` = conversation `created_at`; a legacy self-chat gets one), and `conversation_members.create_direct_conversation` (used by `ConversationListView.post` and `tests/factory.make_conversation`) creates both with the chat. **Create direct chats only through it.**
 Indexes: `conv_sender_upd_idx` (sender, -updated_at), `conv_receiver_upd_idx` (receiver, -updated_at).
 
 ### Message
@@ -108,7 +115,8 @@ Unique constraint `uniq_profile_view_pair`; index `pview_viewed_upd_idx` (viewed
 Rules: a token belongs to one user — registering it moves it to the caller (`update_or_create` on token; `IntegrityError` race → update). `DELETE` removes only the caller's row. `chatapp/push.py` sets `is_active=False` on `DeviceNotRegistered` tickets; a later register reactivates it. Deleted with the Profile (CASCADE).
 
 ## Invariants and business rules
-- **Conversation = an unordered pair.** There is no DB uniqueness on the pair (a unique index on least/greatest ids would fail on existing duplicates without a merge migration, so it was not added). `ConversationListView.post` runs get-or-create in `transaction.atomic()` after `select_for_update` on the lower-id participant's Profile row (serialises concurrent creates for the pair on Postgres; SQLite serialises writes anyway), matches `Q(sender=u, receiver=p) | Q(sender=p, receiver=u)` ordered by id, so legacy duplicates resolve to the oldest. "sender" just means "who started it". Participant check everywhere: `request.user.id in (sender_id, receiver_id)`, otherwise 403. The consumer checks with `get_participant_details`.
+- **Membership goes through `chatapp/conversation_members.py`**: `is_conversation_member(user_id, conversation)` and `conversation_member_ids(conversation)` / `other_member_ids(...)`. Direct chats answer from `sender_id`/`receiver_id` (0 queries); groups from active participant rows (1 query, or 0 when `active_members` is prefetched). Used by every REST participant check (conversation detail/delete, messages list/send, openers (groups get `{"openers": [], "source": "template"}`), mark-read, translate, react, pin; message edit/delete check only `sender=request.user`) and every list-cache bump / `conversation_update` fan-out. Still direct-only (until the groups PR): the websocket `get_participant_details` / `get_presence_contact_ids`, the conversation list query, message push recipient, the send-time block check (skipped for groups) and `mark_messages_delivered` (filters `conversation__kind="direct"`).
+- **Conversation = an unordered pair** (direct chats). There is no DB uniqueness on the pair (a unique index on least/greatest ids would fail on existing duplicates without a merge migration, so it was not added). `ConversationListView.post` runs get-or-create in `transaction.atomic()` after `select_for_update` on the lower-id participant's Profile row (serialises concurrent creates for the pair on Postgres; SQLite serialises writes anyway), matches `Q(sender=u, receiver=p) | Q(sender=p, receiver=u)` ordered by id, so legacy duplicates resolve to the oldest. "sender" just means "who started it". Participant check everywhere: `request.user.id in (sender_id, receiver_id)`, otherwise 403. The consumer checks with `get_participant_details`.
 - That same `post` looks up the participant case-insensitively (`get_profile_by_username_or_404`), like every other username lookup.
 - **Only Message creation bumps `Conversation.updated_at`** (`Message.save` on create). Edits, pins, status changes, reactions and deletes don't reorder the list. `Conversation.updated_at` also changes on `Conversation.save()` (auto_now), which only runs at creation. The list is ordered by `-updated_at, -id`.
 - **Messages are only persisted over REST** (`MessageListView.post`, multipart), and the view broadcasts the saved message (`message_created`) to the chat room; deletes broadcast `message_deleted`. The consumer ignores client `chat`/`deleteMessage` frames, so nothing unsaved or unauthorised reaches other clients.
@@ -154,3 +162,4 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 - security/sessions: `Profile.token_version` (migration 0034) and the SimpleJWT `token_blacklist` tables (`OutstandingToken` / `BlacklistedToken`).
 - feat/practice-levels: `PracticeLanguageProgress` (migration 0036); practice difficulty is per language and accuracy based, XP is score only.
 - feat/people-feed: `Profile.date_joined` (nullable, default now for new rows, existing rows NULL) and an index on `Profile.last_seen` (migration 0037).
+- feat/group-participants: `Conversation.kind`/`name`, nullable `receiver` + check constraint, `ConversationParticipant` with backfill (migration 0039); membership helpers in `conversation_members.py`. Tests: `tests/test_conversation_members.py`.
