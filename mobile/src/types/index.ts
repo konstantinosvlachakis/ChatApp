@@ -44,9 +44,48 @@ export interface ConversationParticipant {
   is_online?: boolean;
 }
 
+/** Sticker message media as served (`url` null if the sticker left the pack). */
+export interface StickerMedia {
+  pack: string;
+  id: string;
+  label: string;
+  url: string | null;
+}
+
+/** GIF message media (GIPHY); also one result of `GET /gifs/`. */
+export interface GifMedia {
+  provider: "giphy";
+  id: string;
+  title: string;
+  url: string;
+  preview_url: string;
+  still_url: string | null;
+  width: number;
+  height: number;
+}
+
+export interface Sticker {
+  id: string;
+  /** "<pack>:<id>", sent as `sticker`. */
+  ref: string;
+  label: string;
+  url: string;
+}
+
+export interface StickerPack {
+  id: string;
+  name: string;
+  stickers: Sticker[];
+}
+
+export type MessageKind = "text" | "sticker" | "gif";
+
 export interface ChatMessage {
   id: number;
   text?: string | null;
+  /** Missing on older servers = "text". */
+  kind?: MessageKind;
+  media?: StickerMedia | GifMedia | null;
   status?: "sent" | "delivered" | "read";
   sender: ConversationParticipant;
   attachment_url?: string | null;
@@ -64,6 +103,8 @@ export interface ChatMessage {
   reply_to?: {
     id: number;
     text?: string | null;
+    kind?: MessageKind;
+    media?: StickerMedia | GifMedia | null;
     timestamp?: string;
     sender?: {
       id?: number;

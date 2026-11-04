@@ -44,6 +44,8 @@ type ComposerProps = {
    * optimistic bubble) and restored if the send fails.
    */
   onSend: (text: string, attachment: PickedAttachment | null) => Promise<boolean>;
+  /** Optional: shows the sticker/GIF button. Should be stable. */
+  onOpenMediaPicker?: () => void;
 };
 
 /**
@@ -63,6 +65,7 @@ export const Composer = React.memo(
       onTypingStart,
       onTypingStop,
       onSend,
+      onOpenMediaPicker,
     },
     ref
   ) {
@@ -298,6 +301,22 @@ export const Composer = React.memo(
               placeholderTextColor={warm.mutedInk}
               accessibilityLabel="Message"
             />
+            {onOpenMediaPicker ? (
+              <Pressable
+                style={styles.attachButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  Keyboard.dismiss();
+                  onOpenMediaPicker();
+                }}
+                disabled={sending}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Stickers and GIFs"
+              >
+                <Ionicons name="happy-outline" size={22} color={warm.teal} />
+              </Pressable>
+            ) : null}
           </View>
           <SendButton
             warm={warm}
