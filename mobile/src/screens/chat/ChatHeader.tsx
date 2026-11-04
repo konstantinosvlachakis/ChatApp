@@ -3,6 +3,7 @@ import type { TextInputInstance } from "react-native";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatAvatar } from "../../components/chat/ChatAvatar";
+import { GroupAvatar } from "../../components/chat/GroupAvatar";
 import { presenceLabel } from "../../components/chat/conversationList";
 import { fontFamilies } from "../../theme/typography";
 import type { WarmColors } from "../../theme/warm";
@@ -10,9 +11,22 @@ import type { ConversationParticipant } from "../../types";
 
 export const CHAT_HEADER_AVATAR_SIZE = 40;
 
+/** A group chat's header identity (instead of the other person). */
+export type ChatHeaderGroup = {
+  title: string;
+  /** Other members (stacked avatars). */
+  members: ConversationParticipant[];
+  /** "4 members · 2 online · 1 invited" */
+  status: string;
+  /** Someone in the group is typing ("ana is typing…"). */
+  typingLabel: string | null;
+};
+
 type ChatHeaderProps = {
   warm: WarmColors;
   otherUser: ConversationParticipant;
+  /** Set for group chats: identity opens group details instead of a profile. */
+  group?: ChatHeaderGroup | null;
   isOnline: boolean;
   isTyping: boolean;
   optionsLoading: boolean;
@@ -37,6 +51,7 @@ type ChatHeaderProps = {
 function ChatHeaderBase({
   warm,
   otherUser,
+  group = null,
   isOnline,
   isTyping,
   optionsLoading,
@@ -56,7 +71,9 @@ function ChatHeaderBase({
   onCloseSearch,
 }: ChatHeaderProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
-  const status = presenceLabel(isTyping, isOnline);
+  const status = group ? group.typingLabel || group.status : presenceLabel(isTyping, isOnline);
+  const statusActive = group ? Boolean(group.typingLabel) || isOnline : isTyping || isOnline;
+  const name = group ? group.title : otherUser.username;
 
   return (
     <View style={styles.wrap}>
@@ -79,20 +96,28 @@ function ChatHeaderBase({
             onOpenProfile();
           }}
           accessibilityRole="button"
-          accessibilityLabel={`View ${otherUser.username}'s profile${status ? `, ${status}` : ""}`}
+          accessibilityLabel={
+            group
+              ? `${name}, group details${status ? `, ${status}` : ""}`
+              : `View ${name}'s profile${status ? `, ${status}` : ""}`
+          }
         >
-          <ChatAvatar
-            name={otherUser.username}
-            imagePath={otherUser.profile_image_url}
-            size={CHAT_HEADER_AVATAR_SIZE}
-            online={isOnline}
-          />
+          {group ? (
+            <GroupAvatar members={group.members} size={CHAT_HEADER_AVATAR_SIZE} warm={warm} />
+          ) : (
+            <ChatAvatar
+              name={otherUser.username}
+              imagePath={otherUser.profile_image_url}
+              size={CHAT_HEADER_AVATAR_SIZE}
+              online={isOnline}
+            />
+          )}
           <View style={styles.identityText}>
             <Text style={styles.name} numberOfLines={1}>
-              {otherUser.username}
+              {name}
             </Text>
             {status ? (
-              <Text style={[styles.status, (isTyping || isOnline) && styles.statusActive]} numberOfLines={1}>
+              <Text style={[styles.status, statusActive && styles.statusActive]} numberOfLines={1}>
                 {status}
               </Text>
             ) : null}
@@ -118,7 +143,7 @@ function ChatHeaderBase({
           }}
           disabled={optionsLoading}
           accessibilityRole="button"
-          accessibilityLabel="Conversation options"
+          accessibilityLabel={group ? "Group details" : "Conversation options"}
           accessibilityState={{ busy: optionsLoading }}
         >
           {optionsLoading ? (

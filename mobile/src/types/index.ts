@@ -88,10 +88,38 @@ export interface ChatMessage {
   local_key?: string;
 }
 
+/** A group member (`active`) or invitee (`pending`); see backend ConversationSerializer. */
+export interface GroupParticipant {
+  user: ConversationParticipant & { native_language?: string | null };
+  role: "owner" | "member";
+  status: "active" | "pending";
+  joined_at: string | null;
+  last_read_at: string | null;
+}
+
+export interface GroupInvite {
+  conversation_id: number;
+  name: string;
+  display_name: string;
+  invited_by: ConversationParticipant | null;
+  members: ConversationParticipant[];
+  member_count: number;
+  invited_at: string;
+}
+
 export interface Conversation {
   id: number;
+  /** "group" only when the list/detail includes groups (older payloads omit it = direct). */
+  kind?: "direct" | "group";
+  name?: string;
+  display_name?: string | null;
+  /** Groups: active members + pending invitees; direct chats: []. */
+  participants?: GroupParticipant[];
+  my_role?: "owner" | "member" | null;
+  /** Direct chats: the person who started it. Groups: the creator. */
   sender: ConversationParticipant;
-  receiver: ConversationParticipant;
+  /** null for groups. */
+  receiver: ConversationParticipant | null;
   created_at: string;
   updated_at: string;
   last_message: ChatMessage | null;

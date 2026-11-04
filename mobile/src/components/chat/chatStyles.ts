@@ -280,6 +280,13 @@ export const createChatStyles = (warm: WarmColors) =>
     statusTickRead: {
       color: warm.teal,
     },
+    senderLabel: {
+      marginBottom: 3,
+      marginLeft: 12,
+      color: warm.peachInk,
+      fontSize: 12,
+      fontFamily: fontFamilies.bodyExtraBold,
+    },
     reactionsRow: {
       marginTop: 4,
       flexDirection: "row",

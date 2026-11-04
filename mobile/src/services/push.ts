@@ -28,6 +28,10 @@ let pendingOpenProfileUsername: string | null = null;
 const handledResponseIds = new Set<string>();
 const openListeners = new Set<(conversationId: number) => void>();
 const profileOpenListeners = new Set<(username: string) => void>();
+// Group invite taps open the Chats list (the invite card is there; the chat itself opens
+// only after Join).
+let pendingOpenInvites = false;
+const inviteOpenListeners = new Set<() => void>();
 
 const logOnce = (message: string) => {
   if (__DEV__) console.warn(`[push] ${message}`);
@@ -58,6 +62,11 @@ function handleResponse(response: Notifications.NotificationResponse | null) {
     else profileOpenListeners.forEach((listener) => listener(data.username as string));
     return;
   }
+  if (data?.type === "group_invite") {
+    if (!inviteOpenListeners.size) pendingOpenInvites = true;
+    else inviteOpenListeners.forEach((listener) => listener());
+    return;
+  }
   const conversationId = messageConversationId(response.notification.request.content.data);
   if (!conversationId) return;
   if (openListeners.size === 0) {
@@ -66,6 +75,18 @@ function handleResponse(response: Notifications.NotificationResponse | null) {
     return;
   }
   openListeners.forEach((listener) => listener(conversationId));
+}
+
+/** Group invite taps (queued until a listener subscribes, like the other opens). */
+export function subscribeToInviteNotificationOpens(listener: () => void) {
+  inviteOpenListeners.add(listener);
+  if (pendingOpenInvites) {
+    pendingOpenInvites = false;
+    listener();
+  }
+  return () => {
+    inviteOpenListeners.delete(listener);
+  };
 }
 
 export function subscribeToFollowNotificationOpens(listener: (username: string) => void) {

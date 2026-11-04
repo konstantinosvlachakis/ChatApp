@@ -14,7 +14,16 @@ type ChatPayload =
   | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
   | { type: "message_edited" | "message_pinned"; message?: ChatMessage }
   | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
-  | { type: "user_typing" | "user_stopped_typing" };
+  | { type: "user_typing" | "user_stopped_typing"; senderId?: number }
+  // Group chats (see system-map realtime-events).
+  | { type: "group_updated"; conversation_id?: number; trigger?: string; user_ids?: number[] }
+  | { type: "group_read"; conversation_id?: number; user_id?: number; last_read_at?: string };
+
+/** Group events and typing senders, for the screen (groups name who is typing). */
+export type ChatGroupEvent =
+  | { type: "group_updated"; trigger?: string }
+  | { type: "group_read"; userId: number; lastReadAt: string }
+  | { type: "typing"; senderId: number | null; isTyping: boolean };
 
 type BumpConversation = (args: {
   conversationId: number;
@@ -40,6 +49,8 @@ type UseChatSocketArgs = {
   scheduleConversationsRefresh: () => void;
   sendTypingEvent: (eventType: "user_typing" | "user_stopped_typing") => boolean;
   setRemoteTyping: (conversationId: number, isTyping: boolean) => void;
+  /** Must be stable (useStableCallback): it's an effect dependency. */
+  onGroupEvent?: (event: ChatGroupEvent) => void;
 };
 
 /**
@@ -62,6 +73,7 @@ export function useChatSocket({
   scheduleConversationsRefresh,
   sendTypingEvent,
   setRemoteTyping,
+  onGroupEvent,
 }: UseChatSocketArgs) {
   useEffect(() => {
     let mounted = true;
@@ -178,11 +190,24 @@ export function useChatSocket({
 
           if (data.type === "user_typing") {
             setRemoteTyping(conversationId, true);
+            onGroupEvent?.({ type: "typing", senderId: data.senderId ?? null, isTyping: true });
             return;
           }
 
           if (data.type === "user_stopped_typing") {
             setRemoteTyping(conversationId, false);
+            onGroupEvent?.({ type: "typing", senderId: data.senderId ?? null, isTyping: false });
+            return;
+          }
+
+          if (data.type === "group_updated") {
+            onGroupEvent?.({ type: "group_updated", trigger: data.trigger });
+            scheduleConversationsRefresh();
+            return;
+          }
+
+          if (data.type === "group_read" && typeof data.user_id === "number" && data.last_read_at) {
+            onGroupEvent?.({ type: "group_read", userId: data.user_id, lastReadAt: data.last_read_at });
           }
         } catch {}
       };
@@ -208,6 +233,7 @@ export function useChatSocket({
     initialUnreadCountRef,
     isFocused,
     isLocalUserTypingRef,
+    onGroupEvent,
     scheduleConversationsRefresh,
     selectedConversationIdRef,
     sendTypingEvent,

@@ -60,3 +60,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:people
         working-directory: mobile
+      - run: npm run test:group-chats
+        working-directory: mobile

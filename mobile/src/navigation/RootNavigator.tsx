@@ -41,6 +41,7 @@ import {
   registerForPushNotifications,
   subscribeToNotificationOpens,
   subscribeToFollowNotificationOpens,
+  subscribeToInviteNotificationOpens,
   watchPushTokenChanges,
 } from "../services/push";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
@@ -215,12 +216,20 @@ function AppTabs() {
           const isIncoming = Boolean(lastMessage && lastSenderId && lastSenderId !== user?.user_id);
 
           if (currentUnread > previousUnread && isIncoming) {
-            const otherUser =
-              conversation.sender.id === user?.user_id ? conversation.receiver : conversation.sender;
+            // Groups: "<group>" titled banner with "<sender>: <text>" and the sender's photo.
+            const isGroup = conversation.kind === "group";
+            const otherUser = isGroup
+              ? lastMessage?.sender
+              : conversation.sender.id === user?.user_id
+                ? conversation.receiver
+                : conversation.sender;
+            const preview = messagePreviewText(lastMessage) || "Sent you a message";
             showBanner(
-              otherUser.username,
-              messagePreviewText(lastMessage) || "Sent you a message",
-              otherUser.profile_image_url,
+              isGroup
+                ? conversation.display_name || conversation.name || "Group chat"
+                : otherUser?.username || "New message",
+              isGroup ? `${lastMessage?.sender?.username || "Someone"}: ${preview}` : preview,
+              otherUser?.profile_image_url,
               () => {
                 navigation.navigate("AppTabs", {
                   screen: "Chats",
@@ -368,6 +377,18 @@ function AppTabs() {
     };
   }, [user?.user_id]);
 
+  // Group invite taps open the Chats list, where the invite card is.
+  React.useEffect(
+    () =>
+      subscribeToInviteNotificationOpens(() => {
+        navigation.navigate("AppTabs", {
+          screen: "Chats",
+          params: { screen: "ChatsHome", params: { showInvitesAt: Date.now() } },
+        });
+      }),
+    [navigation]
+  );
+
   // Notification taps (warm, or queued from a cold start / before login) open that chat.
   React.useEffect(
     () =>
@@ -450,6 +471,20 @@ function AppTabs() {
             showBanner(`${payload.username} followed you`, "View profile", payload.profile_image_url, () => {
               navigation.navigate("People", { screen: "PublicProfile", params: { username: payload.username } });
             });
+          }
+          if (payload?.type === "group_invite" && typeof payload.conversation_id === "number") {
+            const inviter = payload.invited_by?.username || "Someone";
+            showBanner(
+              `${inviter} invited you to ${payload.display_name || "a group chat"}`,
+              "Tap to see the invite",
+              payload.invited_by?.profile_image_url,
+              () => {
+                navigation.navigate("AppTabs", {
+                  screen: "Chats",
+                  params: { screen: "ChatsHome", params: { showInvitesAt: Date.now() } },
+                });
+              }
+            );
           }
           publishPresenceEvent(payload);
         } catch {

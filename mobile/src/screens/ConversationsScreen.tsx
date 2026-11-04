@@ -43,6 +43,15 @@ import {
   type TranslationMap,
 } from "../components/chat/translation";
 import { useReducedMotion } from "../components/chat/useReducedMotion";
+import {
+  conversationTitle,
+  getOtherParticipant,
+  groupInvitees,
+  groupMembers,
+  groupStatusLabel,
+  isGroupConversation,
+} from "../components/chat/conversationList";
+import { buildSeenBy, mergeReads } from "../components/chat/groupReads";
 import { ReportUserModal } from "../components/ReportUserModal";
 import { API_BASE_URL } from "../config/api";
 import { useAuth } from "../context/AuthContext";
@@ -68,22 +77,26 @@ import {
   translateConversationMessage,
 } from "../services/api/conversations";
 import { getErrorMessage } from "../services/api/errors";
+import { fetchGroupInvites, respondToGroupInvite } from "../services/api/groups";
+import { subscribeToPresenceEvents } from "../services/presenceEvents";
 import { hapticLight, hapticSelection, hapticSuccess } from "../services/haptics";
 import { showToast, toastApiError } from "../services/toast";
 import { setOpenConversationId } from "../services/push";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
-import type { ChatMessage, Conversation } from "../types";
+import type { ChatMessage, Conversation, GroupInvite } from "../types";
 import { ChatOptionsSheet, type ChatOptionsState } from "./chat/ChatOptionsSheet";
 import { ChatRoomView, type ChatContentInsets } from "./chat/ChatRoomView";
 import { ConversationListView } from "./chat/ConversationListView";
+import { GroupDetailsSheet } from "./chat/GroupDetailsSheet";
+import { GroupPeopleSheet } from "./chat/GroupPeopleSheet";
 import {
   MessageActionsSheet,
   type MessageMenuAction,
   type MessageMenuState,
 } from "./chat/MessageActionsSheet";
 import { useChatPresence } from "./chat/useChatPresence";
-import { useChatSocket } from "./chat/useChatSocket";
+import { useChatSocket, type ChatGroupEvent } from "./chat/useChatSocket";
 import { useStableCallback } from "./chat/useStableCallback";
 import { isEmailUnverifiedError } from "../services/emailVerification";
 
@@ -132,6 +145,13 @@ export function ConversationsScreen() {
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
   const [typingByConversation, setTypingByConversation] = useState<Record<number, boolean>>({});
+  // Group chats: pending invites, the open sheet, read positions ("Seen by") and who is typing.
+  const [invites, setInvites] = useState<GroupInvite[]>([]);
+  const [respondingInviteId, setRespondingInviteId] = useState<number | null>(null);
+  const [groupSheet, setGroupSheet] = useState<"create" | "add" | "details" | null>(null);
+  const [groupPreselected, setGroupPreselected] = useState<string[]>([]);
+  const [groupReads, setGroupReads] = useState<Record<number, string | null>>({});
+  const [groupTypingUserId, setGroupTypingUserId] = useState<number | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   // Jump highlight: the row pulses whenever `nonce` changes (Reanimated, in MessageRow).
@@ -454,6 +474,82 @@ export function ConversationsScreen() {
     });
   }, [navigation, openConversation, route.params?.openConversationId, route.params?.openFromBannerAt]);
 
+  const loadInvites = useCallback(async () => {
+    try {
+      setInvites(await fetchGroupInvites());
+    } catch {
+      // Invites are a side section; the list still works without them.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isFocused) loadInvites();
+  }, [isFocused, loadInvites]);
+
+  // New invites (and accept/decline from another device) arrive on the presence socket.
+  useEffect(
+    () =>
+      subscribeToPresenceEvents((event) => {
+        if (event.type === "group_invite") loadInvites();
+        if (event.type === "conversation_update" && event.trigger === "group_members") loadInvites();
+      }),
+    [loadInvites]
+  );
+
+  const respondToInvite = useStableCallback(async (invite: GroupInvite, action: "accept" | "decline") => {
+    setRespondingInviteId(invite.conversation_id);
+    try {
+      await respondToGroupInvite(invite.conversation_id, action);
+      setInvites((current) => current.filter((item) => item.conversation_id !== invite.conversation_id));
+      if (action === "accept") {
+        hapticSuccess();
+        await loadConversations(true);
+        await openConversation(invite.conversation_id);
+      }
+    } catch (error) {
+      toastApiError(error, action === "accept" ? "Couldn't join the group." : "Couldn't decline the invite.");
+      loadInvites();
+    } finally {
+      setRespondingInviteId(null);
+    }
+  });
+
+  // Members/name changed (or someone read): refetch the open group's detail, keeping the
+  // loaded messages (the detail only carries the latest page).
+  const refreshOpenGroup = useStableCallback(async () => {
+    const conversationId = selectedConversationIdRef.current;
+    if (!conversationId) return;
+    try {
+      const updated = await fetchConversation(conversationId);
+      if (selectedConversationIdRef.current !== conversationId) return;
+      setSelectedConversation((previous) =>
+        previous && previous.id === conversationId
+          ? {
+              ...previous,
+              name: updated.name,
+              display_name: updated.display_name,
+              participants: updated.participants,
+              my_role: updated.my_role,
+            }
+          : previous
+      );
+    } catch {
+      // Removed from the group: the socket closes and the list refetch drops it.
+    }
+  });
+
+  const handleGroupEvent = useStableCallback((event: ChatGroupEvent) => {
+    if (event.type === "group_updated") {
+      refreshOpenGroup();
+    } else if (event.type === "group_read") {
+      setGroupReads((current) => ({ ...current, [event.userId]: event.lastReadAt }));
+    } else if (event.type === "typing") {
+      setGroupTypingUserId((current) =>
+        event.isTyping ? event.senderId : current === event.senderId ? null : current
+      );
+    }
+  });
+
   const sendTypingEvent = useCallback(
     (eventType: "user_typing" | "user_stopped_typing") => {
       if (!chatSocketRef.current || chatSocketRef.current.readyState !== WebSocket.OPEN) {
@@ -765,7 +861,18 @@ export function ConversationsScreen() {
     scheduleConversationsRefresh,
     sendTypingEvent,
     setRemoteTyping,
+    onGroupEvent: handleGroupEvent,
   });
+
+  // Read positions follow the open group (reset when another chat opens).
+  const readsConversationIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    const id = selectedConversation?.id ?? null;
+    const participants = selectedConversation?.participants || [];
+    setGroupReads((current) => mergeReads(readsConversationIdRef.current === id ? current : {}, participants));
+    if (readsConversationIdRef.current !== id) setGroupTypingUserId(null);
+    readsConversationIdRef.current = id;
+  }, [selectedConversation?.id, selectedConversation?.participants]);
 
   const sortedConversations = useMemo(() => {
     return [...conversations].sort(
@@ -1128,13 +1235,18 @@ export function ConversationsScreen() {
     [currentUserId, jumpAnchorMessageId, sortedMessages]
   );
 
-  const otherParticipant = selectedConversation
-    ? selectedConversation.sender.username === currentUsername
-      ? selectedConversation.receiver
-      : selectedConversation.sender
-    : null;
+  const isGroup = isGroupConversation(selectedConversation);
+  // Direct chats only (a group's sender is its creator, not "the other person").
+  const otherParticipant = selectedConversation ? getOtherParticipant(selectedConversation, currentUsername) : null;
   const otherAvatarName = otherParticipant?.username ?? null;
   const otherAvatarPath = otherParticipant?.profile_image_url ?? null;
+  const seenBy = useMemo(
+    () =>
+      isGroup && selectedConversation
+        ? buildSeenBy(sortedMessages, groupReads, selectedConversation.participants, currentUserId)
+        : null,
+    [currentUserId, groupReads, isGroup, selectedConversation, sortedMessages]
+  );
 
   const searchResultIdSet = useMemo(() => new Set(searchResultIds), [searchResultIds]);
   const normalizedSearchQuery = searchQuery.trim();
@@ -1161,8 +1273,11 @@ export function ConversationsScreen() {
           showUnreadDivider={unreadAnchorMessageId === item.id}
           startsGroup={flags?.startsGroup ?? true}
           endsGroup={flags?.endsGroup ?? true}
-          avatarName={otherAvatarName}
-          avatarPath={otherAvatarPath}
+          avatarName={isGroup ? item.sender?.username ?? null : otherAvatarName}
+          avatarPath={isGroup ? item.sender?.profile_image_url ?? null : otherAvatarPath}
+          senderLabel={isGroup ? item.sender?.username ?? null : null}
+          seenLabel={seenBy && seenBy.messageId === item.id ? seenBy.label : null}
+          isGroup={isGroup}
           isReplyActive={replyTarget?.id === item.id}
           showReactionPicker={reactionPickerMessageId === item.id}
           highlightNonce={highlightedMessageId === item.id ? highlightNonce : 0}
@@ -1195,6 +1310,8 @@ export function ConversationsScreen() {
       handleToggleTranslation,
       highlightNonce,
       highlightedMessageId,
+      isGroup,
+      seenBy,
       normalizedSearchQuery,
       openImageViewer,
       openMessageMenu,
@@ -1440,11 +1557,50 @@ export function ConversationsScreen() {
   // Stable header callbacks (ChatHeader is memoized).
   const otherUsernameForActions = otherParticipant?.username ?? "";
   const handleOpenOtherProfile = useCallback(() => {
-    if (otherUsernameForActions) openOtherUserProfile(otherUsernameForActions);
-  }, [openOtherUserProfile, otherUsernameForActions]);
+    if (isGroup) setGroupSheet("details");
+    else if (otherUsernameForActions) openOtherUserProfile(otherUsernameForActions);
+  }, [isGroup, openOtherUserProfile, otherUsernameForActions]);
   const handleOpenChatOptions = useCallback(() => {
-    if (otherUsernameForActions) openChatActions(otherUsernameForActions);
-  }, [openChatActions, otherUsernameForActions]);
+    if (isGroup) setGroupSheet("details");
+    else if (otherUsernameForActions) openChatActions(otherUsernameForActions);
+  }, [isGroup, openChatActions, otherUsernameForActions]);
+  const handleStartGroupWith = useCallback((username: string) => {
+    setChatActionsMenu(null);
+    setGroupPreselected([username]);
+    setGroupSheet("create");
+  }, []);
+  const openNewGroup = useCallback(() => {
+    setGroupPreselected([]);
+    setGroupSheet("create");
+  }, []);
+  const closeGroupSheet = useCallback(() => setGroupSheet(null), []);
+  const handleGroupCreated = useStableCallback(async (group: Conversation) => {
+    setGroupSheet(null);
+    showToast("Group created. Invites are on their way.", { variant: "success" });
+    await loadConversations(true);
+    if (group?.id) {
+      closeConversation();
+      openConversation(group.id).catch(() => {});
+    }
+  });
+  const handleGroupInvited = useStableCallback(() => {
+    setGroupSheet(null);
+    showToast("Invites sent. They'll join when they accept.", { variant: "success" });
+    refreshOpenGroup();
+  });
+  const handleLeftGroup = useStableCallback(() => {
+    setGroupSheet(null);
+    closeConversation();
+    loadConversations(true).catch(() => {});
+  });
+
+  // A group invite banner/push tap: show the list (invite cards are at the top).
+  useEffect(() => {
+    if (!route.params?.showInvitesAt) return;
+    if (selectedConversationIdRef.current) closeConversation();
+    loadInvites();
+    navigation.setParams({ showInvitesAt: undefined });
+  }, [closeConversation, loadInvites, navigation, route.params?.showInvitesAt]);
   const closePinnedList = useCallback(() => setShowPinnedModal(false), []);
 
   const handleReportSubmit = useCallback(
@@ -1476,8 +1632,32 @@ export function ConversationsScreen() {
     [openConversation]
   );
 
-  if (selectedConversation && otherParticipant) {
-    const otherUser = otherParticipant;
+  if (selectedConversation && (otherParticipant || isGroup)) {
+    const groupOthers = isGroup
+      ? groupMembers(selectedConversation).filter((member) => member.id !== currentUserId)
+      : [];
+    const groupTitle = conversationTitle(selectedConversation, currentUsername);
+    // Groups have no single "other user"; the header shows the group instead.
+    const otherUser = otherParticipant ?? { id: -1, username: groupTitle };
+    const groupTypingName = isGroup
+      ? groupOthers.find((member) => member.id === groupTypingUserId)?.username ?? null
+      : null;
+    const groupHeader = isGroup
+      ? {
+          title: groupTitle,
+          members: groupOthers,
+          status: groupStatusLabel(
+            groupOthers.length + 1,
+            groupOthers.filter((member) => onlineUserIds.has(member.id)).length,
+            groupInvitees(selectedConversation).length
+          ),
+          typingLabel: typingByConversation[selectedConversation.id]
+            ? groupTypingName
+              ? `${groupTypingName} is typing…`
+              : "Someone is typing…"
+            : null,
+        }
+      : null;
     const trimmedSearch = searchQuery.trim();
 
     return (
@@ -1488,7 +1668,10 @@ export function ConversationsScreen() {
           reduceMotion={reduceMotion}
           onTouchEndCapture={handleGlobalTouchEnd}
           otherUser={otherUser}
-          isOnline={onlineUserIds.has(otherUser.id)}
+          group={groupHeader}
+          isOnline={
+            isGroup ? groupOthers.some((member) => onlineUserIds.has(member.id)) : onlineUserIds.has(otherUser.id)
+          }
           isTyping={Boolean(typingByConversation[selectedConversation.id])}
           optionsLoading={chatActionLoading}
           onBack={closeConversation}
@@ -1557,6 +1740,37 @@ export function ConversationsScreen() {
             onViewProfile={handleOptionsViewProfile}
             onReport={handleOptionsReport}
             onToggleBlock={handleToggleUserBlock}
+            onStartGroup={handleStartGroupWith}
+          />
+          {isGroup ? (
+            <GroupDetailsSheet
+              warm={warm}
+              reduceMotion={reduceMotion}
+              visible={groupSheet === "details"}
+              group={selectedConversation}
+              currentUserId={currentUserId}
+              currentUsername={currentUsername}
+              onClose={closeGroupSheet}
+              onChanged={refreshOpenGroup}
+              onLeft={handleLeftGroup}
+              onAddPeople={() => setGroupSheet("add")}
+              onOpenProfile={(username) => {
+                setGroupSheet(null);
+                openOtherUserProfile(username);
+              }}
+            />
+          ) : null}
+          <GroupPeopleSheet
+            warm={warm}
+            reduceMotion={reduceMotion}
+            visible={groupSheet === "add" || groupSheet === "create"}
+            mode={groupSheet === "add" ? "add" : "create"}
+            group={isGroup ? selectedConversation : null}
+            conversations={conversations}
+            currentUsername={currentUsername}
+            preselected={groupPreselected}
+            onClose={closeGroupSheet}
+            onDone={groupSheet === "add" ? handleGroupInvited : handleGroupCreated}
           />
           <MessageActionsSheet
             warm={warm}
@@ -1578,6 +1792,7 @@ export function ConversationsScreen() {
   }
 
   return (
+    <>
     <ConversationListView
       warm={warm}
       conversations={sortedConversations}
@@ -1596,7 +1811,23 @@ export function ConversationsScreen() {
       onOpenCoach={openCoach}
       onFindPeople={findPeople}
       onRefresh={refreshList}
+      invites={invites}
+      respondingInviteId={respondingInviteId}
+      onRespondInvite={respondToInvite}
+      onNewGroup={openNewGroup}
     />
+    <GroupPeopleSheet
+      warm={warm}
+      reduceMotion={reduceMotion}
+      visible={groupSheet === "create"}
+      mode="create"
+      conversations={conversations}
+      currentUsername={currentUsername}
+      preselected={groupPreselected}
+      onClose={closeGroupSheet}
+      onDone={handleGroupCreated}
+    />
+    </>
   );
 }
 
