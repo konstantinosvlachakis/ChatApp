@@ -102,7 +102,7 @@ Browser storage:
 12. Mobile: a refresh failure clears tokens but not `cachedConversations` (15 s TTL, so the window is small). Coach and profile-view AsyncStorage keys survive logout and account deletion.
 
 ## Change log
-- feat/stickers-gifs-api: `giphy:results:v1:{trending|search}:{rating}:{sha256(q,lang)[:32]}:{offset}` (15 min, normalised result page) and `giphy:gif:v1:{id}` (7 days, set from every result page and id lookup, read by the GIF send path); no invalidation. Throttle scope `gifs`. `/api/stickers/` sends `Cache-Control: private, max-age=3600`.
+- feat/stickers-gifs-api: `giphy:results:v1:{trending|search}:{rating}:{sha256(q,lang)[:32]}:{offset}` (15 min, normalised result page) and `giphy:gif:v1:{id}` (7 days, set from every result page and id lookup, read by the GIF send path); no invalidation. Throttle scope `gifs`. `/api/stickers/` sends `Cache-Control: private, max-age=300` (URLs carry the static hash, which changes with the art).
 - security/abuse-limits: new keys `auth:login_failures:v1:*`, `coach_chat:global_daily:*`, `practice:daily_xp:v1:*`, `ws:connections:v1:*`; coach per-minute counter now atomic; throttle scopes list updated.
 - security/sessions (resilience + boot flicker): cache backend is `core.cache.ResilientRedisCache` (0.5 s timeouts, fail-open per op, 5 s breaker); "Redis failure behaviour" section; health probe moved to `probe_cache`.
 - fix/practice-library: `practice:library_round:v1` (per-user library rounds, 30 days).
