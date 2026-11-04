@@ -1,0 +1,962 @@
+[
+  {
+    "width": 1440,
+    "frames": [
+      {
+        "seconds": 0,
+        "reduced": false,
+        "position": {
+          "x": 45,
+          "y": 239.00000000000003
+        },
+        "expected": {
+          "x": 45,
+          "y": 239
+        },
+        "screen": {
+          "x": 302.267333984375,
+          "y": 377.07280273437505
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 284.2652587890625,
+          "right": 319.14178466796875,
+          "top": 358.9761962890625,
+          "bottom": 394.3852844238281
+        },
+        "journeyRect": {
+          "left": 161,
+          "right": 1135,
+          "top": 141,
+          "bottom": 439.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 0.9,
+        "reduced": false,
+        "position": {
+          "x": 241.5302734375,
+          "y": 75.46214294433597
+        },
+        "expected": {
+          "x": 241.53024291992188,
+          "y": 75.46253967285156
+        },
+        "screen": {
+          "x": 502.14668288230894,
+          "y": 210.74809450134637
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 485.5508728027344,
+          "right": 518.57373046875,
+          "top": 193.94271850585938,
+          "bottom": 226.19036865234375
+        },
+        "journeyRect": {
+          "left": 161,
+          "right": 1135,
+          "top": 141,
+          "bottom": 439.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 1.8,
+        "reduced": false,
+        "position": {
+          "x": 494.999755859375,
+          "y": 106.99981689453125
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 759.9355427145958,
+          "y": 242.8232024461031
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 742.0452270507812,
+          "right": 778.7667846679688,
+          "top": 224.11434936523438,
+          "bottom": 260.53143310546875
+        },
+        "journeyRect": {
+          "left": 161,
+          "right": 1135,
+          "top": 141,
+          "bottom": 439.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 4,
+        "reduced": false,
+        "position": {
+          "x": 495,
+          "y": 107.00000000000003
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 759.935791015625,
+          "y": 242.82338867187502
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 742.0454711914062,
+          "right": 778.7670288085938,
+          "top": 224.11451721191406,
+          "bottom": 260.5316162109375
+        },
+        "journeyRect": {
+          "left": 161,
+          "right": 1135,
+          "top": 141,
+          "bottom": 439.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      }
+    ],
+    "reducedStart": {
+      "seconds": 0,
+      "reduced": true,
+      "position": {
+        "x": 495,
+        "y": 107.00000000000003
+      },
+      "expected": {
+        "x": 45,
+        "y": 239
+      },
+      "screen": {
+        "x": 759.935791015625,
+        "y": 242.82338867187502
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 742.0454711914062,
+        "right": 778.7670288085938,
+        "top": 224.11451721191406,
+        "bottom": 260.5316162109375
+      },
+      "journeyRect": {
+        "left": 161,
+        "right": 1135,
+        "top": 141,
+        "bottom": 439.453125
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "reducedEnd": {
+      "seconds": 4,
+      "reduced": true,
+      "position": {
+        "x": 495,
+        "y": 107.00000000000003
+      },
+      "expected": {
+        "x": 495,
+        "y": 107
+      },
+      "screen": {
+        "x": 759.935791015625,
+        "y": 242.82338867187502
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 742.0454711914062,
+        "right": 778.7670288085938,
+        "top": 224.11451721191406,
+        "bottom": 260.5316162109375
+      },
+      "journeyRect": {
+        "left": 161,
+        "right": 1135,
+        "top": 141,
+        "bottom": 439.453125
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "livePreferenceToggle": true
+  },
+  {
+    "width": 1024,
+    "frames": [
+      {
+        "seconds": 0,
+        "reduced": false,
+        "position": {
+          "x": 45.00000000000001,
+          "y": 239.00000000000006
+        },
+        "expected": {
+          "x": 45,
+          "y": 239
+        },
+        "screen": {
+          "x": 57.889322916666664,
+          "y": 384.4655960648148
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 44.95252227783203,
+          "right": 70.01576232910156,
+          "top": 371.46087646484375,
+          "bottom": 396.9068298339844
+        },
+        "journeyRect": {
+          "left": 25,
+          "right": 883,
+          "top": 141,
+          "bottom": 499.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 0.9,
+        "reduced": false,
+        "position": {
+          "x": 241.5302734375,
+          "y": 75.462142944336
+        },
+        "expected": {
+          "x": 241.53024291992188,
+          "y": 75.46253967285156
+        },
+        "screen": {
+          "x": 201.5281590497052,
+          "y": 264.94005406918353
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 189.60195922851562,
+          "right": 213.3330841064453,
+          "top": 252.86325073242188,
+          "bottom": 276.03729248046875
+        },
+        "journeyRect": {
+          "left": 25,
+          "right": 883,
+          "top": 141,
+          "bottom": 499.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 1.8,
+        "reduced": false,
+        "position": {
+          "x": 494.99975585937506,
+          "y": 106.99981689453125
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 386.7823736473366,
+          "y": 287.99011501559505
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 373.9259033203125,
+          "right": 400.31500244140625,
+          "top": 274.54541015625,
+          "bottom": 300.71575927734375
+        },
+        "journeyRect": {
+          "left": 25,
+          "right": 883,
+          "top": 141,
+          "bottom": 499.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 4,
+        "reduced": false,
+        "position": {
+          "x": 495.00000000000006,
+          "y": 107.00000000000006
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 386.7825520833333,
+          "y": 287.9902488425926
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 373.92608642578125,
+          "right": 400.315185546875,
+          "top": 274.5455322265625,
+          "bottom": 300.71588134765625
+        },
+        "journeyRect": {
+          "left": 25,
+          "right": 883,
+          "top": 141,
+          "bottom": 499.453125
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      }
+    ],
+    "reducedStart": {
+      "seconds": 0,
+      "reduced": true,
+      "position": {
+        "x": 495.00000000000006,
+        "y": 107.00000000000006
+      },
+      "expected": {
+        "x": 45,
+        "y": 239
+      },
+      "screen": {
+        "x": 386.7825520833333,
+        "y": 287.9902488425926
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 373.92608642578125,
+        "right": 400.315185546875,
+        "top": 274.5455322265625,
+        "bottom": 300.71588134765625
+      },
+      "journeyRect": {
+        "left": 25,
+        "right": 883,
+        "top": 141,
+        "bottom": 499.453125
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "reducedEnd": {
+      "seconds": 4,
+      "reduced": true,
+      "position": {
+        "x": 495.00000000000006,
+        "y": 107.00000000000006
+      },
+      "expected": {
+        "x": 495,
+        "y": 107
+      },
+      "screen": {
+        "x": 386.7825520833333,
+        "y": 287.9902488425926
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 373.92608642578125,
+        "right": 400.315185546875,
+        "top": 274.5455322265625,
+        "bottom": 300.71588134765625
+      },
+      "journeyRect": {
+        "left": 25,
+        "right": 883,
+        "top": 141,
+        "bottom": 499.453125
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "livePreferenceToggle": true
+  },
+  {
+    "width": 390,
+    "frames": [
+      {
+        "seconds": 0,
+        "reduced": false,
+        "position": {
+          "x": 44.99999999999999,
+          "y": 238.99999999999997
+        },
+        "expected": {
+          "x": 45,
+          "y": 239
+        },
+        "screen": {
+          "x": 46.666666666666664,
+          "y": 318.08148148148143
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 34.997474670410156,
+          "right": 57.604896545410156,
+          "top": 306.35101318359375,
+          "bottom": 329.30364990234375
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 373,
+          "top": 198,
+          "bottom": 611.359375
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 0.9,
+        "reduced": false,
+        "position": {
+          "x": 241.5302734375,
+          "y": 75.46214294433591
+        },
+        "expected": {
+          "x": 241.53024291992188,
+          "y": 75.46253967285156
+        },
+        "screen": {
+          "x": 176.23106915509257,
+          "y": 210.26763497811774
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 165.47344970703125,
+          "right": 186.87928771972656,
+          "top": 199.37417602539062,
+          "bottom": 220.27752685546875
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 373,
+          "top": 198,
+          "bottom": 611.359375
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 1.8,
+        "reduced": false,
+        "position": {
+          "x": 494.99975585937506,
+          "y": 106.99981689453122
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 343.3331723813657,
+          "y": 231.05913854528353
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 331.7364501953125,
+          "right": 355.539794921875,
+          "top": 218.9318084716797,
+          "bottom": 242.537841796875
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 373,
+          "top": 198,
+          "bottom": 611.359375
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 4,
+        "reduced": false,
+        "position": {
+          "x": 495.00000000000006,
+          "y": 107.00000000000003
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 343.3333333333333,
+          "y": 231.05925925925925
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 331.7366027832031,
+          "right": 355.53997802734375,
+          "top": 218.93191528320312,
+          "bottom": 242.5379638671875
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 373,
+          "top": 198,
+          "bottom": 611.359375
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      }
+    ],
+    "reducedStart": {
+      "seconds": 0,
+      "reduced": true,
+      "position": {
+        "x": 495.00000000000006,
+        "y": 107.00000000000003
+      },
+      "expected": {
+        "x": 45,
+        "y": 239
+      },
+      "screen": {
+        "x": 343.3333333333333,
+        "y": 231.05925925925925
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 331.7366027832031,
+        "right": 355.53997802734375,
+        "top": 218.93191528320312,
+        "bottom": 242.5379638671875
+      },
+      "journeyRect": {
+        "left": 17,
+        "right": 373,
+        "top": 198,
+        "bottom": 611.359375
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "reducedEnd": {
+      "seconds": 4,
+      "reduced": true,
+      "position": {
+        "x": 495.00000000000006,
+        "y": 107.00000000000003
+      },
+      "expected": {
+        "x": 495,
+        "y": 107
+      },
+      "screen": {
+        "x": 343.3333333333333,
+        "y": 231.05925925925925
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 331.7366027832031,
+        "right": 355.53997802734375,
+        "top": 218.93191528320312,
+        "bottom": 242.5379638671875
+      },
+      "journeyRect": {
+        "left": 17,
+        "right": 373,
+        "top": 198,
+        "bottom": 611.359375
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "livePreferenceToggle": true
+  },
+  {
+    "width": 320,
+    "frames": [
+      {
+        "seconds": 0,
+        "reduced": false,
+        "position": {
+          "x": 44.99999999999999,
+          "y": 239
+        },
+        "expected": {
+          "x": 45,
+          "y": 239
+        },
+        "screen": {
+          "x": 40.833333333333336,
+          "y": 307.8407407407408
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 31.458646774291992,
+          "right": 49.62078857421875,
+          "top": 298.41680908203125,
+          "bottom": 316.8563232421875
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 303,
+          "top": 198,
+          "bottom": 612.546875
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 0.9,
+        "reduced": false,
+        "position": {
+          "x": 241.53027343749997,
+          "y": 75.46214294433588
+        },
+        "expected": {
+          "x": 241.53024291992188,
+          "y": 75.46253967285156
+        },
+        "screen": {
+          "x": 144.9215892650463,
+          "y": 221.22624607792608
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 136.27923583984375,
+          "right": 153.47605895996094,
+          "top": 212.47476196289062,
+          "bottom": 229.2678985595703
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 303,
+          "top": 198,
+          "bottom": 612.546875
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 1.8,
+        "reduced": false,
+        "position": {
+          "x": 494.999755859375,
+          "y": 106.9998168945312
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 279.1665373625579,
+          "y": 237.92953265154804
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 269.8500671386719,
+          "right": 288.9729919433594,
+          "top": 228.18679809570312,
+          "bottom": 247.15118408203125
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 303,
+          "top": 198,
+          "bottom": 612.546875
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      },
+      {
+        "seconds": 4,
+        "reduced": false,
+        "position": {
+          "x": 495,
+          "y": 106.99999999999994
+        },
+        "expected": {
+          "x": 495,
+          "y": 107
+        },
+        "screen": {
+          "x": 279.1666666666667,
+          "y": 237.92962962962963
+        },
+        "motionDisplay": "inline",
+        "restDisplay": "none",
+        "panelOverlap": 0,
+        "planeRect": {
+          "left": 269.8501892089844,
+          "right": 288.9731140136719,
+          "top": 228.1868896484375,
+          "bottom": 247.1512908935547
+        },
+        "journeyRect": {
+          "left": 17,
+          "right": 303,
+          "top": 198,
+          "bottom": 612.546875
+        },
+        "iconSize": {
+          "width": "auto",
+          "height": "auto",
+          "x": null,
+          "y": null
+        },
+        "clipped": false,
+        "overflow": false
+      }
+    ],
+    "reducedStart": {
+      "seconds": 0,
+      "reduced": true,
+      "position": {
+        "x": 495,
+        "y": 106.99999999999994
+      },
+      "expected": {
+        "x": 45,
+        "y": 239
+      },
+      "screen": {
+        "x": 279.1666666666667,
+        "y": 237.92962962962963
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 269.8501892089844,
+        "right": 288.9731140136719,
+        "top": 228.1868896484375,
+        "bottom": 247.1512908935547
+      },
+      "journeyRect": {
+        "left": 17,
+        "right": 303,
+        "top": 198,
+        "bottom": 612.546875
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "reducedEnd": {
+      "seconds": 4,
+      "reduced": true,
+      "position": {
+        "x": 495,
+        "y": 106.99999999999994
+      },
+      "expected": {
+        "x": 495,
+        "y": 107
+      },
+      "screen": {
+        "x": 279.1666666666667,
+        "y": 237.92962962962963
+      },
+      "motionDisplay": "none",
+      "restDisplay": "inline",
+      "panelOverlap": 0,
+      "planeRect": {
+        "left": 269.8501892089844,
+        "right": 288.9731140136719,
+        "top": 228.1868896484375,
+        "bottom": 247.1512908935547
+      },
+      "journeyRect": {
+        "left": 17,
+        "right": 303,
+        "top": 198,
+        "bottom": 612.546875
+      },
+      "iconSize": {
+        "width": "auto",
+        "height": "auto",
+        "x": null,
+        "y": null
+      },
+      "clipped": false,
+      "overflow": false
+    },
+    "livePreferenceToggle": true
+  }
+]

@@ -74,11 +74,11 @@
 .bp-flag { flex-shrink: 0; width: 25px; height: 18px; border: 2px solid #ffffffb3; border-radius: 4px; object-fit: cover; box-shadow: 0 2px 5px #152f3d14; }
 .bp-city { color: var(--lv-ink-soft); font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .bp-native { margin-top: 7px; padding: 4px 11px; border: 1px solid #1a75652b; border-radius: var(--lv-radius-pill); background: #ffffffa3; color: var(--lv-teal); font-size: 12px; font-weight: 800; }
-.bp-origin-note { margin-top: 24px; color: var(--lv-ink-soft); font-size: 12px; font-weight: 600; line-height: 1.7; }
+.bp-origin-note { margin-top: 8px; color: var(--lv-ink-soft); font-size: 12px; font-weight: 600; line-height: 1.7; }
 .bp-node { position: absolute; top: 10px; left: 0; width: 12px; height: 12px; border: 2px solid var(--bp-accent, var(--lv-teal)); border-radius: 50%; background: #f6f1e6; box-shadow: 0 0 0 4px #ffffff5c; }
 
 /* The artwork occupies the former blank centre and stays behind all real content. */
-.bp-atlas { position: absolute; z-index: 0; top: -7px; bottom: -20px; left: 9%; width: 72%; overflow: hidden; pointer-events: none; }
+.bp-atlas { position: absolute; z-index: 0; top: -7px; bottom: -20px; left: 2%; width: 72%; overflow: hidden; pointer-events: none; }
 .bp-atlas > svg { width: 100%; height: 100%; fill: none; overflow: visible; }
 .bp-globe-halo { fill: #ffffff38; stroke: #ffffff75; stroke-width: 1; }
 .bp-globe { fill: #e1ede279; stroke: #407c7138; stroke-width: 1; }
@@ -87,8 +87,9 @@
 .bp-orbit { stroke: #377c6c8c; stroke-width: 2; stroke-dasharray: 5 7; stroke-linecap: round; }
 .bp-orbit-fine { stroke: #b7744f40; stroke-width: 1; }
 .bp-orbit-point { fill: var(--lv-teal); stroke: #f4f0e6; stroke-width: 3; }
-.bp-atlas .bp-atlas-plane { position: absolute; top: 16%; left: 64%; width: 30px; height: 30px; color: var(--lv-teal); fill: currentColor; transform: rotate(64deg); filter: drop-shadow(0 3px 2px #ffffff); }
-.bp-voyage { align-self: start; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 37px 0 72px; }
+.bp-atlas .bp-plane-icon { color: var(--lv-teal); fill: currentColor; filter: drop-shadow(0 2px 2px #ffffff); }
+.bp-flight-rest { display: none; }
+.bp-voyage { align-self: start; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 68px 0 24px; }
 .bp-voyage-label { color: var(--lv-teal); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .bp-voyage-title { color: var(--lv-ink); font-family: var(--lv-font-display); font-size: clamp(24px, 2.5vw, 32px); font-weight: 700; line-height: 1.16; letter-spacing: -.05em; }
 .bp-voyage-title em { color: var(--lv-teal); font-style: normal; }
@@ -153,7 +154,7 @@
   .bp-voyage-title br { display: none; }
   .bp-voyage-label, .bp-voyage-caption { display: none; }
   .bp-origin-note { max-width: 130px; }
-  .bp-atlas { left: -12%; width: 100%; opacity: .6; }
+  .bp-atlas { left: 0; width: 46%; opacity: .6; }
   .bp-class { font-size: 17px; }
   .bp-barcode { gap: 1px; }
 }
@@ -173,7 +174,7 @@
   .bp-origin .bp-city { align-self: end; }
   .bp-native { justify-self: start; align-self: start; margin: 2px 0 0; padding: 2px 8px; }
   .bp-origin-note { display: none; }
-  .bp-atlas { top: -90px; bottom: auto; left: 12%; width: 125%; height: 350px; opacity: .65; }
+  .bp-atlas { top: -52px; bottom: auto; left: 0; width: 100%; height: 240px; opacity: .65; }
   .bp-voyage { display: flex; padding: 0 0 0 22px; gap: 3px; }
   .bp-voyage-label, .bp-voyage-caption { display: none; }
   .bp-voyage-title { font-size: 21px; }
@@ -192,4 +193,8 @@
   .bp-barcode { height: 29px; gap: 1px; }
   .bp-stub-caption { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .bp-bar > span { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .bp-bar > span { transition: none; }
+  .bp-flight-motion { display: none; }
+  .bp-flight-rest { display: inline; }
+}
