@@ -4,6 +4,7 @@ import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import { saveChatDraft } from "../utils/chatDrafts";
+import { messagePreviewText } from "../utils/messageMedia";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
 import GroupMembersPanel from "./GroupMembersPanel";
@@ -1520,6 +1521,64 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     [conversation.id]
   );
 
+  // Shows `tempMessage` at once, posts the form and swaps in the saved copy. Throws on
+  // failure (the optimistic copy is removed first); the caller toasts.
+  const submitMessage = async (formData, tempMessage) => {
+    setMessages((prev) => [...prev, tempMessage]);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+
+    let savedMessage;
+    try {
+      savedMessage = await api.upload(`/api/conversations/${conversation.id}/messages/`, formData);
+    } catch (error) {
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
+      throw error;
+    }
+    if (!applyNewMessageToConversationList(queryClient, conversation.id, savedMessage)) {
+      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+    }
+    invalidateConversationHistoryCache(conversation.id);
+
+    // The server's message_created broadcast may have arrived first: then the saved
+    // message is already listed and the optimistic copy is dropped instead.
+    setMessages((prev) => {
+      if (prev.some((message) => message.id === savedMessage.id)) {
+        return prev.filter((message) => message.id !== tempMessage.id);
+      }
+      return prev.map((message) =>
+        message.id === tempMessage.id
+          ? {
+              ...message,
+              ...savedMessage,
+              isPending: false,
+              attachmentUrl:
+                savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+              attachment_url:
+                savedMessage.attachment_url || savedMessage.attachmentUrl || null,
+              timestamp: savedMessage.timestamp || message.timestamp,
+              sender: savedMessage.sender || message.sender,
+              status: savedMessage.status || message.status,
+              reply_to: savedMessage.reply_to || message.reply_to || null,
+            }
+          : message
+      );
+    });
+    // No socket relay: the server broadcasts message_created to the room itself.
+    return savedMessage;
+  };
+
+  const buildTempMessage = (fields) => ({
+    id: Date.now(),
+    // Include the photo so the bubble doesn't flash the default avatar until the saved copy lands.
+    sender: { id: user.user_id, username: user.username, profile_image_url: user.profile_image_url },
+    timestamp: new Date().toISOString(),
+    reply_to: replyingMessage || null,
+    reactions: [],
+    current_user_reaction: null,
+    isPending: true,
+    ...fields,
+  });
+
   const handleSendMessage = async (newMessage, attachedFile, previewImage) => {
     if (!user) {
       logger.error("Cannot send message: user is undefined.");
@@ -1538,74 +1597,57 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     const ownsAttachmentUrl = !previewImage && Boolean(attachedFile);
     const localAttachmentUrl =
       previewImage || (attachedFile ? URL.createObjectURL(attachedFile) : null);
-    const tempMessageId = Date.now();
-
-    const tempMessage = {
-      id: tempMessageId,
-      text: newMessage.trim() || null,
-      // Include the photo so the bubble doesn't flash the default avatar until the saved copy lands.
-      sender: { id: user.user_id, username: user.username, profile_image_url: user.profile_image_url },
-      timestamp: new Date().toISOString(),
-      attachmentUrl: localAttachmentUrl,
-      attachment_url: localAttachmentUrl,
-      reply_to: replyingMessage || null,
-      reactions: [],
-      current_user_reaction: null,
-      isPending: true,
-    };
-
-    setMessages((prev) => [...prev, tempMessage]);
-    requestAnimationFrame(() => scrollToBottom("smooth"));
 
     try {
-      const savedMessage = await api.upload(
-        `/api/conversations/${conversation.id}/messages/`,
-        formData
+      await submitMessage(
+        formData,
+        buildTempMessage({
+          text: newMessage.trim() || null,
+          attachmentUrl: localAttachmentUrl,
+          attachment_url: localAttachmentUrl,
+        })
       );
-      if (!applyNewMessageToConversationList(queryClient, conversation.id, savedMessage)) {
-        queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
-      }
-      invalidateConversationHistoryCache(conversation.id);
-
-      // The server's message_created broadcast may have arrived first: then the saved
-      // message is already listed and the optimistic copy is dropped instead.
-      setMessages((prev) => {
-        if (prev.some((message) => message.id === savedMessage.id)) {
-          return prev.filter((message) => message.id !== tempMessageId);
-        }
-        return prev.map((message) =>
-          message.id === tempMessageId
-            ? {
-                ...message,
-                ...savedMessage,
-                isPending: false,
-                attachmentUrl:
-                  savedMessage.attachment_url || savedMessage.attachmentUrl || null,
-                attachment_url:
-                  savedMessage.attachment_url || savedMessage.attachmentUrl || null,
-                timestamp: savedMessage.timestamp || message.timestamp,
-                sender: savedMessage.sender || message.sender,
-                status: savedMessage.status || message.status,
-                reply_to: savedMessage.reply_to || message.reply_to || null,
-              }
-            : message
-        );
-      });
-
       if (localAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
       }
-      // No socket relay: the server broadcasts message_created to the room itself.
     } catch (error) {
       logger.warn("Error sending message:", error);
       toastApiError(error, "Message not sent");
-      setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
       if (ownsAttachmentUrl && localAttachmentUrl.startsWith("blob:")) {
         URL.revokeObjectURL(localAttachmentUrl);
       }
       return false;
     }
 
+    setReplyingMessage(null);
+    return true;
+  };
+
+  // Stickers send their manifest ref, GIFs their GIPHY id; the server stores the media.
+  const handleSendMedia = async ({ kind, sticker, gif }) => {
+    if (!user) return false;
+    const formData = new FormData();
+    formData.append("kind", kind);
+    let media;
+    if (kind === "sticker" && sticker) {
+      formData.append("sticker", sticker.ref);
+      const [pack, id] = sticker.ref.split(":");
+      media = { pack, id, label: sticker.label, url: sticker.url };
+    } else if (kind === "gif" && gif) {
+      formData.append("gif_id", gif.id);
+      media = gif;
+    } else {
+      return false;
+    }
+    if (replyingMessage?.id) formData.append("reply_to", String(replyingMessage.id));
+
+    try {
+      await submitMessage(formData, buildTempMessage({ text: "", kind, media }));
+    } catch (error) {
+      logger.warn("Error sending sticker/GIF:", error);
+      toastApiError(error, kind === "gif" ? "GIF not sent" : "Sticker not sent");
+      return false;
+    }
     setReplyingMessage(null);
     return true;
   };
@@ -1854,11 +1896,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
                     className="cv-pinned-bar"
                     role="button"
                     tabIndex={0}
-                    aria-label={`Pinned message: ${latestPinnedMessage.text?.trim() || "attachment"}. Jump to it`}
+                    aria-label={`Pinned message: ${messagePreviewText(latestPinnedMessage, "attachment")}. Jump to it`}
                   >
                     <PushPinRoundedIcon aria-hidden="true" />
                     <p className="cv-pinned-text">
-                      {latestPinnedMessage.text?.trim() || "Pinned attachment"}
+                      {messagePreviewText(latestPinnedMessage, "Pinned attachment")}
                     </p>
                     {additionalPinnedCount > 0 && (
                       <button
@@ -1910,7 +1952,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
                             tabIndex={0}
                           >
                             <p className="cv-pinned-text">
-                              {message.text?.trim() || "Pinned attachment"}
+                              {messagePreviewText(message, "Pinned attachment")}
                             </p>
                             <button
                               type="button"
@@ -1987,6 +2029,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
           onCancelEdit={handleCancelEditMessage}
           onCancelReply={handleCancelCommentMessage}
           onSendMessage={handleSendMessage}
+          onSendMedia={handleSendMedia}
           onSaveEdit={handleSaveEditedMessage}
           onTyping={handleTyping}
           onStopTyping={handleStopTyping}

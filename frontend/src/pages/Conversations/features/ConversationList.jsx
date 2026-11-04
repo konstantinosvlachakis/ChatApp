@@ -27,6 +27,7 @@ import {
 import { GROUP_INVITES_QUERY_KEY } from "../api/groups";
 import GroupAvatar from "./GroupAvatar";
 import GroupInvites from "./GroupInvites";
+import { messagePreviewText } from "../utils/messageMedia";
 import CoachAvatar from "../../../components/CoachAvatar";
 import {
   COACH_CONVERSATION_ID,
@@ -377,7 +378,7 @@ function ConversationList({
             : 0;
         const isDragging = typeof liveOffset === "number";
         const previewText = lastMessage
-          ? lastMessage.text || (lastMessage.attachment_url || lastMessage.attachment ? "Attachment" : "Message")
+          ? messagePreviewText(lastMessage)
           : isGroup
             ? "Group created. Say hello!"
             : "No messages yet";
