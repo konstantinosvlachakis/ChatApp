@@ -34,7 +34,8 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
 
   const generation = cacheGeneration;
   const request = api
-    .get<Conversation[]>("/conversations/")
+    // Groups are opt-in on the API (builds before this one only understand direct chats).
+    .get<Conversation[]>("/conversations/", { params: { include: "groups" } })
     .then((response: { data: Conversation[] }) => {
       // Skip caching if the cache was cleared (e.g. logout) while this request was in flight.
       if (generation === cacheGeneration) {

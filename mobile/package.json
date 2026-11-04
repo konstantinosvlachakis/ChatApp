@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:verification": "node --experimental-strip-types --test tests/emailVerification.test.mjs",
     "test:profile-languages": "node --experimental-strip-types --test tests/profileLanguages.test.mjs",
-    "test:people": "node --experimental-strip-types --test tests/peopleMatching.test.mjs"
+    "test:people": "node --experimental-strip-types --test tests/peopleMatching.test.mjs",
+    "test:group-chats": "node --experimental-strip-types --test tests/groupReads.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

@@ -26,7 +26,7 @@ import { unreadBadgeText } from "../../components/chat/conversationList";
 import { fontFamilies } from "../../theme/typography";
 import type { WarmColors } from "../../theme/warm";
 import type { ChatMessage, ConversationParticipant } from "../../types";
-import { ChatHeader } from "./ChatHeader";
+import { ChatHeader, type ChatHeaderGroup } from "./ChatHeader";
 import {
   useChatScrollComponent,
   useStickyOffset,
@@ -48,6 +48,8 @@ type ChatRoomViewProps = {
   onTouchEndCapture: () => void;
   // Header
   otherUser: ConversationParticipant;
+  /** Group chats: header identity; also turns off openers. */
+  group?: ChatHeaderGroup | null;
   isOnline: boolean;
   isTyping: boolean;
   optionsLoading: boolean;
@@ -142,7 +144,8 @@ export function ChatRoomView(props: ChatRoomViewProps) {
     [props.loadingOlderMessages, styles.olderLoader, warm.teal]
   );
   const listFooter = useMemo(() => <View style={styles.footerSpacer} />, [styles.footerSpacer]);
-  const otherName = props.otherUser.username;
+  const isGroup = Boolean(props.group);
+  const otherName = props.group ? props.group.title : props.otherUser.username;
   const { conversationId, composerRef } = props;
   const pickOpener = useCallback((line: string) => composerRef.current?.setDraft(line), [composerRef]);
   const listEmpty = useMemo(
@@ -153,15 +156,17 @@ export function ChatRoomView(props: ChatRoomViewProps) {
             👋
           </Text>
         </View>
-        <Text style={styles.emptyTitle}>Say hello to {otherName}</Text>
+        <Text style={styles.emptyTitle}>{isGroup ? "Say hello to everyone" : `Say hello to ${otherName}`}</Text>
         <Text style={styles.emptyText}>
-          Start with a greeting in the language you’re practising — double-tap any message they send to
-          translate it.
+          {isGroup
+            ? "This group is brand new. Start with a greeting in the language you’re practising together."
+            : "Start with a greeting in the language you’re practising — double-tap any message they send to translate it."}
         </Text>
-        <ChatOpeners conversationId={conversationId} warm={warm} onPick={pickOpener} />
+        {/* Openers are written for one partner; groups don't get them. */}
+        {isGroup ? null : <ChatOpeners conversationId={conversationId} warm={warm} onPick={pickOpener} />}
       </View>
     ),
-    [otherName, styles, conversationId, warm, pickOpener]
+    [isGroup, otherName, styles, conversationId, warm, pickOpener]
   );
 
   return (
@@ -170,6 +175,7 @@ export function ChatRoomView(props: ChatRoomViewProps) {
         <ChatHeader
           warm={warm}
           otherUser={props.otherUser}
+          group={props.group}
           isOnline={props.isOnline}
           isTyping={props.isTyping}
           optionsLoading={props.optionsLoading}

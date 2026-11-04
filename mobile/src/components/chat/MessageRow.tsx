@@ -64,6 +64,12 @@ export type MessageRowProps = {
   /** Other participant (received rows show their avatar once per group). */
   avatarName: string | null;
   avatarPath: string | null;
+  /** Groups: the sender's name above the first bubble of their run (null in direct chats). */
+  senderLabel?: string | null;
+  /** Groups: "Seen by …" / "Sent" under your latest message, instead of ticks. */
+  seenLabel?: string | null;
+  /** Group chat: no per-message ticks (Message.status can't say who read it). */
+  isGroup?: boolean;
   isReplyActive: boolean;
   showReactionPicker: boolean;
   /** Bumped by each jump to this message (search, pinned, reply quote); 0 = no highlight. */
@@ -225,6 +231,9 @@ function MessageRowComponent({
   endsGroup,
   avatarName,
   avatarPath,
+  senderLabel = null,
+  seenLabel = null,
+  isGroup = false,
   isReplyActive,
   showReactionPicker,
   highlightNonce,
@@ -520,6 +529,11 @@ function MessageRowComponent({
           </View>
         ) : null}
         <View style={[styles.messageColumn, isMine ? styles.messageColumnMine : styles.messageColumnOther]}>
+          {senderLabel && startsGroup && !isMine ? (
+            <Text style={styles.senderLabel} numberOfLines={1} importantForAccessibility="no">
+              {senderLabel}
+            </Text>
+          ) : null}
           <Swipeable
             ref={swipeableRef}
             friction={1.05}
@@ -633,7 +647,7 @@ function MessageRowComponent({
             </View>
           ) : null}
 
-          {endsGroup ? (
+          {endsGroup || seenLabel ? (
             <View
               style={styles.messageMetaRow}
               // Text bubbles already announce time and status in their label.
@@ -643,7 +657,11 @@ function MessageRowComponent({
               <Text style={styles.messageTime}>{timeLabel}</Text>
               {isMine && isPending ? (
                 <Ionicons name="time-outline" size={13} color={warm.mutedInk} accessibilityLabel="Sending" />
-              ) : isMine ? (
+              ) : isMine && seenLabel ? (
+                <Text style={[styles.statusTick, seenLabel.startsWith("Seen") && styles.statusTickRead]}>
+                  {seenLabel}
+                </Text>
+              ) : isMine && !isGroup ? (
                 <Text
                   style={[styles.statusTick, item.status === "read" && styles.statusTickRead]}
                   accessibilityLabel={tickLabel}

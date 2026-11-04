@@ -8,7 +8,13 @@ export type PresenceEvent =
   | { type: "presence_update"; user_id: number; is_online: boolean }
   | { type: "typing_status"; conversation_id: number; sender_id: number; is_typing: boolean }
   | { type: "conversation_update"; conversation_id?: number; trigger?: string; actor_id?: number }
-  | { type: "user_followed"; username: string; profile_image_url?: string | null; is_following?: boolean };
+  | { type: "user_followed"; username: string; profile_image_url?: string | null; is_following?: boolean }
+  | {
+      type: "group_invite";
+      conversation_id: number;
+      display_name?: string;
+      invited_by?: { username?: string; profile_image_url?: string | null } | null;
+    };
 
 export type PresenceEventHandler = (event: PresenceEvent) => void;
 

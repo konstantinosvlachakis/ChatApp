@@ -16,18 +16,22 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CoachAvatar } from "../../components/CoachAvatar";
 import { VerifyEmailBanner } from "../../components/VerifyEmailBanner";
 import { ChatAvatar, chatAvatarUri } from "../../components/chat/ChatAvatar";
+import { GroupAvatar } from "../../components/chat/GroupAvatar";
 import {
   coachMatchesQuery,
   conversationPreview,
+  conversationTitle,
   filterConversations,
   formatListTime,
   getOtherParticipant,
+  groupMembers,
   hasConversationWith,
+  isGroupConversation,
   unreadBadgeText,
 } from "../../components/chat/conversationList";
 import { fontFamilies } from "../../theme/typography";
 import type { WarmColors } from "../../theme/warm";
-import type { Conversation } from "../../types";
+import type { Conversation, ConversationParticipant, GroupInvite } from "../../types";
 
 export const LIST_AVATAR_SIZE = 48;
 
@@ -51,6 +55,11 @@ type ConversationListViewProps = {
   onOpenCoach: () => void;
   onFindPeople: () => void;
   onRefresh: () => Promise<void>;
+  /** Pending group invites (cards above the chats). */
+  invites: GroupInvite[];
+  respondingInviteId: number | null;
+  onRespondInvite: (invite: GroupInvite, action: "accept" | "decline") => void;
+  onNewGroup: () => void;
 };
 
 const conversationKeyExtractor = (item: Conversation) => String(item.id);
@@ -78,6 +87,10 @@ export function ConversationListView({
   onOpenCoach,
   onFindPeople,
   onRefresh,
+  invites,
+  respondingInviteId,
+  onRespondInvite,
+  onNewGroup,
 }: ConversationListViewProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
   // Spinner only for a user pull; background refetches don't flash it.
@@ -97,7 +110,7 @@ export function ConversationListView({
   useEffect(() => {
     const uris: string[] = [];
     for (const conversation of conversations.slice(0, PREFETCH_AVATAR_COUNT)) {
-      const path = getOtherParticipant(conversation, currentUsername).profile_image_url;
+      const path = getOtherParticipant(conversation, currentUsername)?.profile_image_url;
       const uri = chatAvatarUri(path, LIST_AVATAR_SIZE);
       if (uri && !prefetchedAvatarUris.has(uri)) {
         prefetchedAvatarUris.add(uri);
@@ -121,12 +134,18 @@ export function ConversationListView({
   const renderItem = useCallback(
     ({ item }: { item: Conversation }) => {
       const otherUser = getOtherParticipant(item, currentUsername);
+      const members = isGroupConversation(item)
+        ? groupMembers(item).filter((member) => member.id !== currentUserId)
+        : null;
       return (
         <ConversationRow
           conversation={item}
-          otherUsername={otherUser.username}
-          otherImagePath={otherUser.profile_image_url ?? null}
-          isOnline={onlineUserIds.has(otherUser.id)}
+          otherUsername={conversationTitle(item, currentUsername)}
+          otherImagePath={otherUser?.profile_image_url ?? null}
+          groupMembers={members}
+          isOnline={
+            members ? members.some((member) => onlineUserIds.has(member.id)) : onlineUserIds.has(otherUser?.id ?? -1)
+          }
           isTyping={Boolean(typingByConversation[item.id])}
           currentUserId={currentUserId}
           styles={styles}
@@ -197,6 +216,57 @@ export function ConversationListView({
         </View>
       ) : null}
 
+      {invites.length > 0 && !isSearching ? (
+        <View>
+          <Text style={styles.sectionLabel} accessibilityRole="header">
+            Group invites
+          </Text>
+          {invites.map((invite) => {
+            const busy = respondingInviteId === invite.conversation_id;
+            const inviter = invite.invited_by?.username;
+            return (
+              <View key={invite.conversation_id} style={styles.inviteCard}>
+                <GroupAvatar members={invite.members} size={44} warm={warm} />
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowName} numberOfLines={1}>
+                    {invite.display_name}
+                  </Text>
+                  <Text style={styles.rowPreview} numberOfLines={1}>
+                    {inviter ? `${inviter} invited you` : "You're invited"} · {invite.member_count}{" "}
+                    {invite.member_count === 1 ? "member" : "members"}
+                  </Text>
+                  <View style={styles.inviteActions}>
+                    <Pressable
+                      style={({ pressed }) => [styles.inviteJoin, pressed && styles.pressed]}
+                      onPress={() => onRespondInvite(invite, "accept")}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Join ${invite.display_name}`}
+                      accessibilityState={{ busy, disabled: busy }}
+                    >
+                      {busy ? (
+                        <ActivityIndicator size="small" color={warm.onNavy} />
+                      ) : (
+                        <Text style={styles.inviteJoinText}>Join</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.inviteDecline, pressed && styles.pressed]}
+                      onPress={() => onRespondInvite(invite, "decline")}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline the invite to ${invite.display_name}`}
+                    >
+                      <Text style={styles.inviteDeclineText}>Decline</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
       {visibleConversations.length > 0 && !isSearching ? (
         <Text style={styles.sectionLabel} accessibilityRole="header">
           Chats
@@ -243,9 +313,21 @@ export function ConversationListView({
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.head}>
-        <Text style={styles.title} accessibilityRole="header">
-          Chats
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} accessibilityRole="header">
+            Chats
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.newGroupButton, pressed && styles.pressed]}
+            onPress={onNewGroup}
+            accessibilityRole="button"
+            accessibilityLabel="New group chat"
+            hitSlop={6}
+          >
+            <Ionicons name="people-outline" size={20} color={warm.ink} />
+            <Ionicons name="add" size={14} color={warm.ink} style={styles.newGroupPlus} />
+          </Pressable>
+        </View>
         <View style={styles.search}>
           <Ionicons name="search" size={18} color={warm.mutedInk} />
           <TextInput
@@ -303,8 +385,11 @@ export function ConversationListView({
 
 type ConversationRowProps = {
   conversation: Conversation;
+  /** The other person's username, or the group's name. */
   otherUsername: string;
   otherImagePath: string | null;
+  /** Groups: the other members (stacked avatars); null for direct chats. */
+  groupMembers?: ConversationParticipant[] | null;
   isOnline: boolean;
   isTyping: boolean;
   currentUserId?: number;
@@ -317,6 +402,7 @@ const ConversationRow = React.memo(function ConversationRow({
   conversation,
   otherUsername,
   otherImagePath,
+  groupMembers: members = null,
   isOnline,
   isTyping,
   currentUserId,
@@ -344,7 +430,11 @@ const ConversationRow = React.memo(function ConversationRow({
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
     >
-      <ChatAvatar name={otherUsername} imagePath={otherImagePath} size={LIST_AVATAR_SIZE} online={isOnline} />
+      {members ? (
+        <GroupAvatar members={members} size={LIST_AVATAR_SIZE} warm={warm} />
+      ) : (
+        <ChatAvatar name={otherUsername} imagePath={otherImagePath} size={LIST_AVATAR_SIZE} online={isOnline} />
+      )}
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
           <Text style={styles.rowName} numberOfLines={1}>
@@ -397,6 +487,69 @@ const createStyles = (warm: WarmColors) =>
       fontSize: 28,
       fontFamily: fontFamilies.displayBold,
       letterSpacing: -0.5,
+    },
+    titleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    newGroupButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.creamDeep,
+    },
+    newGroupPlus: {
+      position: "absolute",
+      top: 9,
+      right: 8,
+    },
+    inviteCard: {
+      flexDirection: "row",
+      gap: 12,
+      marginBottom: 8,
+      padding: 12,
+      borderRadius: 18,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: warm.lineWarm,
+      backgroundColor: warm.peachSoft,
+    },
+    inviteActions: {
+      flexDirection: "row",
+      gap: 8,
+      marginTop: 10,
+    },
+    inviteJoin: {
+      minWidth: 76,
+      minHeight: 36,
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: warm.navy,
+    },
+    inviteJoinText: {
+      color: warm.onNavy,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    inviteDecline: {
+      minHeight: 36,
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: warm.line,
+      backgroundColor: warm.paper,
+    },
+    inviteDeclineText: {
+      color: warm.ink,
+      fontSize: 14,
+      fontFamily: fontFamilies.bodyBold,
     },
     search: {
       flexDirection: "row",

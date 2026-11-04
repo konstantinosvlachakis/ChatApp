@@ -19,6 +19,8 @@ type ChatOptionsSheetProps = {
   onViewProfile: (username: string) => void;
   onReport: (username: string) => void;
   onToggleBlock: () => void;
+  /** Start a new group with this person (they're preselected). */
+  onStartGroup?: (username: string) => void;
 };
 
 /** Header overflow menu: view profile, report, block/unblock. */
@@ -31,6 +33,7 @@ export function ChatOptionsSheet({
   onViewProfile,
   onReport,
   onToggleBlock,
+  onStartGroup,
 }: ChatOptionsSheetProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
   return (
@@ -57,6 +60,22 @@ export function ChatOptionsSheet({
               <Text style={styles.itemSubtitle}>See photos, languages, and profile details</Text>
             </View>
           </Pressable>
+
+          {onStartGroup && !menu.isBlocked ? (
+            <Pressable
+              style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+              onPress={() => onStartGroup(menu.username)}
+              accessibilityRole="button"
+            >
+              <View style={styles.itemIcon}>
+                <Ionicons name="people-outline" size={20} color={warm.teal} />
+              </View>
+              <View style={styles.itemBody}>
+                <Text style={styles.itemTitle}>Start a group</Text>
+                <Text style={styles.itemSubtitle}>Practise together with {menu.username} and others</Text>
+              </View>
+            </Pressable>
+          ) : null}
 
           <Pressable
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}
