@@ -33,15 +33,17 @@ export const loopOffset = (position: number, index: number, count: number) => {
 
 /**
  * Where a card sits relative to the front one: "front", "left"/"right" (just behind),
- * "far-left"/"far-right" (further back, wide screens only) or hidden.
+ * "far-left"/"far-right" (further back, wide screens only) or hidden. The far slots need five
+ * cards: with four, only one side could be filled and the row would look lopsided.
  */
 export const coverflowPosition = (position: number, index: number, count: number) => {
   const offset = loopOffset(position, index, count);
   if (offset === 0) return "front";
   if (offset === -1) return "left";
   if (offset === 1) return "right";
-  if (offset === -2) return "far-left";
-  if (offset === 2) return "far-right";
+  const farSlots = count >= 5;
+  if (farSlots && offset === -2) return "far-left";
+  if (farSlots && offset === 2) return "far-right";
   return offset < 0 ? "gone-left" : "gone-right";
 };
 

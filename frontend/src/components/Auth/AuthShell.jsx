@@ -24,7 +24,7 @@ const AuthShell = ({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(27,127,121,0.34),transparent_26%),radial-gradient(circle_at_86%_16%,rgba(236,177,208,0.24),transparent_22%),radial-gradient(circle_at_70%_78%,rgba(20,49,74,0.56),transparent_34%),linear-gradient(180deg,#081320_0%,#102131_52%,#10273a_100%)]" />
       <div className="absolute -left-20 top-16 h-72 w-72 rounded-full bg-[rgba(27,127,121,0.18)] blur-3xl" />
       <div className="absolute right-[-5rem] top-24 h-64 w-64 rounded-full bg-[rgba(236,177,208,0.16)] blur-3xl" />
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:h-[100dvh] lg:min-h-0 lg:flex-row lg:items-center lg:gap-10 lg:px-8 lg:py-6 xl:gap-12 xl:py-8">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:flex-row lg:items-center lg:gap-10 lg:px-8 lg:py-6 xl:gap-12 xl:py-8">
         <div className="flex flex-col items-center pb-4 text-center lg:hidden">
           <Link
             to="/"
