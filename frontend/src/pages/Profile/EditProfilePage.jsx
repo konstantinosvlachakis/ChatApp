@@ -152,7 +152,9 @@ const EditProfilePage = () => {
   const usernameValid = Boolean(form.username.trim());
   const emailChanged = normalizeEmail(form.email) !== normalizeEmail(initial.email);
   const passwordReady = !emailChanged || currentPassword.length > 0;
-  const canSave = changes > 0 && ringValid && usernameValid && passwordReady && !saving;
+  // At least one language being learnt is required (matching and practice depend on it).
+  const hasPracticeLanguage = form.languages_practicing.length > 0;
+  const canSave = changes > 0 && ringValid && usernameValid && passwordReady && hasPracticeLanguage && !saving;
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -172,6 +174,7 @@ const EditProfilePage = () => {
 
   const removeLanguage = (language) => {
     setForm((prev) => {
+      if (prev.languages_practicing.length <= 1) return prev; // keep at least one
       const { [language]: _removed, ...levels } = prev.levels;
       return {
         ...prev,
@@ -281,13 +284,15 @@ const EditProfilePage = () => {
 
   const statusText = error
     ? error
-    : changes
+    : !hasPracticeLanguage
+      ? "Add a language you're learning to save."
+      : changes
       ? `${changes} unsaved ${changes === 1 ? "change" : "changes"}`
       : "No unsaved changes";
   // Rendered in the header and again after the last section, so saving never needs a scroll.
   const saveActions = (
     <div className="pe-actions">
-      <span className={`pe-status ${changes ? "is-dirty" : ""} ${error ? "is-error" : ""}`}>{statusText}</span>
+      <span className={`pe-status ${changes ? "is-dirty" : ""} ${error || !hasPracticeLanguage ? "is-error" : ""}`}>{statusText}</span>
       <div className="pe-actions-buttons">
         <button
           type="button"
@@ -512,6 +517,7 @@ const EditProfilePage = () => {
                 <ul className="pe-lang-list">
                   {form.languages_practicing.map((language) => {
                     const info = describeLanguage(language);
+                    const isOnlyLanguage = form.languages_practicing.length === 1;
                     return (
                       <li key={language} className="pe-lang">
                         <span className="pf-lang-code is-learning" aria-hidden="true">
@@ -530,7 +536,9 @@ const EditProfilePage = () => {
                           type="button"
                           className="pe-icon-btn"
                           onClick={() => removeLanguage(language)}
-                          aria-label={`Remove ${info.name}`}
+                          disabled={isOnlyLanguage}
+                          aria-label={isOnlyLanguage ? `Remove ${info.name} (add another language first)` : `Remove ${info.name}`}
+                          title={isOnlyLanguage ? "You need at least one language. Add another one first." : undefined}
                         >
                           <CloseRoundedIcon aria-hidden="true" />
                         </button>
@@ -539,7 +547,7 @@ const EditProfilePage = () => {
                   })}
                 </ul>
               ) : (
-                <p className="pe-help">Add the languages you want to practise.</p>
+                <p className="pe-help is-error" role="alert">Add at least one language you want to practise.</p>
               )}
               {languagesToAdd.length > 0 && (
                 <div className="pe-chips" aria-label="Add a language">

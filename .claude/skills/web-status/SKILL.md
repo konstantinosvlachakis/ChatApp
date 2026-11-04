@@ -67,6 +67,7 @@ Note `package.json` has `postinstall: npm run build` and POSIX-style e2e scripts
 Geolocation auto-requested and sent to a third-party geocoder (make opt-in); legacy localhost token fallback (HTTP only); coach history persists after logout; public STUN only (TURN needs backend-issued short-lived creds; `REACT_APP_WEBRTC_ICE_SERVERS` supported); dead `utils/storage.js`; unused deps (socket.io-client, zod, react-icons); CRA unmaintained (consider Vite); hook-dependency lint warnings in ChatRoom/MessageInput/CoachChatRoom; a chat socket that is down while its conversation is open misses `message_created` (the list skip relies on it).
 
 ## Change log
+- feat/require-practice-language: Edit profile keeps ≥1 learning language — the only language's remove button is disabled ("add another language first"), and with none Save is disabled and the status reads "Add a language you're learning to save." Tests in `EditProfilePage.test.jsx`.
 - feat/settings-redesign: Settings page redesign
 - feat/practice-redesign: Practice page redesign
 - security/abuse-limits: Layout/ChatRoom sockets no longer send `?token=`; 4429 close (socket cap/frame abuse) backs off to reconnect attempt 5 (`utils/reconnect.ts`); dropped `/api/login/` from the auth endpoint list.

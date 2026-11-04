@@ -26,7 +26,9 @@ import { ProfileLanguageSelector } from "../components/ProfileLanguageSelector";
 import { getProfileLanguageOptions } from "../features/profileLanguages";
 import { getCoachLanguageOptions } from "../features/coachConversation";
 import { fetchFollowing, fetchProfile, updateProfile, uploadProfilePhoto } from "../services/api/auth";
-import { toastApiError } from "../services/toast";
+import { showToast, toastApiError } from "../services/toast";
+
+const ONLY_PRACTICE_LANGUAGE_MESSAGE = "Keep at least one language you're learning. Add another one first.";
 import { RESEND_COOLDOWN_SECONDS } from "../features/emailVerification";
 import { setResendAvailableIn } from "../services/emailVerification";
 import { ApiError, getErrorMessage } from "../services/api/errors";
@@ -448,6 +450,10 @@ export function ProfileScreen() {
 
   const togglePracticeLanguage = (language: string) => {
     const normalizedLanguage = language.trim().toLowerCase();
+    if (editForm.practiceLanguages.length <= 1 && editForm.practiceLanguages.includes(normalizedLanguage)) {
+      showToast(ONLY_PRACTICE_LANGUAGE_MESSAGE, { title: "Can't remove your only language" });
+      return;
+    }
     setEditForm((prev) => {
       const exists = prev.practiceLanguages.includes(normalizedLanguage);
       if (exists) {
@@ -535,6 +541,11 @@ export function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
+    if (!editForm.practiceLanguages.length) {
+      showToast("Add at least one language you're learning.", { title: "Add a language", variant: "error" });
+      setLanguagePicker("practice");
+      return;
+    }
     if (emailChanged && !currentPassword) {
       setPasswordError("Enter your current password to change your email.");
       return;
@@ -644,6 +655,10 @@ export function ProfileScreen() {
   const handleRemoveMissionLanguage = async (language: string) => {
     if (!user || removingMissionLanguage) return;
     const normalizedLanguage = language.trim().toLowerCase();
+    if (practicingLanguages.length <= 1) {
+      showToast(ONLY_PRACTICE_LANGUAGE_MESSAGE, { title: "Can't delete your only mission" });
+      return;
+    }
     const nextLanguages = practicingLanguages.filter((item) => item !== normalizedLanguage);
     const nextLevels = { ...(user.practice_language_levels || {}) };
     delete nextLevels[normalizedLanguage];
@@ -683,17 +698,20 @@ export function ProfileScreen() {
   };
 
   const openMissionActions = (language: string) => {
+    const isOnlyMission = practicingLanguages.length <= 1;
     Alert.alert(
       `${language} mission`,
-      "Choose what you want to do with this mission.",
+      isOnlyMission
+        ? "This is your only language. Add another mission before deleting this one."
+        : "Choose what you want to do with this mission.",
       [
         {
           text: "Find people",
           onPress: () => handleExploreMissionPeople(language),
         },
-        {
+        ...(isOnlyMission ? [] : [{
           text: "Delete mission",
-          style: "destructive",
+          style: "destructive" as const,
           onPress: () =>
             Alert.alert(
               "Delete mission?",
@@ -707,7 +725,7 @@ export function ProfileScreen() {
                 },
               ]
             ),
-        },
+        }]),
         {
           text: "Cancel",
           style: "cancel",
@@ -1361,6 +1379,7 @@ export function ProfileScreen() {
                   options={profileLanguageOptions}
                   selected={editForm.practiceLanguages}
                   multiple
+                  minSelected={1}
                   expanded={languagePicker === "practice"}
                   onToggle={() => setLanguagePicker((current) => current === "practice" ? null : "practice")}
                   onSelect={togglePracticeLanguage}
