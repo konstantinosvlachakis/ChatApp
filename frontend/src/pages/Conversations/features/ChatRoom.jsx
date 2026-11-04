@@ -319,7 +319,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       const target = container.querySelector(selector);
       if (!target) return false;
 
-      target.scrollIntoView({ behavior, block: "center" });
+      // Scroll only the message list: scrollIntoView also scrolls the page and the
+      // layout around it, which pushed the chat up and hid the header/top messages.
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const centredOffset = (container.clientHeight - targetRect.height) / 2;
+      container.scrollTo({
+        top: container.scrollTop + targetRect.top - containerRect.top - Math.max(0, centredOffset),
+        behavior,
+      });
       const bubble = target.querySelector('[data-message-bubble="true"]');
       if (bubble) {
         bubble.style.transition = "box-shadow 900ms ease, transform 260ms ease";

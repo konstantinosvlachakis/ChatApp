@@ -6,6 +6,7 @@ import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import PhotoCameraOutlinedIcon from "@mui/icons-material/PhotoCameraOutlined";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
 import { LEVELS, describeLanguage, learningLanguages, levelFor } from "./profileUtils";
@@ -49,6 +50,11 @@ export const ProfileHero = ({
   onOpenAvatar,
   avatarLabel,
   onAvatarError,
+  // Own profile: clicking the photo opens this menu (rendered next to the photo) instead of the viewer.
+  avatarMenu = null,
+  avatarMenuOpen = false,
+  avatarButtonRef,
+  avatarBusy = false,
   children,
 }) => {
   const learning = learningLanguages(profile).map((lang) => describeLanguage(lang).name);
@@ -68,17 +74,31 @@ export const ProfileHero = ({
     <header className="pf-hero">
       <HeroBanner fromLabel={native} toLabel={learning.join(" · ")} />
       <div className="pf-hero-body">
-        <div className="pf-avatar" style={{ background: ringColor }}>
+        <div className={`pf-avatar${avatarBusy ? " is-busy" : ""}`} style={{ background: ringColor }}>
           <div className="pf-avatar-inner">
             {onOpenAvatar ? (
-              <button type="button" className="lv-photo-thumb" onClick={onOpenAvatar} aria-label={avatarLabel}>
+              <button
+                ref={avatarButtonRef}
+                type="button"
+                className={avatarMenu ? "lv-photo-thumb pf-avatar-trigger" : "lv-photo-thumb"}
+                onClick={onOpenAvatar}
+                aria-label={avatarLabel}
+                {...(avatarMenu ? { "aria-haspopup": "menu", "aria-expanded": avatarMenuOpen } : {})}
+              >
                 {avatar}
               </button>
             ) : (
               avatar
             )}
+            {avatarBusy && <span className="pf-avatar-busy" role="status">Uploading…</span>}
           </div>
+          {avatarMenu && (
+            <span className="pf-avatar-badge" aria-hidden="true">
+              <PhotoCameraOutlinedIcon />
+            </span>
+          )}
           {isOnline && <span className="pf-avatar-online" role="img" aria-label="Online" />}
+          {avatarMenu}
         </div>
         <h1 className="pf-name">
           {profile?.username}
