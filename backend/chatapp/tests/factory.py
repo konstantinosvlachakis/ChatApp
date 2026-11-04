@@ -1,7 +1,8 @@
 from itertools import count
 from django.utils import timezone
 
-from chatapp.models import Conversation, Message, Profile
+from chatapp.models import Message, Profile
+from chatapp.conversation_members import create_direct_conversation
 
 _SEQ = count(1)
 
@@ -24,7 +25,7 @@ def make_user(**kwargs):
 def make_conversation(sender=None, receiver=None):
     sender = sender or make_user()
     receiver = receiver or make_user(native_language="greek")
-    return Conversation.objects.create(sender=sender, receiver=receiver)
+    return create_direct_conversation(sender, receiver)
 
 
 def make_message(conversation=None, sender=None, **kwargs):

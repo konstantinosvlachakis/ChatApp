@@ -183,6 +183,21 @@ class PracticeLanguageProgress(models.Model):
 
 # Messaging Models
 class Conversation(models.Model):
+    """A chat. ``direct``: exactly ``sender`` + ``receiver`` (an unordered pair; "sender"
+    is whoever started it). ``group``: members are the active ``ConversationParticipant``
+    rows; ``sender`` is the creator and ``receiver`` is NULL.
+
+    Every conversation also has participant rows (backfilled by migration 0039 for
+    direct chats), but direct-chat checks read ``sender_id``/``receiver_id`` so they
+    cost no extra query (``conversation_member_ids``).
+    """
+
+    KIND_DIRECT = "direct"
+    KIND_GROUP = "group"
+    KINDS = [(KIND_DIRECT, "Direct"), (KIND_GROUP, "Group")]
+
+    kind = models.CharField(max_length=10, choices=KINDS, default=KIND_DIRECT)
+    name = models.CharField(max_length=60, blank=True, default="")
     sender = models.ForeignKey(
         Profile, related_name="sent_conversations", on_delete=models.CASCADE
     )
@@ -190,16 +205,15 @@ class Conversation(models.Model):
         Profile,
         related_name="received_conversations",
         on_delete=models.CASCADE,
-        default=1,  # Temporarily use the primary key (e.g., ID of Alma)
+        null=True,
+        blank=True,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def save(self, *args, **kwargs):
-        # Set the receiver to Alma by default
-        if not self.receiver:
-            self.receiver = Profile.objects.get(username="alma")
-        super().save(*args, **kwargs)
+    @property
+    def is_group(self):
+        return self.kind == self.KIND_GROUP
 
     class Meta:
         indexes = [
@@ -209,11 +223,68 @@ class Conversation(models.Model):
                 fields=["receiver", "-updated_at"], name="conv_receiver_upd_idx"
             ),
         ]
+        constraints = [
+            # A direct chat always has both people; a group never uses receiver.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="direct", receiver__isnull=False)
+                    | models.Q(kind="group", receiver__isnull=True)
+                ),
+                name="conv_kind_receiver_check",
+            ),
+        ]
 
     def __str__(self):
-        return (
-            f"Conversation between {self.sender.username} and {self.receiver.username}"
-        )
+        if self.is_group:
+            return f"Group conversation {self.pk} ({self.name or 'unnamed'})"
+        return f"Conversation {self.pk} between users {self.sender_id} and {self.receiver_id}"
+
+
+class ConversationParticipant(models.Model):
+    """Membership of a conversation. ``pending`` = invited to a group, not accepted yet
+    (sees nothing, receives nothing); ``active`` = member. Leaving or being removed
+    deletes the row."""
+
+    ROLE_OWNER = "owner"
+    ROLE_MEMBER = "member"
+    ROLES = [(ROLE_OWNER, "Owner"), (ROLE_MEMBER, "Member")]
+    STATUS_PENDING = "pending"
+    STATUS_ACTIVE = "active"
+    STATUSES = [(STATUS_PENDING, "Pending"), (STATUS_ACTIVE, "Active")]
+
+    conversation = models.ForeignKey(
+        Conversation, related_name="participants", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        Profile, related_name="conversation_memberships", on_delete=models.CASCADE
+    )
+    role = models.CharField(max_length=10, choices=ROLES, default=ROLE_MEMBER)
+    status = models.CharField(max_length=10, choices=STATUSES, default=STATUS_ACTIVE)
+    invited_by = models.ForeignKey(
+        Profile,
+        related_name="sent_conversation_invites",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    joined_at = models.DateTimeField(null=True, blank=True)
+    # Group read receipts ("Seen by"); direct chats keep using Message.status.
+    last_read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation", "user"], name="uniq_conversation_participant"
+            ),
+        ]
+        indexes = [
+            # "My conversations" / "my invites": WHERE user = u AND status = s
+            models.Index(fields=["user", "status"], name="conv_part_user_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"ConversationParticipant(conversation={self.conversation_id}, user={self.user_id}, {self.status})"
 
 
 class Message(models.Model):
