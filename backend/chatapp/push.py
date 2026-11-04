@@ -51,7 +51,11 @@ def is_valid_expo_push_token(token):
     return isinstance(token, str) and bool(EXPO_PUSH_TOKEN_RE.match(token))
 
 
-def build_message_push_body(text, attachment_content_type=None):
+def build_message_push_body(text, attachment_content_type=None, message_kind=None):
+    if message_kind == "sticker":
+        return "✨ Sticker"
+    if message_kind == "gif":
+        return "🎞️ GIF"
     text = " ".join(str(text or "").split())
     if text:
         if len(text) > PUSH_BODY_MAX_LENGTH:
@@ -207,7 +211,8 @@ def _submit(func, **kwargs):
 
 
 def schedule_message_push(
-    *, conversation_id, sender_id, sender_username, recipient_id, text, attachment_content_type=None
+    *, conversation_id, sender_id, sender_username, recipient_id, text, attachment_content_type=None,
+    message_kind=None,
 ):
     """Queue a notification for a newly saved message. Never raises, no queries."""
     if not push_enabled() or not recipient_id or recipient_id == sender_id:
@@ -218,7 +223,7 @@ def schedule_message_push(
             "sender_id": sender_id,
             "recipient_id": recipient_id,
             "title": str(sender_username or "New message"),
-            "body": build_message_push_body(text, attachment_content_type),
+            "body": build_message_push_body(text, attachment_content_type, message_kind),
         }
         transaction.on_commit(lambda: _submit(deliver_message_push, **kwargs))
     except Exception:
@@ -242,7 +247,7 @@ def schedule_follow_push(*, follower_id, follower_username, recipient_id):
 
 def schedule_group_message_push(
     *, conversation_id, group_name, sender_id, sender_username, recipient_ids, text,
-    attachment_content_type=None,
+    attachment_content_type=None, message_kind=None,
 ):
     """Queue a notification per other group member: title = group name, body =
     "<sender>: <text>". Each delivery re-checks blocks (a member who blocked the
@@ -254,7 +259,7 @@ def schedule_group_message_push(
         return
     try:
         title = str(group_name or "Group chat")
-        body = f"{sender_username or 'Someone'}: {build_message_push_body(text, attachment_content_type)}"
+        body = f"{sender_username or 'Someone'}: {build_message_push_body(text, attachment_content_type, message_kind)}"
         for recipient_id in recipients:
             kwargs = {
                 "conversation_id": conversation_id,

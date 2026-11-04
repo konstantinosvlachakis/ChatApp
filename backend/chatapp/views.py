@@ -31,6 +31,8 @@ from .models import (
     PushDevice,
     UserReport,
 )
+from .giphy import GiphyUnavailable, GiphyUpstreamError, resolve_gif, search_gifs
+from .stickers import parse_sticker_ref, sticker_packs_payload
 from .push import (
     PUSH_PLATFORMS,
     is_valid_expo_push_token,
@@ -97,6 +99,7 @@ from .throttles import (
     AuthRateThrottle,
     BlockRateThrottle,
     ChatOpenersRateThrottle,
+    GifsRateThrottle,
     MessageSendDailyRateThrottle,
     MessageSendRateThrottle,
     PeopleRateThrottle,
@@ -2282,8 +2285,32 @@ class MessageListView(APIView):
         reply_to_id = request.data.get("reply_to")
         reply_to_message = None
 
+        kind = str(request.data.get("kind") or Message.KIND_TEXT).strip().lower()
+        if kind not in (Message.KIND_TEXT, Message.KIND_STICKER, Message.KIND_GIF):
+            return Response(
+                {"error": "Unknown message kind.", "code": "invalid_kind"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        media = None
+        if kind != Message.KIND_TEXT:
+            if text or attachment:
+                return Response(
+                    {
+                        "error": "Stickers and GIFs are sent on their own, without text or a file.",
+                        "code": "invalid_media_message",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if kind == Message.KIND_STICKER:
+                sticker_ref = parse_sticker_ref(request.data.get("sticker"))
+                if sticker_ref is None:
+                    return Response(
+                        {"error": "Unknown sticker.", "code": "invalid_sticker"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                media = {"pack": sticker_ref[0], "id": sticker_ref[1]}
         # Validate: at least text or attachment should be provided
-        if not text and not attachment:
+        elif not text and not attachment:
             return Response(
                 {"error": "Message content or attachment is required"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -2323,6 +2350,25 @@ class MessageListView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        if kind == Message.KIND_GIF:
+            # Usually a cache hit (the picker just listed this GIF); a miss asks
+            # GIPHY, so the DB connection is released first.
+            release_db_connection()
+            gif_error = None
+            try:
+                media = resolve_gif(request.data.get("gif_id"))
+            except GiphyUnavailable:
+                gif_error = (GIFS_UNAVAILABLE, status.HTTP_503_SERVICE_UNAVAILABLE)
+            except GiphyUpstreamError:
+                gif_error = (GIFS_UPSTREAM_ERROR, status.HTTP_502_BAD_GATEWAY)
+            if gif_error is None and media is None:
+                gif_error = (
+                    {"error": "That GIF isn't available.", "code": "invalid_gif"},
+                    status.HTTP_400_BAD_REQUEST,
+                )
+            if gif_error is not None:
+                return Response(gif_error[0], status=gif_error[1])
+
         stored_attachment_name = None
         if attachment:
             # Upload before the INSERT (Cloudinary can take seconds) with the DB
@@ -2343,6 +2389,8 @@ class MessageListView(APIView):
                 sender=request.user,
                 reply_to=reply_to_message,
                 attachment=stored_attachment_name,
+                kind=kind,
+                media=media,
             )
         except Exception:
             if stored_attachment_name:
@@ -2374,6 +2422,7 @@ class MessageListView(APIView):
                 ],
                 text=text,
                 attachment_content_type=getattr(attachment, "content_type", None),
+                message_kind=kind,
             )
         else:
             schedule_message_push(
@@ -2387,6 +2436,7 @@ class MessageListView(APIView):
                 ),
                 text=text,
                 attachment_content_type=getattr(attachment, "content_type", None),
+                message_kind=kind,
             )
 
         # Serialize and return the new message
@@ -2444,6 +2494,11 @@ class MessageEditView(APIView):
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if message.kind != Message.KIND_TEXT:
+            return Response(
+                {"error": "Stickers and GIFs can't be edited.", "code": "not_editable"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         updated_text = str(request.data.get("text", "")).strip()
 
@@ -2766,6 +2821,46 @@ class ConversationListView(APIView):
             bump_conversation_list_cache_version(participant.id)
 
         return Response({"id": conversation.id})
+
+
+GIFS_UNAVAILABLE = {"error": "GIFs aren't available right now.", "code": "gifs_unavailable"}
+GIFS_UPSTREAM_ERROR = {
+    "error": "Couldn't reach the GIF service. Try again.",
+    "code": "gifs_upstream_error",
+}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def sticker_packs_view(request):
+    """Built-in sticker packs (chatapp/sticker_packs.json). No queries."""
+    response = Response({"packs": sticker_packs_payload(request)})
+    response["Cache-Control"] = "private, max-age=3600"
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@throttle_classes(with_default_throttles(GifsRateThrottle))
+def gifs_view(request):
+    """GIF picker: trending without ``q``, search with it. ``offset`` pages,
+    ``lang`` (2-letter) localises search. Proxied to GIPHY (chatapp/giphy.py)."""
+    try:
+        offset = int(request.query_params.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    release_db_connection()
+    try:
+        result = search_gifs(
+            query=request.query_params.get("q", ""),
+            offset=offset,
+            lang=str(request.query_params.get("lang") or "").strip(),
+        )
+    except GiphyUnavailable:
+        return Response(GIFS_UNAVAILABLE, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except GiphyUpstreamError:
+        return Response(GIFS_UPSTREAM_ERROR, status=status.HTTP_502_BAD_GATEWAY)
+    return Response({**result, "attribution": "giphy"})
 
 
 @api_view(["GET"])

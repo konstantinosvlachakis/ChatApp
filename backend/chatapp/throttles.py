@@ -146,6 +146,12 @@ class ChatOpenersRateThrottle(ScopedUserThrottle):
     scope = "chat_openers"
 
 
+class GifsRateThrottle(ScopedUserThrottle):
+    """GIF picker search/trending (proxied to GIPHY)."""
+
+    scope = "gifs"
+
+
 class PracticeSubmitRateThrottle(ScopedUserThrottle):
     scope = "practice_submit"
 
