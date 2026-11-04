@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import PracticePage from "./PracticePage";
 import api from "../../lib/api";
 import { clearToasts, getToasts } from "../../components/Toast/toastStore";
@@ -84,7 +85,7 @@ const setupApi = () => {
 };
 
 const renderPage = async () => {
-  render(<PracticePage />);
+  render(<MemoryRouter><PracticePage /></MemoryRouter>);
   await screen.findByText("Present tense of beber");
 };
 
@@ -276,7 +277,7 @@ describe("PracticePage", () => {
 
   test("first-load failure shows a friendly error with Retry", async () => {
     api.get.mockRejectedValueOnce(new Error("boom"));
-    render(<PracticePage />);
+    render(<MemoryRouter><PracticePage /></MemoryRouter>);
     expect(await screen.findByText("We couldn't load your practice")).toBeInTheDocument();
     setupApi();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
