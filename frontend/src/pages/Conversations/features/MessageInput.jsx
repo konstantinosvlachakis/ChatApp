@@ -4,8 +4,10 @@ import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import MicNoneRoundedIcon from "@mui/icons-material/MicNoneRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
+import GifBoxRoundedIcon from "@mui/icons-material/GifBoxRounded";
 import { logger } from "../../../lib/logger";
 import { draftStorageKeyFor, takeDraftFocusRequest } from "../utils/chatDrafts";
+import { messagePreviewText } from "../utils/messageMedia";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -13,9 +15,13 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const EmojiPickerWrapper = React.lazy(() =>
   import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
 );
+const StickerGifPicker = React.lazy(() => import("./StickerGifPicker"));
 
 const MessageInput = ({
   onSendMessage,
+  // Optional: ({kind: "sticker", sticker} | {kind: "gif", gif}) => Promise<boolean>.
+  // Without it the composer has no sticker/GIF button (e.g. the Lumi coach).
+  onSendMedia = null,
   onSaveEdit,
   onCancelEdit,
   onCancelReply,
@@ -32,6 +38,7 @@ const MessageInput = ({
   const draftStorageKey = draftStorageKeyFor(conversationId);
   const [message, setMessage] = useState(() => localStorage.getItem(draftStorageKey) || "");
   const [showPicker, setShowPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [attachedFile, setAttachedFile] = useState(null);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -44,6 +51,8 @@ const MessageInput = ({
 
   const emojiPickerRef = useRef(null);
   const emojiButtonRef = useRef(null);
+  const mediaPickerRef = useRef(null);
+  const mediaButtonRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -97,6 +106,7 @@ const MessageInput = ({
     setMessage(editingMessage.text || "");
     setComposerError("");
     setShowPicker(false);
+    setShowMediaPicker(false);
     clearCurrentAttachment();
     setIsRecording(false);
     inputRef.current?.focus();
@@ -254,6 +264,13 @@ const MessageInput = ({
       ) {
         setShowPicker(false);
       }
+      if (
+        mediaPickerRef.current &&
+        !mediaPickerRef.current.contains(event.target) &&
+        !mediaButtonRef.current?.contains(event.target)
+      ) {
+        setShowMediaPicker(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -271,6 +288,43 @@ const MessageInput = ({
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [showPicker]);
+
+  // Escape closes the sticker/GIF picker (but first lets a search field clear itself).
+  useEffect(() => {
+    if (!showMediaPicker) return undefined;
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      if (event.target?.type === "search" && event.target.value) return;
+      event.preventDefault();
+      setShowMediaPicker(false);
+      mediaButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showMediaPicker]);
+
+  // ---------------- Stickers & GIFs ----------------
+  const toggleMediaPicker = () => {
+    setShowPicker(false);
+    setShowMediaPicker((prev) => !prev);
+  };
+
+  const handleSendMedia = async (item) => {
+    if (isSendingRef.current || disabled || !onSendMedia) return;
+    setComposerError("");
+    setShowMediaPicker(false);
+    mediaButtonRef.current?.focus();
+    isSendingRef.current = true;
+    setIsSending(true);
+    try {
+      await onSendMedia(item);
+    } catch (err) {
+      logger.warn("Sticker/GIF send failed:", err);
+    } finally {
+      isSendingRef.current = false;
+      if (isMountedRef.current) setIsSending(false);
+    }
+  };
 
   // ---------------- File Attach ----------------
   const handleFileAttach = (event) => {
@@ -482,6 +536,14 @@ const MessageInput = ({
         </div>
       )}
 
+      {showMediaPicker && onSendMedia && (
+        <div ref={mediaPickerRef} className="cv-emoji-popover cv-media-popover" role="dialog" aria-label="Stickers and GIFs">
+          <Suspense fallback={<p className="cv-messages-status">Loading…</p>}>
+            <StickerGifPicker onSend={handleSendMedia} />
+          </Suspense>
+        </div>
+      )}
+
       {editingMessage && (
         <div className="cv-composer-banner is-edit">
           <p>
@@ -498,7 +560,7 @@ const MessageInput = ({
         <div className="cv-composer-banner is-reply">
           <p>
             <strong>Replying to {replyingMessage.sender?.username || "message"}</strong>
-            <span>{(replyingMessage.text || "Attachment").slice(0, 90)}</span>
+            <span>{messagePreviewText(replyingMessage, "Attachment").slice(0, 90)}</span>
           </p>
           <button type="button" onClick={onCancelReply} aria-label="Cancel reply">
             Cancel
@@ -560,11 +622,28 @@ const MessageInput = ({
             aria-label={editingMessage ? "Edit message" : "Message"}
             rows={1}
           />
+          {onSendMedia && (
+            <button
+              type="button"
+              ref={mediaButtonRef}
+              className={`cv-icon-button ${showMediaPicker ? "is-on" : ""}`}
+              onClick={toggleMediaPicker}
+              disabled={Boolean(editingMessage)}
+              aria-label={showMediaPicker ? "Close stickers and GIFs" : "Stickers and GIFs"}
+              aria-expanded={showMediaPicker}
+              title="Stickers and GIFs"
+            >
+              <GifBoxRoundedIcon />
+            </button>
+          )}
           <button
             type="button"
             ref={emojiButtonRef}
             className={`cv-icon-button ${showPicker ? "is-on" : ""}`}
-            onClick={() => setShowPicker((prev) => !prev)}
+            onClick={() => {
+              setShowMediaPicker(false);
+              setShowPicker((prev) => !prev);
+            }}
             disabled={Boolean(editingMessage)}
             aria-label={showPicker ? "Close emoji picker" : "Open emoji picker"}
             aria-expanded={showPicker}

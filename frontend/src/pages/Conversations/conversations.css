@@ -501,6 +501,88 @@
   .cv-emoji-picker { --num-columns: 6; --emoji-padding: 0.4rem; }
 }
 
+/* Sticker and GIF messages: no bubble fill; the media is the message. */
+.cv-bubble.is-media { padding: 0; background: transparent; }
+.cv-msg.is-sent .cv-bubble.is-media { background: transparent; }
+.cv-bubble.is-media .cv-bubble-reply { margin-bottom: 6px; background: var(--lv-cream-deep); }
+.cv-bubble.is-media .cv-bubble-tags { padding: 0 4px; }
+.cv-bubble.is-sticker > .cv-bubble-muted { padding: 10px 14px; border-radius: 18px; background: var(--lv-bubble-in); }
+.cv-bubble img.cv-sticker { width: 140px; height: 140px; border-radius: 0; object-fit: contain; }
+.cv-gif { display: block; }
+.cv-bubble .cv-gif img { width: 240px; max-width: 100%; height: auto; border-radius: 16px; background: var(--lv-cream-deep); }
+
+/* Sticker / GIF picker (shares the emoji popover's position and size). */
+.cv-media-popover { flex-direction: column; }
+.cv-media-picker { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.cv-media-tabs { display: flex; gap: 6px; padding: 10px 12px 6px; border-bottom: 1px solid var(--lv-line); }
+.cv-media-tab {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-pill);
+  background: transparent;
+  color: var(--lv-ink-soft);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cv-media-tab.is-on { border-color: transparent; background: var(--lv-peach); color: var(--lv-peach-ink); }
+.cv-media-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.cv-media-gifs { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.cv-media-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 12px; }
+.cv-media-heading { margin: 10px 2px 6px; color: var(--lv-muted-ink); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cv-media-grid { margin: 0; padding: 0; list-style: none; }
+.cv-media-grid.is-stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 4px; }
+.cv-media-grid.is-gifs { columns: 2; column-gap: 6px; }
+.cv-media-cell {
+  display: block;
+  width: 100%;
+  padding: 4px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  cursor: pointer;
+}
+.cv-media-cell:hover, .cv-media-cell:focus-visible { background: var(--lv-cream-deep); }
+.cv-media-cell img { display: block; width: 100%; height: auto; border-radius: 10px; }
+.cv-media-grid.is-stickers .cv-media-cell img { aspect-ratio: 1; object-fit: contain; }
+.cv-media-grid.is-gifs li { margin-bottom: 6px; break-inside: avoid; }
+.cv-media-grid.is-gifs .cv-media-cell { padding: 0; }
+.cv-media-grid.is-gifs .cv-media-cell img { background: var(--lv-cream-deep); }
+.cv-media-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 12px 4px;
+  padding: 0 12px;
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-pill);
+  color: var(--lv-muted-ink);
+}
+/* The pill shows focus (2px teal ring); the input inside skips the app-wide ring so it isn't doubled. */
+.cv-media-search:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 1px var(--lv-focus); }
+.lv-shell .cv-media-search input:focus-visible { outline: none; }
+.cv-media-search input { flex: 1; min-width: 0; min-height: 38px; border: 0; outline: 0; background: transparent; color: var(--lv-ink); font: inherit; }
+.cv-media-search svg { width: 20px; height: 20px; }
+.cv-media-status { padding: 16px; color: var(--lv-muted-ink); font-size: 13px; text-align: center; }
+.cv-media-link { border: 0; background: none; color: var(--lv-teal); font-weight: 700; text-decoration: underline; cursor: pointer; }
+.cv-media-more {
+  display: block;
+  min-height: 40px;
+  margin: 4px auto 0;
+  padding: 0 18px;
+  border: 1px solid var(--lv-line);
+  border-radius: var(--lv-radius-pill);
+  background: var(--lv-paper);
+  color: var(--lv-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.cv-media-attribution { margin: 0; padding: 6px 12px 8px; border-top: 1px solid var(--lv-line); color: var(--lv-muted-ink); font-size: 12px; font-weight: 700; text-align: right; }
+@container cv-composer (max-width: 380px) {
+  .cv-composer .cv-icon-button { width: 38px; }
+}
+
 /* ---- Phones ---- */
 @media (max-width: 767px) {
   .cv-page { display: block; padding: 0; }

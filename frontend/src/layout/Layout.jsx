@@ -21,6 +21,7 @@ import AppHeader from "./AppHeader";
 import EmailVerificationGate from "../components/EmailVerification/EmailVerificationGate";
 import BottomTabBar from "./BottomTabBar";
 import { isOpenChatPath } from "./navItems";
+import { messagePreviewText } from "../pages/Conversations/utils/messageMedia";
 import { getNotificationPermission, requestNotificationPermission } from "../utils/notifications";
 import "./appShell.css";
 import {
@@ -417,7 +418,7 @@ const Layout = () => {
               ? `${senderUsername} in ${conversation.display_name || conversation.name || "your group"}`
               : `New message from ${senderUsername}`;
           const notification = new Notification(title, {
-            body: lastMessage?.text || "You received a new message.",
+            body: messagePreviewText(lastMessage, "You received a new message."),
             tag: `conversation-${conversation.id}`,
           });
           notification.onclick = () => {

@@ -17,6 +17,13 @@ import CoachAvatar from "../../../components/CoachAvatar";
 import ChatAvatar from "./ChatAvatar";
 import { COACH_BOT_ID } from "./coachConversation";
 import { getMessageGroupFlags } from "../utils/messageGroups";
+import {
+  isGifMessage,
+  isMediaMessage,
+  isStickerMessage,
+  messagePreviewText,
+  safeMediaUrl,
+} from "../utils/messageMedia";
 import { CHAT_IMAGE_WIDTH, cloudinaryImage } from "../../../lib/media";
 
 const EmojiPickerWrapper = React.lazy(() =>
@@ -151,6 +158,41 @@ const isLikelyAudio = (url) =>
   url.includes("/media/attachments/blob_") ||
   url.includes("/media/audio/");
 
+const GIF_MAX_WIDTH = 240;
+
+// Sticker / GIF content of a message (no bubble chrome around it).
+const MessageMedia = ({ msg }) => {
+  const media = msg.media || {};
+  if (isStickerMessage(msg)) {
+    const src = safeMediaUrl(media.url);
+    const label = media.label || "Sticker";
+    return src ? (
+      <img className="cv-sticker" src={src} alt={`Sticker: ${label}`} width="140" height="140" decoding="async" />
+    ) : (
+      <p className="cv-bubble-muted">Sticker · {label}</p>
+    );
+  }
+  const src = safeMediaUrl(media.url);
+  if (!src) return <p className="cv-bubble-muted">GIF</p>;
+  const still = safeMediaUrl(media.still_url);
+  const width = Number(media.width) || GIF_MAX_WIDTH;
+  const height = Number(media.height) || GIF_MAX_WIDTH;
+  return (
+    <picture className="cv-gif">
+      {still && <source media="(prefers-reduced-motion: reduce)" srcSet={still} />}
+      <img
+        src={src}
+        alt={media.title ? `GIF: ${media.title}` : "GIF"}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+        style={{ aspectRatio: `${width} / ${height}` }}
+      />
+    </picture>
+  );
+};
+
 const groupedReactions = (reactions = []) => {
   const counts = {};
   reactions.forEach((reaction) => {
@@ -198,6 +240,7 @@ const MessageRow = React.memo(function MessageRow({
   const attachmentUrl = normalizeUrl(rawUrl);
   const messageReactions = groupedReactions(msg.reactions || []);
   const hasText = Boolean(msg.text?.trim());
+  const isMedia = isMediaMessage(msg);
   const timeLabel = formatMessageTime(msg.timestamp);
   const hasTranslation = Boolean(translatedText);
   const isImageAttachment = attachmentUrl ? /\.(jpeg|jpg|png|gif)$/i.test(attachmentUrl) : false;
@@ -272,7 +315,7 @@ const MessageRow = React.memo(function MessageRow({
           <div className="cv-bubble-line">
             <div
               data-message-bubble="true"
-              className="cv-bubble"
+              className={`cv-bubble ${isMedia ? `is-media ${isGifMessage(msg) ? "is-gif" : "is-sticker"}` : ""}`}
               title={timeLabel || undefined}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -290,11 +333,13 @@ const MessageRow = React.memo(function MessageRow({
               {msg.reply_to && (
                 <div className="cv-bubble-reply">
                   <strong>Replying to {groupNicknames?.[msg.reply_to.sender?.id] || msg.reply_to.sender?.username || "message"}</strong>
-                  <span>{msg.reply_to.text || "Attachment"}</span>
+                  <span>{messagePreviewText(msg.reply_to, "Attachment")}</span>
                 </div>
               )}
 
-              {attachmentUrl &&
+              {isMedia && <MessageMedia msg={msg} />}
+
+              {!isMedia && attachmentUrl &&
                 (isImageAttachment ? (
                   // Bubble shows a resized copy; the link opens the original upload.
                   <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="cv-bubble-image">
@@ -345,7 +390,7 @@ const MessageRow = React.memo(function MessageRow({
                 </p>
               )}
 
-              {!attachmentUrl && !hasText && <p className="cv-bubble-muted">Audio message</p>}
+              {!isMedia && !attachmentUrl && !hasText && <p className="cv-bubble-muted">Audio message</p>}
             </div>
             <button
               type="button"
@@ -875,7 +920,7 @@ const Conversation = ({
                   )}
                   {canEditMessage(msg) && (
                     <>
-                      {onEditMessage && (
+                      {onEditMessage && !isMediaMessage(msg) && (
                         <button
                           type="button"
                           onClick={() => {
