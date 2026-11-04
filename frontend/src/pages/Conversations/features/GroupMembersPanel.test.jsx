@@ -27,9 +27,18 @@ test("a group member can edit a nickname while the username stays visible", asyn
   expect(screen.getByText("Annie")).toBeInTheDocument();
   expect(screen.getByText("@ana")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Edit nickname for ana" }));
+  expect(screen.getByRole("button", { name: "Save" })).toHaveClass("cv-group-nickname-save");
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("cv-group-nickname-cancel");
   fireEvent.change(screen.getByRole("textbox", { name: "Nickname for ana" }), { target: { value: "An" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
   await waitFor(() => expect(setGroupMemberNickname).toHaveBeenCalledWith(7, "ana", "An"));
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
+});
+
+test("opens the requested member's nickname form from a message avatar", () => {
+  render(<MemoryRouter><GroupMembersPanel conversation={conversation} initialNicknameUsername="ana"
+    onClose={jest.fn()} /></MemoryRouter>);
+  expect(screen.getByRole("textbox", { name: "Nickname for ana" })).toHaveValue("Annie");
+  expect(screen.getByRole("textbox", { name: "Nickname for ana" })).toHaveFocus();
 });

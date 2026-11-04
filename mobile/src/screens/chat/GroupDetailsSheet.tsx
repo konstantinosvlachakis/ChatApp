@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatAvatar } from "../../components/chat/ChatAvatar";
 import { GroupAvatar } from "../../components/chat/GroupAvatar";
@@ -17,6 +17,7 @@ type GroupDetailsSheetProps = {
   reduceMotion: boolean;
   visible: boolean;
   group: Conversation;
+  initialNicknameUsername?: string | null;
   currentUserId?: number;
   currentUsername?: string;
   onClose: () => void;
@@ -34,6 +35,7 @@ export function GroupDetailsSheet({
   reduceMotion,
   visible,
   group,
+  initialNicknameUsername = null,
   currentUserId,
   currentUsername,
   onClose,
@@ -48,6 +50,7 @@ export function GroupDetailsSheet({
   const [busy, setBusy] = useState<string | null>(null);
   const [editingNicknameId, setEditingNicknameId] = useState<number | null>(null);
   const [nicknameDraft, setNicknameDraft] = useState("");
+  const listRef = useRef<ScrollViewInstance | null>(null);
   const isOwner = group.my_role === "owner";
   const participants = group.participants || [];
   const members = groupMembers(group);
@@ -59,9 +62,18 @@ export function GroupDetailsSheet({
   useEffect(() => {
     if (!visible) return;
     setRenaming(false);
-    setEditingNicknameId(null);
+    const target = group.participants?.find(
+      (row) => row.status === "active" && row.user.username === initialNicknameUsername
+    );
+    setEditingNicknameId(target?.user.id ?? null);
+    setNicknameDraft(target?.nickname || "");
     setName(group.name || "");
-  }, [group.name, visible]);
+    if (target) {
+      const index = group.participants?.indexOf(target) ?? 0;
+      const frame = requestAnimationFrame(() => listRef.current?.scrollTo({ y: Math.max(0, index * 64 - 56), animated: false }));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [group.name, initialNicknameUsername, visible]);
 
   const saveName = async () => {
     setBusy("rename");
@@ -186,7 +198,7 @@ export function GroupDetailsSheet({
         </Text>
       </View>
 
-      <ScrollView style={styles.list}>
+      <ScrollView ref={listRef} style={styles.list}>
         {participants.map((participant) => {
           const member = participant.user;
           const isMe = member.id === currentUserId;
@@ -208,14 +220,14 @@ export function GroupDetailsSheet({
                   {isMe ? <Text style={styles.you}> (you)</Text> : null}
                 </Text>
               </Pressable>
-              {!pending ? (
+              {!pending && editingNicknameId !== member.id ? (
                 <Pressable style={styles.iconButton}
                   onPress={() => { setEditingNicknameId(member.id); setNicknameDraft(participant.nickname || ""); }}
                   accessibilityRole="button" accessibilityLabel={`Edit nickname for ${member.username}`}>
                   <Ionicons name="pencil" size={16} color={warm.inkSoft} />
                 </Pressable>
               ) : null}
-              {participant.role === "owner" ? (
+              {editingNicknameId !== member.id && participant.role === "owner" ? (
                 <View style={[styles.tag, styles.tagOwner]}>
                   <Text style={[styles.tagText, styles.tagOwnerText]}>OWNER</Text>
                 </View>
@@ -225,7 +237,7 @@ export function GroupDetailsSheet({
                   <Text style={styles.tagText}>INVITED</Text>
                 </View>
               ) : null}
-              {isOwner && !isMe ? (
+              {editingNicknameId !== member.id && isOwner && !isMe ? (
                 <Pressable
                   style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                   onPress={() => confirmRemove(member.username, pending)}
@@ -243,14 +255,20 @@ export function GroupDetailsSheet({
               ) : null}
               {editingNicknameId === member.id ? (
                 <View style={styles.nicknameEditor}>
-                  <TextInput style={styles.input} value={nicknameDraft} onChangeText={setNicknameDraft}
+                  <TextInput style={[styles.input, styles.nicknameInput]} value={nicknameDraft} onChangeText={setNicknameDraft}
                     maxLength={GROUP_NICKNAME_MAX_LENGTH} placeholder={`Nickname for @${member.username}`} autoFocus
                     placeholderTextColor={warm.mutedInk} accessibilityLabel={`Nickname for ${member.username}`}
                     returnKeyType="done" onSubmitEditing={() => saveNickname(member.username)} />
-                  <Pressable style={styles.smallPrimary} onPress={() => saveNickname(member.username)}
-                    disabled={busy === `nickname:${member.username}`} accessibilityRole="button">
-                    <Text style={styles.smallPrimaryText}>Save</Text>
-                  </Pressable>
+                  <View style={styles.nicknameActions}>
+                    <Pressable style={styles.nicknameCancel} onPress={() => setEditingNicknameId(null)}
+                      accessibilityRole="button" accessibilityLabel="Cancel nickname edit">
+                      <Text style={styles.nicknameCancelText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable style={styles.smallPrimary} onPress={() => saveNickname(member.username)}
+                      disabled={busy === `nickname:${member.username}`} accessibilityRole="button" accessibilityLabel="Save nickname">
+                      <Text style={styles.smallPrimaryText}>Save</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ) : participant.nickname ? <Text style={styles.memberUsername}>@{member.username}</Text> : null}
             </View>
@@ -316,7 +334,11 @@ const createStyles = (warm: WarmColors) =>
     memberLink: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, borderRadius: 14 },
     memberName: { flex: 1, color: warm.ink, fontSize: 15, fontFamily: fontFamilies.bodyBold },
     memberUsername: { width: "100%", marginLeft: 52, marginTop: -8, color: warm.mutedInk, fontSize: 12 },
-    nicknameEditor: { width: "100%", flexDirection: "row", alignItems: "center", gap: 6, paddingBottom: 8 },
+    nicknameEditor: { width: "100%", gap: 10, paddingBottom: 10 },
+    nicknameInput: { flex: 0, width: "100%" },
+    nicknameActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
+    nicknameCancel: { minWidth: 76, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: warm.line, backgroundColor: warm.paper },
+    nicknameCancelText: { color: warm.inkSoft, fontSize: 14, fontFamily: fontFamilies.bodyBold },
     you: { color: warm.mutedInk, fontFamily: fontFamilies.bodyMedium },
     tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: warm.creamDeep },
     tagText: { color: warm.inkSoft, fontSize: 10, letterSpacing: 0.6, fontFamily: fontFamilies.bodyExtraBold },

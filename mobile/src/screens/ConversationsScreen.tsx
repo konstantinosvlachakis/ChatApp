@@ -149,6 +149,12 @@ export function ConversationsScreen() {
   const [invites, setInvites] = useState<GroupInvite[]>([]);
   const [respondingInviteId, setRespondingInviteId] = useState<number | null>(null);
   const [groupSheet, setGroupSheet] = useState<"create" | "add" | "details" | null>(null);
+  const [nicknameTargetUsername, setNicknameTargetUsername] = useState<string | null>(null);
+  const openGroupNicknameEditor = useCallback((username: string) => {
+    if (!username) return;
+    setNicknameTargetUsername(username);
+    setGroupSheet("details");
+  }, []);
   const [groupPreselected, setGroupPreselected] = useState<string[]>([]);
   const [groupReads, setGroupReads] = useState<Record<number, string | null>>({});
   const [groupTypingUserId, setGroupTypingUserId] = useState<number | null>(null);
@@ -1293,6 +1299,7 @@ export function ConversationsScreen() {
           onSwipeReply={handleSwipe}
           onReactionSelect={handleReactionSelect}
           onOpenReactionPicker={setReactionPickerMessageId}
+          onEditGroupNickname={openGroupNicknameEditor}
           onOpenMenu={openMessageMenu}
           onTap={handleMessageTap}
           onToggleTranslation={handleToggleTranslation}
@@ -1317,6 +1324,7 @@ export function ConversationsScreen() {
       normalizedSearchQuery,
       openImageViewer,
       openMessageMenu,
+      openGroupNicknameEditor,
       otherAvatarName,
       otherAvatarPath,
       reactionPickerMessageId,
@@ -1559,11 +1567,11 @@ export function ConversationsScreen() {
   // Stable header callbacks (ChatHeader is memoized).
   const otherUsernameForActions = otherParticipant?.username ?? "";
   const handleOpenOtherProfile = useCallback(() => {
-    if (isGroup) setGroupSheet("details");
+    if (isGroup) { setNicknameTargetUsername(null); setGroupSheet("details"); }
     else if (otherUsernameForActions) openOtherUserProfile(otherUsernameForActions);
   }, [isGroup, openOtherUserProfile, otherUsernameForActions]);
   const handleOpenChatOptions = useCallback(() => {
-    if (isGroup) setGroupSheet("details");
+    if (isGroup) { setNicknameTargetUsername(null); setGroupSheet("details"); }
     else if (otherUsernameForActions) openChatActions(otherUsernameForActions);
   }, [isGroup, openChatActions, otherUsernameForActions]);
   const handleStartGroupWith = useCallback((username: string) => {
@@ -1575,7 +1583,7 @@ export function ConversationsScreen() {
     setGroupPreselected([]);
     setGroupSheet("create");
   }, []);
-  const closeGroupSheet = useCallback(() => setGroupSheet(null), []);
+  const closeGroupSheet = useCallback(() => { setGroupSheet(null); setNicknameTargetUsername(null); }, []);
   const handleGroupCreated = useStableCallback(async (group: Conversation) => {
     setGroupSheet(null);
     showToast("Group created. Invites are on their way.", { variant: "success" });
@@ -1750,6 +1758,7 @@ export function ConversationsScreen() {
               reduceMotion={reduceMotion}
               visible={groupSheet === "details"}
               group={selectedConversation}
+              initialNicknameUsername={nicknameTargetUsername}
               currentUserId={currentUserId}
               currentUsername={currentUsername}
               onClose={closeGroupSheet}

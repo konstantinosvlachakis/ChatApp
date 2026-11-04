@@ -126,6 +126,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     )
   );
   const [groupPanel, setGroupPanel] = useState(null); // "members" | "start" | null
+  const [nicknameTarget, setNicknameTarget] = useState(null);
+  const openNicknameEditor = useCallback((username) => {
+    setNicknameTarget(username);
+    setGroupPanel("members");
+  }, []);
   const [socketStatus, setSocketStatus] = useState("connecting");
   const [callState, setCallState] = useState("idle");
   const [callMode, setCallMode] = useState("audio");
@@ -1820,7 +1825,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
           searchDisabled={loadingHistory}
           searchHasResults={searchResultIds.length > 0}
           isSearchingMessages={isSearchingMessages}
-          onOpenGroup={() => setGroupPanel("members")}
+          onOpenGroup={() => { setNicknameTarget(null); setGroupPanel("members"); }}
           onStartGroup={otherUser?.username ? () => setGroupPanel("start") : undefined}
         />
       </div>
@@ -1949,6 +1954,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
               onPickOpener={isGroup ? null : handlePickOpener}
               isGroup={isGroup}
               groupNicknames={isGroup ? Object.fromEntries((conversation.participants || []).map((row) => [row.user?.id, row.nickname])) : null}
+              onEditGroupNickname={isGroup ? openNicknameEditor : undefined}
               seenBy={seenBy}
             />
           </>
@@ -1991,13 +1997,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
       {groupPanel === "members" && isGroup && (
         <GroupMembersPanel
           conversation={conversation}
-          onClose={() => setGroupPanel(null)}
+          initialNicknameUsername={nicknameTarget}
+          onClose={() => { setGroupPanel(null); setNicknameTarget(null); }}
           onChanged={() => {
             onConversationChanged?.();
             queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
           }}
           onLeft={() => {
             setGroupPanel(null);
+            setNicknameTarget(null);
             queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
             onLeftConversation?.();
           }}
