@@ -238,3 +238,78 @@ def schedule_follow_push(*, follower_id, follower_username, recipient_id):
         transaction.on_commit(lambda: _submit(deliver_follow_push, **kwargs))
     except Exception:
         logger.exception("Could not schedule follow push")
+
+
+def schedule_group_message_push(
+    *, conversation_id, group_name, sender_id, sender_username, recipient_ids, text,
+    attachment_content_type=None,
+):
+    """Queue a notification per other group member: title = group name, body =
+    "<sender>: <text>". Each delivery re-checks blocks (a member who blocked the
+    sender gets nothing). Never raises, no queries."""
+    if not push_enabled():
+        return
+    recipients = [rid for rid in dict.fromkeys(recipient_ids or []) if rid and rid != sender_id]
+    if not recipients:
+        return
+    try:
+        title = str(group_name or "Group chat")
+        body = f"{sender_username or 'Someone'}: {build_message_push_body(text, attachment_content_type)}"
+        for recipient_id in recipients:
+            kwargs = {
+                "conversation_id": conversation_id,
+                "sender_id": sender_id,
+                "recipient_id": recipient_id,
+                "title": title,
+                "body": body,
+            }
+            transaction.on_commit(lambda kwargs=kwargs: _submit(deliver_message_push, **kwargs))
+    except Exception:
+        logger.exception("Could not schedule group message push")
+
+
+def build_expo_group_invite_message(token, *, conversation_id, inviter_username, group_name):
+    return {
+        "to": token,
+        "title": "Group chat invite",
+        "body": f"{inviter_username} invited you to {group_name}",
+        "data": {"type": "group_invite", "conversation_id": conversation_id},
+        "sound": "default",
+        "channelId": PUSH_CHANNEL_ID,
+        "threadId": "group-invites",
+        "priority": "high",
+    }
+
+
+def deliver_group_invite_push(*, conversation_id, inviter_id, inviter_username, group_name, recipient_id):
+    _deliver_to_user(
+        sender_id=inviter_id,
+        recipient_id=recipient_id,
+        build_message=lambda token: build_expo_group_invite_message(
+            token,
+            conversation_id=conversation_id,
+            inviter_username=inviter_username,
+            group_name=group_name,
+        ),
+        label="Group invite",
+    )
+
+
+def schedule_group_invite_push(*, conversation_id, inviter_id, inviter_username, group_name, recipient_ids):
+    """Queue "<inviter> invited you to <group>" per invitee. Never raises, no queries."""
+    if not push_enabled():
+        return
+    try:
+        for recipient_id in dict.fromkeys(recipient_ids or []):
+            if not recipient_id or recipient_id == inviter_id:
+                continue
+            kwargs = {
+                "conversation_id": conversation_id,
+                "inviter_id": inviter_id,
+                "inviter_username": str(inviter_username or "Someone"),
+                "group_name": str(group_name or "a group chat"),
+                "recipient_id": recipient_id,
+            }
+            transaction.on_commit(lambda kwargs=kwargs: _submit(deliver_group_invite_push, **kwargs))
+    except Exception:
+        logger.exception("Could not schedule group invite push")

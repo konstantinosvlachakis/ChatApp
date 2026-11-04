@@ -130,6 +130,16 @@ class FollowDailyRateThrottle(ScopedUserThrottle):
     scope = "follow_daily"
 
 
+class GroupInviteRateThrottle(ScopedUserThrottle):
+    """Group invites (each one notifies the invitee)."""
+
+    scope = "group_invite"
+
+
+class GroupInviteDailyRateThrottle(ScopedUserThrottle):
+    scope = "group_invite_daily"
+
+
 class ChatOpenersRateThrottle(ScopedUserThrottle):
     """Opening-line suggestions for an empty chat (may call Gemini)."""
 
@@ -166,6 +176,7 @@ CONVERSATION_CREATE_THROTTLES = (
 )
 UPLOAD_THROTTLES = (UploadRateThrottle, UploadDailyRateThrottle)
 FOLLOW_THROTTLES = (FollowRateThrottle, FollowDailyRateThrottle)
+GROUP_INVITE_THROTTLES = (GroupInviteRateThrottle, GroupInviteDailyRateThrottle)
 
 
 class MultiWindowRateMixin:

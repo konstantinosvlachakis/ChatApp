@@ -21,6 +21,7 @@ from django.shortcuts import get_object_or_404
 from .models import (
     BlockedUser,
     Conversation,
+    ConversationParticipant,
     Follow,
     Message,
     MessageTranslation,
@@ -34,12 +35,19 @@ from .push import (
     PUSH_PLATFORMS,
     is_valid_expo_push_token,
     schedule_follow_push,
+    schedule_group_message_push,
     schedule_message_push,
 )
 from .conversation_members import (
+    can_access_message,
     conversation_member_ids,
     create_direct_conversation,
+    direct_conversations_q,
+    get_membership,
+    group_conversations_q,
+    group_display_name,
     is_conversation_member,
+    visible_messages,
 )
 from . import people_filters
 from .serializers import MessageSerializer
@@ -53,7 +61,7 @@ from .serializers import (
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 from django.db import DatabaseError, IntegrityError, OperationalError, connections
-from django.db.models import IntegerField, Q
+from django.db.models import IntegerField, Prefetch, Q, prefetch_related_objects
 from django.db.models import Case, Count, Exists, F, OuterRef, Subquery, Value, When
 from django.db.models.functions import Coalesce
 from django.core.files.storage import default_storage
@@ -925,11 +933,12 @@ def broadcast_message_status_update(
     )
 
 
-def broadcast_chat_room_event(conversation_id, event_type, **fields):
+def broadcast_chat_room_event(room_conversation_id, event_type, /, **fields):
     """Send a server-originated event to every socket in the conversation's room.
 
+    ``fields`` may include ``conversation_id`` itself (group events carry it).
     Best effort: if the channel layer is down the request still succeeds."""
-    broadcast(str(conversation_id), {"type": event_type, **fields})
+    broadcast(str(room_conversation_id), {"type": event_type, **fields})
 
 
 def broadcast_conversation_update(user_ids, conversation_id, trigger, actor_id=None):
@@ -2164,7 +2173,10 @@ class MessageListView(APIView):
         page_size = max(1, min(page_size, 100))
 
         messages_qs = with_message_relations(
-            conversation.messages.all().order_by("-timestamp", "-id"), request.user
+            visible_messages(
+                conversation.messages.all().order_by("-timestamp", "-id"), request.user.id, conversation
+            ),
+            request.user,
         )
         paginator = Paginator(messages_qs, page_size)
         if paginator.num_pages == 0 or page > paginator.num_pages:
@@ -2196,8 +2208,12 @@ class MessageListView(APIView):
             "messages": serializer.data,
             "pinned_messages": MessageSerializer(
                 with_message_relations(
-                    conversation.messages.filter(pinned_at__isnull=False).order_by(
-                        "-pinned_at", "-id"
+                    visible_messages(
+                        conversation.messages.filter(pinned_at__isnull=False).order_by(
+                            "-pinned_at", "-id"
+                        ),
+                        request.user.id,
+                        conversation,
                     ),
                     request.user,
                 ),
@@ -2313,10 +2329,11 @@ class MessageListView(APIView):
                 except Exception:
                     logger.warning("Could not remove orphaned attachment upload")
             raise
-        for member_id in conversation_member_ids(conversation):
+        member_ids = conversation_member_ids(conversation)
+        for member_id in member_ids:
             bump_conversation_list_cache_version(member_id)
         broadcast_conversation_update(
-            conversation_member_ids(conversation),
+            member_ids,
             conversation.id,
             "message_created",
             actor_id=request.user.id,
@@ -2324,18 +2341,31 @@ class MessageListView(APIView):
 
         # Push to the other participant's devices after commit, off the request
         # thread (chatapp/push.py); no queries here.
-        schedule_message_push(
-            conversation_id=conversation.id,
-            sender_id=request.user.id,
-            sender_username=request.user.username,
-            recipient_id=(
-                conversation.receiver_id
-                if conversation.sender_id == request.user.id
-                else conversation.sender_id
-            ),
-            text=text,
-            attachment_content_type=getattr(attachment, "content_type", None),
-        )
+        if conversation.is_group:
+            schedule_group_message_push(
+                conversation_id=conversation.id,
+                group_name=group_display_name(conversation),
+                sender_id=request.user.id,
+                sender_username=request.user.username,
+                recipient_ids=[
+                    member_id for member_id in member_ids if member_id != request.user.id
+                ],
+                text=text,
+                attachment_content_type=getattr(attachment, "content_type", None),
+            )
+        else:
+            schedule_message_push(
+                conversation_id=conversation.id,
+                sender_id=request.user.id,
+                sender_username=request.user.username,
+                recipient_id=(
+                    conversation.receiver_id
+                    if conversation.sender_id == request.user.id
+                    else conversation.sender_id
+                ),
+                text=text,
+                attachment_content_type=getattr(attachment, "content_type", None),
+            )
 
         # Serialize and return the new message
         message = reload_message_for_serializer(message, request.user)
@@ -2352,8 +2382,15 @@ class MessageListView(APIView):
 
 class MessageDeleteView(APIView):
     def delete(self, request, message_id):
-        message = get_object_or_404(Message, id=message_id, sender=request.user)
+        message = get_object_or_404(
+            Message.objects.select_related("conversation"), id=message_id, sender=request.user
+        )
         conversation = message.conversation
+        if not is_conversation_member(request.user.id, conversation):
+            return Response(
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         deleted_message_id = message.id
         message.delete()
         for member_id in conversation_member_ids(conversation):
@@ -2381,6 +2418,11 @@ class MessageEditView(APIView):
             id=message_id,
             sender=request.user,
         )
+        if not is_conversation_member(request.user.id, message.conversation):
+            return Response(
+                {"error": "You are not a participant in this conversation.", "code": "not_participant"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         updated_text = str(request.data.get("text", "")).strip()
 
         if not updated_text and not message.attachment:
@@ -2437,6 +2479,18 @@ class ConversationDetailView(APIView):
             Conversation.objects.select_related("sender", "receiver"),
             id=conversation_id,
         )
+        if conversation.is_group:
+            # One query for members + invitees (direct chats skip it entirely).
+            prefetch_related_objects(
+                [conversation],
+                Prefetch(
+                    "participants",
+                    queryset=ConversationParticipant.objects.select_related("user").order_by(
+                        "joined_at", "created_at", "id"
+                    ),
+                    to_attr="group_participants",
+                ),
+            )
         if not is_conversation_member(request.user.id, conversation):
             return Response(
                 {"error": "You are not a participant in this conversation.", "code": "not_participant"},
@@ -2454,8 +2508,19 @@ class ConversationDetailView(APIView):
         )
         return Response(serializer.data)
 
+    def patch(self, request, conversation_id):
+        """Rename a group (owner only)."""
+        from .group_views import rename_group
+
+        return rename_group(request, conversation_id)
+
     def delete(self, request, conversation_id):
         conversation = get_object_or_404(Conversation, id=conversation_id)
+        if conversation.is_group:
+            # "Delete chat" on a group means leaving it; others keep the group.
+            from .group_views import leave_or_remove
+
+            return leave_or_remove(request, conversation, request.user)
         participant_ids = conversation_member_ids(conversation)
         if request.user.id not in participant_ids:
             return Response(
@@ -2478,16 +2543,19 @@ class ConversationListView(APIView):
         # Runs on every request (before the cache check), so keep it a plain
         # filter on the user's conversations rather than the annotated list.
         mark_messages_delivered(
-            Message.objects.filter(
-                Q(conversation__sender=user) | Q(conversation__receiver=user)
-            ),
+            Message.objects.filter(direct_conversations_q(user, prefix="conversation__")),
             user,
         )
+        # Groups are opt-in so app builds that only know direct chats (they read
+        # sender/receiver) never receive one: ?include=groups.
+        include_groups = "groups" in {
+            part.strip() for part in str(request.query_params.get("include", "")).split(",")
+        }
 
         cache_version = get_conversation_list_cache_version(request.user.id)
         cache_key = (
             f"conversation_list:v{cache_version}:user:{request.user.id}:"
-            f"host:{request.get_host()}"
+            f"host:{request.get_host()}:groups:{int(include_groups)}"
         )
         cached_payload = cache.get(cache_key)
         if cached_payload is not None:
@@ -2510,11 +2578,16 @@ class ConversationListView(APIView):
             .values("total")[:1],
             output_field=IntegerField(),
         )
-        conversations = list(
-            Conversation.objects.filter(Q(sender=user) | Q(receiver=user))
+        conversations_qs = (
+            Conversation.objects.filter(
+                direct_conversations_q(user)
+                | (group_conversations_q(user) if include_groups else Q(pk__in=[]))
+            )
             .select_related("sender", "receiver")
             .only(
                 "id",
+                "kind",
+                "name",
                 "created_at",
                 "updated_at",
                 "sender",
@@ -2522,11 +2595,73 @@ class ConversationListView(APIView):
                 *(f"sender__{field}" for field in PROFILE_SUMMARY_FIELDS),
                 *(f"receiver__{field}" for field in PROFILE_SUMMARY_FIELDS),
             )
-            .annotate(
-                unread_count_for_request=Coalesce(unread_count_subquery, Value(0)),
-                last_message_id=last_message_id_subquery,
+        )
+        if include_groups:
+            # Groups: unread = others' messages after my read position (or join
+            # time); the last message must be one I'm allowed to see.
+            my_row = ConversationParticipant.objects.filter(
+                conversation_id=OuterRef("pk"), user=user
             )
-            .order_by("-updated_at", "-id")
+            conversations_qs = conversations_qs.annotate(
+                my_joined_at=Subquery(my_row.values("joined_at")[:1]),
+                my_read_from=Coalesce(
+                    Subquery(my_row.values("last_read_at")[:1]),
+                    Subquery(my_row.values("joined_at")[:1]),
+                ),
+            )
+            group_unread_subquery = Subquery(
+                Message.objects.filter(
+                    conversation_id=OuterRef("pk"), timestamp__gt=OuterRef("my_read_from")
+                )
+                .exclude(sender=user)
+                .order_by()
+                .values("conversation_id")
+                .annotate(total=Count("id"))
+                .values("total")[:1],
+                output_field=IntegerField(),
+            )
+            group_last_message_subquery = Subquery(
+                Message.objects.filter(
+                    conversation_id=OuterRef("pk"), timestamp__gte=OuterRef("my_joined_at")
+                )
+                .order_by("-timestamp", "-id")
+                .values("id")[:1]
+            )
+            is_group = Q(kind=Conversation.KIND_GROUP)
+            unread_expression = Case(
+                When(is_group, then=Coalesce(group_unread_subquery, Value(0))),
+                default=Coalesce(unread_count_subquery, Value(0)),
+                output_field=IntegerField(),
+            )
+            last_message_expression = Case(
+                When(is_group, then=group_last_message_subquery),
+                default=last_message_id_subquery,
+            )
+            conversations_qs = conversations_qs.prefetch_related(
+                Prefetch(
+                    "participants",
+                    queryset=ConversationParticipant.objects.filter(
+                        conversation__kind=Conversation.KIND_GROUP,
+                        status__in=[ConversationParticipant.STATUS_ACTIVE, ConversationParticipant.STATUS_PENDING],
+                    )
+                    .select_related("user")
+                    .only(
+                        "id", "conversation_id", "user_id", "role", "status",
+                        "joined_at", "last_read_at", "created_at",
+                        *(f"user__{field}" for field in PROFILE_SUMMARY_FIELDS),
+                    )
+                    .order_by("joined_at", "created_at", "id"),
+                    to_attr="group_participants",
+                )
+            )
+        else:
+            unread_expression = Coalesce(unread_count_subquery, Value(0))
+            last_message_expression = last_message_id_subquery
+        conversations = list(
+            conversations_qs.annotate(
+                unread_count_for_request=unread_expression,
+                last_message_id=last_message_expression,
+            ).order_by("-updated_at", "-id")
         )
 
         last_message_ids = [
@@ -2658,6 +2793,28 @@ def mark_conversation_read_view(request, conversation_id):
             {"error": "You are not a participant in this conversation.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
         )
+
+    if conversation.is_group:
+        # Groups keep one read position per member ("Seen by"); Message.status
+        # stays "sent" because it can't say who has read it.
+        now = timezone.now()
+        updated = ConversationParticipant.objects.filter(
+            conversation=conversation,
+            user=request.user,
+            status=ConversationParticipant.STATUS_ACTIVE,
+        ).update(last_read_at=now)
+        bump_conversation_list_cache_version(request.user.id)
+        broadcast_chat_room_event(
+            conversation.id,
+            "group_read_event",
+            conversation_id=conversation.id,
+            user_id=request.user.id,
+            last_read_at=now.isoformat(),
+        )
+        broadcast_conversation_update(
+            [request.user.id], conversation.id, "messages_read", actor_id=request.user.id
+        )
+        return Response({"updated": updated, "last_read_at": now}, status=status.HTTP_200_OK)
 
     messages_to_mark = (
         Message.objects.filter(conversation=conversation)
@@ -2873,7 +3030,7 @@ def translate_message_view(request):
         message = get_object_or_404(
             Message.objects.select_related("conversation"), id=message_id
         )
-        if not is_conversation_member(request.user.id, message.conversation):
+        if not can_access_message(request.user.id, message):
             return Response(
                 {"error": "You do not have access to this message.", "code": "not_participant"},
                 status=status.HTTP_403_FORBIDDEN,
@@ -3035,7 +3192,7 @@ def react_to_message_view(request, message_id):
     message = get_object_or_404(
         Message.objects.select_related("conversation"), id=message_id
     )
-    if not is_conversation_member(request.user.id, message.conversation):
+    if not can_access_message(request.user.id, message):
         return Response(
             {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,
@@ -3077,7 +3234,7 @@ def pin_message_view(request, message_id):
         Message.objects.select_related("conversation"), id=message_id
     )
     conversation = message.conversation
-    if not is_conversation_member(request.user.id, conversation):
+    if not can_access_message(request.user.id, message):
         return Response(
             {"error": "You do not have access to this message.", "code": "not_participant"},
             status=status.HTTP_403_FORBIDDEN,

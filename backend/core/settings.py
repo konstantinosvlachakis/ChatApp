@@ -467,6 +467,9 @@ REST_FRAMEWORK = {
             "follow": "60/hour",
             "follow_daily": "300/day",
             "chat_openers": "30/hour",
+            # Group chat invites (per inviter; each notifies the invitee).
+            "group_invite": "60/hour",
+            "group_invite_daily": "300/day",
             # Endpoints that call paid / third-party APIs.
             "translate": "20/minute",
             "translate_daily": "500/day",
