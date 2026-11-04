@@ -5,6 +5,7 @@ import { PresenceProvider } from "../context/PresenceContext";
 import { useUser } from "../context/UserContext";
 import { useGetConversations } from "../pages/Conversations/api/getConversations";
 import { CONVERSATIONS_LIST_QUERY_KEY } from "../pages/Conversations/api/conversationListCache";
+import { GROUP_INVITES_QUERY_KEY, respondToGroupInvite } from "../pages/Conversations/api/groups";
 import {
   CONVERSATION_LIST_REFETCH_DEBOUNCE_MS,
   createTrailingDebounce,
@@ -217,6 +218,31 @@ const Layout = () => {
               } }] : []),
             ] });
           }
+          if (data.type === "group_invite" && typeof data.conversation_id === "number") {
+            const conversationId = data.conversation_id;
+            const groupName = data.display_name || "a group chat";
+            const inviter = data.invited_by?.username || "Someone";
+            queryClient.invalidateQueries({ queryKey: GROUP_INVITES_QUERY_KEY });
+            showToast(`${inviter} invited you to ${groupName}`, {
+              placement: "top",
+              durationMs: 10000,
+              eyebrow: "Group invite",
+              avatarUrl:
+                typeof data.invited_by?.profile_image_url === "string" ? data.invited_by.profile_image_url : undefined,
+              actions: [
+                { label: "Later", onClick: () => {} },
+                { label: "Join", primary: true, onClick: () => {
+                  respondToGroupInvite(conversationId, "accept")
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: GROUP_INVITES_QUERY_KEY });
+                      queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
+                      navigate(`/conversations/${conversationId}`);
+                    })
+                    .catch((error) => toastApiError(error, "Couldn't join the group"));
+                } },
+              ],
+            });
+          }
           if (data.type === "initial_online_users") {
             setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
             return;
@@ -386,7 +412,11 @@ const Layout = () => {
 
       if (nextUnread > previousUnread && isIncoming && !isCurrentlyOpenConversation) {
         if ("Notification" in window && Notification.permission === "granted") {
-          const notification = new Notification(`New message from ${senderUsername}`, {
+          const title =
+            conversation.kind === "group"
+              ? `${senderUsername} in ${conversation.display_name || conversation.name || "your group"}`
+              : `New message from ${senderUsername}`;
+          const notification = new Notification(title, {
             body: lastMessage?.text || "You received a new message.",
             tag: `conversation-${conversation.id}`,
           });

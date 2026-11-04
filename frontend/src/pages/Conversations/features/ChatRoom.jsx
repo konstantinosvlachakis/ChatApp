@@ -1,10 +1,15 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
 import MessageInput from "./MessageInput";
 import { saveChatDraft } from "../utils/chatDrafts";
 import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
+import GroupMembersPanel from "./GroupMembersPanel";
+import GroupPeoplePicker from "./GroupPeoplePicker";
+import { getOtherParticipant, isGroupConversation } from "../utils/conversationSearch";
+import { buildSeenBy, mergeReads } from "../utils/groupReads";
 import api from "../../../lib/api";
 import { requestEmailVerification } from "../../../features/emailVerification";
 import { deleteMessage } from "../api/deleteMessage";
@@ -102,11 +107,25 @@ const resolveAvatarUrl = (path) => {
   return `${BASE_URL}/media/${path}`;
 };
 
-const ChatRoom = ({ conversation, onConversationTypingChange }) => {
+const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChanged, onLeftConversation }) => {
   const [messages, setMessages] = useState(conversation.messages || []);
   const [pinnedMessages, setPinnedMessages] = useState(conversation.pinned_messages || []);
   const [showPinnedMenu, setShowPinnedMenu] = useState(false);
-  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  // Who is typing (user id; groups show their name). null = nobody.
+  const [typingUserId, setTypingUserId] = useState(null);
+  const isOtherUserTyping = typingUserId !== null;
+  const setIsOtherUserTyping = useCallback((value) => {
+    if (!value) setTypingUserId(null);
+  }, []);
+  // Group read positions (user id -> ISO time) for "Seen by"; live via group_read.
+  const [groupReads, setGroupReads] = useState(() =>
+    Object.fromEntries(
+      (conversation?.participants || [])
+        .filter((participant) => participant.status === "active" && participant.user?.id)
+        .map((participant) => [participant.user.id, participant.last_read_at])
+    )
+  );
+  const [groupPanel, setGroupPanel] = useState(null); // "members" | "start" | null
   const [socketStatus, setSocketStatus] = useState("connecting");
   const [callState, setCallState] = useState("idle");
   const [callMode, setCallMode] = useState("audio");
@@ -168,10 +187,27 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
   const { onlineUserIds } = usePresence();
   const queryClient = useQueryClient();
 
-  const otherUser =
-    conversation?.sender?.username === user?.username
-      ? conversation?.receiver
-      : conversation?.sender;
+  const isGroup = isGroupConversation(conversation);
+  // Direct chats only (a group's sender is its creator, not "the other person").
+  const otherUser = getOtherParticipant(conversation, user?.username);
+  const navigate = useNavigate();
+  // Read by the socket handler through a ref so a new callback never reopens the socket.
+  const onConversationChangedRef = useRef(onConversationChanged);
+  useEffect(() => {
+    onConversationChangedRef.current = onConversationChanged;
+  }, [onConversationChanged]);
+  const navigateToConversation = useCallback((id) => navigate(`/conversations/${id}`), [navigate]);
+
+  // A refetched group (someone joined/read) brings newer read positions.
+  useEffect(() => {
+    if (!isGroup) return;
+    setGroupReads((prev) => mergeReads(prev, conversation?.participants));
+  }, [conversation?.participants, isGroup]);
+
+  const seenBy = useMemo(
+    () => (isGroup ? buildSeenBy(messages, groupReads, conversation?.participants, user?.user_id) : null),
+    [conversation?.participants, groupReads, isGroup, messages, user?.user_id]
+  );
   const otherUserAvatarUrl = resolveAvatarUrl(otherUser?.profile_image_url);
 
   const mergeMessageUpdate = useCallback((incomingMessage) => {
@@ -1249,7 +1285,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               if (data.senderId === currentUserIdRef.current) {
                 break;
               }
-              setIsOtherUserTyping(true);
+              setTypingUserId(data.senderId ?? -1);
               onConversationTypingChange?.(conversation.id, true);
               break;
 
@@ -1257,8 +1293,23 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               if (data.senderId === currentUserIdRef.current) {
                 break;
               }
-              setIsOtherUserTyping(false);
+              // In a group someone else may still be typing: only clear their own flag.
+              setTypingUserId((current) =>
+                current === null || current === data.senderId || current === -1 ? null : current
+              );
               onConversationTypingChange?.(conversation.id, false);
+              break;
+
+            case "group_updated":
+              // Members joined/left/were invited or the group was renamed.
+              onConversationChangedRef.current?.();
+              queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+              break;
+
+            case "group_read":
+              if (typeof data.user_id === "number" && data.last_read_at) {
+                setGroupReads((prev) => ({ ...prev, [data.user_id]: data.last_read_at }));
+              }
               break;
 
             case "webrtc_offer":
@@ -1454,7 +1505,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     if (onlineUserIds.has(otherUser.id)) return;
     setIsOtherUserTyping(false);
     onConversationTypingChange?.(conversation.id, false);
-  }, [conversation?.id, onConversationTypingChange, onlineUserIds, otherUser?.id]);
+  }, [conversation?.id, onConversationTypingChange, onlineUserIds, otherUser?.id, setIsOtherUserTyping]);
 
   const handlePickOpener = useCallback(
     (line) => {
@@ -1740,6 +1791,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     return <p className="cv-chat-status is-error" role="alert">Failed to load user.</p>;
   }
 
+  const typingName = isGroup
+    ? (conversation.participants || []).find((participant) => participant.user?.id === typingUserId)?.user
+        ?.username
+    : otherUser?.username;
+
   return (
     <div className="cv-chat">
       <div className="flex-shrink-0">
@@ -1762,6 +1818,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           searchDisabled={loadingHistory}
           searchHasResults={searchResultIds.length > 0}
           isSearchingMessages={isSearchingMessages}
+          onOpenGroup={() => setGroupPanel("members")}
+          onStartGroup={otherUser?.username ? () => setGroupPanel("start") : undefined}
         />
       </div>
 
@@ -1886,7 +1944,9 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
               activeSearchMessageId={activeSearchMessageId}
               unreadAnchorMessageId={unreadAnchorMessageId}
               conversationId={conversation.id}
-              onPickOpener={handlePickOpener}
+              onPickOpener={isGroup ? null : handlePickOpener}
+              isGroup={isGroup}
+              seenBy={seenBy}
             />
           </>
         )}
@@ -1895,7 +1955,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
       {isOtherUserTyping && (
         <div className="cv-typing" role="status">
           <TypingDots className="cv-typing-dots" />
-          <span>{otherUser?.username ? `${otherUser.username} is typing…` : "Typing…"}</span>
+          <span>{typingName ? `${typingName} is typing…` : "Typing…"}</span>
         </div>
       )}
 
@@ -1924,6 +1984,34 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
           draftVersion={draftVersion}
         />
       </div>
+
+      {groupPanel === "members" && isGroup && (
+        <GroupMembersPanel
+          conversation={conversation}
+          onClose={() => setGroupPanel(null)}
+          onChanged={() => {
+            onConversationChanged?.();
+            queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+          }}
+          onLeft={() => {
+            setGroupPanel(null);
+            queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+            onLeftConversation?.();
+          }}
+        />
+      )}
+      {groupPanel === "start" && otherUser?.username && (
+        <GroupPeoplePicker
+          mode="create"
+          preselected={[otherUser.username]}
+          onClose={() => setGroupPanel(null)}
+          onDone={(group) => {
+            setGroupPanel(null);
+            queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+            if (group?.id) navigateToConversation(group.id);
+          }}
+        />
+      )}
 
       <CallPanel
         visible={callState !== "idle"}
