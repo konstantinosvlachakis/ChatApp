@@ -74,6 +74,7 @@ frontend/build/
 *.heif
 !frontend/public/og-image.png
 !mobile/assets/icon.png
+!backend/chatapp/static/stickers/**/*.svg
 !mobile/assets/brand-icon.png
 !mobile/assets/adaptive-icon.png
 !mobile/assets/splash.png

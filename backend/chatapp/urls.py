@@ -103,6 +103,8 @@ urlpatterns = [
         MessageListView.as_view(),
         name="conversation_messages",  # Send and receive messages
     ),
+    path("stickers/", sticker_packs_view, name="sticker_packs"),
+    path("gifs/", gifs_view, name="gifs"),
     path(
         "conversations/<int:conversation_id>/openers/",
         conversation_openers_view,

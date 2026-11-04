@@ -1,0 +1,22 @@
+{
+  "packs": [
+    {
+      "id": "lumi",
+      "name": "Lumi",
+      "stickers": [
+        {"id": "wave", "label": "Hello"},
+        {"id": "thumbs-up", "label": "Nice"},
+        {"id": "love", "label": "Love it"},
+        {"id": "laugh", "label": "Haha"},
+        {"id": "wow", "label": "Wow"},
+        {"id": "thinking", "label": "Hmm"},
+        {"id": "sad", "label": "Oh no"},
+        {"id": "star", "label": "Well done"},
+        {"id": "study", "label": "Studying"},
+        {"id": "coffee", "label": "Coffee chat"},
+        {"id": "party", "label": "Party"},
+        {"id": "sleepy", "label": "Good night"}
+      ]
+    }
+  ]
+}

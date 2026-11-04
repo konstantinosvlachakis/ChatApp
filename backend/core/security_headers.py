@@ -18,6 +18,7 @@ def build_content_security_policy():
         "https://flagcdn.com",
         "https://randomuser.me",  # old demo portraits, until `load_dummy_data --refresh-photos` runs
         "https://i.pravatar.cc",  # demo portraits (chatapp/demo_profiles.py)
+        "https://*.giphy.com",  # GIF messages / picker (chatapp/giphy.py)
         *settings.CSP_EXTRA_IMG_SRC,
     ]
     directives = {

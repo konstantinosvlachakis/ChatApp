@@ -308,10 +308,23 @@ class Message(models.Model):
         null=True,
         blank=True,
     )
+    KIND_TEXT = "text"
+    KIND_STICKER = "sticker"
+    KIND_GIF = "gif"
+    MESSAGE_KINDS = [
+        (KIND_TEXT, "Text"),  # text and/or an uploaded attachment
+        (KIND_STICKER, "Sticker"),
+        (KIND_GIF, "GIF"),
+    ]
+
     text = models.TextField()
     attachment = models.FileField(
         upload_to="attachments/", blank=True, null=True
     )  # File uploads
+    kind = models.CharField(max_length=10, choices=MESSAGE_KINDS, default=KIND_TEXT)
+    # sticker: {"pack", "id"}; gif: {"provider", "id", "title", "url",
+    # "still_url", "width", "height"} (chatapp/message_media.py). NULL for text.
+    media = models.JSONField(blank=True, null=True)
 
     status = models.CharField(max_length=10, choices=MESSAGE_STATUSES, default="sent")
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)

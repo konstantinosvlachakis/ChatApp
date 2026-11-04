@@ -9,6 +9,8 @@ from .conversation_members import (
     visible_messages,
 )
 from django.conf import settings
+from .giphy import gif_media_payload
+from .stickers import sticker_media_payload
 from django.db.models import Prefetch
 from django.db.utils import OperationalError, ProgrammingError
 from django.utils import timezone
@@ -183,9 +185,22 @@ class ProfileSerializer(serializers.ModelSerializer):
         return last_seen >= threshold
 
 
+def message_media_payload(message, request=None):
+    """``media`` as served: sticker ref + label/URL, GIF media, None for text."""
+    media = message.media if isinstance(message.media, dict) else None
+    if media is None:
+        return None
+    if message.kind == Message.KIND_STICKER:
+        return sticker_media_payload(media, request)
+    if message.kind == Message.KIND_GIF:
+        return gif_media_payload(media)
+    return None
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = ProfileSerializer(read_only=True)
     attachment_url = serializers.SerializerMethodField()
+    media = serializers.SerializerMethodField()
     translated_text = serializers.SerializerMethodField()
     translated_source_language = serializers.SerializerMethodField()
     can_translate = serializers.SerializerMethodField()
@@ -204,6 +219,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "status",
             "attachment",
             "attachment_url",
+            "kind",
+            "media",
             "timestamp",
             "edited_at",
             "is_pinned",
@@ -229,6 +246,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 return absolute
             return obj.attachment.url
         return None
+
+    def get_media(self, obj):
+        return message_media_payload(obj, self.context.get("request"))
 
     def _get_user_translation(self, obj):
         user = get_request_user(self.context)
@@ -335,6 +355,8 @@ class MessageSerializer(serializers.ModelSerializer):
         return {
             "id": reply.id,
             "text": reply.text,
+            "kind": reply.kind,
+            "media": message_media_payload(reply, self.context.get("request")),
             "timestamp": reply.timestamp,
             "sender": {
                 "id": sender.id if sender else None,

@@ -393,6 +393,13 @@ PUSH_NOTIFICATIONS_ENABLED = (not RUNNING_TESTS) and (
 # Optional: only needed when "enhanced push security" is enabled for the Expo project.
 EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 
+# GIF picker (chatapp/giphy.py). Without a key the GIF endpoints answer 503
+# `gifs_unavailable` and the clients hide the GIF tab. Never set under tests.
+GIPHY_API_KEY = "" if RUNNING_TESTS else os.environ.get("GIPHY_API_KEY", "").strip()
+GIPHY_RATING = os.environ.get("GIPHY_RATING", "pg").strip().lower()
+if GIPHY_RATING not in {"g", "pg", "pg-13", "r"}:
+    GIPHY_RATING = "pg"
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
@@ -480,6 +487,8 @@ REST_FRAMEWORK = {
             "profile_view": "120/minute",
             "people": "60/minute",
             "reactions": "120/minute",
+            # GIF picker search/trending (proxied to GIPHY, cached 15 min).
+            "gifs": "60/minute",
             "report": "20/hour",
             "push_devices": "30/hour",
             "logout_all": "10/hour",
