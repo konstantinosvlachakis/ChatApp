@@ -106,6 +106,14 @@ describe("Conversation in a group chat", () => {
     expect(screen.getByText("Annie")).toBeInTheDocument();
   });
 
+  test("right clicking a group message avatar opens that sender's nickname editor", () => {
+    const onEditGroupNickname = jest.fn();
+    render(<Conversation messages={groupMessages} userId={1} onDeleteMessage={jest.fn()}
+      isGroup onEditGroupNickname={onEditGroupNickname} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Edit nickname for ana" }));
+    expect(onEditGroupNickname).toHaveBeenCalledWith("ana");
+  });
+
   test("an empty group invites everyone to say hello (no openers)", () => {
     render(<Conversation messages={[]} userId={1} onDeleteMessage={jest.fn()} isGroup conversationId={9} />);
 

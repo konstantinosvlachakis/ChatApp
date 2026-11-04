@@ -192,6 +192,7 @@ const MessageRow = React.memo(function MessageRow({
   userId,
   onReact,
   onOpenReactionPicker,
+  onEditGroupNickname,
 }) {
   const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
   const attachmentUrl = normalizeUrl(rawUrl);
@@ -248,8 +249,16 @@ const MessageRow = React.memo(function MessageRow({
           endsGroup ? "ends-group" : ""
         } ${isActiveSearchMatch ? "is-search-active" : ""}`}
       >
-        <span className={`cv-msg-avatar ${endsGroup ? "" : "is-hidden"}`} aria-hidden="true">
-          {endsGroup && <MessageAvatar sender={msg.sender} displayName={groupNicknames?.[msg.sender?.id]} />}
+        <span className={`cv-msg-avatar ${endsGroup ? "" : "is-hidden"}`} aria-hidden={isGroup && endsGroup ? undefined : true}>
+          {endsGroup && (isGroup && msg.sender?.username ? (
+            <button type="button" className="cv-msg-avatar-button"
+              onClick={() => onEditGroupNickname?.(msg.sender.username)}
+              onContextMenu={(event) => { event.preventDefault(); onEditGroupNickname?.(msg.sender.username); }}
+              aria-label={`Edit nickname for ${msg.sender.username}`}
+              title={`Edit nickname for ${msg.sender.username}`}>
+              <MessageAvatar sender={msg.sender} displayName={groupNicknames?.[msg.sender.id]} />
+            </button>
+          ) : <MessageAvatar sender={msg.sender} displayName={groupNicknames?.[msg.sender?.id]} />)}
         </span>
         <div className="cv-msg-column">
           {startsGroup && !isSentByUser && msg.sender?.username && (
@@ -411,6 +420,7 @@ const Conversation = ({
   onPickOpener = null,
   isGroup = false,
   groupNicknames = null,
+  onEditGroupNickname,
   seenBy = null,
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
@@ -770,6 +780,7 @@ const Conversation = ({
               userId={userId}
               onReact={handleReact}
               onOpenReactionPicker={setReactionPickerMessageId}
+              onEditGroupNickname={onEditGroupNickname}
               onTranslate={handleTranslate}
               onTouchStart={handleTouchStart}
               onClearLongPress={clearLongPressTimer}

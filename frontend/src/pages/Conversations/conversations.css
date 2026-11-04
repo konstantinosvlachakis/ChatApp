@@ -285,6 +285,8 @@
 .cv-msg.starts-group { margin-top: 12px; }
 .cv-msg.is-sent { flex-direction: row-reverse; }
 .cv-msg-avatar { width: 32px; flex-shrink: 0; align-self: flex-end; }
+.cv-msg-avatar-button { display: block; width: 100%; padding: 0; border-radius: 50%; cursor: pointer; }
+.cv-msg-avatar-button:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
 .cv-msg-avatar.is-hidden { visibility: hidden; height: 1px; }
 .cv-msg-column { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: min(75%, 520px); }
 .cv-msg.is-sent .cv-msg-column { align-items: flex-end; }
@@ -698,9 +700,13 @@
 .cv-group-person.is-selected { background: var(--lv-peach-soft); }
 .cv-group-person-name { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .cv-group-username { display: block; color: var(--lv-muted-ink); font-size: 12px; font-weight: 500; }
-.cv-group-nickname-form { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; }
-.cv-group-nickname-form input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--lv-line); border-radius: 12px; background: var(--lv-paper); }
-.cv-group-nickname-form button { font-size: 13px; font-weight: 700; color: var(--lv-teal); }
+.cv-group-nickname-form { display: flex; flex: 1; flex-direction: column; gap: 10px; min-width: 0; padding: 4px 0; }
+.cv-group-nickname-form input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--lv-line); border-radius: 12px; background: var(--lv-paper); }
+.cv-group-nickname-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.cv-group-nickname-actions button { min-width: 76px; min-height: 38px; padding: 6px 14px; border-radius: var(--lv-radius-pill); font-size: 13px; font-weight: 700; }
+.cv-group-nickname-cancel { border: 1px solid var(--lv-line); background: var(--lv-paper); color: var(--lv-ink-soft); }
+.cv-group-nickname-save { background: var(--lv-teal); color: #fff; }
+.cv-group-nickname-save:disabled { opacity: .5; cursor: wait; }
 .cv-group-check { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 2px solid var(--lv-line); border-radius: 50%; color: #fff; }
 .cv-group-person.is-selected .cv-group-check { border-color: var(--lv-peach-ink); background: var(--lv-peach-ink); }
 .cv-group-check svg { font-size: 16px; }

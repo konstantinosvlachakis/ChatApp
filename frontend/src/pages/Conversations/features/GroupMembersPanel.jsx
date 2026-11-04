@@ -18,15 +18,17 @@ import GroupPeoplePicker from "./GroupPeoplePicker";
  * (any member) and leave. ``onChanged`` refetches the conversation; ``onLeft`` runs after
  * you leave.
  */
-export default function GroupMembersPanel({ conversation, onClose, onChanged, onLeft }) {
+export default function GroupMembersPanel({ conversation, onClose, onChanged, onLeft, initialNicknameUsername = null }) {
   const { user } = useUser();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(conversation.name || "");
   const [busy, setBusy] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
-  const [editingNickname, setEditingNickname] = useState(null);
-  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [editingNickname, setEditingNickname] = useState(initialNicknameUsername);
+  const [nicknameDraft, setNicknameDraft] = useState(
+    () => conversation.participants?.find((row) => row.user?.username === initialNicknameUsername)?.nickname || ""
+  );
   const closeRef = useRef(null);
   const isOwner = conversation.my_role === "owner";
   const participants = conversation.participants || [];
@@ -34,8 +36,8 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
   const isFull = participants.length >= MAX_GROUP_MEMBERS;
 
   useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+    if (!initialNicknameUsername) closeRef.current?.focus();
+  }, [initialNicknameUsername]);
 
   const saveName = async (event) => {
     event.preventDefault();
@@ -175,8 +177,10 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
                   <form className="cv-group-nickname-form" onSubmit={saveNickname}>
                     <input value={nicknameDraft} maxLength={40} onChange={(event) => setNicknameDraft(event.target.value)}
                       aria-label={`Nickname for ${member.username}`} placeholder={member.username} autoFocus />
-                    <button type="submit" disabled={busy === `nickname:${member.username}`}>Save</button>
-                    <button type="button" onClick={() => setEditingNickname(null)}>Cancel</button>
+                    <div className="cv-group-nickname-actions">
+                      <button type="button" className="cv-group-nickname-cancel" onClick={() => setEditingNickname(null)}>Cancel</button>
+                      <button type="submit" className="cv-group-nickname-save" disabled={busy === `nickname:${member.username}`}>Save</button>
+                    </div>
                   </form>
                 ) : <Link to={`/people/${encodeURIComponent(member.username || "")}`} className="cv-group-member-link">
                   <ChatAvatar name={member.username} imagePath={member.profile_image_url} size={40} />
@@ -192,9 +196,9 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
                     <EditRoundedIcon />
                   </button>
                 )}
-                {participant.role === "owner" && <span className="cv-group-tag is-owner">Owner</span>}
-                {isPending && <span className="cv-group-tag">Invited</span>}
-                {isOwner && !isMe && (
+                {editingNickname !== member.username && participant.role === "owner" && <span className="cv-group-tag is-owner">Owner</span>}
+                {editingNickname !== member.username && isPending && <span className="cv-group-tag">Invited</span>}
+                {editingNickname !== member.username && isOwner && !isMe && (
                   <button
                     type="button"
                     className="cv-icon-button is-plain cv-group-remove"

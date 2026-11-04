@@ -6,6 +6,7 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 # Mobile status (Expo / React Native)
 
 2026-11-04 group nicknames (working tree based on `1ec0ffe`): `GroupDetailsSheet` sets/clears nicknames through `services/api/groups.ts`; `ConversationsScreen` shows them in group message sender labels, replies and typing; `components/chat/groupReads.ts` uses them for read receipts. Existing `group_updated` handling refetches participants. Nicknames remain specific to each group.
+Mobile nickname polish (2026-11-04): tap or long-press a received group message avatar to open that sender's nickname editor in `GroupDetailsSheet`. The sheet scrolls toward the member; the editor places a neutral Cancel and a filled Save beneath the input with touch-sized spacing.
 
 Last verified for follow: 2026-11-03 on `feat/follow` (pending, uncommitted). PublicProfile follow control; People Following quick filter; own Profile following list; `user_followed` banner and Expo follow push tap navigation. REST calls route through `services/api/auth.ts` and its shared client. See system-map for contract.
 

@@ -94,6 +94,7 @@ export type MessageRowProps = {
   onSwipeReply: (message: ChatMessage) => void;
   onReactionSelect: (message: ChatMessage, emoji: string) => void;
   onOpenReactionPicker: (messageId: number) => void;
+  onEditGroupNickname: (username: string) => void;
   onOpenMenu: (message: ChatMessage, isMine: boolean) => void;
   onTap: (message: ChatMessage) => void;
   /** Double-tap / "Show original" / a11y action: toggles the inline translation. */
@@ -253,6 +254,7 @@ function MessageRowComponent({
   onSwipeReply,
   onReactionSelect,
   onOpenReactionPicker,
+  onEditGroupNickname,
   onOpenMenu,
   onTap,
   onToggleTranslation,
@@ -533,7 +535,14 @@ function MessageRowComponent({
         {!isMine ? (
           <View style={styles.avatarSlot}>
             {endsGroup ? (
-              <ChatAvatar name={avatarName} imagePath={avatarPath} size={MESSAGE_AVATAR_SIZE} />
+              isGroup && item.sender?.username ? (
+                <Pressable onLongPress={() => onEditGroupNickname(item.sender?.username || "")}
+                  onPress={() => onEditGroupNickname(item.sender?.username || "")}
+                  accessibilityRole="button" accessibilityLabel={`Edit nickname for ${item.sender.username}`}
+                  delayLongPress={450} hitSlop={10}>
+                  <ChatAvatar name={avatarName} imagePath={avatarPath} size={MESSAGE_AVATAR_SIZE} />
+                </Pressable>
+              ) : <ChatAvatar name={avatarName} imagePath={avatarPath} size={MESSAGE_AVATAR_SIZE} />
             ) : null}
           </View>
         ) : null}
