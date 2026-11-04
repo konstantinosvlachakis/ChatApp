@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { avatarImage } from "../../lib/media";
@@ -23,6 +23,7 @@ import {
   validRingColor,
 } from "./features/profileUtils";
 import { shareProfileLink } from "./features/shareProfile";
+import AvatarPhotoMenu from "./features/AvatarPhotoMenu";
 import { useUser } from "../../context/UserContext";
 
 const VISITORS_PREVIEW = 3;
@@ -203,6 +204,9 @@ const ProfilePage = () => {
   const isDetectingLocationRef = useRef(false);
   const photosRef = useRef(null);
   const viewer = usePhotoViewer();
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  const avatarButtonRef = useRef(null);
+  const closeAvatarMenu = useCallback(() => setAvatarMenuOpen(false), []);
   // Photos whose thumbnail failed to load aren't offered in the viewer.
   const [failedPhotoKeys, setFailedPhotoKeys] = useState(() => new Set());
   const markPhotoFailed = (key) =>
@@ -376,9 +380,22 @@ const ProfilePage = () => {
         avatarUrl={resolveMediaUrl(user.profile_image_url)}
         ringColor={validRingColor(user.avatar_ring_color)}
         statusItems={statusItems}
-        onOpenAvatar={mainPhotoIndex >= 0 ? (event) => viewer.open(mainPhotoIndex, event) : undefined}
-        avatarLabel={viewLabel("profile")}
+        onOpenAvatar={() => setAvatarMenuOpen((open) => !open)}
+        avatarLabel="Profile photo options"
         onAvatarError={() => markPhotoFailed("profile")}
+        avatarButtonRef={avatarButtonRef}
+        avatarMenuOpen={avatarMenuOpen}
+        avatarBusy={uploadingSlot === "profile"}
+        avatarMenu={
+          <AvatarPhotoMenu
+            open={avatarMenuOpen}
+            onClose={closeAvatarMenu}
+            triggerRef={avatarButtonRef}
+            canView={mainPhotoIndex >= 0}
+            onView={(event) => viewer.open(mainPhotoIndex, event)}
+            onPick={(file) => uploadPhoto("profile", file)}
+          />
+        }
       >
         <button type="button" className="pf-btn is-primary" onClick={() => navigate("/profile/edit")}>
           <EditOutlinedIcon aria-hidden="true" />

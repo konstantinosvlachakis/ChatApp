@@ -85,3 +85,21 @@ describe("MessageInput sending", () => {
     expect(input).toHaveValue("Hola");
   });
 });
+
+describe("MessageInput replying", () => {
+  test("choosing Reply focuses the composer with the cursor after the draft", () => {
+    jest.useFakeTimers();
+    window.localStorage.setItem("chat:draft:42", "Γεια");
+    const props = { conversationId: 42, onSendMessage: jest.fn(), onTyping: () => {}, onStopTyping: () => {} };
+    const { rerender } = render(<MessageInput {...props} />);
+    const input = screen.getByRole("textbox", { name: "Message" });
+    input.blur();
+
+    rerender(<MessageInput {...props} replyingMessage={{ id: 7, text: "How are you?", sender: { username: "saxas" } }} />);
+    act(() => jest.runOnlyPendingTimers());
+
+    expect(input).toHaveFocus();
+    expect(input.selectionStart).toBe("Γεια".length);
+    jest.useRealTimers();
+  });
+});

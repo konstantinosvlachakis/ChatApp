@@ -102,6 +102,20 @@ const MessageInput = ({
     inputRef.current?.focus();
   }, [draftStorageKey, editingMessage?.id]);
 
+  // Choosing Reply puts the cursor in the composer (after any draft), like editing does.
+  // Deferred a frame so the message menu that triggered it has closed and can't take focus back.
+  useEffect(() => {
+    if (!replyingMessage?.id || editingMessage) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      const end = input.value?.length ?? 0;
+      input.setSelectionRange?.(end, end);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [replyingMessage?.id, editingMessage]);
+
   useEffect(() => {
     const draft = localStorage.getItem(draftStorageKey) || "";
     setMessage(draft);
