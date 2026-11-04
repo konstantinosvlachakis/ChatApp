@@ -12,8 +12,42 @@ export interface User {
   
 
 
+export interface ParticipantProfile {
+    id: number;
+    username: string;
+    profile_image_url?: string | null;
+    native_language?: string;
+    is_online?: boolean;
+    last_seen?: string | null;
+  }
+
+  /** A group member (`active`) or invitee (`pending`); see backend ConversationSerializer. */
+  export interface ConversationParticipant {
+    user: ParticipantProfile;
+    role: "owner" | "member";
+    status: "active" | "pending";
+    joined_at: string | null;
+    last_read_at: string | null;
+  }
+
+  export interface GroupInvite {
+    conversation_id: number;
+    name: string;
+    display_name: string;
+    invited_by: ParticipantProfile | null;
+    members: ParticipantProfile[];
+    member_count: number;
+    invited_at: string;
+  }
+
 export interface Conversation {
     id: number;
+    /** "group" only when requested with ?include=groups (older payloads omit it = direct). */
+    kind?: "direct" | "group";
+    name?: string;
+    display_name?: string | null;
+    participants?: ConversationParticipant[];
+    my_role?: "owner" | "member" | null;
     sender: {
       id: number;
       username: string;
@@ -21,13 +55,14 @@ export interface Conversation {
       is_online?: boolean;
       last_seen?: string | null;
     };
+    /** null for groups. */
     receiver: {
       id: number;
       username: string;
       profile_image_url: string;
       is_online?: boolean;
       last_seen?: string | null;
-    };
+    } | null;
     updated_at: string;
     unread_count?: number;
     last_message?: {

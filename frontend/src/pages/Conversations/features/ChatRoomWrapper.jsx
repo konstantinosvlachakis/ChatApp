@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import React, { useCallback, useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import api, { getErrorMessage, isAbortError } from "../../../lib/api";
 import { logger } from "../../../lib/logger";
 import ChatRoom from "./ChatRoom";
@@ -14,6 +14,11 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
   const [conversation, setConversation] = useState(null);
   const [error, setError] = useState(null);
   const [slow, setSlow] = useState(false);
+  // Bumped to refetch the open conversation (group members/name changed).
+  const [refreshTick, setRefreshTick] = useState(0);
+  const navigate = useNavigate();
+  const refreshConversation = useCallback(() => setRefreshTick((tick) => tick + 1), []);
+  const closeConversation = useCallback(() => navigate("/conversations"), [navigate]);
   const isCoachConversation = id === COACH_CONVERSATION_ID;
 
   useEffect(() => {
@@ -47,7 +52,7 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
       isCurrent = false;
       controller.abort();
     };
-  }, [id, isCoachConversation]);
+  }, [id, isCoachConversation, refreshTick]);
 
   // Only the detail for the id in the URL is shown: while B loads after A, the header,
   // messages and composer must not still be A's (Enter would post to A).
@@ -76,6 +81,8 @@ const ChatRoomWrapper = ({ onConversationTypingChange }) => {
         key={currentConversation.id}
         conversation={currentConversation}
         onConversationTypingChange={onConversationTypingChange}
+        onConversationChanged={refreshConversation}
+        onLeftConversation={closeConversation}
       />
     </div>
   );

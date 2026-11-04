@@ -4,7 +4,8 @@ import { ExtractFnReturnType, QueryConfig } from "../../../libs/react-query";
 import { useQuery } from 'react-query';
 
 export const getConversations = async (): Promise<Conversation[]> =>
-  api.get<Conversation[]>("/api/conversations/");
+  // Groups are opt-in on the API (older app builds only understand direct chats).
+  api.get<Conversation[]>("/api/conversations/?include=groups");
 
 
 type QueryFnType = typeof getConversations;
