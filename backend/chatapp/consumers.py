@@ -19,7 +19,7 @@ from django.utils import timezone
 from core.observability import reset_request_id, set_request_id
 from core.realtime import safe_group_add, safe_group_discard, safe_group_send
 
-from .models import BlockedUser, Conversation, Profile
+from .models import BlockedUser, Conversation, ConversationParticipant, Profile
 from .tokens import (
     SESSION_ID_CLAIM,
     SESSION_REVOKED_CLOSE_CODE,
@@ -80,27 +80,30 @@ def user_presence_group_name(user_id):
 
 
 def get_presence_contact_ids(user_id):
-    """Ids of users who share a conversation with user_id, minus blocked pairs.
+    """Ids of users who share a conversation with user_id (direct chat or group,
+    active members only), minus blocked pairs.
 
     Presence (online/offline changes and the initial online list) is only ever
-    shared with these users; a block in either direction hides it. One query.
+    shared with these users; a block in either direction hides it. One query: every
+    conversation has participant rows (migration 0039 + create_direct_conversation).
     """
     blocked_pair = BlockedUser.objects.filter(
-        Q(blocker_id=OuterRef("sender_id"), blocked_id=OuterRef("receiver_id"))
-        | Q(blocker_id=OuterRef("receiver_id"), blocked_id=OuterRef("sender_id"))
+        Q(blocker_id=user_id, blocked_id=OuterRef("user_id"))
+        | Q(blocker_id=OuterRef("user_id"), blocked_id=user_id)
     )
+    shared = ConversationParticipant.objects.filter(
+        user_id=user_id, status=ConversationParticipant.STATUS_ACTIVE
+    ).values("conversation_id")
     rows = (
-        Conversation.objects.filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
+        ConversationParticipant.objects.filter(
+            conversation_id__in=shared, status=ConversationParticipant.STATUS_ACTIVE
+        )
+        .exclude(user_id=user_id)
         .exclude(Exists(blocked_pair))
-        .values_list("sender_id", "receiver_id")
+        .values_list("user_id", flat=True)
         .distinct()
     )
-    contact_ids = set()
-    for sender_id, receiver_id in rows:
-        other_id = receiver_id if sender_id == user_id else sender_id
-        if other_id and other_id != user_id:
-            contact_ids.add(other_id)
-    return contact_ids
+    return set(rows)
 
 
 def increment_presence_count(user_id, token_version=None):
@@ -493,15 +496,14 @@ class PresenceTrackingMixin:
 
     @db_async
     def get_participant_details(self, conversation_id, user_id):
-        """Return (username, other_participant_id, own_token_version) if user_id
-        is a participant.
+        """Return (username, other_member_ids, own_token_version, verified, is_group)
+        if user_id may join the conversation's room, else None.
 
-        One query covers the membership check, the user's own username and
-        token_version and the other participant's id (used for typing
-        notifications).
+        Direct chats: one query (membership, own username/token_version/verified and
+        the other person's id). Groups: one more query over the active members.
         """
         row = (
-            Conversation.objects.filter(id=conversation_id)
+            Conversation.objects.filter(id=conversation_id, kind=Conversation.KIND_DIRECT)
             .filter(Q(sender_id=user_id) | Q(receiver_id=user_id))
             .values_list(
                 "sender_id",
@@ -515,21 +517,43 @@ class PresenceTrackingMixin:
             )
             .first()
         )
-        if not row:
+        if row:
+            (
+                sender_id,
+                receiver_id,
+                sender_username,
+                receiver_username,
+                sender_version,
+                receiver_version,
+                sender_verified,
+                receiver_verified,
+            ) = row
+            if sender_id == user_id:
+                return sender_username, [receiver_id], sender_version, sender_verified is not None, False
+            return receiver_username, [sender_id], receiver_version, receiver_verified is not None, False
+
+        members = list(
+            ConversationParticipant.objects.filter(
+                conversation_id=conversation_id,
+                conversation__kind=Conversation.KIND_GROUP,
+                status=ConversationParticipant.STATUS_ACTIVE,
+            ).values_list("user_id", "user__username", "user__token_version", "user__email_verified_at")
+        )
+        mine = next((member for member in members if member[0] == user_id), None)
+        if not mine:
             return None
-        (
-            sender_id,
-            receiver_id,
-            sender_username,
-            receiver_username,
-            sender_version,
-            receiver_version,
-            sender_verified,
-            receiver_verified,
-        ) = row
-        if sender_id == user_id:
-            return sender_username, receiver_id, sender_version, sender_verified is not None
-        return receiver_username, sender_id, receiver_version, receiver_verified is not None
+        others = [member[0] for member in members if member[0] != user_id]
+        return mine[1], others, mine[2], mine[3] is not None, True
+
+    @db_async
+    def load_other_member_ids(self, conversation_id, user_id):
+        return list(
+            ConversationParticipant.objects.filter(
+                conversation_id=conversation_id, status=ConversationParticipant.STATUS_ACTIVE
+            )
+            .exclude(user_id=user_id)
+            .values_list("user_id", flat=True)
+        )
 
 
 class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
@@ -538,7 +562,8 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
     async def connect(self):
         self.room_group_name = None
         self.username = None
-        self.other_user_id = None
+        self.other_user_ids = []
+        self.is_group = False
         self.contact_ids = None
         self.init_abuse_limits()
         self.user_id = await self.get_user_id_from_token()
@@ -554,13 +579,13 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             # Deleted accounts have no conversations, so this rejects them too.
             details = await self.get_participant_details(conversation_id, self.user_id)
             if details:
-                username, other_user_id, current_version, self.email_verified = details
+                username, other_user_ids, current_version, self.email_verified, is_group = details
                 if self.token_version != int(current_version or 0):
                     # Revoked token (password reset, log out everywhere, ...).
                     self.user_id = None
                     await self.reject(SESSION_REVOKED_CLOSE_CODE)
                     return
-                self.username, self.other_user_id = username, other_user_id
+                self.username, self.other_user_ids, self.is_group = username, other_user_ids, is_group
         if not self.username:
             self.user_id = None
             await self.reject(4403)
@@ -613,17 +638,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     },
                 )
 
-                if self.other_user_id:
-                    await safe_group_send(
-                        self.channel_layer,
-                        user_presence_group_name(self.other_user_id),
-                        {
-                            "type": "typing_status_event",
-                            "conversation_id": conversation_id,
-                            "sender_id": self.user_id,
-                            "is_typing": False,
-                        },
-                    )
+                await self.send_typing_status(conversation_id, False)
 
         if self.user_id:
             became_offline = await self.decrement_presence(self.user_id)
@@ -660,6 +675,9 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             "webrtc_ice_candidate",
         }
 
+        if message_type in call_event_types and self.is_group:
+            # Calls are peer-to-peer between two people; groups have none.
+            return
         if message_type in call_event_types:
             self.email_verified = await self.has_verified_email()
             if not self.email_verified:
@@ -693,17 +711,7 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 },
             )
 
-            if self.other_user_id:
-                await safe_group_send(
-                    self.channel_layer,
-                    user_presence_group_name(self.other_user_id),
-                    {
-                        "type": "typing_status_event",
-                        "conversation_id": conversation_id,
-                        "sender_id": self.user_id,
-                        "is_typing": message_type == "user_typing",
-                    },
-                )
+            await self.send_typing_status(conversation_id, message_type == "user_typing")
             return
 
         if message_type in call_event_types:
@@ -722,6 +730,55 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                 },
             )
             return
+
+    async def send_typing_status(self, conversation_id, is_typing):
+        """Typing dot in the conversation list: every other member's presence socket."""
+        for other_id in self.other_user_ids or []:
+            await safe_group_send(
+                self.channel_layer,
+                user_presence_group_name(other_id),
+                {
+                    "type": "typing_status_event",
+                    "conversation_id": conversation_id,
+                    "sender_id": self.user_id,
+                    "is_typing": is_typing,
+                },
+            )
+
+    async def group_updated_event(self, event):
+        # Sent by group_views on invite/join/leave/remove/rename. A removed member's
+        # sockets close; everyone else refreshes who gets their typing status.
+        if self.user_id in (event.get("removed_user_ids") or []):
+            await self.close(code=4403)
+            return
+        if event.get("trigger") in {"joined", "left", "removed"}:
+            self.other_user_ids = await self.load_other_member_ids(
+                int(self.room_group_name), self.user_id
+            )
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "group_updated",
+                    "conversation_id": event.get("conversation_id"),
+                    "trigger": event.get("trigger"),
+                    "actor_id": event.get("actor_id"),
+                    "user_ids": event.get("user_ids") or [],
+                }
+            )
+        )
+
+    async def group_read_event(self, event):
+        # A member moved their read position (group "Seen by").
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "group_read",
+                    "conversation_id": event.get("conversation_id"),
+                    "user_id": event.get("user_id"),
+                    "last_read_at": event.get("last_read_at"),
+                }
+            )
+        )
 
     async def message_created_event(self, event):
         await self.send(
@@ -950,6 +1007,19 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "conversation_id": event.get("conversation_id"),
                     "trigger": event.get("trigger"),
                     "actor_id": event.get("actor_id"),
+                }
+            )
+        )
+
+    async def group_invite_event(self, event):
+        # Sent by group_views when someone invites this user to a group.
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "group_invite",
+                    "conversation_id": event.get("conversation_id"),
+                    "display_name": event.get("display_name"),
+                    "invited_by": event.get("invited_by"),
                 }
             )
         )

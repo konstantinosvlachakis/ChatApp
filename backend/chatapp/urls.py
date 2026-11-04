@@ -1,5 +1,12 @@
 from django.urls import path
 from .views import *
+from .group_views import (
+    create_group_view,
+    group_invites_view,
+    invite_members_view,
+    remove_member_view,
+    respond_to_invite_view,
+)
 from .auth_views import (
     CustomObtainJWTToken,
     CustomRefreshJWTToken,
@@ -63,6 +70,23 @@ urlpatterns = [
     ),
     # Conversations
     path("conversations/", ConversationListView.as_view(), name="conversation_list"),
+    path("conversations/groups/", create_group_view, name="create_group"),
+    path("conversations/invites/", group_invites_view, name="group_invites"),
+    path(
+        "conversations/<int:conversation_id>/members/",
+        invite_members_view,
+        name="group_invite_members",
+    ),
+    path(
+        "conversations/<int:conversation_id>/members/<str:username>/",
+        remove_member_view,
+        name="group_remove_member",
+    ),
+    path(
+        "conversations/<int:conversation_id>/invite/",
+        respond_to_invite_view,
+        name="group_invite_respond",
+    ),
     path(
         "conversations/<int:conversation_id>/",
         ConversationDetailView.as_view(),

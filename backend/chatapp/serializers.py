@@ -1,5 +1,13 @@
 from rest_framework import serializers
 from .models import Conversation, Message, Profile, MessageTranslation, MessageReaction
+from .conversation_members import (
+    ACTIVE,
+    PENDING,
+    get_membership,
+    group_display_name,
+    group_participant_rows,
+    visible_messages,
+)
 from django.conf import settings
 from django.db.models import Prefetch
 from django.db.utils import OperationalError, ProgrammingError
@@ -348,18 +356,40 @@ class MessageSerializer(serializers.ModelSerializer):
         return bool(getattr(obj, "pinned_at", None))
 
 
+class ConversationParticipantSerializer(serializers.Serializer):
+    """A group member or pending invitee (public profile fields only)."""
+
+    user = ProfileSerializer(read_only=True)
+    role = serializers.CharField()
+    status = serializers.CharField()
+    joined_at = serializers.DateTimeField(allow_null=True)
+    last_read_at = serializers.DateTimeField(allow_null=True)
+
+
 class ConversationSerializer(serializers.ModelSerializer):
+    """Direct chats: ``sender``/``receiver`` (``participants`` is []). Groups:
+    ``receiver`` is null, ``sender`` is the creator, and ``participants`` lists active
+    members plus pending invitees (``status``) with their read position."""
+
     sender = ProfileSerializer(read_only=True)
     receiver = ProfileSerializer(read_only=True)
     messages = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     pinned_messages = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    participants = serializers.SerializerMethodField()
+    my_role = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
         fields = [
             "id",
+            "kind",
+            "name",
+            "display_name",
+            "participants",
+            "my_role",
             "sender",
             "receiver",
             "created_at",
@@ -369,6 +399,32 @@ class ConversationSerializer(serializers.ModelSerializer):
             "pinned_messages",
             "messages",
         ]
+
+    def _viewer_id(self):
+        user = get_request_user(self.context)
+        return getattr(user, "id", None)
+
+    def _visible(self, obj, queryset):
+        # Groups: members only see messages sent after they joined.
+        viewer_id = self._viewer_id()
+        return visible_messages(queryset, viewer_id, obj) if viewer_id else queryset
+
+    def get_display_name(self, obj):
+        if not obj.is_group:
+            return None
+        return group_display_name(obj, self._viewer_id())
+
+    def get_participants(self, obj):
+        if not obj.is_group:
+            return []
+        rows = group_participant_rows(obj, statuses=(ACTIVE, PENDING))
+        return ConversationParticipantSerializer(rows, many=True, context=self.context).data
+
+    def get_my_role(self, obj):
+        if not obj.is_group:
+            return None
+        membership = get_membership(self._viewer_id(), obj)
+        return membership.role if membership else None
 
     def get_messages(self, obj):
         include_messages = bool(self.context.get("include_messages"))
@@ -390,7 +446,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         if obj.pk not in cache:
             cache[obj.pk] = list(
                 with_message_relations(
-                    obj.messages.order_by("-timestamp", "-id"),
+                    self._visible(obj, obj.messages.order_by("-timestamp", "-id")),
                     get_request_user(self.context),
                 )[:CONVERSATION_DETAIL_MESSAGE_LIMIT]
             )
@@ -413,7 +469,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         else:
             # Retrieve the last message in the conversation
             last_message = with_message_relations(
-                obj.messages.order_by("-timestamp", "-id"),
+                self._visible(obj, obj.messages.order_by("-timestamp", "-id")),
                 get_request_user(self.context),
             ).first()
         if last_message:
@@ -432,6 +488,13 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return 0
 
+        if obj.is_group:
+            membership = get_membership(request.user.id, obj)
+            if not membership:
+                return 0
+            read_from = membership.last_read_at or membership.joined_at
+            unread = obj.messages.exclude(sender=request.user)
+            return (unread.filter(timestamp__gt=read_from) if read_from else unread).count()
         return obj.messages.exclude(sender=request.user).exclude(status="read").count()
 
     def get_pinned_messages(self, obj):
@@ -441,7 +504,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             return []
 
         pinned_messages = with_message_relations(
-            obj.messages.filter(pinned_at__isnull=False).order_by("-pinned_at", "-id"),
+            self._visible(obj, obj.messages.filter(pinned_at__isnull=False).order_by("-pinned_at", "-id")),
             get_request_user(self.context),
         )
         return MessageSerializer(
