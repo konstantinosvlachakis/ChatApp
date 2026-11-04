@@ -25,6 +25,11 @@ describe("buildSeenBy", () => {
     expect(buildSeenBy(messages, {}, participants, 1)).toEqual({ messageId: 11, label: "Seen by ana", readers: ["ana"] });
   });
 
+  test("uses a group nickname in read receipts", () => {
+    const named = participants.map((row) => row.user.id === 2 ? { ...row, nickname: "Annie" } : row);
+    expect(buildSeenBy(messages, {}, named, 1).label).toBe("Seen by Annie");
+  });
+
   test("says everyone once every other member has read it", () => {
     const reads = { 3: "2026-11-04T10:02:00Z" };
     expect(buildSeenBy(messages, reads, participants, 1).label).toBe("Seen by everyone");

@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ChatOpeners from "./ChatOpeners";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
@@ -19,7 +19,9 @@ import { COACH_BOT_ID } from "./coachConversation";
 import { getMessageGroupFlags } from "../utils/messageGroups";
 import { CHAT_IMAGE_WIDTH, cloudinaryImage } from "../../../lib/media";
 
-const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const EmojiPickerWrapper = React.lazy(() =>
+  import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
+);
 const LONG_PRESS_MS = 450;
 const MOBILE_BREAKPOINT = 640;
 const MESSAGE_ACTIONS_MENU_HEIGHT = 320;
@@ -157,11 +159,11 @@ const groupedReactions = (reactions = []) => {
   return Object.entries(counts);
 };
 
-const MessageAvatar = ({ sender }) =>
+const MessageAvatar = ({ sender, displayName }) =>
   sender?.id === COACH_BOT_ID ? (
     <CoachAvatar size={32} hideBadge />
   ) : (
-    <ChatAvatar name={sender?.username} imagePath={sender?.profile_image_url} size={32} />
+    <ChatAvatar name={displayName || sender?.username} imagePath={sender?.profile_image_url} size={32} />
   );
 
 // One chat bubble. Consecutive messages from one sender form a group: the avatar and the
@@ -185,7 +187,11 @@ const MessageRow = React.memo(function MessageRow({
   onTouchStart,
   onClearLongPress,
   isGroup = false,
+  groupNicknames = null,
   seenLabel = null,
+  userId,
+  onReact,
+  onOpenReactionPicker,
 }) {
   const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
   const attachmentUrl = normalizeUrl(rawUrl);
@@ -243,13 +249,13 @@ const MessageRow = React.memo(function MessageRow({
         } ${isActiveSearchMatch ? "is-search-active" : ""}`}
       >
         <span className={`cv-msg-avatar ${endsGroup ? "" : "is-hidden"}`} aria-hidden="true">
-          {endsGroup && <MessageAvatar sender={msg.sender} />}
+          {endsGroup && <MessageAvatar sender={msg.sender} displayName={groupNicknames?.[msg.sender?.id]} />}
         </span>
         <div className="cv-msg-column">
           {startsGroup && !isSentByUser && msg.sender?.username && (
             isGroup ? (
               // Groups: who said it, above their first bubble in a run.
-              <span className="cv-msg-sender">{msg.sender.username}</span>
+              <span className="cv-msg-sender">{groupNicknames?.[msg.sender.id] || msg.sender.username}</span>
             ) : (
               <span className="lv-visually-hidden">{msg.sender.username} said:</span>
             )
@@ -274,7 +280,7 @@ const MessageRow = React.memo(function MessageRow({
             >
               {msg.reply_to && (
                 <div className="cv-bubble-reply">
-                  <strong>Replying to {msg.reply_to.sender?.username || "message"}</strong>
+                  <strong>Replying to {groupNicknames?.[msg.reply_to.sender?.id] || msg.reply_to.sender?.username || "message"}</strong>
                   <span>{msg.reply_to.text || "Attachment"}</span>
                 </div>
               )}
@@ -360,10 +366,15 @@ const MessageRow = React.memo(function MessageRow({
           {messageReactions.length > 0 && (
             <div className="cv-reactions" aria-label="Reactions">
               {messageReactions.map(([emoji, count]) => (
-                <span key={`${msg.id}-${emoji}`}>
+                <button type="button" key={`${msg.id}-${emoji}`}
+                  className={msg.reactions?.some((reaction) => reaction.emoji === emoji && reaction.user_id === userId) ? "is-mine" : ""}
+                  onClick={() => onReact(msg.id, emoji)}
+                  aria-pressed={msg.reactions?.some((reaction) => reaction.emoji === emoji && reaction.user_id === userId) || false}
+                  aria-label={`${emoji} ${count}, ${msg.reactions?.some((reaction) => reaction.emoji === emoji && reaction.user_id === userId) ? "remove your reaction" : "add your reaction"}`}>
                   {emoji} {count}
-                </span>
+                </button>
               ))}
+              <button type="button" className="cv-reaction-add" onClick={() => onOpenReactionPicker(msg.id)} aria-label="Add reaction" title="Add reaction"><AddRoundedIcon aria-hidden="true" /></button>
             </div>
           )}
 
@@ -399,9 +410,11 @@ const Conversation = ({
   conversationId = null,
   onPickOpener = null,
   isGroup = false,
+  groupNicknames = null,
   seenBy = null,
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [translationsByMessageId, setTranslationsByMessageId] = useState({});
   const [blockedTranslateByMessageId, setBlockedTranslateByMessageId] =
@@ -603,7 +616,7 @@ const Conversation = ({
     }
   }, [baseTranslateLanguage, closeMessageActionsMenu]);
 
-  const handleReact = async (messageId, emoji) => {
+  const handleReact = useCallback(async (messageId, emoji) => {
     try {
       const payload = await api.post(`/api/messages/${messageId}/react/`, { emoji });
       onMessageReactionChange?.(payload);
@@ -612,8 +625,9 @@ const Conversation = ({
       toastApiError(error, "Couldn't add the reaction");
     } finally {
       closeMessageActionsMenu();
+      setReactionPickerMessageId(null);
     }
-  };
+  }, [closeMessageActionsMenu, onMessageReactionChange]);
 
   const normalizeLanguageName = (language) => {
     if (!language) return "";
@@ -753,10 +767,14 @@ const Conversation = ({
               highlightQuery={matchedSearchMessageIdSet.has(msg.id) ? searchQuery : ""}
               isActiveSearchMatch={activeSearchMessageId === msg.id}
               onOpenActionsMenu={openMessageActionsMenu}
+              userId={userId}
+              onReact={handleReact}
+              onOpenReactionPicker={setReactionPickerMessageId}
               onTranslate={handleTranslate}
               onTouchStart={handleTouchStart}
               onClearLongPress={clearLongPressTimer}
               isGroup={isGroup}
+              groupNicknames={groupNicknames}
               seenLabel={seenBy && seenBy.messageId === msg.id ? seenBy.label : null}
             />
           );
@@ -797,28 +815,9 @@ const Conversation = ({
 
               return (
                 <>
-                  <div className="cv-actions-reactions">
-                    {REACTION_OPTIONS.map((emoji) => (
-                      <button
-                        key={`${msg.id}-menu-${emoji}`}
-                        type="button"
-                        onClick={() => handleReact(msg.id, emoji)}
-                        aria-label={`React with ${emoji}`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                  {msg.current_user_reaction && (
-                    <button
-                      type="button"
-                      onClick={() => handleReact(msg.id, "")}
-                      className="cv-actions-item is-danger"
-                    >
-                      <RemoveCircleOutlineRoundedIcon />
-                      <span>Remove reaction</span>
-                    </button>
-                  )}
+                  <button type="button" className="cv-actions-item" onClick={() => { setReactionPickerMessageId(msg.id); closeMessageActionsMenu(); }}>
+                    <AddRoundedIcon /><span>Add reaction</span>
+                  </button>
                   <div className="cv-actions-sep" />
                   {onCommentMessage && (
                     <button
@@ -896,6 +895,18 @@ const Conversation = ({
             })()}
           </div>
         </>
+      )}
+
+      {reactionPickerMessageId != null && (
+        <div className="cv-reaction-picker-backdrop" onClick={() => setReactionPickerMessageId(null)}>
+          <div className="cv-reaction-picker-dialog" role="dialog" aria-label="Choose a reaction"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { if (event.key === "Escape") setReactionPickerMessageId(null); }}>
+            <Suspense fallback={<p className="cv-messages-status">Loading emoji…</p>}>
+              <EmojiPickerWrapper onEmojiSelect={(emoji) => handleReact(reactionPickerMessageId, emoji)} />
+            </Suspense>
+          </div>
+        </div>
       )}
 
       {copyFeedback && (

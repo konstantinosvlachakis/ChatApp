@@ -5,6 +5,8 @@ description: Current state of the LangVoyage Expo/React Native app (mobile/) —
 
 # Mobile status (Expo / React Native)
 
+2026-11-04 group nicknames (working tree based on `1ec0ffe`): `GroupDetailsSheet` sets/clears nicknames through `services/api/groups.ts`; `ConversationsScreen` shows them in group message sender labels, replies and typing; `components/chat/groupReads.ts` uses them for read receipts. Existing `group_updated` handling refetches participants. Nicknames remain specific to each group.
+
 Last verified for follow: 2026-11-03 on `feat/follow` (pending, uncommitted). PublicProfile follow control; People Following quick filter; own Profile following list; `user_followed` banner and Expo follow push tap navigation. REST calls route through `services/api/auth.ts` and its shared client. See system-map for contract.
 
 Last verified: 2026-10-27 at commit `b57487f`; updated in PRs `fix/reliability`, `feat/api-resilience`, `perf/media` (#30), `perf/mobile-chat` (#33), `feat/mobile-matching` (#36), `feat/password-reset` (#37), `feat/mobile-media` (#38, pending) and `feat/mobile-push` (#39, pending). Refresh: `git log --oneline b57487f..HEAD -- mobile` — re-read only changed files, then update this file.

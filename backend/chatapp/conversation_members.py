@@ -177,7 +177,7 @@ def group_display_name(conversation, viewer_id=None):
     if conversation.name:
         return conversation.name
     names = [
-        row.user.username
+        row.nickname or row.user.username
         for row in group_participant_rows(conversation)
         if row.user_id != viewer_id
     ]

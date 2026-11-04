@@ -5,6 +5,7 @@ from .group_views import (
     group_invites_view,
     invite_members_view,
     remove_member_view,
+    set_member_nickname_view,
     respond_to_invite_view,
 )
 from .auth_views import (
@@ -76,6 +77,11 @@ urlpatterns = [
         "conversations/<int:conversation_id>/members/",
         invite_members_view,
         name="group_invite_members",
+    ),
+    path(
+        "conversations/<int:conversation_id>/members/<str:username>/nickname/",
+        set_member_nickname_view,
+        name="group_member_nickname",
     ),
     path(
         "conversations/<int:conversation_id>/members/<str:username>/",

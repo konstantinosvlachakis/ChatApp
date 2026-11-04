@@ -354,12 +354,18 @@
 .cv-msg:hover .cv-msg-hover-time, .cv-msg:focus-within .cv-msg-hover-time { opacity: 1; }
 
 .cv-reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.cv-reactions span { padding: 2px 8px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-family: var(--lv-font-text-emoji); font-size: 13px; }
+.cv-reactions button { padding: 2px 8px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-family: var(--lv-font-text-emoji); font-size: 13px; }
+.cv-reactions button.is-mine { border-color: var(--lv-teal); background: var(--lv-sage); }
+.cv-reactions button:hover { background: var(--lv-cream); }
+.cv-reactions .cv-reaction-add { display: inline-flex; align-items: center; justify-content: center; min-width: 29px; }
+.cv-reaction-add svg { width: 16px; height: 16px; }
+.cv-reaction-picker-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 12px; background: #152f3d66; }
+.cv-reaction-picker-dialog { width: min(352px, 100%); height: min(400px, 70dvh); overflow: hidden; border-radius: 22px; background: var(--lv-paper); box-shadow: var(--lv-shadow-soft); }
 .cv-msg-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 0 4px; color: var(--lv-muted-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
 .cv-msg-meta .cv-ticks { font-size: 13px; }
 
 /* Message actions menu */
-.cv-actions-menu { position: fixed; z-index: 9999; width: 260px; padding: 6px; border: 1px solid var(--lv-line); border-radius: 20px; background: var(--lv-paper); color: var(--lv-ink); box-shadow: 0 18px 44px #152f3d33; }
+.cv-actions-menu { position: fixed; z-index: 9999; width: 260px; max-height: calc(100dvh - 24px); overflow-y: auto; padding: 6px; border: 1px solid var(--lv-line); border-radius: 20px; background: var(--lv-paper); color: var(--lv-ink); box-shadow: 0 18px 44px #152f3d33; }
 .cv-actions-reactions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 2px; }
 .cv-actions-reactions button { min-height: 44px; border-radius: 14px; font-family: var(--lv-font-text-emoji); font-size: 20px; }
 .cv-actions-reactions button:hover { background: var(--lv-cream); }
@@ -393,9 +399,9 @@
 }
 .cv-composer:focus-within { border-color: var(--lv-focus); box-shadow: 0 0 0 3px #177f7940; }
 /* The pill shows focus (above); the shell's square input ring would sit inside it. */
-.lv-shell .cv-composer input:focus-visible { outline: none; }
-.cv-composer input { flex: 1; min-width: 0; padding: 10px 8px; background: transparent; color: var(--lv-ink); font-family: var(--lv-font-text-emoji); font-size: 15px; outline: none; }
-.cv-composer input::placeholder { color: var(--lv-muted-ink); }
+.lv-shell .cv-composer textarea:focus-visible { outline: none; }
+.cv-composer textarea { flex: 1; min-width: 0; min-height: 44px; max-height: 144px; padding: 10px 8px; resize: none; overflow-y: auto; background: transparent; color: var(--lv-ink); font-family: var(--lv-font-text-emoji); font-size: 15px; line-height: 24px; outline: none; }
+.cv-composer textarea::placeholder { color: var(--lv-muted-ink); }
 .cv-composer .cv-icon-button { background: transparent; color: var(--lv-ink-soft); }
 .cv-composer .cv-icon-button:hover:not(:disabled) { background: var(--lv-cream-deep); }
 .cv-composer .cv-icon-button.is-on { background: var(--lv-peach); color: var(--lv-peach-ink); }
@@ -691,6 +697,10 @@
 .cv-group-person:disabled { opacity: .45; cursor: not-allowed; }
 .cv-group-person.is-selected { background: var(--lv-peach-soft); }
 .cv-group-person-name { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.cv-group-username { display: block; color: var(--lv-muted-ink); font-size: 12px; font-weight: 500; }
+.cv-group-nickname-form { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; }
+.cv-group-nickname-form input { flex: 1; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--lv-line); border-radius: 12px; background: var(--lv-paper); }
+.cv-group-nickname-form button { font-size: 13px; font-weight: 700; color: var(--lv-teal); }
 .cv-group-check { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 2px solid var(--lv-line); border-radius: 50%; color: #fff; }
 .cv-group-person.is-selected .cv-group-check { border-color: var(--lv-peach-ink); background: var(--lv-peach-ink); }
 .cv-group-check svg { font-size: 16px; }

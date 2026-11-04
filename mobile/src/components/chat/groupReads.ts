@@ -5,6 +5,7 @@
 type ReadParticipant = {
   user: { id: number; username: string };
   status: "active" | "pending";
+  nickname?: string;
   last_read_at?: string | null;
 };
 type SeenMessage = { id: number; timestamp: string; sender?: { id?: number | null } | null; local_status?: string };
@@ -52,7 +53,7 @@ export function buildSeenBy(
       const readAt = toTime(reads[participant.user.id] ?? participant.last_read_at);
       return readAt !== null && sentAt !== null && readAt >= sentAt;
     })
-    .map((participant) => participant.user.username);
+    .map((participant) => participant.nickname || participant.user.username);
 
   let label = "Sent";
   if (others.length && readers.length === others.length) {

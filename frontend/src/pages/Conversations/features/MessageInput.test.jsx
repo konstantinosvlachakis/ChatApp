@@ -29,6 +29,19 @@ const typeAndEnter = (text) => {
 beforeEach(() => window.localStorage.clear());
 
 describe("MessageInput sending", () => {
+  test("Shift+Enter keeps the draft open and Enter sends its line breaks", async () => {
+    const onSendMessage = jest.fn(() => Promise.resolve(true));
+    renderInput(onSendMessage);
+    const input = screen.getByRole("textbox", { name: "Message" });
+    expect(input.tagName).toBe("TEXTAREA");
+    fireEvent.change(input, { target: { value: "First line" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(onSendMessage).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "First line\nSecond line" } });
+    await act(async () => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(onSendMessage).toHaveBeenCalledWith("First line\nSecond line", null, null);
+  });
+
   test("Enter twice during a slow send posts once; the composer clears at once", async () => {
     const send = deferred();
     const onSendMessage = jest.fn(() => send.promise);

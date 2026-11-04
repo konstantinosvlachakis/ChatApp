@@ -5,7 +5,7 @@ import { ChatAvatar } from "../../components/chat/ChatAvatar";
 import { GroupAvatar } from "../../components/chat/GroupAvatar";
 import { conversationTitle, groupMembers } from "../../components/chat/conversationList";
 import { getErrorMessage } from "../../services/api/errors";
-import { GROUP_NAME_MAX_LENGTH, MAX_GROUP_MEMBERS, removeGroupMember, renameGroup } from "../../services/api/groups";
+import { GROUP_NAME_MAX_LENGTH, GROUP_NICKNAME_MAX_LENGTH, MAX_GROUP_MEMBERS, removeGroupMember, renameGroup, setGroupMemberNickname } from "../../services/api/groups";
 import { showToast } from "../../services/toast";
 import { fontFamilies } from "../../theme/typography";
 import type { WarmColors } from "../../theme/warm";
@@ -46,6 +46,8 @@ export function GroupDetailsSheet({
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(group.name || "");
   const [busy, setBusy] = useState<string | null>(null);
+  const [editingNicknameId, setEditingNicknameId] = useState<number | null>(null);
+  const [nicknameDraft, setNicknameDraft] = useState("");
   const isOwner = group.my_role === "owner";
   const participants = group.participants || [];
   const members = groupMembers(group);
@@ -57,6 +59,7 @@ export function GroupDetailsSheet({
   useEffect(() => {
     if (!visible) return;
     setRenaming(false);
+    setEditingNicknameId(null);
     setName(group.name || "");
   }, [group.name, visible]);
 
@@ -87,6 +90,19 @@ export function GroupDetailsSheet({
       showToast(getErrorMessage(error, isMe ? "Couldn't leave the group." : "Couldn't remove them."), {
         variant: "error",
       });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveNickname = async (username: string) => {
+    setBusy(`nickname:${username}`);
+    try {
+      await setGroupMemberNickname(group.id, username, nicknameDraft.trim());
+      setEditingNicknameId(null);
+      onChanged();
+    } catch (error) {
+      showToast(getErrorMessage(error, "Couldn't save the nickname."), { variant: "error" });
     } finally {
       setBusy(null);
     }
@@ -188,10 +204,17 @@ export function GroupDetailsSheet({
               >
                 <ChatAvatar name={member.username} imagePath={member.profile_image_url ?? null} size={40} />
                 <Text style={styles.memberName} numberOfLines={1}>
-                  {member.username}
+                  {participant.nickname || member.username}
                   {isMe ? <Text style={styles.you}> (you)</Text> : null}
                 </Text>
               </Pressable>
+              {!pending ? (
+                <Pressable style={styles.iconButton}
+                  onPress={() => { setEditingNicknameId(member.id); setNicknameDraft(participant.nickname || ""); }}
+                  accessibilityRole="button" accessibilityLabel={`Edit nickname for ${member.username}`}>
+                  <Ionicons name="pencil" size={16} color={warm.inkSoft} />
+                </Pressable>
+              ) : null}
               {participant.role === "owner" ? (
                 <View style={[styles.tag, styles.tagOwner]}>
                   <Text style={[styles.tagText, styles.tagOwnerText]}>OWNER</Text>
@@ -218,6 +241,18 @@ export function GroupDetailsSheet({
                   )}
                 </Pressable>
               ) : null}
+              {editingNicknameId === member.id ? (
+                <View style={styles.nicknameEditor}>
+                  <TextInput style={styles.input} value={nicknameDraft} onChangeText={setNicknameDraft}
+                    maxLength={GROUP_NICKNAME_MAX_LENGTH} placeholder={`Nickname for @${member.username}`} autoFocus
+                    placeholderTextColor={warm.mutedInk} accessibilityLabel={`Nickname for ${member.username}`}
+                    returnKeyType="done" onSubmitEditing={() => saveNickname(member.username)} />
+                  <Pressable style={styles.smallPrimary} onPress={() => saveNickname(member.username)}
+                    disabled={busy === `nickname:${member.username}`} accessibilityRole="button">
+                    <Text style={styles.smallPrimaryText}>Save</Text>
+                  </Pressable>
+                </View>
+              ) : participant.nickname ? <Text style={styles.memberUsername}>@{member.username}</Text> : null}
             </View>
           );
         })}
@@ -277,9 +312,11 @@ const createStyles = (warm: WarmColors) =>
     },
     smallPrimaryText: { color: warm.onNavy, fontSize: 14, fontFamily: fontFamilies.bodyBold },
     list: { marginTop: 14, maxHeight: 320 },
-    member: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 56 },
+    member: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, minHeight: 56 },
     memberLink: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, borderRadius: 14 },
     memberName: { flex: 1, color: warm.ink, fontSize: 15, fontFamily: fontFamilies.bodyBold },
+    memberUsername: { width: "100%", marginLeft: 52, marginTop: -8, color: warm.mutedInk, fontSize: 12 },
+    nicknameEditor: { width: "100%", flexDirection: "row", alignItems: "center", gap: 6, paddingBottom: 8 },
     you: { color: warm.mutedInk, fontFamily: fontFamilies.bodyMedium },
     tag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: warm.creamDeep },
     tagText: { color: warm.inkSoft, fontSize: 10, letterSpacing: 0.6, fontFamily: fontFamilies.bodyExtraBold },

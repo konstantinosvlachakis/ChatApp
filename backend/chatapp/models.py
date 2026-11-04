@@ -260,6 +260,7 @@ class ConversationParticipant(models.Model):
     )
     role = models.CharField(max_length=10, choices=ROLES, default=ROLE_MEMBER)
     status = models.CharField(max_length=10, choices=STATUSES, default=STATUS_ACTIVE)
+    nickname = models.CharField(max_length=40, blank=True, default="")
     invited_by = models.ForeignKey(
         Profile,
         related_name="sent_conversation_invites",
@@ -400,7 +401,7 @@ class MessageReaction(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["message", "user"], name="uniq_message_user_reaction"
+                fields=["message", "user", "emoji"], name="uniq_message_user_emoji_reaction"
             )
         ]
 

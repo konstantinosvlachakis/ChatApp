@@ -26,6 +26,7 @@ export interface ParticipantProfile {
     user: ParticipantProfile;
     role: "owner" | "member";
     status: "active" | "pending";
+    nickname: string;
     joined_at: string | null;
     last_read_at: string | null;
   }

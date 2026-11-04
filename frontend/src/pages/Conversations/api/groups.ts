@@ -25,6 +25,12 @@ export const removeGroupMember = (conversationId: number, username: string) =>
 export const renameGroup = (conversationId: number, name: string) =>
   api.patch<{ name: string; display_name: string }>(`/api/conversations/${conversationId}/`, { name });
 
+export const setGroupMemberNickname = (conversationId: number, username: string, nickname: string) =>
+  api.patch<{ username: string; nickname: string }>(
+    `/api/conversations/${conversationId}/members/${encodeURIComponent(username)}/nickname/`,
+    { nickname }
+  );
+
 export const getGroupInvites = async (): Promise<GroupInvite[]> => {
   const payload = await api.get<{ invites: GroupInvite[] }>("/api/conversations/invites/");
   return Array.isArray(payload?.invites) ? payload.invites : [];

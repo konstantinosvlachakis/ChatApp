@@ -7,7 +7,7 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import { useUser } from "../../../context/UserContext";
 import { getErrorMessage } from "../../../lib/api";
 import { toast } from "../../../components/Toast";
-import { GROUP_NAME_MAX_LENGTH, MAX_GROUP_MEMBERS, removeGroupMember, renameGroup } from "../api/groups";
+import { GROUP_NAME_MAX_LENGTH, MAX_GROUP_MEMBERS, removeGroupMember, renameGroup, setGroupMemberNickname } from "../api/groups";
 import { conversationTitle, groupMembers } from "../utils/conversationSearch";
 import ChatAvatar from "./ChatAvatar";
 import GroupAvatar from "./GroupAvatar";
@@ -25,6 +25,8 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
   const [busy, setBusy] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [editingNickname, setEditingNickname] = useState(null);
+  const [nicknameDraft, setNicknameDraft] = useState("");
   const closeRef = useRef(null);
   const isOwner = conversation.my_role === "owner";
   const participants = conversation.participants || [];
@@ -61,6 +63,21 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
       onChanged?.();
     } catch (err) {
       toast.error(getErrorMessage(err, isMe ? "Couldn't leave the group." : "Couldn't remove them."));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const saveNickname = async (event) => {
+    event.preventDefault();
+    if (!editingNickname) return;
+    setBusy(`nickname:${editingNickname}`);
+    try {
+      await setGroupMemberNickname(conversation.id, editingNickname, nicknameDraft.trim());
+      setEditingNickname(null);
+      onChanged?.();
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Couldn't save the nickname."));
     } finally {
       setBusy("");
     }
@@ -154,13 +171,27 @@ export default function GroupMembersPanel({ conversation, onClose, onChanged, on
             const isPending = participant.status === "pending";
             return (
               <li key={member.id || member.username} className="cv-group-member">
-                <Link to={`/people/${encodeURIComponent(member.username || "")}`} className="cv-group-member-link">
+                {editingNickname === member.username ? (
+                  <form className="cv-group-nickname-form" onSubmit={saveNickname}>
+                    <input value={nicknameDraft} maxLength={40} onChange={(event) => setNicknameDraft(event.target.value)}
+                      aria-label={`Nickname for ${member.username}`} placeholder={member.username} autoFocus />
+                    <button type="submit" disabled={busy === `nickname:${member.username}`}>Save</button>
+                    <button type="button" onClick={() => setEditingNickname(null)}>Cancel</button>
+                  </form>
+                ) : <Link to={`/people/${encodeURIComponent(member.username || "")}`} className="cv-group-member-link">
                   <ChatAvatar name={member.username} imagePath={member.profile_image_url} size={40} />
                   <span className="cv-group-person-name">
-                    {member.username}
+                    {participant.nickname || member.username}
                     {isMe && <span className="cv-group-you"> (you)</span>}
+                    {participant.nickname && <small className="cv-group-username">@{member.username}</small>}
                   </span>
-                </Link>
+                </Link>}
+                {!isPending && editingNickname !== member.username && (
+                  <button type="button" className="cv-icon-button is-plain" aria-label={`Edit nickname for ${member.username}`}
+                    onClick={() => { setEditingNickname(member.username); setNicknameDraft(participant.nickname || ""); }}>
+                    <EditRoundedIcon />
+                  </button>
+                )}
                 {participant.role === "owner" && <span className="cv-group-tag is-owner">Owner</span>}
                 {isPending && <span className="cv-group-tag">Invited</span>}
                 {isOwner && !isMe && (

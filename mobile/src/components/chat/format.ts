@@ -2,7 +2,7 @@
 
 import { messagePreviewText } from "./attachments";
 
-export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "🎉", "😍", "🤔", "😎", "👏"];
 
 export function statusTicks(status?: string) {
   if (status === "read") return "✓✓";

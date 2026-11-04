@@ -822,8 +822,7 @@ export function ConversationsScreen() {
     async (message: ChatMessage, emoji: string) => {
       hapticSelection();
       try {
-        const nextEmoji = message.current_user_reaction === emoji ? "" : emoji;
-        const updated = await reactToMessage(message.id, nextEmoji);
+        const updated = await reactToMessage(message.id, emoji);
         applyMessageUpdate(updated);
       } catch (error) {
         toastApiError(error, "Could not update reaction.", "Reaction failed");
@@ -1273,9 +1272,10 @@ export function ConversationsScreen() {
           showUnreadDivider={unreadAnchorMessageId === item.id}
           startsGroup={flags?.startsGroup ?? true}
           endsGroup={flags?.endsGroup ?? true}
-          avatarName={isGroup ? item.sender?.username ?? null : otherAvatarName}
+          avatarName={isGroup ? selectedConversation?.participants?.find((row) => row.user.id === item.sender?.id)?.nickname || item.sender?.username || null : otherAvatarName}
           avatarPath={isGroup ? item.sender?.profile_image_url ?? null : otherAvatarPath}
-          senderLabel={isGroup ? item.sender?.username ?? null : null}
+          senderLabel={isGroup ? selectedConversation?.participants?.find((row) => row.user.id === item.sender?.id)?.nickname || item.sender?.username || null : null}
+          replyAuthorOverride={isGroup ? selectedConversation?.participants?.find((row) => row.user.id === item.reply_to?.sender?.id)?.nickname || null : null}
           seenLabel={seenBy && seenBy.messageId === item.id ? seenBy.label : null}
           isGroup={isGroup}
           isReplyActive={replyTarget?.id === item.id}
@@ -1292,6 +1292,7 @@ export function ConversationsScreen() {
           warm={warm}
           onSwipeReply={handleSwipe}
           onReactionSelect={handleReactionSelect}
+          onOpenReactionPicker={setReactionPickerMessageId}
           onOpenMenu={openMessageMenu}
           onTap={handleMessageTap}
           onToggleTranslation={handleToggleTranslation}
@@ -1311,6 +1312,7 @@ export function ConversationsScreen() {
       highlightNonce,
       highlightedMessageId,
       isGroup,
+      selectedConversation?.participants,
       seenBy,
       normalizedSearchQuery,
       openImageViewer,
@@ -1640,7 +1642,7 @@ export function ConversationsScreen() {
     // Groups have no single "other user"; the header shows the group instead.
     const otherUser = otherParticipant ?? { id: -1, username: groupTitle };
     const groupTypingName = isGroup
-      ? groupOthers.find((member) => member.id === groupTypingUserId)?.username ?? null
+      ? selectedConversation.participants?.find((row) => row.user.id === groupTypingUserId)?.nickname || groupOthers.find((member) => member.id === groupTypingUserId)?.username || null
       : null;
     const groupHeader = isGroup
       ? {

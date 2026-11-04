@@ -367,6 +367,43 @@ class LeaveRemoveRenameTests(GroupTestBase):
         self.assertEqual(too_long.json()["code"], "invalid_name")
         self.assertEqual(cleared.json()["display_name"], "ana, ben & you")
 
+    def test_active_member_can_set_and_clear_group_nickname(self):
+        url = f"/api/conversations/{self.group_id}/members/ben/nickname/"
+        saved = self.as_user(self.ana).patch(url, {"nickname": "  Benny  "}, format="json")
+        self.assertEqual(saved.status_code, status.HTTP_200_OK)
+        self.assertEqual(saved.json()["nickname"], "Benny")
+
+        detail = self.as_user(self.owner).get(f"/api/conversations/{self.group_id}/").json()
+        ben = next(row for row in detail["participants"] if row["user"]["id"] == self.ben.id)
+        self.assertEqual(ben["nickname"], "Benny")
+
+        unnamed_group = self.create_group(name="").json()["id"]
+        self.accept(self.ben, unnamed_group)
+        self.as_user(self.owner).patch(
+            f"/api/conversations/{unnamed_group}/members/ben/nickname/",
+            {"nickname": "Benny"}, format="json"
+        )
+        unnamed_detail = self.as_user(self.owner).get(f"/api/conversations/{unnamed_group}/").json()
+        self.assertEqual(unnamed_detail["display_name"], "Benny & you")
+
+        cleared = self.as_user(self.ben).patch(url, {"nickname": ""}, format="json")
+        self.assertEqual(cleared.json()["nickname"], "")
+        self.assertEqual(self.participant(self.group_id, self.ben).nickname, "")
+
+    def test_nickname_requires_active_membership_and_valid_target(self):
+        url = f"/api/conversations/{self.group_id}/members/ana/nickname/"
+        outsider = self.as_user(self.stranger).patch(url, {"nickname": "A"}, format="json")
+        too_long = self.as_user(self.owner).patch(url, {"nickname": "x" * 41}, format="json")
+        newline = self.as_user(self.owner).patch(url, {"nickname": "A\nB"}, format="json")
+        missing = self.as_user(self.owner).patch(
+            f"/api/conversations/{self.group_id}/members/stranger/nickname/",
+            {"nickname": "A"}, format="json"
+        )
+        self.assertEqual(outsider.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(too_long.json()["code"], "invalid_nickname")
+        self.assertEqual(newline.json()["code"], "invalid_nickname")
+        self.assertEqual(missing.status_code, status.HTTP_404_NOT_FOUND)
+
 
 class GroupListQueryCountTests(GroupTestBase):
     def test_list_with_groups_has_a_fixed_query_count(self):

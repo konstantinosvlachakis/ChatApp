@@ -141,7 +141,29 @@ from .practice_library.voice import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_REACTION_EMOJIS = {"👍", "❤️", "😂", "😮", "😢", "🙏"}
+def is_reaction_emoji(value):
+    """Accept one Unicode emoji sequence, including flags, skin tones and ZWJ forms."""
+    if not value or len(value) > 16:
+        return False
+    if value[-1] == "\u20e3":
+        return value[0] in "#*0123456789" and value[1:-1] in ("", "\ufe0f")
+    bases = 0
+    joined = 0
+    regional = 0
+    for character in value:
+        codepoint = ord(character)
+        if codepoint == 0x200D:
+            joined += 1
+        elif 0x1F3FB <= codepoint <= 0x1F3FF or codepoint in (0x20E3, 0xFE0E, 0xFE0F):
+            continue
+        elif 0x1F1E6 <= codepoint <= 0x1F1FF:
+            regional += 1
+        elif (0x1F000 <= codepoint <= 0x1FAFF or 0x2100 <= codepoint <= 0x27BF
+              or 0x2900 <= codepoint <= 0x2BFF or codepoint in (0x00A9, 0x00AE, 0x3030, 0x303D, 0x3297, 0x3299)):
+            bases += 1
+        else:
+            return False
+    return (regional == 2 and bases == joined == 0) or (regional == 0 and bases > 0 and bases == joined + 1)
 PROFILE_LIST_CACHE_VERSION_KEY = "profile_data:version"
 PROFILE_LIST_CACHE_TIMEOUT_SECONDS = 30
 PROFILE_LIST_DEFAULT_PAGE_SIZE = 24
@@ -3203,16 +3225,16 @@ def react_to_message_view(request, message_id):
     if not emoji:
         MessageReaction.objects.filter(message=message, user=request.user).delete()
     else:
-        if emoji not in ALLOWED_REACTION_EMOJIS:
+        if not is_reaction_emoji(emoji):
             return Response(
                 {"error": "Unsupported reaction."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        MessageReaction.objects.update_or_create(
-            message=message,
-            user=request.user,
-            defaults={"emoji": emoji},
+        reaction, created = MessageReaction.objects.get_or_create(
+            message=message, user=request.user, emoji=emoji
         )
+        if not created:
+            reaction.delete()
 
     message = reload_message_for_serializer(message, request.user)
     serializer = MessageSerializer(message, context={"request": request})

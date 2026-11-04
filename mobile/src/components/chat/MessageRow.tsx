@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
   Text,
+  TextInput,
   View,
   type AccessibilityActionEvent,
   type StyleProp,
@@ -66,6 +67,7 @@ export type MessageRowProps = {
   avatarPath: string | null;
   /** Groups: the sender's name above the first bubble of their run (null in direct chats). */
   senderLabel?: string | null;
+  replyAuthorOverride?: string | null;
   /** Groups: "Seen by …" / "Sent" under your latest message, instead of ticks. */
   seenLabel?: string | null;
   /** Group chat: no per-message ticks (Message.status can't say who read it). */
@@ -91,6 +93,7 @@ export type MessageRowProps = {
   // Handlers must be stable (the row is memoized).
   onSwipeReply: (message: ChatMessage) => void;
   onReactionSelect: (message: ChatMessage, emoji: string) => void;
+  onOpenReactionPicker: (messageId: number) => void;
   onOpenMenu: (message: ChatMessage, isMine: boolean) => void;
   onTap: (message: ChatMessage) => void;
   /** Double-tap / "Show original" / a11y action: toggles the inline translation. */
@@ -232,6 +235,7 @@ function MessageRowComponent({
   avatarName,
   avatarPath,
   senderLabel = null,
+  replyAuthorOverride = null,
   seenLabel = null,
   isGroup = false,
   isReplyActive,
@@ -248,6 +252,7 @@ function MessageRowComponent({
   warm,
   onSwipeReply,
   onReactionSelect,
+  onOpenReactionPicker,
   onOpenMenu,
   onTap,
   onToggleTranslation,
@@ -282,9 +287,13 @@ function MessageRowComponent({
     }, {});
     return Object.entries(groupedReactions);
   }, [item.reactions]);
+  const [customReaction, setCustomReaction] = useState("");
+  const hasMyReaction = (emoji: string) => item.reactions?.some(
+    (reaction) => reaction.emoji === emoji && reaction.user_id === currentUserId
+  ) ?? false;
 
   const replyAuthor =
-    item.reply_to?.sender?.id === currentUserId ? "You" : item.reply_to?.sender?.username || "User";
+    item.reply_to?.sender?.id === currentUserId ? "You" : replyAuthorOverride || item.reply_to?.sender?.username || "User";
 
   const handleSwipeOpen = useCallback(
     (direction: "left" | "right") => {
@@ -556,21 +565,35 @@ function MessageRowComponent({
                   entering={ZoomIn.duration(160)}
                   style={[styles.reactionPicker, isMine ? styles.reactionPickerRight : styles.reactionPickerLeft]}
                 >
-                  {ALLOWED_REACTIONS.map((emoji) => (
+                  {ALLOWED_REACTIONS.slice(0, 10).map((emoji) => (
                     <Pressable
                       key={`${item.id}-${emoji}`}
                       style={[
                         styles.reactionPickerItem,
-                        item.current_user_reaction === emoji && styles.reactionPickerItemActive,
+                        hasMyReaction(emoji) && styles.reactionPickerItemActive,
                       ]}
                       onPress={() => onReactionSelect(item, emoji)}
                       accessibilityRole="button"
                       accessibilityLabel={`React with ${emoji}`}
-                      accessibilityState={{ selected: item.current_user_reaction === emoji }}
+                      accessibilityState={{ selected: hasMyReaction(emoji) }}
                     >
                       <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
                     </Pressable>
                   ))}
+                  <TextInput
+                    style={styles.reactionPickerInput}
+                    value={customReaction}
+                    onChangeText={(value) => setCustomReaction(value)}
+                    onSubmitEditing={() => {
+                      const emoji = customReaction.trim();
+                      if (emoji) onReactionSelect(item, emoji);
+                      setCustomReaction("");
+                    }}
+                    placeholder="+ emoji"
+                    maxLength={16}
+                    returnKeyType="done"
+                    accessibilityLabel="Type any emoji reaction"
+                  />
                 </Animated.View>
               ) : null}
               <View
@@ -629,23 +652,25 @@ function MessageRowComponent({
             </View>
           </Swipeable>
 
-          {reactionEntries.length > 0 ? (
-            <View style={styles.reactionsRow}>
+          {reactionEntries.length > 0 ? <View style={styles.reactionsRow}>
               {reactionEntries.map(([emoji, count]) => (
                 <Animated.View
                   key={`${item.id}-${emoji}`}
                   entering={ZoomIn.springify().damping(14)}
-                  style={[styles.reactionChip, item.current_user_reaction === emoji && styles.reactionChipMine]}
-                  accessible
-                  accessibilityLabel={`${emoji} ${count}${item.current_user_reaction === emoji ? ", including you" : ""}`}
+                  style={[styles.reactionChip, hasMyReaction(emoji) && styles.reactionChipMine]}
                 >
-                  <Text style={styles.reactionChipText}>
-                    {emoji} {count}
-                  </Text>
+                  <Pressable onPress={() => onReactionSelect(item, emoji)} accessibilityRole="button"
+                    accessibilityState={{ selected: hasMyReaction(emoji) }}
+                    accessibilityLabel={`${emoji} ${count}, ${hasMyReaction(emoji) ? "remove your reaction" : "add your reaction"}`}>
+                    <Text style={styles.reactionChipText}>{emoji} {count}</Text>
+                  </Pressable>
                 </Animated.View>
               ))}
-            </View>
-          ) : null}
+              <Pressable style={styles.reactionChip} onPress={() => onOpenReactionPicker(item.id)}
+                accessibilityRole="button" accessibilityLabel="Add reaction">
+                <Text style={styles.reactionChipText}>+</Text>
+              </Pressable>
+            </View> : null}
 
           {endsGroup || seenLabel ? (
             <View

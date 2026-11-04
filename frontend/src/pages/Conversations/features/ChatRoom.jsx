@@ -1791,9 +1791,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     return <p className="cv-chat-status is-error" role="alert">Failed to load user.</p>;
   }
 
+  const typingParticipant = isGroup
+    ? (conversation.participants || []).find((row) => row.user?.id === typingUserId)
+    : null;
   const typingName = isGroup
-    ? (conversation.participants || []).find((participant) => participant.user?.id === typingUserId)?.user
-        ?.username
+    ? typingParticipant?.nickname || typingParticipant?.user?.username
     : otherUser?.username;
 
   return (
@@ -1946,6 +1948,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
               conversationId={conversation.id}
               onPickOpener={isGroup ? null : handlePickOpener}
               isGroup={isGroup}
+              groupNicknames={isGroup ? Object.fromEntries((conversation.participants || []).map((row) => [row.user?.id, row.nickname])) : null}
               seenBy={seenBy}
             />
           </>

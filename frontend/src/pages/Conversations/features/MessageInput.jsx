@@ -458,8 +458,15 @@ const MessageInput = ({
     setMessage(value);
   };
 
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(Math.max(input.scrollHeight, 44), 144)}px`;
+  }, [message]);
+
   const handleKeyDown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSend();
     }
@@ -543,8 +550,7 @@ const MessageInput = ({
         />
 
         <div className="cv-composer">
-          <input
-            type="text"
+          <textarea
             ref={inputRef}
             value={message}
             onChange={handleInputChange}
@@ -552,6 +558,7 @@ const MessageInput = ({
             onPaste={handlePaste}
             placeholder={editingMessage ? "Edit your message…" : "Write a message…"}
             aria-label={editingMessage ? "Edit message" : "Message"}
+            rows={1}
           />
           <button
             type="button"

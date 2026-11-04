@@ -4,6 +4,7 @@ import type { Conversation, ConversationParticipant, GroupInvite } from "../../t
 /** Group chat endpoints (backend `chatapp/group_views.py`). Max 8 people incl. invites. */
 export const MAX_GROUP_MEMBERS = 8;
 export const GROUP_NAME_MAX_LENGTH = 60;
+export const GROUP_NICKNAME_MAX_LENGTH = 40;
 
 export async function createGroup(members: string[], name = "") {
   const response = await api.post<Conversation>("/conversations/groups/", { members, name });
@@ -34,6 +35,14 @@ export async function renameGroup(conversationId: number, name: string) {
   const response = await api.patch<{ name: string; display_name: string }>(`/conversations/${conversationId}/`, {
     name,
   });
+  return response.data;
+}
+
+export async function setGroupMemberNickname(conversationId: number, username: string, nickname: string) {
+  const response = await api.patch<{ username: string; nickname: string }>(
+    `/conversations/${conversationId}/members/${encodeURIComponent(username)}/nickname/`,
+    { nickname }
+  );
   return response.data;
 }
 
