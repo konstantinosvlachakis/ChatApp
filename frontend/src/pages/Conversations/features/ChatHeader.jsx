@@ -8,8 +8,17 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CallRoundedIcon from "@mui/icons-material/CallRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
 import ChatAvatar from "./ChatAvatar";
-import { formatListTime, getOtherParticipant } from "../utils/conversationSearch";
+import GroupAvatar from "./GroupAvatar";
+import {
+  conversationTitle,
+  formatListTime,
+  getOtherParticipant,
+  groupInvitees,
+  groupMembers,
+  isGroupConversation,
+} from "../utils/conversationSearch";
 
 const lastSeenLabel = (lastSeen) => {
   const label = formatListTime(lastSeen);
@@ -36,11 +45,26 @@ const ChatHeader = ({
   searchDisabled = false,
   searchHasResults = false,
   isSearchingMessages = false,
+  onOpenGroup,
+  onStartGroup,
 }) => {
   const navigate = useNavigate();
   const { user } = useUser();
   const { onlineUserIds } = usePresence();
+  const isGroup = isGroupConversation(conversation);
   const otherUser = getOtherParticipant(conversation, user?.username) || {};
+  const groupOthers = isGroup
+    ? groupMembers(conversation).filter((member) => member?.id !== user?.user_id)
+    : [];
+  const onlineInGroup = groupOthers.filter((member) => onlineUserIds?.has(member?.id)).length;
+  const invitedCount = isGroup ? groupInvitees(conversation).length : 0;
+  const groupStatus = [
+    `${groupOthers.length + 1} members`,
+    onlineInGroup ? `${onlineInGroup} online` : "",
+    invitedCount ? `${invitedCount} invited` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const isInCallFlow = callState !== "idle";
   const isOtherUserOnline = Boolean(
     otherUser?.is_virtual_online || (otherUser?.id && onlineUserIds?.has(otherUser.id))
@@ -62,16 +86,34 @@ const ChatHeader = ({
       >
         <ArrowBackRoundedIcon />
       </button>
-      <Link to={profilePath} className="cv-chat-identity" aria-label={`View ${otherUser.username}'s profile`}>
-        <ChatAvatar name={otherUser.username} imagePath={otherUser.profile_image_url} size={48} />
-        <span className="cv-chat-identity-text">
-          <span className="cv-chat-name" style={{ display: "block" }}>{otherUser.username}</span>
-          <span className={`cv-chat-presence ${isOtherUserOnline ? "is-online" : ""}`}>
-            {isOtherUserOnline && <span className="cv-presence-dot" aria-hidden="true" />}
-            {statusText}
+      {isGroup ? (
+        <button
+          type="button"
+          className="cv-chat-identity is-group"
+          onClick={onOpenGroup}
+          aria-label={`${conversationTitle(conversation)}: group details`}
+        >
+          <GroupAvatar members={groupOthers} size={48} />
+          <span className="cv-chat-identity-text">
+            <span className="cv-chat-name" style={{ display: "block" }}>{conversationTitle(conversation)}</span>
+            <span className={`cv-chat-presence ${onlineInGroup ? "is-online" : ""}`}>
+              {onlineInGroup > 0 && <span className="cv-presence-dot" aria-hidden="true" />}
+              {groupStatus}
+            </span>
           </span>
-        </span>
-      </Link>
+        </button>
+      ) : (
+        <Link to={profilePath} className="cv-chat-identity" aria-label={`View ${otherUser.username}'s profile`}>
+          <ChatAvatar name={otherUser.username} imagePath={otherUser.profile_image_url} size={48} />
+          <span className="cv-chat-identity-text">
+            <span className="cv-chat-name" style={{ display: "block" }}>{otherUser.username}</span>
+            <span className={`cv-chat-presence ${isOtherUserOnline ? "is-online" : ""}`}>
+              {isOtherUserOnline && <span className="cv-presence-dot" aria-hidden="true" />}
+              {statusText}
+            </span>
+          </span>
+        </Link>
+      )}
       <div className="cv-chat-actions" style={isSearchOpen ? { flex: 1, justifyContent: "flex-end" } : undefined}>
         {isSearchOpen ? (
           <div className="cv-chat-search" role="search">
@@ -135,6 +177,29 @@ const ChatHeader = ({
             <SearchRoundedIcon />
           </button>
         )}
+        {isGroup ? (
+          <button
+            type="button"
+            className="cv-icon-button"
+            onClick={onOpenGroup}
+            aria-label="Group members"
+            title="Members"
+          >
+            <GroupAddRoundedIcon />
+          </button>
+        ) : (
+          <>
+        {onStartGroup && (
+          <button
+            type="button"
+            className="cv-icon-button"
+            onClick={onStartGroup}
+            aria-label={`Start a group with ${otherUser.username}`}
+            title="Start a group"
+          >
+            <GroupAddRoundedIcon />
+          </button>
+        )}
         <button
           type="button"
           className="cv-icon-button cv-call-action"
@@ -155,6 +220,8 @@ const ChatHeader = ({
         >
           <VideocamRoundedIcon />
         </button>
+          </>
+        )}
       </div>
     </header>
   );

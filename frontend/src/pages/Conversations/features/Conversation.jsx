@@ -184,6 +184,8 @@ const MessageRow = React.memo(function MessageRow({
   onTranslate,
   onTouchStart,
   onClearLongPress,
+  isGroup = false,
+  seenLabel = null,
 }) {
   const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
   const attachmentUrl = normalizeUrl(rawUrl);
@@ -245,7 +247,12 @@ const MessageRow = React.memo(function MessageRow({
         </span>
         <div className="cv-msg-column">
           {startsGroup && !isSentByUser && msg.sender?.username && (
-            <span className="lv-visually-hidden">{msg.sender.username} said:</span>
+            isGroup ? (
+              // Groups: who said it, above their first bubble in a run.
+              <span className="cv-msg-sender">{msg.sender.username}</span>
+            ) : (
+              <span className="lv-visually-hidden">{msg.sender.username} said:</span>
+            )
           )}
           <div className="cv-bubble-line">
             <div
@@ -360,10 +367,14 @@ const MessageRow = React.memo(function MessageRow({
             </div>
           )}
 
-          {endsGroup && (timeLabel || isSentByUser) && (
+          {(endsGroup || seenLabel) && (timeLabel || isSentByUser) && (
             <div className="cv-msg-meta">
               {timeLabel && <time dateTime={msg.timestamp}>{timeLabel}</time>}
-              {isSentByUser && <MessageStatusMeta status={msg.status || "sent"} />}
+              {/* Groups: "Seen by …" on your latest message instead of ticks. */}
+              {isSentByUser && !isGroup && <MessageStatusMeta status={msg.status || "sent"} />}
+              {isSentByUser && isGroup && seenLabel && (
+                <span className={`cv-seen-by ${seenLabel.startsWith("Seen") ? "is-read" : ""}`}>{seenLabel}</span>
+              )}
             </div>
           )}
         </div>
@@ -387,6 +398,8 @@ const Conversation = ({
   unreadAnchorMessageId = null,
   conversationId = null,
   onPickOpener = null,
+  isGroup = false,
+  seenBy = null,
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
   const [copyFeedback, setCopyFeedback] = useState("");
@@ -743,6 +756,8 @@ const Conversation = ({
               onTranslate={handleTranslate}
               onTouchStart={handleTouchStart}
               onClearLongPress={clearLongPressTimer}
+              isGroup={isGroup}
+              seenLabel={seenBy && seenBy.messageId === msg.id ? seenBy.label : null}
             />
           );
         })
@@ -750,7 +765,9 @@ const Conversation = ({
         conversationId && onPickOpener ? (
           <ChatOpeners conversationId={conversationId} onPick={onPickOpener} />
         ) : (
-          <p className="cv-messages-status">No messages yet. Say hello!</p>
+          <p className="cv-messages-status">
+            {isGroup ? "This group is brand new. Say hello to everyone!" : "No messages yet. Say hello!"}
+          </p>
         )
       )}
 

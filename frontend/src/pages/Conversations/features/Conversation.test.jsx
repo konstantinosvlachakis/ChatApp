@@ -51,3 +51,38 @@ describe("Conversation message grouping", () => {
     expect(toggles[2]).toHaveFocus();
   });
 });
+
+describe("Conversation in a group chat", () => {
+  const ana = { id: 3, username: "ana" };
+  const groupMessages = [
+    { id: 10, text: "Γεια σας!", sender: ana, timestamp: at(0), reactions: [] },
+    { id: 11, text: "Τι κάνετε;", sender: ana, timestamp: at(1), reactions: [] },
+    { id: 12, text: "Hello!", sender: partner, timestamp: at(2), reactions: [] },
+    { id: 13, text: "Καλά!", sender: me, timestamp: at(3), status: "sent", reactions: [] },
+  ];
+
+  test("names each sender once per run and shows Seen by instead of ticks", () => {
+    const { container } = render(
+      <Conversation
+        messages={groupMessages}
+        userId={1}
+        onDeleteMessage={jest.fn()}
+        isGroup
+        seenBy={{ messageId: 13, label: "Seen by ana" }}
+      />
+    );
+
+    expect([...container.querySelectorAll(".cv-msg-sender")].map((node) => node.textContent)).toEqual([
+      "ana",
+      "konstantinos",
+    ]);
+    expect(screen.getByText("Seen by ana")).toBeInTheDocument();
+    expect(container.querySelector(".cv-ticks")).toBeNull();
+  });
+
+  test("an empty group invites everyone to say hello (no openers)", () => {
+    render(<Conversation messages={[]} userId={1} onDeleteMessage={jest.fn()} isGroup conversationId={9} />);
+
+    expect(screen.getByText("This group is brand new. Say hello to everyone!")).toBeInTheDocument();
+  });
+});

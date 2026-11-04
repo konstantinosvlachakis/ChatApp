@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import { usePresence } from "../../../context/PresenceContext";
 import { useUser } from "../../../context/UserContext";
@@ -17,10 +17,16 @@ import TypingDots from "./TypingDots";
 import ChatAvatar from "./ChatAvatar";
 import {
   coachMatchesQuery,
+  conversationTitle,
   filterConversations,
   formatListTime,
   getOtherParticipant,
+  groupMembers,
+  isGroupConversation,
 } from "../utils/conversationSearch";
+import { GROUP_INVITES_QUERY_KEY } from "../api/groups";
+import GroupAvatar from "./GroupAvatar";
+import GroupInvites from "./GroupInvites";
 import CoachAvatar from "../../../components/CoachAvatar";
 import {
   COACH_CONVERSATION_ID,
@@ -46,6 +52,7 @@ function ConversationList({
 }) {
   const { data: conversations = [], error, isLoading } = useGetConversations();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useUser();
   const { onlineUserIds, subscribeToPresenceEvents } = usePresence();
   const [rightClickedConversation, setRightClickedConversation] =
@@ -85,8 +92,10 @@ function ConversationList({
     mutationFn: async (conversationId) => {
       return api.delete(`/api/conversations/${conversationId}/`);
     },
-    onSuccess: () => {
+    onSuccess: (_result, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
+      // Deleted (or left) the chat that's open: close it.
+      if (String(activeConversationIdRef.current) === String(conversationId)) navigate("/conversations");
     },
     onError: (error) => {
       toastApiError(error, "Couldn't delete the conversation");
@@ -102,10 +111,11 @@ function ConversationList({
     setConversationPendingDelete(null);
   };
 
-  const requestDeleteConversation = (conversationId, username) => {
+  const requestDeleteConversation = (conversationId, title, isGroup = false) => {
     setConversationPendingDelete({
       id: conversationId,
-      username: username || "this conversation",
+      username: title || "this conversation",
+      isGroup,
     });
   };
 
@@ -237,10 +247,7 @@ function ConversationList({
         setPresenceTypingByConversation((prev) => {
           const next = { ...prev };
           conversationsRef.current.forEach((conversation) => {
-            const otherUser =
-              conversation.sender?.username === user?.username
-                ? conversation.receiver
-                : conversation.sender;
+            const otherUser = getOtherParticipant(conversation, user?.username);
             if (otherUser?.id === userId) {
               next[conversation.id] = false;
             }
@@ -262,7 +269,16 @@ function ConversationList({
         return;
       }
 
+      if (data?.type === "group_invite") {
+        queryClient.invalidateQueries({ queryKey: GROUP_INVITES_QUERY_KEY });
+        return;
+      }
+
       if (data?.type === "conversation_update") {
+        if (data.trigger === "group_members") {
+          // Accepted/declined elsewhere, or removed: invites may have changed too.
+          queryClient.invalidateQueries({ queryKey: GROUP_INVITES_QUERY_KEY });
+        }
         // Patch what the payload (or the open ChatRoom's socket) already tells us; refetch
         // the whole list only otherwise, debounced so bursts cost one request.
         const needsRefetch = applyConversationUpdateToList(queryClient, data, {
@@ -329,15 +345,23 @@ function ConversationList({
         </div>
       )}
 
+      {!isSearching && <GroupInvites />}
+
       {conversations.length > 0 && !isSearching && <p className="cv-section-label">Chats</p>}
 
       {visibleConversations.map((conversation) => {
+        const isGroup = isGroupConversation(conversation);
         const otherUser = getOtherParticipant(conversation, user?.username);
-        const otherName = otherUser?.username || "Unknown participant";
+        const otherName = conversationTitle(conversation, user?.username);
+        const groupOthers = isGroup
+          ? groupMembers(conversation).filter((member) => member?.id !== user?.user_id)
+          : [];
         const lastMessage = conversation.last_message;
         const timeLabel = formatListTime(lastMessage?.timestamp || conversation.updated_at);
         const unreadCount = conversation.unread_count || 0;
-        const isOnline = onlineUserIds.has(otherUser?.id);
+        const isOnline = isGroup
+          ? groupOthers.some((member) => onlineUserIds.has(member?.id))
+          : onlineUserIds.has(otherUser?.id);
         const isActive = String(activeConversationId) === String(conversation.id);
         const isTyping =
           typingByConversation[conversation.id] || presenceTypingByConversation[conversation.id];
@@ -352,9 +376,18 @@ function ConversationList({
             ? -80
             : 0;
         const isDragging = typeof liveOffset === "number";
-        const preview = lastMessage
+        const previewText = lastMessage
           ? lastMessage.text || (lastMessage.attachment_url || lastMessage.attachment ? "Attachment" : "Message")
-          : "No messages yet";
+          : isGroup
+            ? "Group created. Say hello!"
+            : "No messages yet";
+        // Groups say who wrote the last message; ticks are for direct chats only.
+        const preview =
+          isGroup && lastMessage && !isLastMessageFromCurrentUser && lastMessage.sender?.username
+            ? `${lastMessage.sender.username}: ${previewText}`
+            : isGroup && lastMessage && isLastMessageFromCurrentUser
+              ? `You: ${previewText}`
+              : previewText;
 
         return (
           <div key={conversation.id} className={`cv-row-wrap${isDeleteVisible ? " is-delete-revealed" : ""}`}>
@@ -368,10 +401,10 @@ function ConversationList({
                 tabIndex={isDeleteVisible ? 0 : -1}
                 onClick={(event) => {
                   event.stopPropagation();
-                  requestDeleteConversation(conversation.id, otherUser?.username);
+                  requestDeleteConversation(conversation.id, otherName, isGroup);
                 }}
               >
-                Delete
+                {isGroup ? "Leave" : "Delete"}
               </button>
             </div>
             <Link
@@ -401,12 +434,16 @@ function ConversationList({
                 onSelectConversation?.(conversation);
               }}
             >
-              <ChatAvatar
-                name={otherName}
-                imagePath={otherUser?.profile_image_url}
-                size={48}
-                online={isOnline}
-              />
+              {isGroup ? (
+                <GroupAvatar members={groupOthers} size={48} />
+              ) : (
+                <ChatAvatar
+                  name={otherName}
+                  imagePath={otherUser?.profile_image_url}
+                  size={48}
+                  online={isOnline}
+                />
+              )}
               <span className="cv-row-body">
                 <span className="cv-row-top">
                   <span className="cv-row-name">{otherName}</span>
@@ -420,7 +457,7 @@ function ConversationList({
                     </span>
                   ) : (
                     <>
-                      {isLastMessageFromCurrentUser && (
+                      {isLastMessageFromCurrentUser && !isGroup && (
                         <MessageStatusTicks status={lastMessage?.status} />
                       )}
                       <span className="cv-row-preview">{preview}</span>
@@ -446,9 +483,9 @@ function ConversationList({
               aria-hidden={isDeleteVisible}
               onClick={(event) => {
                 event.stopPropagation();
-                requestDeleteConversation(conversation.id, otherUser?.username);
+                requestDeleteConversation(conversation.id, otherName, isGroup);
               }}
-              aria-label={`Delete conversation with ${otherName}`}
+              aria-label={isGroup ? `Leave ${otherName}` : `Delete conversation with ${otherName}`}
             >
               <DeleteOutlineRoundedIcon />
             </button>
@@ -483,10 +520,21 @@ function ConversationList({
               if (event.key === "Escape") setConversationPendingDelete(null);
             }}
           >
-            <h2 id="cv-confirm-title">Delete conversation?</h2>
+            <h2 id="cv-confirm-title">
+              {conversationPendingDelete.isGroup ? "Leave group?" : "Delete conversation?"}
+            </h2>
             <p id="cv-confirm-text">
-              This will permanently remove your conversation with{" "}
-              <strong>{conversationPendingDelete.username}</strong>.
+              {conversationPendingDelete.isGroup ? (
+                <>
+                  You'll leave <strong>{conversationPendingDelete.username}</strong>. The others keep
+                  chatting; someone can invite you back.
+                </>
+              ) : (
+                <>
+                  This will permanently remove your conversation with{" "}
+                  <strong>{conversationPendingDelete.username}</strong>.
+                </>
+              )}
             </p>
             <div className="cv-confirm-actions">
               <button
@@ -503,7 +551,7 @@ function ConversationList({
                 onClick={() => handleDelete(conversationPendingDelete.id)}
                 className="cv-pill-button is-danger"
               >
-                Delete
+                {conversationPendingDelete.isGroup ? "Leave" : "Delete"}
               </button>
             </div>
           </div>

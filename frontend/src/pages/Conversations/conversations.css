@@ -645,3 +645,86 @@
   .cv-quick-start-chips { flex-wrap: nowrap; }
   .cv-quick-chip { flex-shrink: 0; white-space: nowrap; }
 }
+
+/* ---- Group chats (feat/group-chats-web) ---- */
+.cv-group-avatar { position: relative; display: inline-block; flex-shrink: 0; }
+.cv-group-avatar .cv-avatar-wrap { position: absolute; }
+.cv-group-avatar-back { top: 0; right: 0; }
+.cv-group-avatar-front { bottom: 0; left: 0; }
+.cv-group-avatar-front .cv-avatar { box-shadow: 0 0 0 2px var(--lv-paper); }
+
+.cv-list-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-new-group { width: 40px; height: 40px; }
+.cv-new-group svg { font-size: 21px; }
+
+.cv-pill-button.is-small { min-height: 34px; padding: 6px 14px; font-size: 13px; }
+.cv-pill-button:disabled { opacity: .55; cursor: not-allowed; }
+.cv-pill-button.is-danger-outline { border-color: #e8c4bd; color: #a93626; }
+.cv-pill-button.is-danger-outline:hover { background: #fbeae6; }
+.cv-pill-button svg { font-size: 19px; }
+
+/* Invites above the chat list */
+.cv-invites { margin-bottom: 4px; }
+.cv-invite { display: flex; gap: 12px; margin: 0 4px 8px; padding: 12px; border: 1px solid var(--lv-line-warm); border-radius: 18px; background: linear-gradient(135deg, var(--lv-peach-soft), var(--lv-paper) 70%); }
+.cv-invite-body { flex: 1; min-width: 0; }
+.cv-invite-name { overflow: hidden; font-size: 15px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.cv-invite-meta { margin-top: 2px; color: var(--lv-ink-soft); font-size: 13px; }
+.cv-invite-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* Picker + members dialogs */
+.cv-group-dialog { display: flex; flex-direction: column; max-width: 440px; max-height: min(640px, calc(100dvh - 32px)); overflow: auto; }
+.cv-group-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-group-dialog-head h2 { font-size: 20px; }
+.cv-group-dialog-hint { margin-top: 4px !important; }
+.cv-group-field { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; font-size: 13px; font-weight: 800; }
+.cv-group-field small { color: var(--lv-muted-ink); font-weight: 600; }
+.cv-group-field input, .cv-group-rename input { min-height: 44px; padding: 0 14px; border: 1px solid var(--lv-line); border-radius: 14px; background: var(--lv-paper); color: var(--lv-ink); font-size: 15px; font-weight: 600; }
+.cv-group-field input:focus, .cv-group-rename input:focus { border-color: var(--lv-teal); outline: 3px solid #1b7f7926; }
+.cv-group-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.cv-group-chips button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 8px 0 12px; border-radius: var(--lv-radius-pill); background: var(--lv-navy); color: #fff; font-size: 13px; font-weight: 700; }
+.cv-group-chips svg { font-size: 16px; opacity: .8; }
+.cv-group-search { margin-top: 14px; }
+.cv-group-people { display: flex; flex-direction: column; gap: 2px; min-height: 120px; max-height: 300px; margin: 10px -6px 0; overflow-y: auto; }
+.cv-group-people.is-members { min-height: 0; max-height: 320px; }
+.cv-group-person { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border-radius: 14px; color: var(--lv-ink); text-align: left; transition: background-color .15s ease; }
+.cv-group-person:hover:not(:disabled) { background: var(--lv-cream); }
+.cv-group-person:disabled { opacity: .45; cursor: not-allowed; }
+.cv-group-person.is-selected { background: var(--lv-peach-soft); }
+.cv-group-person-name { flex: 1; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.cv-group-check { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 2px solid var(--lv-line); border-radius: 50%; color: #fff; }
+.cv-group-person.is-selected .cv-group-check { border-color: var(--lv-peach-ink); background: var(--lv-peach-ink); }
+.cv-group-check svg { font-size: 16px; }
+.cv-group-empty { padding: 24px 12px; color: var(--lv-muted-ink); font-size: 14px; text-align: center; }
+.cv-group-error { margin-top: 10px !important; color: #a93626 !important; font-weight: 700; }
+
+.cv-group-hero { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: -8px; text-align: center; }
+.cv-group-title { display: inline-flex; align-items: center; gap: 4px; font-size: 20px !important; }
+.cv-group-title .cv-icon-button { width: 34px; height: 34px; }
+.cv-group-title svg { font-size: 18px; }
+.cv-group-subtitle { margin-top: 0 !important; color: var(--lv-muted-ink) !important; font-size: 13px !important; }
+.cv-group-rename { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+.cv-group-rename input { flex: 1 1 200px; }
+.cv-group-member { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 14px; }
+.cv-group-member:hover { background: var(--lv-cream); }
+.cv-group-member-link { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; color: var(--lv-ink); }
+.cv-group-you { color: var(--lv-muted-ink); font-weight: 600; }
+.cv-group-tag { flex-shrink: 0; padding: 3px 9px; border-radius: var(--lv-radius-pill); background: var(--lv-cream-deep); color: var(--lv-ink-soft); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.cv-group-tag.is-owner { background: var(--lv-peach-soft); color: var(--lv-peach-deep); }
+.cv-group-remove { width: 34px; height: 34px; }
+.cv-group-remove svg { font-size: 18px; }
+.cv-group-panel-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--lv-line); }
+.cv-group-leave-confirm { margin-top: 16px; padding: 14px; border-radius: 16px; background: #fbeae6; }
+.cv-group-leave-confirm p { margin: 0 !important; color: var(--lv-ink) !important; }
+
+/* Chat header + messages in a group */
+.cv-chat-identity.is-group { padding: 4px 8px 4px 0; cursor: pointer; }
+.cv-chat-identity.is-group:hover .cv-chat-name { text-decoration: underline; text-underline-offset: 3px; }
+.cv-chat-identity.is-group:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+.cv-msg-sender { margin: 0 0 3px 12px; color: var(--lv-peach-deep); font-size: 12px; font-weight: 800; }
+.cv-seen-by { color: var(--lv-muted-ink); font-weight: 700; }
+.cv-seen-by.is-read { color: var(--lv-teal); }
+
+@media (max-width: 767px) {
+  .cv-group-dialog { max-width: none; }
+  .cv-group-panel-actions .cv-pill-button { flex: 1; }
+}

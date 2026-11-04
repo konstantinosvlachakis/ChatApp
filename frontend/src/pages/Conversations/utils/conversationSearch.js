@@ -7,18 +7,47 @@ const normalize = (value) =>
     .toLowerCase()
     .trim();
 
-/** The participant who isn't the viewer (`sender`/`receiver` are creator/other, not viewer). */
-export const getOtherParticipant = (conversation, viewerUsername) =>
-  conversation?.sender?.username === viewerUsername ? conversation?.receiver : conversation?.sender;
+export const isGroupConversation = (conversation) => conversation?.kind === "group";
 
-/** Matches the other participant's username, native language or the last message text. Accent-insensitive. */
+/** Active group members (in join order), as user profiles. */
+export const groupMembers = (conversation) =>
+  (conversation?.participants || [])
+    .filter((participant) => participant.status === "active")
+    .map((participant) => participant.user);
+
+/** Pending invitees of a group, as user profiles. */
+export const groupInvitees = (conversation) =>
+  (conversation?.participants || [])
+    .filter((participant) => participant.status === "pending")
+    .map((participant) => participant.user);
+
+/** The participant who isn't the viewer in a direct chat; null for groups (a group's
+ * `sender` is its creator, not "the other person"). */
+export const getOtherParticipant = (conversation, viewerUsername) => {
+  if (isGroupConversation(conversation)) return null;
+  return conversation?.sender?.username === viewerUsername ? conversation?.receiver : conversation?.sender;
+};
+
+/** What to call a chat: the group's (display) name or the other person's username. */
+export const conversationTitle = (conversation, viewerUsername) => {
+  if (isGroupConversation(conversation)) {
+    return conversation.display_name || conversation.name || "Group chat";
+  }
+  return getOtherParticipant(conversation, viewerUsername)?.username || "Unknown participant";
+};
+
+/** Matches the other participant (or a group's name/members), native language or the last
+ * message text. Accent-insensitive. */
 export const conversationMatchesQuery = (conversation, query, viewerUsername) => {
   const needle = normalize(query);
   if (!needle) return true;
-  const other = getOtherParticipant(conversation, viewerUsername);
-  return [other?.username, other?.native_language, conversation?.last_message?.text].some((value) =>
-    normalize(value).includes(needle)
-  );
+  const haystack = isGroupConversation(conversation)
+    ? [conversationTitle(conversation), ...groupMembers(conversation).map((member) => member?.username)]
+    : (() => {
+        const other = getOtherParticipant(conversation, viewerUsername);
+        return [other?.username, other?.native_language];
+      })();
+  return [...haystack, conversation?.last_message?.text].some((value) => normalize(value).includes(needle));
 };
 
 export const filterConversations = (conversations, query, viewerUsername) =>
