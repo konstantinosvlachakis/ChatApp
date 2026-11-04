@@ -73,8 +73,23 @@ describe("EditProfilePage", () => {
     );
   });
 
+  test("the only language can't be removed until another is added", () => {
+    renderPage();
+    const onlyRemove = screen.getByRole("button", { name: "Remove Spanish (add another language first)" });
+    expect(onlyRemove).toBeDisabled();
+    fireEvent.click(onlyRemove);
+    expect(screen.getByRole("group", { name: "Spanish level" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "+ French" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Spanish" }));
+    expect(screen.queryByRole("group", { name: "Spanish level" })).toBeNull();
+    // French is now the only one, so it is locked in turn.
+    expect(screen.getByRole("button", { name: "Remove French (add another language first)" })).toBeDisabled();
+  });
+
   test("removing a language drops its level and Discard restores everything", () => {
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "+ French" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove Spanish" }));
     expect(screen.queryByRole("group", { name: "Spanish level" })).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "Discard" })[1]);

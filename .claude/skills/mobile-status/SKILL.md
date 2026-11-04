@@ -108,6 +108,7 @@ Clean (0 errors) as of 2026-10-27 on `feat/mobile-push` with dependencies instal
 `resolveMediaUrl` accepts any absolute http(s) URL (restrict to API origin + https); coach history not cleared on account deletion; the chat socket in `ConversationsScreen` doesn't refresh on 4401 (it just dies; presence handles the logout path).
 
 ## Change log
+- feat/require-practice-language: ProfileScreen keeps ≥1 practice language — `ProfileLanguageSelector` `minSelected` locks the last chip, `togglePracticeLanguage` / `handleRemoveMissionLanguage` refuse with a toast, the mission menu hides Delete for the only mission, and Save with none opens the picker. Known: SettingsScreen saves `languages_practicing: [one]`, replacing the whole list.
 - feat/mobile-chat-redesign: chat list, room and Lumi redesign
 - feat/mobile-chat-polish: translate on double-tap, keyboard-controller, expo-image, haptics, list perf
 - feat/splash-navy: navy splash with logo and animated hand-off

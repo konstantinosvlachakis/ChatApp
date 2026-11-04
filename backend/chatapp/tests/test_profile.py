@@ -174,6 +174,36 @@ class ProfileEndpointTests(TestCase):
             response.json()["error"], "languages_practicing must be a list of strings"
         )
 
+    def test_profile_edit_requires_at_least_one_practice_language(self):
+        for languages in ([], ["", "   "], [None, 3]):
+            response = self.client.patch(
+                "/api/profile/edit/",
+                data=json.dumps({"languages_practicing": languages, "bio": "Changed"}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, languages)
+            self.assertEqual(response.json()["code"], "practice_language_required")
+        self.user.refresh_from_db()
+        # Nothing from the rejected requests was saved.
+        self.assertEqual(self.user.languages_practicing, ["greek", "spanish"])
+        self.assertEqual(self.user.bio, "Avid language learner.")
+
+        # Omitting the field leaves the languages alone; one language is enough.
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps({"bio": "Changed"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response = self.client.patch(
+            "/api/profile/edit/",
+            data=json.dumps({"languages_practicing": ["Greek"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.languages_practicing, ["Greek"])
+
     def test_profile_edit_with_valid_payload_returns_200(self):
         payload = {
             "base_translate_language": "french",

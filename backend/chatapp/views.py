@@ -1697,6 +1697,15 @@ def profile_edit_view(request):
                     value = language.strip()[:PROFILE_LANGUAGE_MAX_LENGTH]
                     if value:
                         cleaned_languages.append(value)
+            if not cleaned_languages:
+                # Matching and practice need at least one language being learnt.
+                return JsonResponse(
+                    {
+                        "error": "Add at least one language you're learning.",
+                        "code": "practice_language_required",
+                    },
+                    status=400,
+                )
             user.languages_practicing = cleaned_languages
         if practice_language_levels is not None:
             if not isinstance(practice_language_levels, dict):

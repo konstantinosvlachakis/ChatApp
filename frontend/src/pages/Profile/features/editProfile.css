@@ -46,6 +46,7 @@
 .pe-input[aria-invalid="true"] { border-color: var(--lv-badge); }
 textarea.pe-input { min-height: 120px; padding: 12px 16px; line-height: 1.55; resize: vertical; }
 .pe-help { margin: 0; color: var(--lv-muted-ink); font-size: 13px; }
+.pe-help.is-error { color: var(--lv-badge); font-weight: 700; }
 .pe-error { margin: 0; color: var(--lv-badge); font-size: 13px; font-weight: 600; }
 .pe-count { color: var(--lv-muted-ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pe-tag { padding: 3px 9px; border-radius: var(--lv-radius-pill); background: var(--lv-sage); color: var(--lv-teal); font-size: 12px; font-weight: 700; }
@@ -70,7 +71,8 @@ textarea.pe-input { min-height: 120px; padding: 12px 16px; line-height: 1.55; re
 .pe-seg label.is-on { background: var(--lv-paper); color: var(--lv-teal); box-shadow: 0 2px 6px #152f3d1f; }
 .pe-seg label:focus-within { outline: 3px solid var(--lv-focus); outline-offset: 1px; }
 .pe-icon-btn { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; color: var(--lv-muted-ink); }
-.pe-icon-btn:hover { background: var(--lv-cream-deep); color: var(--lv-ink); }
+.pe-icon-btn:hover:not(:disabled) { background: var(--lv-cream-deep); color: var(--lv-ink); }
+.pe-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .pe-icon-btn svg { width: 20px; height: 20px; }
 
 .pe-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; border: 0; }

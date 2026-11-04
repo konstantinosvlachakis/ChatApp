@@ -11,13 +11,15 @@ type Props = {
   options: readonly ProfileLanguageOption[];
   selected: string[];
   multiple?: boolean;
+  /** Multiple mode: chips can't be removed when only this many are selected. */
+  minSelected?: number;
   expanded: boolean;
   onToggle: () => void;
   onSelect: (value: string) => void;
 };
 
 /** Inline picker works inside the edit-profile modal without stacking native modals. */
-export function ProfileLanguageSelector({ label, colors, options, selected, multiple = false, expanded, onToggle, onSelect }: Props) {
+export function ProfileLanguageSelector({ label, colors, options, selected, multiple = false, minSelected = 0, expanded, onToggle, onSelect }: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState("");
   useEffect(() => { if (!expanded) setQuery(""); }, [expanded]);
@@ -29,14 +31,22 @@ export function ProfileLanguageSelector({ label, colors, options, selected, mult
       <Text style={styles.label}>{label}</Text>
       {multiple && selectedOptions.length > 0 ? (
         <View style={styles.selectedLanguages}>
-          {selectedOptions.map((option) => (
-            <Pressable key={option.value} onPress={() => onSelect(option.value)}
-              accessibilityRole="button" accessibilityLabel={`Remove ${option.label} from practice languages`}
-              style={({ pressed }) => [styles.selectedChip, pressed && styles.pressed]}>
-              <Text style={styles.selectedChipText}>{option.label}</Text>
-              <Ionicons name="close" size={16} color={colors.activeChipText} />
-            </Pressable>
-          ))}
+          {selectedOptions.map((option) => {
+            const locked = selectedOptions.length <= minSelected;
+            return locked ? (
+              <View key={option.value} style={styles.selectedChip} accessible
+                accessibilityLabel={`${option.label}, your only practice language. Add another to remove it.`}>
+                <Text style={styles.selectedChipText}>{option.label}</Text>
+              </View>
+            ) : (
+              <Pressable key={option.value} onPress={() => onSelect(option.value)}
+                accessibilityRole="button" accessibilityLabel={`Remove ${option.label} from practice languages`}
+                style={({ pressed }) => [styles.selectedChip, pressed && styles.pressed]}>
+                <Text style={styles.selectedChipText}>{option.label}</Text>
+                <Ionicons name="close" size={16} color={colors.activeChipText} />
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
       <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ expanded }}
