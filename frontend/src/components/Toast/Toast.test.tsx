@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import ToastViewport from "./ToastViewport";
 import { clearToasts, showToast, toast, toastApiError } from "./toastStore";
 import { ApiError } from "../../lib/apiError";
@@ -40,6 +40,29 @@ describe("Toast system", () => {
     expect(followBack).toHaveBeenCalledTimes(1);
     expect(viewProfile).not.toHaveBeenCalled();
     expect(screen.queryByText("maria followed you")).not.toBeInTheDocument();
+  });
+
+  test("top toast with avatar and actions renders as a card with a primary button", () => {
+    const followBack = jest.fn();
+    render(<ToastViewport />);
+    act(() => { showToast("saxas followed you", {
+      placement: "top",
+      eyebrow: "New follower",
+      avatarUrl: "https://example.com/saxas.jpg",
+      actions: [
+        { label: "View profile", onClick: jest.fn() },
+        { label: "Follow back", primary: true, onClick: followBack },
+      ],
+    }); });
+    const top = screen.getByTestId("toast-viewport-top");
+    expect(top).toHaveTextContent("New follower");
+    expect(top).toHaveTextContent("saxas followed you");
+    expect(top.querySelector("img")).toHaveAttribute("src", "https://example.com/saxas.jpg");
+    const primary = within(top).getByRole("button", { name: "Follow back" });
+    expect(primary).toHaveClass("is-primary");
+    fireEvent.click(primary);
+    expect(followBack).toHaveBeenCalledTimes(1);
+    expect(top).toBeEmptyDOMElement();
   });
 
   test("top placement renders in the centred stack and auto-dismisses", () => {

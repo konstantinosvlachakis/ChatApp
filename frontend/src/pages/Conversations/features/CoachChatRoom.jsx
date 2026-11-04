@@ -273,6 +273,7 @@ const CoachChatRoom = ({ onConversationTypingChange }) => {
       sender: {
         id: user.user_id,
         username: user.username,
+        profile_image_url: user.profile_image_url,
       },
       timestamp: new Date().toISOString(),
       attachmentUrl: localAttachmentUrl,

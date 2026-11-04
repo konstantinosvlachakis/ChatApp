@@ -1479,7 +1479,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange }) => {
     const tempMessage = {
       id: tempMessageId,
       text: newMessage.trim() || null,
-      sender: { id: user.user_id, username: user.username },
+      // Include the photo so the bubble doesn't flash the default avatar until the saved copy lands.
+      sender: { id: user.user_id, username: user.username, profile_image_url: user.profile_image_url },
       timestamp: new Date().toISOString(),
       attachmentUrl: localAttachmentUrl,
       attachment_url: localAttachmentUrl,

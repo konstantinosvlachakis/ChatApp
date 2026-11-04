@@ -96,7 +96,9 @@ const CallPanel = ({
         </p>
       </div>
 
-      <div className="relative flex-1">
+      {/* min-h-0 + overflow-hidden: a playing video's natural height must not grow the stage
+          and push the controls (End Call) out of the panel. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {showAvatarStage ? (
           <div className="flex h-full flex-col items-center justify-center gap-6">
             <audio ref={remoteVideoRef} autoPlay playsInline />
@@ -112,7 +114,7 @@ const CallPanel = ({
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="h-full w-full bg-black object-cover"
+              className="absolute inset-0 h-full w-full bg-black object-cover"
             />
             <video
               ref={localVideoRef}
@@ -143,7 +145,7 @@ const CallPanel = ({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 p-3 sm:gap-3 sm:p-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 p-3 sm:gap-3 sm:p-4">
         {isIncoming ? (
           <>
             <button

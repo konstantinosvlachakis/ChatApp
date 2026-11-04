@@ -14,8 +14,14 @@ export type Toast = {
   variant: ToastVariant;
   placement: ToastPlacement;
   durationMs: number;
-  actions?: Array<{ label: string; onClick: () => void }>;
+  actions?: ToastAction[];
+  /** Top toasts with an avatar or actions render as a card (e.g. "Saxas followed you"). */
+  avatarUrl?: string;
+  /** Small label above the message in the card layout. */
+  eyebrow?: string;
 };
+
+export type ToastAction = { label: string; onClick: () => void; primary?: boolean };
 
 export const MAX_TOASTS = 3;
 const DEFAULT_DURATION_MS: Record<ToastVariant, number> = {
@@ -53,7 +59,14 @@ export const dismissToast = (id: number) => {
 
 export const showToast = (
   message: string,
-  options: { variant?: ToastVariant; durationMs?: number; placement?: ToastPlacement; actions?: Toast["actions"] } = {}
+  options: {
+    variant?: ToastVariant;
+    durationMs?: number;
+    placement?: ToastPlacement;
+    actions?: Toast["actions"];
+    avatarUrl?: string;
+    eyebrow?: string;
+  } = {}
 ) => {
   const text = String(message || "").trim();
   if (!text) return null;
@@ -69,6 +82,8 @@ export const showToast = (
     placement: options.placement || "corner",
     durationMs: options.durationMs ?? DEFAULT_DURATION_MS[variant],
     actions: options.actions,
+    avatarUrl: options.avatarUrl || undefined,
+    eyebrow: options.eyebrow,
   };
   let next = [...toasts, toast];
   while (next.length > MAX_TOASTS) {

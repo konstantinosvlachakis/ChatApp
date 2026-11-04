@@ -1,4 +1,4 @@
-import React, { useSyncExternalStore } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import { dismissToast, getToasts, subscribeToasts, type Toast } from "./toastStore";
 import "./toast.css";
 
@@ -19,6 +19,46 @@ const DismissButton = ({ id, className }: { id: number; className: string }) => 
   </button>
 );
 
+/** Photo with an initial as fallback (no photo, or it fails to load). */
+const ToastAvatar = ({ url, name }: { url?: string; name: string }) => {
+  const [failed, setFailed] = useState(false);
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span className="lv-toast-card-avatar" aria-hidden="true">
+      {url && !failed ? <img src={url} alt="" onError={() => setFailed(true)} /> : initial}
+    </span>
+  );
+};
+
+/** A richer top toast: avatar, eyebrow, message and action buttons (primary one filled). */
+const ToastCard = ({ toast }: { toast: Toast }) => (
+  <div {...liveProps(toast)} className={`lv-toast-card is-${toast.variant}`}>
+    <ToastAvatar url={toast.avatarUrl} name={toast.message} />
+    <div className="lv-toast-card-text">
+      {toast.eyebrow && <span className="lv-toast-card-eyebrow">{toast.eyebrow}</span>}
+      <p>{toast.message}</p>
+    </div>
+    {toast.actions?.length ? (
+      <div className="lv-toast-card-actions">
+        {toast.actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            className={action.primary ? "lv-toast-card-button is-primary" : "lv-toast-card-button"}
+            onClick={() => {
+              action.onClick();
+              dismissToast(toast.id);
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    ) : null}
+    <DismissButton id={toast.id} className="lv-toast-card-close" />
+  </div>
+);
+
 /**
  * Renders the toast queue (max 3, newest last). Errors use role="alert" (announced
  * immediately); others role="status" (polite). Each toast auto-dismisses.
@@ -32,7 +72,9 @@ const ToastViewport = () => {
   return (
     <>
       <div className="lv-toast-top" data-testid="toast-viewport-top">
-        {topToasts.map((toast) => (
+        {topToasts.map((toast) => toast.avatarUrl || toast.actions?.length ? (
+          <ToastCard key={toast.id} toast={toast} />
+        ) : (
           <div key={toast.id} {...liveProps(toast)} className={`lv-toast-pill is-${toast.variant}`}>
             {toast.variant !== "info" && (
               <span className="lv-toast-pill-icon" aria-hidden="true">

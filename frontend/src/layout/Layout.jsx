@@ -203,11 +203,16 @@ const Layout = () => {
           if (data.type === "email_verified") refreshUserProfile();
           if (data.type === "user_followed" && typeof data.username === "string") {
             const username = data.username;
-            showToast(`${username} followed you`, { durationMs: 8000, actions: [
+            showToast(`${username} followed you`, {
+              placement: "top",
+              durationMs: 8000,
+              eyebrow: "New follower",
+              avatarUrl: typeof data.profile_image_url === "string" ? data.profile_image_url : undefined,
+              actions: [
               { label: "View profile", onClick: () => navigate(`/people/${encodeURIComponent(username)}`) },
-              ...(!data.is_following ? [{ label: "Follow back", onClick: () => {
+              ...(!data.is_following ? [{ label: "Follow back", primary: true, onClick: () => {
                 api.post(`/api/profile/public/${encodeURIComponent(username)}/follow/`)
-                  .then(() => showToast(`You're following ${username}`, { variant: "success" }))
+                  .then(() => showToast(`You're following ${username}`, { variant: "success", placement: "top" }))
                   .catch((error) => toastApiError(error, "Could not follow back"));
               } }] : []),
             ] });
