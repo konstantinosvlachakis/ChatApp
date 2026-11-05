@@ -35,10 +35,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { hapticLight } from "../../services/haptics";
 import type { WarmColors } from "../../theme/warm";
 import type { ChatMessage } from "../../types";
-import { attachmentLabel, getAttachmentKind } from "./attachments";
+import { attachmentLabel, getAttachmentKind, messagePreviewText } from "./attachments";
 import { ChatAvatar } from "./ChatAvatar";
 import { MESSAGE_AVATAR_SIZE, type ChatStyles } from "./chatStyles";
 import { MessageAttachment } from "./MessageAttachment";
+import { isMediaMessage, MessageMediaView } from "./MessageMediaView";
 import {
   ALLOWED_REACTIONS,
   escapeRegExp,
@@ -266,8 +267,9 @@ function MessageRowComponent({
   // Optimistic bubble of an attachment upload: not interactive until the server message replaces it.
   const isPending = item.local_status === "sending";
   const hasText = Boolean((item.text || "").trim());
-  const showText = hasText || !attachmentUrl;
-  const hasAttachment = Boolean(attachmentUrl && attachmentKind);
+  const isMedia = isMediaMessage(item);
+  const showText = hasText || (!attachmentUrl && !isMedia);
+  const hasAttachment = !isMedia && Boolean(attachmentUrl && attachmentKind);
 
   const handleTap = useCallback(() => onTap(item), [item, onTap]);
   const handleDoubleTap = useCallback(() => {
@@ -339,6 +341,7 @@ function MessageRowComponent({
   const a11yLabel = useMemo(() => {
     const parts = [isMine ? "You" : avatarName || "Message"];
     if (item.reply_to) parts.push(`replying to ${replyAuthor}`);
+    if (isMedia) parts.push(messagePreviewText(item));
     if (hasAttachment && attachmentKind) parts.push(attachmentLabel(attachmentKind));
     if (hasText) parts.push(String(item.text));
     if (translatedText) parts.push(`Translation: ${translatedText}`);
@@ -352,6 +355,8 @@ function MessageRowComponent({
     avatarName,
     hasAttachment,
     hasText,
+    isMedia,
+    item,
     isMine,
     isPending,
     item.edited_at,
@@ -466,7 +471,20 @@ function MessageRowComponent({
   const hasTextSection = showText || translating || Boolean(translatedText) || item.is_pinned || Boolean(item.edited_at);
 
   let bubbleContent: ReactNode;
-  if (!hasAttachment) {
+  if (isMedia) {
+    bubbleContent = (
+      <BubbleTouchArea {...touchProps} style={styles.mediaTouch}>
+        {replySnippet}
+        <MessageMediaView message={item} styles={styles} />
+        {item.is_pinned ? (
+          <View style={styles.messageFlagRow}>
+            <Ionicons name="pin" size={12} color={warm.inkSoft} />
+            <Text style={styles.messageFlagText}>Pinned</Text>
+          </View>
+        ) : null}
+      </BubbleTouchArea>
+    );
+  } else if (!hasAttachment) {
     bubbleContent = (
       <BubbleTouchArea
         {...touchProps}
@@ -610,6 +628,7 @@ function MessageRowComponent({
                   styles.messageBubble,
                   isMine ? styles.messageMine : styles.messageOther,
                   !startsGroup && (isMine ? styles.messageMineJoinedTop : styles.messageOtherJoinedTop),
+                  isMedia ? styles.messageBubbleMedia : null,
                   isPending ? styles.messageBubblePending : null,
                   isReplyActive
                     ? isMine

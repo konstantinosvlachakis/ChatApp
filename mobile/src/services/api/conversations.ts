@@ -1,5 +1,5 @@
-import { api, UPLOAD_TIMEOUT_MS } from "./client";
-import type { ChatMessage, Conversation } from "../../types";
+import { api, UPLOAD_TIMEOUT_MS, type NoRetryConfig } from "./client";
+import type { ChatMessage, Conversation, GifMedia, StickerPack } from "../../types";
 
 const CONVERSATIONS_CACHE_TTL_MS = 15_000;
 
@@ -118,6 +118,57 @@ export async function sendConversationMessage(
     },
     ...(attachment ? { timeout: UPLOAD_TIMEOUT_MS } : null),
   });
+  return response.data;
+}
+
+/** A sticker (`ref` "<pack>:<id>") or GIF (GIPHY id); the server resolves and stores the media. */
+export type MediaMessageInput = { kind: "sticker"; stickerRef: string } | { kind: "gif"; gifId: string };
+
+export async function sendMediaMessage(
+  conversationId: number,
+  input: MediaMessageInput,
+  replyToMessageId?: number | null
+): Promise<ChatMessage> {
+  const formData = new FormData();
+  formData.append("kind", input.kind);
+  if (input.kind === "sticker") formData.append("sticker", input.stickerRef);
+  else formData.append("gif_id", input.gifId);
+  if (replyToMessageId) formData.append("reply_to", String(replyToMessageId));
+  const response = await api.post<ChatMessage>(`/conversations/${conversationId}/messages/`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}
+
+// The packs only change with a deploy: fetched once per app session.
+let stickerPacksPromise: Promise<StickerPack[]> | null = null;
+
+export function fetchStickerPacks(): Promise<StickerPack[]> {
+  if (!stickerPacksPromise) {
+    stickerPacksPromise = api
+      .get<{ packs: StickerPack[] }>("/stickers/")
+      .then((response) => response.data?.packs || [])
+      .catch((error) => {
+        stickerPacksPromise = null;
+        throw error;
+      });
+  }
+  return stickerPacksPromise;
+}
+
+export type GifPage = { results: GifMedia[]; next_offset: number | null; attribution: string };
+
+/** Trending (empty query) or search. One attempt: 503 `gifs_unavailable` means GIFs are off. */
+export async function fetchGifs(query: string, offset = 0, signal?: AbortSignal): Promise<GifPage> {
+  const params: Record<string, string> = {};
+  if (query.trim()) params.q = query.trim();
+  if (offset) params.offset = String(offset);
+  const config: NoRetryConfig & { params: Record<string, string>; signal?: AbortSignal } = {
+    noRetry: true,
+    params,
+    signal,
+  };
+  const response = await api.get<GifPage>("/gifs/", config);
   return response.data;
 }
 

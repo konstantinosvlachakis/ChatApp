@@ -5,6 +5,7 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import MicNoneRoundedIcon from "@mui/icons-material/MicNoneRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import GifBoxRoundedIcon from "@mui/icons-material/GifBoxRounded";
+import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 import { logger } from "../../../lib/logger";
 import { draftStorageKeyFor, takeDraftFocusRequest } from "../utils/chatDrafts";
 import { messagePreviewText } from "../utils/messageMedia";
@@ -16,6 +17,8 @@ const EmojiPickerWrapper = React.lazy(() =>
   import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
 );
 const StickerGifPicker = React.lazy(() => import("./StickerGifPicker"));
+// Set when the server has no GIF key (503 gifs_unavailable): the GIF button stays hidden.
+let gifsUnavailableForSession = false;
 
 const MessageInput = ({
   onSendMessage,
@@ -38,7 +41,9 @@ const MessageInput = ({
   const draftStorageKey = draftStorageKeyFor(conversationId);
   const [message, setMessage] = useState(() => localStorage.getItem(draftStorageKey) || "");
   const [showPicker, setShowPicker] = useState(false);
-  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  // Which tab the sticker/GIF picker is open on (null = closed); each has its own button.
+  const [mediaTab, setMediaTab] = useState(null);
+  const [gifsHidden, setGifsHidden] = useState(gifsUnavailableForSession);
   const [previewImage, setPreviewImage] = useState(null);
   const [attachedFile, setAttachedFile] = useState(null);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -52,7 +57,8 @@ const MessageInput = ({
   const emojiPickerRef = useRef(null);
   const emojiButtonRef = useRef(null);
   const mediaPickerRef = useRef(null);
-  const mediaButtonRef = useRef(null);
+  const stickerButtonRef = useRef(null);
+  const gifButtonRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -106,7 +112,7 @@ const MessageInput = ({
     setMessage(editingMessage.text || "");
     setComposerError("");
     setShowPicker(false);
-    setShowMediaPicker(false);
+    setMediaTab(null);
     clearCurrentAttachment();
     setIsRecording(false);
     inputRef.current?.focus();
@@ -267,9 +273,10 @@ const MessageInput = ({
       if (
         mediaPickerRef.current &&
         !mediaPickerRef.current.contains(event.target) &&
-        !mediaButtonRef.current?.contains(event.target)
+        !stickerButtonRef.current?.contains(event.target) &&
+        !gifButtonRef.current?.contains(event.target)
       ) {
-        setShowMediaPicker(false);
+        setMediaTab(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -291,29 +298,40 @@ const MessageInput = ({
 
   // Escape closes the sticker/GIF picker (but first lets a search field clear itself).
   useEffect(() => {
-    if (!showMediaPicker) return undefined;
+    if (!mediaTab) return undefined;
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       if (event.target?.type === "search" && event.target.value) return;
       event.preventDefault();
-      setShowMediaPicker(false);
-      mediaButtonRef.current?.focus();
+      setMediaTab(null);
+      mediaButtonFor(mediaTab)?.focus();
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [showMediaPicker]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaTab]);
 
   // ---------------- Stickers & GIFs ----------------
-  const toggleMediaPicker = () => {
+  const mediaButtonFor = (tab) => (tab === "gifs" ? gifButtonRef.current : stickerButtonRef.current);
+
+  // Each button opens the picker on its tab; pressing the open tab's button closes it.
+  const toggleMediaTab = (tab) => {
     setShowPicker(false);
-    setShowMediaPicker((prev) => !prev);
+    setMediaTab((current) => (current === tab ? null : tab));
+  };
+
+  const handleGifsUnavailable = () => {
+    gifsUnavailableForSession = true;
+    setGifsHidden(true);
+    setMediaTab((current) => (current === "gifs" ? "stickers" : current));
   };
 
   const handleSendMedia = async (item) => {
     if (isSendingRef.current || disabled || !onSendMedia) return;
     setComposerError("");
-    setShowMediaPicker(false);
-    mediaButtonRef.current?.focus();
+    const openedFrom = mediaButtonFor(mediaTab);
+    setMediaTab(null);
+    openedFrom?.focus();
     isSendingRef.current = true;
     setIsSending(true);
     try {
@@ -536,10 +554,15 @@ const MessageInput = ({
         </div>
       )}
 
-      {showMediaPicker && onSendMedia && (
+      {mediaTab && onSendMedia && (
         <div ref={mediaPickerRef} className="cv-emoji-popover cv-media-popover" role="dialog" aria-label="Stickers and GIFs">
           <Suspense fallback={<p className="cv-messages-status">Loading…</p>}>
-            <StickerGifPicker onSend={handleSendMedia} />
+            <StickerGifPicker
+              onSend={handleSendMedia}
+              tab={mediaTab}
+              onTabChange={setMediaTab}
+              onGifsUnavailable={handleGifsUnavailable}
+            />
           </Suspense>
         </div>
       )}
@@ -625,13 +648,27 @@ const MessageInput = ({
           {onSendMedia && (
             <button
               type="button"
-              ref={mediaButtonRef}
-              className={`cv-icon-button ${showMediaPicker ? "is-on" : ""}`}
-              onClick={toggleMediaPicker}
+              ref={stickerButtonRef}
+              className={`cv-icon-button ${mediaTab === "stickers" ? "is-on" : ""}`}
+              onClick={() => toggleMediaTab("stickers")}
               disabled={Boolean(editingMessage)}
-              aria-label={showMediaPicker ? "Close stickers and GIFs" : "Stickers and GIFs"}
-              aria-expanded={showMediaPicker}
-              title="Stickers and GIFs"
+              aria-label={mediaTab === "stickers" ? "Close stickers" : "Stickers"}
+              aria-expanded={mediaTab === "stickers"}
+              title="Stickers"
+            >
+              <StickyNote2RoundedIcon />
+            </button>
+          )}
+          {onSendMedia && !gifsHidden && (
+            <button
+              type="button"
+              ref={gifButtonRef}
+              className={`cv-icon-button ${mediaTab === "gifs" ? "is-on" : ""}`}
+              onClick={() => toggleMediaTab("gifs")}
+              disabled={Boolean(editingMessage)}
+              aria-label={mediaTab === "gifs" ? "Close GIFs" : "GIFs"}
+              aria-expanded={mediaTab === "gifs"}
+              title="GIFs"
             >
               <GifBoxRoundedIcon />
             </button>
@@ -641,7 +678,7 @@ const MessageInput = ({
             ref={emojiButtonRef}
             className={`cv-icon-button ${showPicker ? "is-on" : ""}`}
             onClick={() => {
-              setShowMediaPicker(false);
+              setMediaTab(null);
               setShowPicker((prev) => !prev);
             }}
             disabled={Boolean(editingMessage)}

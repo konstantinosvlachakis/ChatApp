@@ -181,6 +181,30 @@ export const createChatStyles = (warm: WarmColors) =>
     messageOtherJoinedTop: {
       borderTopLeftRadius: JOINED_RADIUS,
     },
+    // Stickers and GIFs: no fill or padding; the media is the message.
+    messageBubbleMedia: {
+      backgroundColor: "transparent",
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+    },
+    mediaTouch: {
+      gap: 4,
+    },
+    gifImage: {
+      borderRadius: 16,
+      backgroundColor: warm.creamDeep,
+    },
+    mediaFallbackBox: {
+      borderRadius: BUBBLE_RADIUS,
+      paddingHorizontal: BUBBLE_PADDING_X,
+      paddingVertical: BUBBLE_PADDING_Y,
+      backgroundColor: warm.bubbleIn,
+    },
+    mediaFallback: {
+      color: warm.mutedInk,
+      fontSize: 14,
+      fontStyle: "italic",
+    },
     messageBubblePending: {
       opacity: 0.85,
     },

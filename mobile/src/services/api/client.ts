@@ -27,7 +27,11 @@ export const api = axios.create({
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _retry?: boolean; // 401 refresh already attempted
   _attempt?: number; // 1-based attempt number for GET/HEAD retries
+  noRetry?: boolean; // caller opted out of GET retries (see `NoRetryConfig`)
 };
+
+/** Pass as request config to make a GET single-attempt (e.g. a paid/quota-limited proxy). */
+export type NoRetryConfig = { noRetry: true };
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -176,7 +180,7 @@ api.interceptors.response.use(
 
     if (originalRequest && !apiError.isAborted) {
       const attempt = originalRequest._attempt || 1;
-      if (shouldRetry(originalRequest.method, apiError, attempt)) {
+      if (!originalRequest.noRetry && shouldRetry(originalRequest.method, apiError, attempt)) {
         originalRequest._attempt = attempt + 1;
         await sleep(
           getRetryDelayMs(attempt, apiError.retryAfterSeconds),

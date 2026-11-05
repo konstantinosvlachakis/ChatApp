@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import StickerImage from "./StickerImage";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { fetchGifs, fetchStickerPacks } from "../api/stickersGifs";
 import { getErrorMessage } from "../../../lib/apiError";
@@ -26,7 +27,7 @@ const StickerGrid = ({ stickers, onPick, label }) => (
             aria-label={`Send sticker: ${sticker.label}`}
             title={sticker.label}
           >
-            <img
+            <StickerImage
               src={src}
               alt=""
               loading="lazy"
@@ -250,9 +251,18 @@ const GifsTab = ({ onSend, onUnavailable }) => {
 
 // Popover with Stickers and GIFs tabs. `onSend({kind, sticker|gif})` sends one and the
 // parent closes the popover.
-const StickerGifPicker = ({ onSend }) => {
-  const [tab, setTab] = useState("stickers");
+// `tab` / `onTabChange` let the composer's Sticker and GIF buttons drive the open tab;
+// without them the picker keeps its own tab state.
+const StickerGifPicker = ({ onSend, tab: controlledTab, onTabChange, onGifsUnavailable }) => {
+  const [ownTab, setOwnTab] = useState(controlledTab || "stickers");
+  const tab = controlledTab || ownTab;
+  const setTab = (next) => (onTabChange ? onTabChange(next) : setOwnTab(next));
   const [gifsAvailable, setGifsAvailable] = useState(!gifsKnownUnavailable);
+  // Already known to be off (an earlier picker hit 503): tell the composer once.
+  useEffect(() => {
+    if (gifsKnownUnavailable) onGifsUnavailable?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const tabs = [
     { id: "stickers", label: "Stickers" },
@@ -312,6 +322,7 @@ const StickerGifPicker = ({ onSend }) => {
             onUnavailable={() => {
               setGifsAvailable(false);
               setTab("stickers");
+              onGifsUnavailable?.();
             }}
           />
         ) : (

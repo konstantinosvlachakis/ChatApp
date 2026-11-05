@@ -13,7 +13,8 @@
     "test:profile-languages": "node --experimental-strip-types --test tests/profileLanguages.test.mjs",
     "test:people": "node --experimental-strip-types --test tests/peopleMatching.test.mjs",
     "test:group-chats": "node --experimental-strip-types --test tests/groupReads.test.mjs",
-    "test:boarding-pass": "node --experimental-strip-types --test tests/boardingPass.test.mjs"
+    "test:boarding-pass": "node --experimental-strip-types --test tests/boardingPass.test.mjs",
+    "test:stickers-gifs": "node --experimental-strip-types --test tests/messageMedia.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

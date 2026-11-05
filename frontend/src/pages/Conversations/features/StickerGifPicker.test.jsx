@@ -102,33 +102,6 @@ describe("StickerGifPicker", () => {
   });
 });
 
-describe("MessageInput sticker/GIF button", () => {
-  test("only appears when the chat can send media, and sends through onSendMedia", async () => {
-    routeGet();
-    const { rerender } = render(<MessageInput conversationId={7} onSendMessage={jest.fn()} />);
-    expect(screen.queryByRole("button", { name: "Stickers and GIFs" })).toBeNull();
-
-    const onSendMedia = jest.fn(() => Promise.resolve(true));
-    rerender(<MessageInput conversationId={7} onSendMessage={jest.fn()} onSendMedia={onSendMedia} />);
-    const toggle = screen.getByRole("button", { name: "Stickers and GIFs" });
-    fireEvent.click(toggle);
-    const dialog = await screen.findByRole("dialog", { name: "Stickers and GIFs" });
-    fireEvent.click(await within(dialog).findByRole("button", { name: "Send sticker: Love it" }));
-    await waitFor(() => expect(onSendMedia).toHaveBeenCalledWith({ kind: "sticker", sticker: PACKS.packs[0].stickers[1] }));
-    expect(screen.queryByRole("dialog", { name: "Stickers and GIFs" })).toBeNull();
-    expect(toggle).toHaveFocus();
-  });
-
-  test("Escape closes the picker", async () => {
-    routeGet();
-    render(<MessageInput conversationId={7} onSendMessage={jest.fn()} onSendMedia={jest.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Stickers and GIFs" }));
-    await screen.findByRole("dialog", { name: "Stickers and GIFs" });
-    fire.keyDown(document.body, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Stickers and GIFs" })).toBeNull();
-  });
-});
-
 describe("Conversation sticker/GIF messages", () => {
   const me = { id: 1, username: "kostas" };
   const partner = { id: 2, username: "ana" };

@@ -122,6 +122,11 @@
 .pf-person > span { display: flex; flex-direction: column; min-width: 0; }
 .pf-person strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .pf-person small { color: var(--lv-muted-ink); font-size: 12px; }
+/* Recently viewed you: name + small tag on one line, language · time on the next (never wrapping). */
+.pf-visitors .pf-person > span { flex: 1; gap: 2px; }
+.pf-visitor-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pf-visitor-tag { flex-shrink: 0; padding: 2px 8px; border-radius: var(--lv-radius-pill); background: var(--lv-peach); color: var(--lv-peach-ink); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.pf-visitors .pf-person small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Profile strength */
 .pf-strength { border-color: var(--lv-ink); background: var(--lv-ink); color: var(--lv-on-navy); }

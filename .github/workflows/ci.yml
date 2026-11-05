@@ -64,3 +64,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:boarding-pass
         working-directory: mobile
+      - run: npm run test:stickers-gifs
+        working-directory: mobile

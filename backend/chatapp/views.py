@@ -2844,7 +2844,8 @@ GIFS_UPSTREAM_ERROR = {
 def sticker_packs_view(request):
     """Built-in sticker packs (chatapp/sticker_packs.json). No queries."""
     response = Response({"packs": sticker_packs_payload(request)})
-    response["Cache-Control"] = "private, max-age=3600"
+    # Short: sticker URLs carry the static file hash, which changes when the art does.
+    response["Cache-Control"] = "private, max-age=300"
     return response
 
 
