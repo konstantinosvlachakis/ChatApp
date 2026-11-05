@@ -74,6 +74,7 @@ import {
   pinConversationMessage,
   reactToMessage,
   sendConversationMessage,
+  sendMediaMessage,
   translateConversationMessage,
 } from "../services/api/conversations";
 import { getErrorMessage } from "../services/api/errors";
@@ -90,6 +91,7 @@ import { ChatRoomView, type ChatContentInsets } from "./chat/ChatRoomView";
 import { ConversationListView } from "./chat/ConversationListView";
 import { GroupDetailsSheet } from "./chat/GroupDetailsSheet";
 import { GroupPeopleSheet } from "./chat/GroupPeopleSheet";
+import { StickerGifSheet, type MediaPick } from "./chat/StickerGifSheet";
 import {
   MessageActionsSheet,
   type MessageMenuAction,
@@ -105,6 +107,16 @@ import { isEmailUnverifiedError } from "../services/emailVerification";
 
 // Older history page size for GET /conversations/<id>/messages/ (max 100 server-side).
 const OLDER_MESSAGES_PAGE_SIZE = 50;
+
+/** `kind`/`media` for the optimistic copy of a sticker or GIF (the server stores the real media). */
+function optimisticMediaFields(media: MediaPick): Pick<ChatMessage, "kind" | "media"> {
+  if (media.kind === "gif") return { kind: "gif", media: media.gif };
+  const [pack, id] = media.sticker.ref.split(":");
+  return {
+    kind: "sticker",
+    media: { pack, id, label: media.sticker.label, url: media.sticker.url },
+  };
+}
 // Must match CONVERSATION_DETAIL_MESSAGE_LIMIT (backend serializers.py): a detail response
 // with fewer embedded messages means there is no older history.
 const DETAIL_MESSAGE_LIMIT = 200;
@@ -149,6 +161,7 @@ export function ConversationsScreen() {
   const [invites, setInvites] = useState<GroupInvite[]>([]);
   const [respondingInviteId, setRespondingInviteId] = useState<number | null>(null);
   const [groupSheet, setGroupSheet] = useState<"create" | "add" | "details" | null>(null);
+  const [mediaSheetVisible, setMediaSheetVisible] = useState(false);
   const [nicknameTargetUsername, setNicknameTargetUsername] = useState<string | null>(null);
   const openGroupNicknameEditor = useCallback((username: string) => {
     if (!username) return;
@@ -594,20 +607,21 @@ export function ConversationsScreen() {
     }
   }, [sendTypingEvent]);
 
-  // Called by Composer with its draft; resolves true when sent. A photo send shows an optimistic
-  // bubble (negative id, `local_status: "sending"`) that the saved message replaces.
+  // Called by Composer with its draft (or by the sticker/GIF sheet with `media`); resolves true
+  // when sent. A photo, sticker or GIF shows an optimistic bubble (negative id,
+  // `local_status: "sending"`) that the saved message replaces.
   const sendMessage = useStableCallback(
-    async (messageText: string, attachment: PickedAttachment | null): Promise<boolean> => {
-      const trimmed = messageText.trim();
-      if (!selectedConversation || (!trimmed && !attachment) || !currentUserId || !currentUsername) return false;
+    async (messageText: string, attachment: PickedAttachment | null, media: MediaPick | null = null): Promise<boolean> => {
+      const trimmed = media ? "" : messageText.trim();
+      if (!selectedConversation || (!trimmed && !attachment && !media) || !currentUserId || !currentUsername) return false;
       if (sending || sendInFlightRef.current) return false;
 
       const conversationId = selectedConversation.id;
       const replyTo = replyTarget && replyTarget.id > 0 ? replyTarget : null;
-      const optimisticId = attachment ? -Date.now() : null;
+      const optimisticId = attachment || media ? -Date.now() : null;
       sendInFlightRef.current = true;
       setSending(true);
-      if (attachment && optimisticId !== null) {
+      if ((attachment || media) && optimisticId !== null) {
         isNearBottomRef.current = true;
         userScrolledRef.current = false;
         const optimistic: ChatMessage = {
@@ -616,8 +630,9 @@ export function ConversationsScreen() {
           text: trimmed,
           sender: { id: currentUserId, username: currentUsername },
           status: "sent",
-          attachment_url: attachment.uri,
-          local_mime_type: attachment.mimeType,
+          attachment_url: attachment?.uri ?? null,
+          local_mime_type: attachment?.mimeType ?? null,
+          ...(media ? optimisticMediaFields(media) : null),
           local_status: "sending",
           timestamp: new Date().toISOString(),
           reply_to: replyTo
@@ -637,12 +652,20 @@ export function ConversationsScreen() {
         setReplyTarget(null);
       }
       try {
-        const saved = await sendConversationMessage(
-          conversationId,
-          trimmed,
-          replyTo?.id,
-          attachment ? { uri: attachment.uri, name: attachment.name, type: attachment.mimeType } : null
-        );
+        const saved = media
+          ? await sendMediaMessage(
+              conversationId,
+              media.kind === "sticker"
+                ? { kind: "sticker", stickerRef: media.sticker.ref }
+                : { kind: "gif", gifId: media.gif.id },
+              replyTo?.id
+            )
+          : await sendConversationMessage(
+              conversationId,
+              trimmed,
+              replyTo?.id,
+              attachment ? { uri: attachment.uri, name: attachment.name, type: attachment.mimeType } : null
+            );
         const savedMessage: ChatMessage = {
           ...saved,
           attachment_url: saved.attachment_url || null,
@@ -697,7 +720,13 @@ export function ConversationsScreen() {
         }
         toastApiError(
           error,
-          attachment ? "Could not send your photo." : "Could not send your message.",
+          media
+            ? media.kind === "gif"
+              ? "Could not send the GIF."
+              : "Could not send the sticker."
+            : attachment
+              ? "Could not send your photo."
+              : "Could not send your message.",
           "Message not sent"
         );
         return false;
@@ -707,6 +736,13 @@ export function ConversationsScreen() {
       }
     }
   );
+
+  const openMediaSheet = useCallback(() => setMediaSheetVisible(true), []);
+  const closeMediaSheet = useCallback(() => setMediaSheetVisible(false), []);
+  const sendMedia = useStableCallback((pick: MediaPick) => {
+    setMediaSheetVisible(false);
+    void sendMessage("", null, pick);
+  });
 
   const closeConversation = useCallback(() => {
     selectedConversationIdRef.current = null;
@@ -1732,6 +1768,7 @@ export function ConversationsScreen() {
           onTypingStart={emitTypingStarted}
           onTypingStop={emitTypingStopped}
           onSend={sendMessage}
+          onOpenMediaPicker={openMediaSheet}
         >
           <ReportUserModal
             colors={colors}
@@ -1782,6 +1819,13 @@ export function ConversationsScreen() {
             preselected={groupPreselected}
             onClose={closeGroupSheet}
             onDone={groupSheet === "add" ? handleGroupInvited : handleGroupCreated}
+          />
+          <StickerGifSheet
+            warm={warm}
+            reduceMotion={reduceMotion}
+            visible={mediaSheetVisible}
+            onClose={closeMediaSheet}
+            onPick={sendMedia}
           />
           <MessageActionsSheet
             warm={warm}

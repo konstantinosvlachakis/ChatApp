@@ -105,6 +105,8 @@ type ChatRoomViewProps = {
   onTypingStart: () => void;
   onTypingStop: () => void;
   onSend: (text: string, attachment: PickedAttachment | null) => Promise<boolean>;
+  /** Opens the sticker/GIF sheet (the screen renders it). */
+  onOpenMediaPicker?: () => void;
   /** Sheets, modals and the photo viewer. */
   children?: ReactNode;
 };
@@ -280,6 +282,7 @@ export function ChatRoomView(props: ChatRoomViewProps) {
             onTypingStart={props.onTypingStart}
             onTypingStop={props.onTypingStop}
             onSend={props.onSend}
+            onOpenMediaPicker={props.onOpenMediaPicker}
           />
         </KeyboardStickyView>
       </View>

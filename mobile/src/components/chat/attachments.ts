@@ -106,7 +106,13 @@ export function attachmentLabel(kind: AttachmentKind | null): string {
   }
 }
 
-type PreviewSource = { text?: string | null; attachment_url?: string | null; local_mime_type?: string | null };
+type PreviewSource = {
+  text?: string | null;
+  attachment_url?: string | null;
+  local_mime_type?: string | null;
+  kind?: string | null;
+  media?: unknown;
+};
 
 /**
  * One-line preview for a message (list preview, pinned bar, menus): its text, or a label for an
@@ -114,6 +120,11 @@ type PreviewSource = { text?: string | null; attachment_url?: string | null; loc
  */
 export function messagePreviewText(message: PreviewSource | null | undefined): string {
   if (!message) return "";
+  if (message.kind === "sticker") {
+    const label = (message.media as { label?: unknown } | null | undefined)?.label;
+    return typeof label === "string" && label && label !== "Sticker" ? `Sticker · ${label}` : "Sticker";
+  }
+  if (message.kind === "gif") return "GIF";
   const text = (message.text || "").trim();
   if (text) return text;
   if (message.attachment_url) {
@@ -166,4 +177,15 @@ export function uploadFileName(mimeType: string, now = Date.now()): string {
 /** Only http(s) URLs may be opened externally (attachment URLs can come from other clients). */
 export function isOpenableUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
+const GIF_MAX_WIDTH = 220;
+const GIF_MAX_HEIGHT = 260;
+
+/** Box for a GIF message: its real aspect ratio, scaled to fit 220 x 260 dp. */
+export function gifBoxSize(width: number, height: number) {
+  const w = Number.isFinite(width) && width > 0 ? width : GIF_MAX_WIDTH;
+  const h = Number.isFinite(height) && height > 0 ? height : GIF_MAX_WIDTH;
+  const scale = Math.min(GIF_MAX_WIDTH / w, GIF_MAX_HEIGHT / h);
+  return { width: Math.round(w * scale), height: Math.round(h * scale) };
 }

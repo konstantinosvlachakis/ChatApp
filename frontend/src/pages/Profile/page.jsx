@@ -127,7 +127,7 @@ const VisitorsCard = ({ user }) => {
   const shown = showAll ? visitors : visitors.slice(0, VISITORS_PREVIEW);
   return (
     <ProfileCard icon={VisibilityOutlinedIcon} title="Recently viewed you">
-      <ul className="pf-people">
+      <ul className="pf-people pf-visitors">
         {shown.map((visitor) => {
           const native = visitor.native_language ? describeLanguage(visitor.native_language).name : "";
           const teachesMe = learning.includes(normalizeLanguage(visitor.native_language));
@@ -142,10 +142,12 @@ const VisitorsCard = ({ user }) => {
                   onError={handleAvatarError}
                 />
                 <span>
-                  <strong>{visitor.username}</strong>
+                  <span className="pf-visitor-name">
+                    <strong>{visitor.username}</strong>
+                    {teachesMe && <span className="pf-visitor-tag">Can teach you</span>}
+                  </span>
                   <small>{[native && `Speaks ${native}`, when].filter(Boolean).join(" · ")}</small>
                 </span>
-                {teachesMe && <span className="pf-match-badge" style={{ marginLeft: "auto" }}>Can teach you</span>}
               </Link>
             </li>
           );

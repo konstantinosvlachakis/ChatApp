@@ -25,6 +25,7 @@ import {
   safeMediaUrl,
 } from "../utils/messageMedia";
 import { CHAT_IMAGE_WIDTH, cloudinaryImage } from "../../../lib/media";
+import StickerImage from "./StickerImage";
 
 const EmojiPickerWrapper = React.lazy(() =>
   import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
@@ -167,7 +168,7 @@ const MessageMedia = ({ msg }) => {
     const src = safeMediaUrl(media.url);
     const label = media.label || "Sticker";
     return src ? (
-      <img className="cv-sticker" src={src} alt={`Sticker: ${label}`} width="140" height="140" decoding="async" />
+      <StickerImage className="cv-sticker" src={src} alt={`Sticker: ${label}`} width="140" height="140" decoding="async" />
     ) : (
       <p className="cv-bubble-muted">Sticker · {label}</p>
     );
