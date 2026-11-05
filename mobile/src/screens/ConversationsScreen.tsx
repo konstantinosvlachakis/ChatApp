@@ -738,7 +738,9 @@ export function ConversationsScreen() {
               ? "Could not send the GIF."
               : "Could not send the sticker."
             : attachment
-              ? "Could not send your photo."
+              ? attachment.mimeType.startsWith("audio/")
+                ? "Could not send your voice message."
+                : "Could not send your photo."
               : "Could not send your message.",
           "Message not sent"
         );

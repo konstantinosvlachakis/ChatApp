@@ -1,5 +1,5 @@
 import type { TextInputInstance } from "react-native";
-import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +18,8 @@ import {
 import type { ChatStyles } from "./chatStyles";
 import { toReplyPreviewText } from "./format";
 import { SendButton } from "./SendButton";
+import { RecordingBar, useVoiceNoteRecorder } from "./VoiceRecorder";
+import { MAX_VOICE_NOTE_MS } from "./voiceNote";
 
 export type ComposerHandle = {
   /** Focuses the input with the cursor at the end (used after swipe/double-tap to reply). */
@@ -39,9 +41,9 @@ type ComposerProps = {
   onTypingStart: () => void;
   onTypingStop: () => void;
   /**
-   * Sends the text (and optional picked photo); resolves true when it was sent. Text-only drafts
-   * are cleared on success; a draft with a photo is cleared right away (the screen shows an
-   * optimistic bubble) and restored if the send fails.
+   * Sends the text (and optional picked photo or recorded voice note); resolves true when it was
+   * sent. The draft is cleared right away (the screen shows an optimistic bubble) and restored if
+   * the send fails; a failed voice note is not restored (the screen shows an error).
    */
   onSend: (text: string, attachment: PickedAttachment | null) => Promise<boolean>;
   /** Optional: shows the sticker/GIF button. Should be stable. */
@@ -213,6 +215,24 @@ export const Composer = React.memo(
 
     const hasContent = Boolean(attachment) || messageText.trim().length > 0;
 
+    // Voice notes: the mic shows while the draft is empty; recording replaces the input row.
+    const voice = useVoiceNoteRecorder();
+    const startRecording = useCallback(() => {
+      Keyboard.dismiss();
+      onTypingStop();
+      void voice.start();
+    }, [onTypingStop, voice]);
+    const sendRecording = useCallback(async () => {
+      const file = await voice.stop(true);
+      if (file) await onSend("", file);
+    }, [onSend, voice]);
+    const discardRecording = useCallback(() => {
+      void voice.stop(false);
+    }, [voice]);
+    useEffect(() => {
+      if (voice.recording && voice.durationMs >= MAX_VOICE_NOTE_MS) void sendRecording();
+    }, [sendRecording, voice.durationMs, voice.recording]);
+
     return (
       <View style={styles.composerWrap}>
         {replyTarget ? (
@@ -269,6 +289,9 @@ export const Composer = React.memo(
             </Pressable>
           </View>
         ) : null}
+        {voice.recording ? (
+          <RecordingBar warm={warm} durationMs={voice.durationMs} onDiscard={discardRecording} onSend={sendRecording} />
+        ) : (
         <View style={styles.composerRow}>
           <View style={styles.composerPill}>
             <Pressable
@@ -315,6 +338,20 @@ export const Composer = React.memo(
                 <Ionicons name="happy-outline" size={22} color={warm.teal} />
               </Pressable>
             ) : null}
+            {!hasContent ? (
+              <Pressable
+                style={styles.attachButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  startRecording();
+                }}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel="Record a voice message"
+              >
+                <Ionicons name="mic-outline" size={23} color={warm.teal} />
+              </Pressable>
+            ) : null}
           </View>
           <SendButton
             warm={warm}
@@ -325,6 +362,7 @@ export const Composer = React.memo(
             onPress={handleSend}
           />
         </View>
+        )}
       </View>
     );
   })
