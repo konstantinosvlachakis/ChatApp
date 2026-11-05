@@ -25,6 +25,7 @@ import { toReplyPreviewText } from "../components/chat/format";
 import { getMessageGroupFlags } from "../components/chat/messageGroups";
 import {
   buildPinnedMessages,
+  confirmPendingMessage,
   countIncomingAfter,
   createFreshMessageTracker,
   findFirstUnreadMessageId,
@@ -83,6 +84,7 @@ import { subscribeToPresenceEvents } from "../services/presenceEvents";
 import { hapticLight, hapticSelection, hapticSuccess } from "../services/haptics";
 import { showToast, toastApiError } from "../services/toast";
 import { setOpenConversationId } from "../services/push";
+import { confirmReadLocally, forgetReadLocally, markReadLocally } from "../services/readState";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
 import type { ChatMessage, Conversation, GroupInvite } from "../types";
@@ -152,7 +154,6 @@ export function ConversationsScreen() {
   // Pull-to-refresh of the open chat: keeps the message list mounted (unlike loadingConversation).
   const [refreshingConversation, setRefreshingConversation] = useState(false);
   const [openingFromNotification, setOpeningFromNotification] = useState(false);
-  const [sending, setSending] = useState(false);
   const [participantUsername, setParticipantUsername] = useState("");
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
@@ -193,7 +194,9 @@ export function ConversationsScreen() {
   const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
   // One shared voice-note player for the open chat (only one plays at a time).
   const [audioController] = useState(() => new ChatAudioController());
-  const sendInFlightRef = useRef(false);
+  // Sends are shown at once but POSTed one at a time, in order (see sendMessage).
+  const sendQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const optimisticSeqRef = useRef(0);
 
   const selectedConversationIdRef = useRef<number | null>(null);
   const chatSocketRef = useRef<WebSocket | null>(null);
@@ -424,6 +427,15 @@ export function ConversationsScreen() {
     async (conversationId: number) => {
       setLoadingConversation(true);
       selectedConversationIdRef.current = conversationId;
+      // Clear the tab badge and the row's unread pill at once; the server read follows below.
+      markReadLocally(conversationId);
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === conversationId && conversation.unread_count
+            ? { ...conversation, unread_count: 0 }
+            : conversation
+        )
+      );
       try {
         const response = await fetchConversation(conversationId);
         if (selectedConversationIdRef.current === conversationId) {
@@ -444,14 +456,18 @@ export function ConversationsScreen() {
           // Background: mark read, then refresh badge + list.
           markConversationRead(conversationId)
             .then(() => {
+              confirmReadLocally(conversationId);
               if (selectedConversationIdRef.current === conversationId) {
                 initialUnreadCountRef.current = 0;
               }
               DeviceEventEmitter.emit("conversations_refresh");
               return loadConversations(true);
             })
-            .catch(() => {});
+            .catch(() => forgetReadLocally(conversationId));
         }
+      } catch (error) {
+        forgetReadLocally(conversationId);
+        throw error;
       } finally {
         // A newer open (or going back) owns the spinner now.
         if (
@@ -608,22 +624,19 @@ export function ConversationsScreen() {
   }, [sendTypingEvent]);
 
   // Called by Composer with its draft (or by the sticker/GIF sheet with `media`); resolves true
-  // when sent. A photo, sticker or GIF shows an optimistic bubble (negative id,
-  // `local_status: "sending"`) that the saved message replaces.
+  // when sent. Every send shows an optimistic bubble at once (negative id,
+  // `local_status: "sending"`) that the saved message fills in place (POST response or socket
+  // echo, whichever comes first). Requests go out one at a time, in the order they were sent.
   const sendMessage = useStableCallback(
     async (messageText: string, attachment: PickedAttachment | null, media: MediaPick | null = null): Promise<boolean> => {
       const trimmed = media ? "" : messageText.trim();
       if (!selectedConversation || (!trimmed && !attachment && !media) || !currentUserId || !currentUsername) return false;
-      if (sending || sendInFlightRef.current) return false;
 
       const conversationId = selectedConversation.id;
       const replyTo = replyTarget && replyTarget.id > 0 ? replyTarget : null;
-      const optimisticId = attachment || media ? -Date.now() : null;
-      sendInFlightRef.current = true;
-      setSending(true);
-      if ((attachment || media) && optimisticId !== null) {
-        isNearBottomRef.current = true;
-        userScrolledRef.current = false;
+      optimisticSeqRef.current = (optimisticSeqRef.current + 1) % 100;
+      const optimisticId = -(Date.now() * 100 + optimisticSeqRef.current);
+      {
         const optimistic: ChatMessage = {
           id: optimisticId,
           local_key: String(optimisticId),
@@ -650,22 +663,34 @@ export function ConversationsScreen() {
           return { ...prev, messages: [...prev.messages, optimistic] };
         });
         setReplyTarget(null);
+        initialUnreadCountRef.current = 0;
+        setUnreadAnchorMessageId(null);
+        emitTypingStopped();
+        // Sending always brings the list back to the newest message.
+        isNearBottomRef.current = true;
+        userScrolledRef.current = false;
+        scrollToBottom(!reduceMotion);
       }
-      try {
-        const saved = media
-          ? await sendMediaMessage(
+      const request = sendQueueRef.current.then(() =>
+        media
+          ? sendMediaMessage(
               conversationId,
               media.kind === "sticker"
                 ? { kind: "sticker", stickerRef: media.sticker.ref }
                 : { kind: "gif", gifId: media.gif.id },
               replyTo?.id
             )
-          : await sendConversationMessage(
+          : sendConversationMessage(
               conversationId,
               trimmed,
               replyTo?.id,
               attachment ? { uri: attachment.uri, name: attachment.name, type: attachment.mimeType } : null
-            );
+            )
+      );
+      // The next send waits for this one, failed or not.
+      sendQueueRef.current = request.catch(() => undefined);
+      try {
+        const saved = await request;
         const savedMessage: ChatMessage = {
           ...saved,
           attachment_url: saved.attachment_url || null,
@@ -674,27 +699,17 @@ export function ConversationsScreen() {
 
         setSelectedConversation((prev) => {
           if (!prev || prev.id !== conversationId) return prev;
-          // Drop the optimistic bubble; the broadcast may already have added the saved id.
-          const withoutOptimistic =
-            optimisticId === null ? prev.messages : prev.messages.filter((m) => m.id !== optimisticId);
-          const hasMessage = withoutOptimistic.some((m) => m.id === savedMessage.id);
-          if (hasMessage && withoutOptimistic === prev.messages) return prev;
-          // Reuse the optimistic bubble's list cell (same key) for the saved photo message.
-          const listed: ChatMessage =
-            optimisticId === null ? savedMessage : { ...savedMessage, local_key: String(optimisticId) };
-          const nextMessages = hasMessage ? withoutOptimistic : [...withoutOptimistic, listed];
+          if (prev.messages.some((m) => m.id === savedMessage.id)) {
+            // The socket echo already filled the bubble; drop a leftover optimistic copy if any.
+            if (!prev.messages.some((m) => m.id === optimisticId)) return prev;
+            const nextMessages = prev.messages.filter((m) => m.id !== optimisticId);
+            return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
+          }
+          // Fill the optimistic bubble in place (same list key: the row is reused, no flash).
+          const nextMessages =
+            confirmPendingMessage(prev.messages, savedMessage, optimisticId) ?? [...prev.messages, savedMessage];
           return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
         });
-        if (selectedConversationIdRef.current === conversationId) {
-          setReplyTarget(null);
-          initialUnreadCountRef.current = 0;
-          setUnreadAnchorMessageId(null);
-          emitTypingStopped();
-          // Sending always brings the list back to the newest message.
-          isNearBottomRef.current = true;
-          userScrolledRef.current = false;
-          scrollToBottom(!reduceMotion);
-        }
         hapticSuccess();
         bumpConversationToTop({
           conversationId,
@@ -708,15 +723,13 @@ export function ConversationsScreen() {
         scheduleConversationsRefresh();
         return true;
       } catch (error) {
-        // The draft stays in (or is restored to) the composer so the user can retry.
-        if (optimisticId !== null) {
-          setSelectedConversation((prev) => {
-            if (!prev || prev.id !== conversationId) return prev;
-            return { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) };
-          });
-          if (replyTo && selectedConversationIdRef.current === conversationId) {
-            setReplyTarget((current) => current ?? replyTo);
-          }
+        // The draft is restored to the composer so the user can retry.
+        setSelectedConversation((prev) => {
+          if (!prev || prev.id !== conversationId) return prev;
+          return { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) };
+        });
+        if (replyTo && selectedConversationIdRef.current === conversationId) {
+          setReplyTarget((current) => current ?? replyTo);
         }
         toastApiError(
           error,
@@ -725,14 +738,13 @@ export function ConversationsScreen() {
               ? "Could not send the GIF."
               : "Could not send the sticker."
             : attachment
-              ? "Could not send your photo."
+              ? attachment.mimeType.startsWith("audio/")
+                ? "Could not send your voice message."
+                : "Could not send your photo."
               : "Could not send your message.",
           "Message not sent"
         );
         return false;
-      } finally {
-        sendInFlightRef.current = false;
-        setSending(false);
       }
     }
   );
@@ -1762,7 +1774,7 @@ export function ConversationsScreen() {
           conversationId={selectedConversation.id}
           currentUserId={currentUserId}
           replyTarget={replyTarget}
-          sending={sending}
+          sending={false}
           onClearReply={clearReplyTarget}
           onComposerFocus={handleComposerFocus}
           onTypingStart={emitTypingStarted}
