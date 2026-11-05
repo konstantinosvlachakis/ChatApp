@@ -46,7 +46,7 @@ class TranslateUpstreamErrorTests(TestCase):
         self.client.force_authenticate(user=self.conversation.receiver)
 
     def _translate(self, **urlopen_kwargs):
-        with patch("chatapp.views.urlopen", **urlopen_kwargs):
+        with patch("chatapp.translation.urlopen", **urlopen_kwargs):
             return self.client.post(
                 "/api/messages/translate/",
                 {"message_id": self.message.id, "target_language": "english"},
