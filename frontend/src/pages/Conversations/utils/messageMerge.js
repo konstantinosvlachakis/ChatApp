@@ -13,7 +13,13 @@ export const mergeLatestPage = (prev, pageMessages) => {
     (newest, message) => (isNumericId(message?.id) && message.id > newest ? message.id : newest),
     -Infinity
   );
-  const localOnly = (Array.isArray(prev) ? prev : []).filter(
+  const previous = Array.isArray(prev) ? prev : [];
+  // A sent message keeps its optimistic list key (`localKey`), so the row isn't remounted.
+  const localKeys = new Map(previous.filter((message) => message?.localKey).map((message) => [message.id, message.localKey]));
+  const fetchedWithKeys = localKeys.size
+    ? fetched.map((message) => (localKeys.has(message?.id) ? { ...message, localKey: localKeys.get(message.id) } : message))
+    : fetched;
+  const localOnly = previous.filter(
     (message) =>
       message &&
       !fetchedIds.has(message.id) &&
@@ -21,7 +27,7 @@ export const mergeLatestPage = (prev, pageMessages) => {
         message.isSystem ||
         (isNumericId(message.id) && message.id > newestFetchedId))
   );
-  return localOnly.length ? [...fetched, ...localOnly] : fetched;
+  return localOnly.length ? [...fetchedWithKeys, ...localOnly] : fetchedWithKeys;
 };
 
 // Prepend an older page, skipping ids already listed.
@@ -48,4 +54,39 @@ export const restoreMessage = (list, message, previousId, previousIndex) => {
     index = Math.min(Math.max(0, previousIndex ?? list.length), list.length);
   }
   return [...list.slice(0, index), message, ...list.slice(index)];
+};
+
+// Same content as an optimistic copy: kind plus sticker/GIF id, or text and whether a file is attached.
+const sameContent = (pending, saved) => {
+  const kind = pending.kind || "text";
+  if (kind !== (saved.kind || "text")) return false;
+  if (kind === "sticker") return pending.media?.pack === saved.media?.pack && pending.media?.id === saved.media?.id;
+  if (kind === "gif") return pending.media?.id === saved.media?.id;
+  const hasFile = (message) => Boolean(message.attachment_url || message.attachmentUrl);
+  return (pending.text || "").trim() === (saved.text || "").trim() && hasFile(pending) === hasFile(saved);
+};
+
+// Our own message came back from the server (broadcast or POST response) before the other one:
+// fill the matching optimistic copy in place, keeping its list position and `localKey`, instead of
+// listing it twice and dropping the copy (that remounts the row: a sticker or photo flickers).
+// Returns the new list, or null when there is no matching pending copy.
+export const confirmPendingMessage = (list, saved, decorate = (message) => message) => {
+  if (!saved?.id || list.some((message) => message.id === saved.id)) return null;
+  const index = list.findIndex(
+    (message) => message?.isPending && message.sender?.id === saved.sender?.id && sameContent(message, saved)
+  );
+  if (index === -1) return null;
+  const pending = list[index];
+  const attachmentUrl = saved.attachment_url || saved.attachmentUrl || null;
+  const next = list.slice();
+  next[index] = {
+    ...pending,
+    ...decorate(saved),
+    isPending: false,
+    localKey: pending.localKey,
+    attachment_url: attachmentUrl,
+    attachmentUrl,
+    reply_to: saved.reply_to || pending.reply_to || null,
+  };
+  return next;
 };

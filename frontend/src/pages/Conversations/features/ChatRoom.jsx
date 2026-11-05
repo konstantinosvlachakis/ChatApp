@@ -43,7 +43,7 @@ import {
 } from "../../../utils/reconnect";
 import { logger } from "../../../lib/logger";
 import { toastApiError } from "../../../components/Toast";
-import { mergeLatestPage, prependOlderMessages, restoreMessage } from "../utils/messageMerge";
+import { confirmPendingMessage, mergeLatestPage, prependOlderMessages, restoreMessage } from "../utils/messageMerge";
 
 const CALL_TIMEOUT_MS = 30000;
 const MESSAGE_PAGE_SIZE = 30;
@@ -1216,7 +1216,12 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
                       : message
                   );
                 }
-                return [...prev, toNewMessageFromBroadcast(savedMessage, currentUserId)];
+                // Our own send echoed before the POST response: confirm its optimistic copy
+                // in place (same row) rather than listing it twice.
+                const confirmed = confirmPendingMessage(prev, savedMessage, (message) =>
+                  withCurrentUserReaction(message, currentUserId)
+                );
+                return confirmed || [...prev, toNewMessageFromBroadcast(savedMessage, currentUserId)];
               });
               requestAnimationFrame(() => scrollToBottom("smooth"));
               const isIncomingMessage = savedMessage.sender?.id !== currentUserId;
@@ -1569,6 +1574,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
 
   const buildTempMessage = (fields) => ({
     id: Date.now(),
+    // Stable list key across optimistic -> saved (the id changes), so the row isn't remounted.
+    localKey: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     // Include the photo so the bubble doesn't flash the default avatar until the saved copy lands.
     sender: { id: user.user_id, username: user.username, profile_image_url: user.profile_image_url },
     timestamp: new Date().toISOString(),
