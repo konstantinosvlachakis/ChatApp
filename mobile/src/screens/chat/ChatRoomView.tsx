@@ -99,6 +99,9 @@ type ChatRoomViewProps = {
   conversationId: number;
   currentUserId?: number;
   replyTarget: ChatMessage | null;
+  /** Own message being edited in the composer (null when not editing). */
+  editingMessage: ChatMessage | null;
+  onCancelEdit: () => void;
   sending: boolean;
   onClearReply: () => void;
   onComposerFocus: () => void;
@@ -276,6 +279,8 @@ export function ChatRoomView(props: ChatRoomViewProps) {
             warm={warm}
             currentUserId={props.currentUserId}
             replyTarget={props.replyTarget}
+            editingMessage={props.editingMessage}
+            onCancelEdit={props.onCancelEdit}
             sending={props.sending}
             onClearReply={props.onClearReply}
             onFocus={props.onComposerFocus}

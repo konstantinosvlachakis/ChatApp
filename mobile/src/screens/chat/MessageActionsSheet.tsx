@@ -32,7 +32,7 @@ type MessageActionsSheetProps = {
 export function MessageActionsSheet({ warm, menu, actions, reduceMotion, onClose }: MessageActionsSheetProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
   return (
-    <BottomSheet warm={warm} visible={Boolean(menu)} reduceMotion={reduceMotion} onClose={onClose}>
+    <BottomSheet warm={warm} visible={Boolean(menu)} reduceMotion={reduceMotion} onClose={onClose} scrim={false}>
       {menu ? (
         <>
           <View style={[styles.preview, menu.isMine ? styles.previewMine : styles.previewOther]}>

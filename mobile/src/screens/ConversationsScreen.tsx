@@ -67,6 +67,7 @@ import {
 import {
   createOrGetConversation,
   fetchConversation,
+  editConversationMessage,
   fetchConversationMessagesPage,
   fetchConversations,
   getCachedConversations,
@@ -83,6 +84,9 @@ import { fetchGroupInvites, respondToGroupInvite } from "../services/api/groups"
 import { subscribeToPresenceEvents } from "../services/presenceEvents";
 import { hapticLight, hapticSelection, hapticSuccess } from "../services/haptics";
 import { showToast, toastApiError } from "../services/toast";
+import * as Clipboard from "expo-clipboard";
+import * as Speech from "expo-speech";
+import { resolveSpeechLanguage } from "../components/chat/speech";
 import { setOpenConversationId } from "../services/push";
 import { confirmReadLocally, forgetReadLocally, markReadLocally } from "../services/readState";
 import { fontFamilies } from "../theme/typography";
@@ -174,6 +178,10 @@ export function ConversationsScreen() {
   const [groupTypingUserId, setGroupTypingUserId] = useState<number | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  // Own message being edited in the composer (long-press → Edit).
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const editingMessageRef = useRef<ChatMessage | null>(null);
+  editingMessageRef.current = editingMessage;
   // Jump highlight: the row pulses whenever `nonce` changes (Reanimated, in MessageRow).
   const [highlight, setHighlight] = useState<{ messageId: number; nonce: number } | null>(null);
   // Inline translations of the open chat, cached per message id for the session.
@@ -260,7 +268,9 @@ export function ConversationsScreen() {
 
   useEffect(() => {
     setReplyTarget(null);
+    setEditingMessage(null);
     setViewerImageUrl(null);
+    Speech.stop().catch(() => {});
   }, [selectedConversation?.id]);
 
   // Voice notes: stop and free the player on chat switch, blur and unmount...
@@ -623,6 +633,44 @@ export function ConversationsScreen() {
     }
   }, [sendTypingEvent]);
 
+  // Composer send while editing: shows the new text at once, PATCHes it, reverts on failure
+  // (the composer restores the draft and edit mode comes back).
+  const saveEdit = useStableCallback(async (text: string): Promise<boolean> => {
+    const original = editingMessageRef.current;
+    if (!original || !selectedConversation) return false;
+    const conversationId = selectedConversation.id;
+    const trimmed = text.trim();
+    if (!trimmed) return false;
+    setEditingMessage(null);
+    if (trimmed === (original.text || "").trim()) return true;
+    const patch = (fields: Partial<ChatMessage>) =>
+      setSelectedConversation((prev) => {
+        if (!prev || prev.id !== conversationId) return prev;
+        const messages = prev.messages.map((m) => (m.id === original.id ? { ...m, ...fields } : m));
+        return { ...prev, messages, pinned_messages: buildPinnedMessages(messages) };
+      });
+    patch({ text: trimmed, edited_at: new Date().toISOString() });
+    try {
+      const saved = await editConversationMessage(original.id, trimmed);
+      patch({ text: saved.text ?? trimmed, edited_at: saved.edited_at ?? new Date().toISOString() });
+      scheduleConversationsRefresh();
+      return true;
+    } catch (error) {
+      patch({ text: original.text, edited_at: original.edited_at ?? null });
+      if (selectedConversationIdRef.current === conversationId) setEditingMessage(original);
+      toastApiError(error, "Could not save your edit.", "Edit not saved");
+      return false;
+    }
+  });
+
+  const startEditing = useCallback((message: ChatMessage) => {
+    setReplyTarget(null);
+    setEditingMessage(message);
+    composerRef.current?.setDraft(message.text || "");
+  }, []);
+
+  const cancelEditing = useCallback(() => setEditingMessage(null), []);
+
   // Called by Composer with its draft (or by the sticker/GIF sheet with `media`); resolves true
   // when sent. Every send shows an optimistic bubble at once (negative id,
   // `local_status: "sending"`) that the saved message fills in place (POST response or socket
@@ -631,6 +679,7 @@ export function ConversationsScreen() {
     async (messageText: string, attachment: PickedAttachment | null, media: MediaPick | null = null): Promise<boolean> => {
       const trimmed = media ? "" : messageText.trim();
       if (!selectedConversation || (!trimmed && !attachment && !media) || !currentUserId || !currentUsername) return false;
+      if (editingMessageRef.current && !attachment && !media) return saveEdit(messageText);
 
       const conversationId = selectedConversation.id;
       const replyTo = replyTarget && replyTarget.id > 0 ? replyTarget : null;
@@ -977,6 +1026,11 @@ export function ConversationsScreen() {
   const handleSwipe = useCallback((message: ChatMessage) => {
     if (message.local_status === "sending") return;
     setReactionPickerMessageId(null);
+    if (editingMessageRef.current) {
+      // Replying leaves edit mode (and drops the edit draft).
+      setEditingMessage(null);
+      composerRef.current?.setDraft("");
+    }
     setReplyTarget(message);
     ignoreNextOutsideTapRef.current = true;
     replyActivatedAtRef.current = Date.now();
@@ -1172,18 +1226,12 @@ export function ConversationsScreen() {
     setMessageMenu(null);
   }, []);
 
+  // Same actions as the web right-click menu: React, Reply, Copy, Speak, Pin, Translate, Edit, Delete.
   const buildMessageMenuActions = useCallback(
     (message: ChatMessage, isMine: boolean) => {
+      const text = (message.text || "").trim();
+      const isTextKind = !message.kind || message.kind === "text";
       const actions: MessageMenuAction[] = [
-        {
-          key: "reply",
-          label: "Reply",
-          icon: "arrow-undo",
-          onPress: () => {
-            closeMessageMenu();
-            handleSwipe(message);
-          },
-        },
         {
           key: "react",
           label: "React",
@@ -1193,7 +1241,69 @@ export function ConversationsScreen() {
             setReactionPickerMessageId(message.id);
           },
         },
+        {
+          key: "reply",
+          label: "Reply",
+          icon: "arrow-undo",
+          onPress: () => {
+            closeMessageMenu();
+            handleSwipe(message);
+          },
+        },
       ];
+
+      if (text) {
+        actions.push(
+          {
+            key: "copy",
+            label: "Copy",
+            icon: "copy-outline",
+            onPress: () => {
+              closeMessageMenu();
+              Clipboard.setStringAsync(text)
+                .then(() => {
+                  hapticSelection();
+                  showToast("Copied to clipboard", { variant: "success", durationMs: 1500 });
+                })
+                .catch(() => showToast("Could not copy the message.", { variant: "error" }));
+            },
+          },
+          {
+            key: "speak",
+            label: "Speak",
+            icon: "volume-high-outline",
+            onPress: () => {
+              closeMessageMenu();
+              const sender = (selectedConversation?.participants || []).find(
+                (participant) => participant.user.id === message.sender?.id
+              );
+              const directPartner = selectedConversation
+                ? getOtherParticipant(selectedConversation, currentUsername)
+                : null;
+              const senderNative = isMine
+                ? null
+                : sender?.user.native_language ?? directPartner?.native_language ?? null;
+              Speech.stop()
+                .catch(() => {})
+                .finally(() => {
+                  Speech.speak(text, {
+                    language: resolveSpeechLanguage(text, [message.translated_source_language, senderNative]),
+                  });
+                });
+            },
+          }
+        );
+      }
+
+      actions.push({
+        key: "pin",
+        label: message.is_pinned ? "Unpin" : "Pin",
+        icon: message.is_pinned ? "pin-outline" : "pin",
+        onPress: async () => {
+          closeMessageMenu();
+          await togglePinnedMessage(message);
+        },
+      });
 
       if (!isMine && canTranslateMessage(message, currentUserId)) {
         const entry = translationsRef.current[message.id];
@@ -1210,17 +1320,18 @@ export function ConversationsScreen() {
         });
       }
 
-      actions.push({
-        key: "pin",
-        label: message.is_pinned ? "Unpin" : "Pin",
-        icon: message.is_pinned ? "pin-outline" : "pin",
-        onPress: async () => {
-          closeMessageMenu();
-          await togglePinnedMessage(message);
-        },
-      });
-
       if (isMine) {
+        if (isTextKind && text && message.id > 0) {
+          actions.push({
+            key: "edit",
+            label: "Edit",
+            icon: "create-outline",
+            onPress: () => {
+              closeMessageMenu();
+              startEditing(message);
+            },
+          });
+        }
         actions.push({
           key: "delete",
           label: "Delete",
@@ -1234,7 +1345,17 @@ export function ConversationsScreen() {
       }
       return actions;
     },
-    [closeMessageMenu, currentUserId, deleteMessage, handleSwipe, togglePinnedMessage, toggleTranslation]
+    [
+      closeMessageMenu,
+      currentUserId,
+      currentUsername,
+      deleteMessage,
+      handleSwipe,
+      selectedConversation,
+      startEditing,
+      togglePinnedMessage,
+      toggleTranslation,
+    ]
   );
 
   // Long press (bubble or attachment): bottom-sheet menu with a light haptic.
@@ -1774,6 +1895,8 @@ export function ConversationsScreen() {
           conversationId={selectedConversation.id}
           currentUserId={currentUserId}
           replyTarget={replyTarget}
+          editingMessage={editingMessage}
+          onCancelEdit={cancelEditing}
           sending={false}
           onClearReply={clearReplyTarget}
           onComposerFocus={handleComposerFocus}

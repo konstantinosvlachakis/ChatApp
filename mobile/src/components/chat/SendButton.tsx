@@ -20,12 +20,22 @@ type SendButtonProps = {
   visible: boolean;
   disabled?: boolean;
   busy?: boolean;
+  /** Arrow for sending, checkmark for saving an edit. */
+  icon?: "arrow-up" | "checkmark";
   accessibilityLabel: string;
   onPress: () => void;
 };
 
 /** Round navy send button that animates in when the draft has content (instant with reduced motion). */
-export function SendButton({ warm, visible, disabled = false, busy = false, accessibilityLabel, onPress }: SendButtonProps) {
+export function SendButton({
+  warm,
+  visible,
+  disabled = false,
+  busy = false,
+  icon = "arrow-up",
+  accessibilityLabel,
+  onPress,
+}: SendButtonProps) {
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(visible ? 1 : 0);
 
@@ -70,7 +80,7 @@ export function SendButton({ warm, visible, disabled = false, busy = false, acce
         {busy ? (
           <ActivityIndicator size="small" color={warm.onNavy} />
         ) : (
-          <Ionicons name="arrow-up" size={22} color={warm.onNavy} />
+          <Ionicons name={icon} size={22} color={warm.onNavy} />
         )}
       </Pressable>
     </Animated.View>

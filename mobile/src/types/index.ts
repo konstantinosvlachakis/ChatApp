@@ -40,6 +40,8 @@ export interface Profile {
 export interface ConversationParticipant {
   id: number;
   username: string;
+  /** Sent by the API (ProfileSerializer); used to pick the voice for "Speak". */
+  native_language?: string | null;
   profile_image_url?: string | null;
   is_online?: boolean;
 }

@@ -34,6 +34,10 @@ type ComposerProps = {
   warm: WarmColors;
   currentUserId?: number;
   replyTarget: ChatMessage | null;
+  /** Own message being edited: the draft holds its text and Send saves the edit. */
+  editingMessage?: ChatMessage | null;
+  /** Leaves edit mode (the composer clears its draft first). */
+  onCancelEdit?: () => void;
   sending: boolean;
   // Callbacks should be stable so typing doesn't re-render the screen or this component.
   onClearReply: () => void;
@@ -61,6 +65,8 @@ export const Composer = React.memo(
       warm,
       currentUserId,
       replyTarget,
+      editingMessage = null,
+      onCancelEdit,
       sending,
       onClearReply,
       onFocus,
@@ -235,7 +241,33 @@ export const Composer = React.memo(
 
     return (
       <View style={styles.composerWrap}>
-        {replyTarget ? (
+        {editingMessage ? (
+          <View style={styles.composerChip}>
+            <View style={styles.composerChipAccent} />
+            <View style={styles.composerChipTextWrap}>
+              <Text style={styles.composerChipLabel} numberOfLines={1}>
+                Editing message
+              </Text>
+              <Text style={styles.composerChipText} numberOfLines={1}>
+                {editingMessage.text || ""}
+              </Text>
+            </View>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                messageTextRef.current = "";
+                setMessageText("");
+                onTypingStop();
+                onCancelEdit?.();
+              }}
+              style={styles.composerChipClose}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing"
+            >
+              <Ionicons name="close" size={18} color={warm.mutedInk} />
+            </Pressable>
+          </View>
+        ) : replyTarget ? (
           <View style={styles.composerChip}>
             <View style={styles.composerChipAccent} />
             <View style={styles.composerChipTextWrap}>
@@ -294,6 +326,7 @@ export const Composer = React.memo(
         ) : (
         <View style={styles.composerRow}>
           <View style={styles.composerPill}>
+            {!editingMessage ? (
             <Pressable
               style={styles.attachButton}
               onPress={(event) => {
@@ -307,6 +340,7 @@ export const Composer = React.memo(
             >
               <Ionicons name="image-outline" size={22} color={warm.teal} />
             </Pressable>
+            ) : null}
             <TextInput
               ref={messageInputRef}
               style={styles.composerInput}
@@ -318,11 +352,13 @@ export const Composer = React.memo(
               }}
               onFocus={handleInputFocus}
               multiline
-              placeholder={attachment ? "Add a caption…" : replyTarget ? "Write a reply…" : "Message"}
+              placeholder={
+                editingMessage ? "Edit your message…" : attachment ? "Add a caption…" : replyTarget ? "Write a reply…" : "Message"
+              }
               placeholderTextColor={warm.mutedInk}
               accessibilityLabel="Message"
             />
-            {onOpenMediaPicker ? (
+            {onOpenMediaPicker && !editingMessage ? (
               <Pressable
                 style={styles.attachButton}
                 onPress={(event) => {
@@ -338,7 +374,7 @@ export const Composer = React.memo(
                 <Ionicons name="happy-outline" size={22} color={warm.teal} />
               </Pressable>
             ) : null}
-            {!hasContent ? (
+            {!hasContent && !editingMessage ? (
               <Pressable
                 style={styles.attachButton}
                 onPress={(event) => {
@@ -358,7 +394,8 @@ export const Composer = React.memo(
             visible={hasContent}
             disabled={sending}
             busy={sending}
-            accessibilityLabel={attachment ? "Send photo" : "Send message"}
+            icon={editingMessage ? "checkmark" : "arrow-up"}
+            accessibilityLabel={editingMessage ? "Save edit" : attachment ? "Send photo" : "Send message"}
             onPress={handleSend}
           />
         </View>
