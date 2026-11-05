@@ -396,6 +396,9 @@ EXPO_ACCESS_TOKEN = os.environ.get("EXPO_ACCESS_TOKEN", "")
 # GIF picker (chatapp/giphy.py). Without a key the GIF endpoints answer 503
 # `gifs_unavailable` and the clients hide the GIF tab. Never set under tests.
 GIPHY_API_KEY = "" if RUNNING_TESTS else os.environ.get("GIPHY_API_KEY", "").strip()
+# Message translation (chatapp/translation.py): DeepL first when set (free keys end in ":fx"),
+# then Google's free endpoint, which rate-limits shared cloud IPs.
+DEEPL_API_KEY = "" if RUNNING_TESTS else os.environ.get("DEEPL_API_KEY", "").strip()
 GIPHY_RATING = os.environ.get("GIPHY_RATING", "pg").strip().lower()
 if GIPHY_RATING not in {"g", "pg", "pg-13", "r"}:
     GIPHY_RATING = "pg"

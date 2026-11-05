@@ -52,6 +52,7 @@ from .conversation_members import (
     visible_messages,
 )
 from . import people_filters
+from . import translation
 from .serializers import MessageSerializer
 from .serializers import ConversationSerializer
 from .serializers import (
@@ -69,10 +70,8 @@ from django.db.models.functions import Coalesce
 from django.core.files.storage import default_storage
 import os
 import uuid
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import urllib.error
-import http.client
 import hashlib
 import re
 import random
@@ -3106,42 +3105,6 @@ def languages_match(source_language, target_language):
     return src == tgt or src.split("-")[0] == tgt.split("-")[0]
 
 
-class TranslationServiceError(Exception):
-    """The translation provider failed, timed out or sent an unusable reply."""
-
-
-def fetch_google_translation(text, target_language):
-    """Return (translated_text, source_language) from Google's public endpoint.
-
-    Network errors and timeouts (OSError, which covers URLError and
-    TimeoutError) and malformed payloads raise TranslationServiceError.
-    """
-    query = urlencode(
-        {
-            "client": "gtx",
-            "sl": "auto",
-            "tl": target_language,
-            "dt": "t",
-            "q": text,
-        }
-    )
-    url = f"https://translate.googleapis.com/translate_a/single?{query}"
-    try:
-        with urlopen(url, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-
-        translated_chunks = payload[0] if isinstance(payload, list) and payload else []
-        translated_text = "".join(
-            chunk[0] for chunk in translated_chunks if isinstance(chunk, list) and chunk
-        ).strip()
-        source_language = (
-            payload[2] if isinstance(payload, list) and len(payload) > 2 else "auto"
-        )
-    except (OSError, ValueError, TypeError, http.client.HTTPException) as error:
-        raise TranslationServiceError() from error
-    return translated_text, source_language
-
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @throttle_classes(
@@ -3245,11 +3208,11 @@ def translate_message_view(request):
     # All reads are done; don't hold a pooled connection during the HTTP call.
     release_db_connection()
     try:
-        translated_text, source_language = fetch_google_translation(
+        translated_text, source_language = translation.translate(
             normalized_text, target_language
         )
-    except TranslationServiceError:
-        logger.warning("Translation service call failed", exc_info=True)
+    except translation.TranslationServiceError:
+        # Each provider already logged why it failed (chatapp/translation.py).
         return Response(
             {"error": "Translation service is currently unavailable.", "code": "translation_unavailable"},
             status=status.HTTP_502_BAD_GATEWAY,
