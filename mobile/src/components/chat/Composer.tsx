@@ -76,7 +76,7 @@ export const Composer = React.memo(
     const [attachment, setAttachment] = useState<PickedAttachment | null>(null);
     const attachmentRef = useRef<PickedAttachment | null>(null);
     attachmentRef.current = attachment;
-    // Guards against a double tap sending twice before `sending` re-renders.
+    // Guards against a double tap sending the same draft twice.
     const sendInFlightRef = useRef(false);
     const pickingRef = useRef(false);
 
@@ -189,27 +189,25 @@ export const Composer = React.memo(
       const text = messageTextRef.current;
       const pickedAttachment = attachmentRef.current;
       if (!pickedAttachment && !text.trim()) return;
+      // Clear right away: the optimistic bubble shows the message while it sends, and the next
+      // message can be typed at once (the screen sends them in order).
       sendInFlightRef.current = true;
-      try {
-        if (!pickedAttachment) {
-          const sent = await onSend(text, null);
-          if (sent) setMessageText("");
-          return;
-        }
-        // Clear right away: the optimistic bubble shows the photo while it uploads.
-        messageTextRef.current = "";
-        attachmentRef.current = null;
-        setMessageText("");
-        setAttachment(null);
-        onTypingStop();
-        const sent = await onSend(text, pickedAttachment);
-        if (!sent && !messageTextRef.current && !attachmentRef.current) {
-          // Restore the draft unless the user already started a new one.
-          setMessageText(text);
-          setAttachment(pickedAttachment);
-        }
-      } finally {
+      messageTextRef.current = "";
+      attachmentRef.current = null;
+      setMessageText("");
+      setAttachment(null);
+      onTypingStop();
+      // Only guards a double tap within the same frame; not held for the request.
+      requestAnimationFrame(() => {
         sendInFlightRef.current = false;
+      });
+      const sent = await onSend(text, pickedAttachment);
+      if (!sent && !messageTextRef.current && !attachmentRef.current) {
+        // Restore the draft unless the user already started a new one.
+        messageTextRef.current = text;
+        attachmentRef.current = pickedAttachment;
+        setMessageText(text);
+        setAttachment(pickedAttachment);
       }
     }, [onSend, onTypingStop]);
 

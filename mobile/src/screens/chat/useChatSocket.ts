@@ -1,7 +1,12 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { DeviceEventEmitter } from "react-native";
-import { buildPinnedMessages, withCurrentUserReaction } from "../../components/chat/messageState";
+import {
+  buildPinnedMessages,
+  confirmPendingMessage,
+  withCurrentUserReaction,
+} from "../../components/chat/messageState";
 import { markConversationRead } from "../../services/api/conversations";
+import { confirmReadLocally, forgetReadLocally, markReadLocally } from "../../services/readState";
 import { tokenStorage } from "../../services/storage";
 import type { ChatMessage, Conversation } from "../../types";
 
@@ -106,13 +111,19 @@ export function useChatSocket({
 
             setSelectedConversation((prev) => {
               if (!prev || prev.id !== conversationId) return prev;
-              // Our own sends are already appended from the POST response: dedupe by id.
+              // Our own sends may already be listed from the POST response: dedupe by id.
               const alreadyListed = prev.messages.some((m) => m.id === newMessage.id);
               if (alreadyListed) {
                 const merged = prev.messages.map((m) =>
                   m.id === newMessage.id ? { ...m, ...broadcast } : m
                 );
                 return { ...prev, messages: merged, pinned_messages: buildPinnedMessages(merged) };
+              }
+              // The echo beat the POST response: fill the optimistic bubble in place (no second bubble).
+              const confirmed =
+                senderId === currentUserId ? confirmPendingMessage(prev.messages, newMessage) : null;
+              if (confirmed) {
+                return { ...prev, messages: confirmed, pinned_messages: buildPinnedMessages(confirmed) };
               }
               const nextMessages = [...prev.messages, newMessage];
               return { ...prev, messages: nextMessages, pinned_messages: buildPinnedMessages(nextMessages) };
@@ -134,15 +145,18 @@ export function useChatSocket({
 
             if (isFocused) {
               setRemoteTyping(conversationId, false);
+              // Seen right away: the tab badge must not flash for a message read on screen.
+              markReadLocally(conversationId);
               markConversationRead(conversationId)
                 .then(() => {
+                  confirmReadLocally(conversationId);
                   if (selectedConversationIdRef.current === conversationId) {
                     initialUnreadCountRef.current = 0;
                     setUnreadAnchorMessageId(null);
                   }
                   DeviceEventEmitter.emit("conversations_refresh");
                 })
-                .catch(() => {});
+                .catch(() => forgetReadLocally(conversationId));
             }
             scheduleConversationsRefresh();
             return;

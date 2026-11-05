@@ -66,3 +66,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:stickers-gifs
         working-directory: mobile
+      - run: npm run test:chat-sending
+        working-directory: mobile
