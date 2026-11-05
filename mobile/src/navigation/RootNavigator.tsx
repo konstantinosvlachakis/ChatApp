@@ -44,6 +44,7 @@ import {
   subscribeToInviteNotificationOpens,
   watchPushTokenChanges,
 } from "../services/push";
+import { subscribeToLocalReads } from "../services/readState";
 import { profileViewNotificationStorage, tokenStorage } from "../services/storage";
 import { subscribeToEmailUnverified } from "../services/emailVerification";
 import { LoginScreen } from "../screens/LoginScreen";
@@ -292,6 +293,19 @@ function AppTabs() {
       unreadRefreshTimerRef.current = null;
     };
   }, []);
+
+  // A chat was opened (or read on screen): drop its unread messages from the badge at once,
+  // without waiting for the read request and a list refetch (services/readState).
+  React.useEffect(
+    () =>
+      subscribeToLocalReads((conversationId) => {
+        const unread = previousUnreadByConversationRef.current[conversationId] || 0;
+        if (!unread) return;
+        previousUnreadByConversationRef.current[conversationId] = 0;
+        setUnreadChatsCount((count) => Math.max(0, count - unread));
+      }),
+    []
+  );
 
   React.useEffect(() => {
     loadUnreadChatsCount();

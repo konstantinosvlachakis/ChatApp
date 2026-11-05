@@ -14,6 +14,51 @@ export function mergeMessagesById(older: ChatMessage[], current: ChatMessage[]) 
   return [...older.filter((message) => !knownIds.has(message.id)), ...current];
 }
 
+function mediaKey(message: ChatMessage) {
+  const media = message.media as { pack?: string; id?: string } | null | undefined;
+  if (!media) return "";
+  return message.kind === "sticker" ? `${media.pack}:${media.id}` : String(media.id ?? "");
+}
+
+/** Whether `saved` is the server copy of the optimistic bubble `pending` (same sender and content). */
+export function isConfirmationOf(pending: ChatMessage, saved: ChatMessage) {
+  if (pending.local_status !== "sending" || pending.sender?.id !== saved.sender?.id) return false;
+  const kind = saved.kind || "text";
+  if ((pending.kind || "text") !== kind) return false;
+  if (kind !== "text") return mediaKey(pending) === mediaKey(saved);
+  return (
+    (pending.text || "").trim() === (saved.text || "").trim() &&
+    Boolean(pending.attachment_url) === Boolean(saved.attachment_url)
+  );
+}
+
+/**
+ * Puts the saved message in place of its optimistic bubble (the oldest matching one), keeping the
+ * bubble's list key so the row is reused, not remounted. Whichever arrives first, the socket echo
+ * or the POST response, confirms it; the other then finds the id already listed. Returns null when
+ * nothing matches (the caller appends or merges as usual).
+ */
+export function confirmPendingMessage(
+  messages: ChatMessage[],
+  saved: ChatMessage,
+  optimisticId?: number | null
+): ChatMessage[] | null {
+  const index = messages.findIndex((message) =>
+    optimisticId != null ? message.id === optimisticId : isConfirmationOf(message, saved)
+  );
+  if (index === -1) return null;
+  const pending = messages[index];
+  const listed: ChatMessage = {
+    ...saved,
+    local_key: pending.local_key ?? String(pending.id),
+    // Fall back to the local photo if the saved copy carries no URL.
+    attachment_url: saved.attachment_url || pending.attachment_url || null,
+  };
+  const next = messages.slice();
+  next[index] = listed;
+  return next;
+}
+
 export function buildPinnedMessages(messages?: ChatMessage[] | null) {
   return [...(messages || [])]
     .filter((message) => Boolean(message?.is_pinned))
