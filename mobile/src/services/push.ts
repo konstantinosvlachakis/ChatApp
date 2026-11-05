@@ -9,10 +9,33 @@
 // - subscribeToNotificationOpens() (AppTabs): taps are queued until the app is logged in.
 import { Alert, AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
+import type * as NotificationsModule from "expo-notifications";
 import { api } from "./api/client";
+
+type NotificationsApi = typeof NotificationsModule;
+
+// Expo Go on Android (SDK 53+) ships without expo-notifications' native modules, and importing
+// the package there crashes the app at startup. Load it lazily and keep push off in that case
+// (remote push needs a development/EAS build anyway).
+const isExpoGoAndroid =
+  Platform.OS === "android" && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+let notificationsModule: NotificationsApi | null | undefined;
+
+function getNotifications(): NotificationsApi | null {
+  if (notificationsModule !== undefined) return notificationsModule;
+  if (Platform.OS === "web" || isExpoGoAndroid) {
+    notificationsModule = null;
+    return null;
+  }
+  try {
+    notificationsModule = require("expo-notifications") as NotificationsApi;
+  } catch {
+    notificationsModule = null;
+  }
+  return notificationsModule;
+}
 
 const MESSAGES_CHANNEL_ID = "messages";
 const PROMPTED_KEY = "lv_push_permission_prompted";
@@ -50,8 +73,9 @@ function messageConversationId(data: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function handleResponse(response: Notifications.NotificationResponse | null) {
-  if (!response) return;
+function handleResponse(response: NotificationsModule.NotificationResponse | null) {
+  const Notifications = getNotifications();
+  if (!response || !Notifications) return;
   const identifier = response.notification.request.identifier;
   if (handledResponseIds.has(identifier)) return;
   handledResponseIds.add(identifier);
@@ -112,8 +136,10 @@ export function subscribeToNotificationOpens(listener: (conversationId: number) 
 }
 
 export function initNotifications() {
-  if (initialized || Platform.OS === "web") return;
+  if (initialized) return;
   initialized = true;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
 
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
@@ -171,7 +197,7 @@ function askWithExplanation(): Promise<boolean> {
   });
 }
 
-async function ensurePermission(): Promise<boolean> {
+async function ensurePermission(Notifications: NotificationsApi): Promise<boolean> {
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
   if (!current.canAskAgain) return false;
@@ -184,7 +210,8 @@ async function ensurePermission(): Promise<boolean> {
 }
 
 async function registerOnce() {
-  if (Platform.OS === "web") return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   if (!Device.isDevice) {
     logOnce("Push notifications need a physical device; skipping registration.");
     return;
@@ -197,7 +224,7 @@ async function registerOnce() {
     }
     return;
   }
-  if (!(await ensurePermission())) return;
+  if (!(await ensurePermission(Notifications))) return;
 
   const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
   if (!token) return;
@@ -224,7 +251,8 @@ export function registerForPushNotifications(): Promise<void> {
 
 /** Re-register whenever the OS rotates the device token. Returns an unsubscribe function. */
 export function watchPushTokenChanges() {
-  if (Platform.OS === "web") return () => {};
+  const Notifications = getNotifications();
+  if (!Notifications) return () => {};
   const subscription = Notifications.addPushTokenListener(() => {
     registerForPushNotifications();
   });
