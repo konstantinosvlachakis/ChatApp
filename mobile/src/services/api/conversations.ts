@@ -186,6 +186,12 @@ export async function fetchGifs(query: string, offset = 0, signal?: AbortSignal)
   return response.data;
 }
 
+/** Your own text message (stickers/GIFs answer 400 `not_editable`); returns the updated message. */
+export async function editConversationMessage(messageId: number, text: string): Promise<ChatMessage> {
+  const response = await api.patch<ChatMessage>(`/messages/${messageId}/edit/`, { text });
+  return response.data;
+}
+
 export async function markConversationRead(conversationId: number) {
   const response = await api.patch(`/conversations/${conversationId}/read/`);
   return response.data;

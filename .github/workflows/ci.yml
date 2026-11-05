@@ -70,3 +70,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:voice-notes
         working-directory: mobile
+      - run: npm run test:message-menu
+        working-directory: mobile
