@@ -155,7 +155,7 @@ const normalizeUrl = (url) => {
 };
 
 const isLikelyAudio = (url) =>
-  /\.(mp3|wav|ogg|webm)$/i.test(url) ||
+  /\.(mp3|wav|ogg|webm|m4a|aac)$/i.test(url) ||
   url.includes("/media/attachments/blob_") ||
   url.includes("/media/audio/");
 

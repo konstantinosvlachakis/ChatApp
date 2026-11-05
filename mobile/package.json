@@ -15,7 +15,8 @@
     "test:group-chats": "node --experimental-strip-types --test tests/groupReads.test.mjs",
     "test:boarding-pass": "node --experimental-strip-types --test tests/boardingPass.test.mjs",
     "test:stickers-gifs": "node --experimental-strip-types --test tests/messageMedia.test.mjs",
-    "test:chat-sending": "node --experimental-strip-types --test tests/chatSending.test.mjs"
+    "test:chat-sending": "node --experimental-strip-types --test tests/chatSending.test.mjs",
+    "test:voice-notes": "node --experimental-strip-types --test tests/voiceNote.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",
