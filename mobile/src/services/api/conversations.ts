@@ -1,10 +1,13 @@
 import { api, UPLOAD_TIMEOUT_MS, type NoRetryConfig } from "./client";
 import type { ChatMessage, Conversation, GifMedia, StickerPack } from "../../types";
+import { adjustUnreadCount, resetReadState } from "../readState";
 
 const CONVERSATIONS_CACHE_TTL_MS = 15_000;
 
 let cachedConversations: Conversation[] | null = null;
 let cachedConversationsAt = 0;
+// When the request behind the cached list started (for optimistic read overrides).
+let cachedConversationsFetchStartedAt = 0;
 let conversationsRequest: Promise<Conversation[]> | null = null;
 let cacheGeneration = 0;
 
@@ -13,12 +16,21 @@ export function clearConversationsCache() {
   cachedConversationsAt = 0;
   conversationsRequest = null;
   cacheGeneration += 1;
+  resetReadState();
+}
+
+/** Server unread counts, minus chats the user has just opened (services/readState). */
+function withLocalReads(conversations: Conversation[], fetchStartedAt: number) {
+  return conversations.map((conversation) => {
+    const unread = adjustUnreadCount(conversation.id, conversation.unread_count || 0, fetchStartedAt);
+    return unread === (conversation.unread_count || 0) ? conversation : { ...conversation, unread_count: unread };
+  });
 }
 
 export function getCachedConversations() {
   if (!cachedConversations) return null;
   if (Date.now() - cachedConversationsAt > CONVERSATIONS_CACHE_TTL_MS) return null;
-  return [...cachedConversations];
+  return withLocalReads(cachedConversations, cachedConversationsFetchStartedAt);
 }
 
 export async function fetchConversations(options?: { force?: boolean }): Promise<Conversation[]> {
@@ -33,6 +45,7 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
   }
 
   const generation = cacheGeneration;
+  const fetchStartedAt = Date.now();
   const request = api
     // Groups are opt-in on the API (builds before this one only understand direct chats).
     .get<Conversation[]>("/conversations/", { params: { include: "groups" } })
@@ -41,8 +54,9 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
       if (generation === cacheGeneration) {
         cachedConversations = [...response.data];
         cachedConversationsAt = Date.now();
+        cachedConversationsFetchStartedAt = fetchStartedAt;
       }
-      return [...response.data];
+      return withLocalReads(response.data, fetchStartedAt);
     })
     .finally(() => {
       if (conversationsRequest === request) {
