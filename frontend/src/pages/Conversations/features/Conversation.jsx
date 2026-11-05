@@ -810,7 +810,7 @@ const Conversation = ({
           const isSentByUser = flags.isSentByUser;
           return (
             <MessageRow
-              key={msg.id || index}
+              key={msg.localKey || msg.id || index}
               msg={msg}
               isSentByUser={isSentByUser}
               startsGroup={flags.startsGroup}

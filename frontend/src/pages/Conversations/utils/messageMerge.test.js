@@ -1,4 +1,4 @@
-import { mergeLatestPage, prependOlderMessages, restoreMessage } from "./messageMerge";
+import { confirmPendingMessage, mergeLatestPage, prependOlderMessages, restoreMessage } from "./messageMerge";
 
 const msg = (id, extra = {}) => ({ id, text: `m${id}`, ...extra });
 
@@ -56,5 +56,49 @@ describe("restoreMessage", () => {
     expect(restoreMessage([msg(1), msg(4)], msg(3), 99, 1).map((m) => m.id)).toEqual([1, 3, 4]);
     const list = [msg(1)];
     expect(restoreMessage(list, msg(1), null, 0)).toBe(list);
+  });
+});
+
+describe("confirmPendingMessage", () => {
+  const me = { id: 1, username: "me" };
+  const pendingSticker = {
+    id: 1700000000000,
+    localKey: "local-a",
+    isPending: true,
+    sender: me,
+    text: "",
+    kind: "sticker",
+    media: { pack: "lumi", id: "wave", url: "/s/wave.svg" },
+  };
+
+  test("fills the optimistic copy in place and keeps its list key", () => {
+    const list = [msg(5), pendingSticker];
+    const saved = { id: 42, sender: me, text: "", kind: "sticker", media: { pack: "lumi", id: "wave", url: "/s/wave.svg" }, status: "sent" };
+    const next = confirmPendingMessage(list, saved);
+    expect(next).toHaveLength(2);
+    expect(next[1]).toMatchObject({ id: 42, localKey: "local-a", isPending: false, status: "sent", kind: "sticker" });
+  });
+
+  test("only confirms a pending copy with the same sender and content", () => {
+    const list = [pendingSticker];
+    expect(confirmPendingMessage(list, { id: 42, sender: me, kind: "sticker", media: { pack: "lumi", id: "love" } })).toBeNull();
+    expect(confirmPendingMessage(list, { id: 42, sender: { id: 2 }, kind: "sticker", media: { pack: "lumi", id: "wave" } })).toBeNull();
+    expect(confirmPendingMessage(list, { id: 42, sender: me, kind: "gif", media: { id: "wave" } })).toBeNull();
+    // Already listed (POST response won the race): nothing to do here.
+    expect(confirmPendingMessage([msg(42)], { id: 42, sender: me, text: "m42" })).toBeNull();
+  });
+
+  test("matches text sends by text and attachment presence, and uses the server's file URL", () => {
+    const list = [{ id: 1, localKey: "local-b", isPending: true, sender: me, text: " hola ", attachmentUrl: "blob:x", attachment_url: "blob:x" }];
+    const next = confirmPendingMessage(list, { id: 7, sender: me, text: "hola", attachment_url: "https://cdn/x.jpg" });
+    expect(next[0]).toMatchObject({ id: 7, localKey: "local-b", attachment_url: "https://cdn/x.jpg", attachmentUrl: "https://cdn/x.jpg" });
+    expect(confirmPendingMessage(list, { id: 7, sender: me, text: "hola" })).toBeNull();
+  });
+});
+
+describe("mergeLatestPage keeps list keys", () => {
+  test("a fetched message keeps the localKey of the copy it replaces", () => {
+    const merged = mergeLatestPage([msg(41), msg(42, { localKey: "local-a" })], [msg(41), msg(42)]);
+    expect(merged.map((message) => message.localKey)).toEqual([undefined, "local-a"]);
   });
 });
