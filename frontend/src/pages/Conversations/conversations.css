@@ -204,7 +204,8 @@
 .cv-chat-identity { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; border-radius: 16px; text-align: left; color: inherit; }
 .cv-chat-identity-text { min-width: 0; }
 .cv-chat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 800; }
-.cv-chat-presence { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--lv-muted-ink); font-size: 13px; }
+.cv-chat-presence { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 2px; overflow: hidden; color: var(--lv-muted-ink); font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
+.cv-chat-presence .cv-presence-dot { flex-shrink: 0; }
 .cv-chat-presence .cv-presence-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lv-online); }
 .cv-chat-presence.is-online { color: var(--lv-teal); font-weight: 700; }
 .cv-chat-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -579,8 +580,20 @@
   cursor: pointer;
 }
 .cv-media-attribution { margin: 0; padding: 6px 12px 8px; border-top: 1px solid var(--lv-line); color: var(--lv-muted-ink); font-size: 12px; font-weight: 700; text-align: right; }
-@container cv-composer (max-width: 380px) {
-  .cv-composer .cv-icon-button { width: 38px; }
+
+/* Narrow composers (phones, small windows): smaller icons; while typing, the sticker/GIF/mic
+   buttons step aside so the text has room (Send is always there). Recording keeps the mic. */
+@container cv-composer (max-width: 560px) {
+  .cv-composer { gap: 0; padding: 4px; }
+  .cv-composer .cv-icon-button { width: 36px; height: 36px; }
+  .cv-composer .cv-icon-button svg { width: 21px; height: 21px; }
+  .cv-composer.has-text .cv-media-toggle:not(.is-on),
+  .cv-composer.has-text .cv-mic-toggle:not(.is-on) { display: none; }
+  .cv-composer textarea { padding: 10px 6px; }
+}
+/* Touch keyboards have their own emoji key. */
+@media (hover: none) and (pointer: coarse) {
+  .cv-composer .cv-emoji-toggle:not(.is-on) { display: none; }
 }
 
 /* ---- Phones ---- */
@@ -596,7 +609,10 @@
   .cv-chat-header { min-height: 64px; padding: 8px 8px 8px 4px; gap: 8px; }
   .cv-chat-back { display: inline-flex; }
   .cv-chat-name { font-size: 16px; }
-  .cv-chat-actions { gap: 4px; }
+  .cv-chat-actions { gap: 2px; }
+  .cv-chat-actions > .cv-icon-button { width: 40px; height: 40px; }
+  .cv-chat-actions > .cv-icon-button svg { width: 20px; height: 20px; }
+  .cv-chat-identity { gap: 8px; }
   .cv-chat-header.is-searching .cv-chat-identity, .cv-chat-header.is-searching .cv-call-action { display: none; }
   .cv-chat-search { max-width: none; }
   .cv-messages { padding: 8px 10px 16px; }
@@ -606,7 +622,6 @@
   .cv-msg-hover-time { display: none; }
   .cv-composer-wrap { padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); }
   .cv-composer { min-height: 48px; }
-  .cv-composer .cv-icon-button { width: 40px; height: 40px; }
   .cv-send { width: 48px; height: 48px; }
   .cv-jump-latest { bottom: 84px; right: 12px; }
 }

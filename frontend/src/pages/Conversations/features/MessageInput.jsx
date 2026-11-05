@@ -634,7 +634,8 @@ const MessageInput = ({
           aria-hidden="true"
         />
 
-        <div className="cv-composer">
+        {/* `has-text`: on narrow composers the sticker/GIF/mic buttons step aside while typing. */}
+        <div className={`cv-composer${message.trim() ? " has-text" : ""}`}>
           <textarea
             ref={inputRef}
             value={message}
@@ -649,7 +650,7 @@ const MessageInput = ({
             <button
               type="button"
               ref={stickerButtonRef}
-              className={`cv-icon-button ${mediaTab === "stickers" ? "is-on" : ""}`}
+              className={`cv-icon-button cv-media-toggle ${mediaTab === "stickers" ? "is-on" : ""}`}
               onClick={() => toggleMediaTab("stickers")}
               disabled={Boolean(editingMessage)}
               aria-label={mediaTab === "stickers" ? "Close stickers" : "Stickers"}
@@ -663,7 +664,7 @@ const MessageInput = ({
             <button
               type="button"
               ref={gifButtonRef}
-              className={`cv-icon-button ${mediaTab === "gifs" ? "is-on" : ""}`}
+              className={`cv-icon-button cv-media-toggle ${mediaTab === "gifs" ? "is-on" : ""}`}
               onClick={() => toggleMediaTab("gifs")}
               disabled={Boolean(editingMessage)}
               aria-label={mediaTab === "gifs" ? "Close GIFs" : "GIFs"}
@@ -676,7 +677,7 @@ const MessageInput = ({
           <button
             type="button"
             ref={emojiButtonRef}
-            className={`cv-icon-button ${showPicker ? "is-on" : ""}`}
+            className={`cv-icon-button cv-emoji-toggle ${showPicker ? "is-on" : ""}`}
             onClick={() => {
               setMediaTab(null);
               setShowPicker((prev) => !prev);
@@ -690,7 +691,7 @@ const MessageInput = ({
           </button>
           <button
             type="button"
-            className={`cv-icon-button ${isRecording ? "is-on" : ""}`}
+            className={`cv-icon-button cv-mic-toggle ${isRecording ? "is-on" : ""}`}
             onClick={isRecording ? handleStopRecording : handleStartRecording}
             disabled={Boolean(editingMessage)}
             aria-label={isRecording ? "Stop recording" : "Record a voice note"}
