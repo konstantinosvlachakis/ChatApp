@@ -26,6 +26,7 @@ import { getMessageGroupFlags } from "../components/chat/messageGroups";
 import {
   buildPinnedMessages,
   confirmPendingMessage,
+  mergeFetchedDetail,
   countIncomingAfter,
   createFreshMessageTracker,
   findFirstUnreadMessageId,
@@ -67,6 +68,8 @@ import {
 import {
   createOrGetConversation,
   fetchConversation,
+  getCachedConversationDetail,
+  rememberConversationDetail,
   editConversationMessage,
   fetchConversationMessagesPage,
   fetchConversations,
@@ -127,6 +130,11 @@ function optimisticMediaFields(media: MediaPick): Pick<ChatMessage, "kind" | "me
 // with fewer embedded messages means there is no older history.
 const DETAIL_MESSAGE_LIMIT = 200;
 
+// Opening a chat renders only its newest messages (one render pass, so it lands on the latest at
+// once); scrolling up reveals older ones in steps before fetching more from the server.
+const INITIAL_MESSAGE_WINDOW = 30;
+const MESSAGE_WINDOW_STEP = 30;
+
 // Debounce for conversation-list refetches after realtime events (trailing, coalesced).
 const CONVERSATIONS_REFRESH_DEBOUNCE_MS = 2000;
 
@@ -153,6 +161,11 @@ export function ConversationsScreen() {
 
   const [conversations, setConversations] = useState<Conversation[]>(() => getCachedConversations() || []);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  // Latest values for callbacks that shouldn't re-create on every change.
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
+  const selectedConversationRef = useRef(selectedConversation);
+  selectedConversationRef.current = selectedConversation;
   const [loadingList, setLoadingList] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   // Pull-to-refresh of the open chat: keeps the message list mounted (unlike loadingConversation).
@@ -246,6 +259,12 @@ export function ConversationsScreen() {
   const listBottomInsetRef = useRef(0);
   // Conversation whose open-time auto-scroll (bottom or unread divider) already ran.
   const autoScrolledConversationRef = useRef<number | null>(null);
+  // A jump to a message that had to be revealed first (runs once it is in the list).
+  const pendingJumpRef = useRef<{ messageId: number; options?: { highlight?: boolean } } | null>(null);
+  // Until this time (ms) after opening a chat, the list keeps snapping to the newest message while
+  // its rows lay out (a non-inverted list measures the end only after the first jump). A drag
+  // ends it at once.
+  const openSettleUntilRef = useRef(0);
   // Rows of messages that arrived while the chat is open animate in once.
   const freshTrackerRef = useRef(createFreshMessageTracker());
   const highlightNonceRef = useRef(0);
@@ -433,9 +452,10 @@ export function ConversationsScreen() {
         : null;
   }, []);
 
+  // Opens a chat at once: a recently opened chat shows its cached messages, otherwise the header
+  // (from the list row) with a spinner where the messages go; the fresh detail then fills it in.
   const openConversation = useCallback(
     async (conversationId: number) => {
-      setLoadingConversation(true);
       selectedConversationIdRef.current = conversationId;
       // Clear the tab badge and the row's unread pill at once; the server read follows below.
       markReadLocally(conversationId);
@@ -446,22 +466,61 @@ export function ConversationsScreen() {
             : conversation
         )
       );
+
+      const sortByTime = (messages: ChatMessage[] = []) =>
+        [...messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const cached = getCachedConversationDetail(conversationId);
+      const listRow = conversationsRef.current.find((conversation) => conversation.id === conversationId);
+      let shownEarly = false;
+      autoScrolledConversationRef.current = null;
+      if (cached) {
+        setUnreadAnchorMessageId(null);
+        setSelectedConversation({ ...cached, unread_count: 0 });
+        previousMessageCountRef.current = cached.messages.length;
+        resetOlderPaging(cached.messages.length);
+        setLoadingConversation(false);
+        shownEarly = true;
+      } else if (listRow) {
+        setUnreadAnchorMessageId(null);
+        setSelectedConversation({ ...listRow, messages: [], pinned_messages: [] });
+        previousMessageCountRef.current = 0;
+        setLoadingConversation(true);
+        shownEarly = true;
+      } else {
+        setLoadingConversation(true);
+      }
+
+      const requestedAt = Date.now();
       try {
         const response = await fetchConversation(conversationId);
         if (selectedConversationIdRef.current === conversationId) {
           initialUnreadCountRef.current = response.unread_count || 0;
-          // Unread divider above the first unread message; the open-time effect scrolls to it.
+          const sortedOpenMessages = sortByTime(response.messages);
+          // Unread divider above the first unread message (the list still opens at the newest).
           // It stays after mark-read until the user sends, refreshes or a new message arrives.
-          const sortedOpenMessages = [...(response.messages || [])].sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
           setUnreadAnchorMessageId(
             findFirstUnreadMessageId(sortedOpenMessages, response.unread_count || 0, currentUserId)
           );
-          autoScrolledConversationRef.current = null;
-          setSelectedConversation(response);
-          previousMessageCountRef.current = response.messages?.length || 0;
-          resetOlderPaging(response.messages?.length || 0);
+          if (cached) {
+            // Already on screen: merge, keeping anything sent or received meanwhile.
+            setSelectedConversation((prev) => {
+              if (!prev || prev.id !== conversationId) return prev;
+              const messages = mergeFetchedDetail(prev.messages, sortedOpenMessages, requestedAt, DETAIL_MESSAGE_LIMIT);
+              return { ...response, messages, pinned_messages: buildPinnedMessages(messages) };
+            });
+            if (nextOlderPageRef.current == null && !loadingOlderRef.current) {
+              resetOlderPaging(response.messages?.length || 0);
+            }
+          } else {
+            setSelectedConversation((prev) => {
+              // Keep a message sent while the chat was still loading.
+              if (!prev || prev.id !== conversationId || !prev.messages.length) return response;
+              const messages = mergeFetchedDetail(prev.messages, sortedOpenMessages, requestedAt, DETAIL_MESSAGE_LIMIT);
+              return { ...response, messages, pinned_messages: buildPinnedMessages(messages) };
+            });
+            previousMessageCountRef.current = response.messages?.length || 0;
+            resetOlderPaging(response.messages?.length || 0);
+          }
           setLoadingConversation(false);
           // Background: mark read, then refresh badge + list.
           markConversationRead(conversationId)
@@ -477,6 +536,17 @@ export function ConversationsScreen() {
         }
       } catch (error) {
         forgetReadLocally(conversationId);
+        if (selectedConversationIdRef.current === conversationId) {
+          if (cached) {
+            // Keep showing the cached copy; the socket and pull-to-refresh catch up.
+            return;
+          }
+          if (shownEarly) {
+            // Back to the list: the chat couldn't load.
+            selectedConversationIdRef.current = null;
+            setSelectedConversation(null);
+          }
+        }
         throw error;
       } finally {
         // A newer open (or going back) owns the spinner now.
@@ -806,6 +876,8 @@ export function ConversationsScreen() {
   });
 
   const closeConversation = useCallback(() => {
+    // Keep what was on screen for an instant reopen (services/api/conversations).
+    rememberConversationDetail(selectedConversationRef.current);
     selectedConversationIdRef.current = null;
     emitTypingStopped();
     if (chatSocketRef.current) {
@@ -991,6 +1063,50 @@ export function ConversationsScreen() {
     );
   }, [selectedMessages]);
 
+  // Rendered part of the chat: messages at or after `startTime` (null = all). Tied to the chat it
+  // was set for; until the effect below records it, a new chat shows its newest
+  // INITIAL_MESSAGE_WINDOW messages.
+  const [messageWindow, setMessageWindow] = useState<{ conversationId: number | null; startTime: number | null }>({
+    conversationId: null,
+    startTime: null,
+  });
+  const messageTime = (message: ChatMessage) => new Date(message.timestamp).getTime() || 0;
+  const visibleStartIndex = useMemo(() => {
+    const conversationId = selectedConversation?.id ?? null;
+    if (messageWindow.conversationId !== conversationId) {
+      return Math.max(0, sortedMessages.length - INITIAL_MESSAGE_WINDOW);
+    }
+    if (messageWindow.startTime == null) return 0;
+    const index = sortedMessages.findIndex((message) => messageTime(message) >= messageWindow.startTime!);
+    return index === -1 ? 0 : index;
+  }, [messageWindow, selectedConversation?.id, sortedMessages]);
+  const visibleMessages = useMemo(
+    () => (visibleStartIndex > 0 ? sortedMessages.slice(visibleStartIndex) : sortedMessages),
+    [sortedMessages, visibleStartIndex]
+  );
+  const hiddenOlderCountRef = useRef(0);
+  hiddenOlderCountRef.current = visibleStartIndex;
+
+  useEffect(() => {
+    const conversationId = selectedConversation?.id ?? null;
+    if (conversationId == null || !sortedMessages.length) return;
+    setMessageWindow((current) => {
+      if (current.conversationId === conversationId) return current;
+      const start = sortedMessages.length - INITIAL_MESSAGE_WINDOW;
+      return { conversationId, startTime: start > 0 ? messageTime(sortedMessages[start]) : null };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation?.id, sortedMessages.length > 0]);
+
+  /** Shows older already-loaded messages, down to `index` (default: one step more). */
+  const revealOlderMessages = useStableCallback((index?: number) => {
+    const conversationId = selectedConversation?.id ?? null;
+    const current = hiddenOlderCountRef.current;
+    if (conversationId == null || current <= 0) return;
+    const next = Math.max(0, Math.min(current - 1, index ?? current - MESSAGE_WINDOW_STEP));
+    setMessageWindow({ conversationId, startTime: next > 0 ? messageTime(sortedMessages[next]) : null });
+  });
+
   const pinnedMessages = useMemo(
     () => buildPinnedMessages(selectedConversation?.pinned_messages || selectedConversation?.messages || []),
     [selectedConversation?.messages, selectedConversation?.pinned_messages]
@@ -1015,13 +1131,14 @@ export function ConversationsScreen() {
     );
   }, [searchMatches, searchOpen]);
 
+  // Indices into the rendered list (visibleMessages), for scrollToIndex.
   const messageIndexById = useMemo(() => {
     const indexMap: Record<number, number> = {};
-    sortedMessages.forEach((message, index) => {
+    visibleMessages.forEach((message, index) => {
       indexMap[message.id] = index;
     });
     return indexMap;
-  }, [sortedMessages]);
+  }, [visibleMessages]);
 
   const handleSwipe = useCallback((message: ChatMessage) => {
     if (message.local_status === "sending") return;
@@ -1056,7 +1173,14 @@ export function ConversationsScreen() {
   // that call it don't re-run on every new message.
   const jumpToMessage = useStableCallback((messageId: number, options?: { highlight?: boolean }) => {
     const index = messageIndexById[messageId];
-    if (index === undefined) return;
+    if (index === undefined) {
+      // An older message that isn't rendered yet: reveal it (plus a little context), then jump.
+      const fullIndex = sortedMessages.findIndex((message) => message.id === messageId);
+      if (fullIndex === -1) return;
+      pendingJumpRef.current = { messageId, options };
+      revealOlderMessages(Math.max(0, fullIndex - 5));
+      return;
+    }
     userScrolledRef.current = true;
     messageListRef.current?.scrollToIndex({ index, animated: !reduceMotion, viewPosition: 0.5 });
     if (options?.highlight === false) return;
@@ -1076,8 +1200,9 @@ export function ConversationsScreen() {
     requestAnimationFrame(() => {
       const list = messageListRef.current;
       if (!list) return;
+      // Measured sizes when known (FlatList's own end can lag behind rows measured this frame).
       const inset = listBottomInsetRef.current;
-      if (inset > 0 && listLayoutHeightRef.current > 0 && listContentHeightRef.current > 0) {
+      if (listLayoutHeightRef.current > 0 && listContentHeightRef.current > 0) {
         list.scrollToOffset({
           offset: Math.max(0, listContentHeightRef.current + inset - listLayoutHeightRef.current),
           animated,
@@ -1517,24 +1642,9 @@ export function ConversationsScreen() {
       const sortedUpdatedMessages = [...(updated.messages || [])].sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
-      // The refreshed detail covers [oldest, newest] (all history if under the detail limit):
-      // it wins inside that window; keep already-loaded older pages and newer live messages.
-      const refreshedIds = new Set(sortedUpdatedMessages.map((message) => message.id));
-      const windowStart =
-        sortedUpdatedMessages.length >= DETAIL_MESSAGE_LIMIT
-          ? new Date(sortedUpdatedMessages[0].timestamp).getTime()
-          : -Infinity;
-      const windowEnd = sortedUpdatedMessages.length
-        ? new Date(sortedUpdatedMessages[sortedUpdatedMessages.length - 1].timestamp).getTime()
-        : requestedAt;
       setSelectedConversation((prev) => {
         if (!prev || prev.id !== conversationId) return prev;
-        const kept = prev.messages.filter((message) => {
-          if (refreshedIds.has(message.id)) return false;
-          const time = new Date(message.timestamp).getTime();
-          return time < windowStart || time > windowEnd;
-        });
-        const nextMessages = mergeMessagesById(kept, sortedUpdatedMessages);
+        const nextMessages = mergeFetchedDetail(prev.messages, sortedUpdatedMessages, requestedAt, DETAIL_MESSAGE_LIMIT);
         return { ...updated, messages: nextMessages };
       });
       initialUnreadCountRef.current = updated.unread_count || 0;
@@ -1594,21 +1704,19 @@ export function ConversationsScreen() {
     }
   }, [selectedConversation?.id, selectedConversation?.messages]);
 
-  // Open-time scroll: to the unread divider when there is one (no pulse), else to the bottom. A
-  // later anchor (pull-to-refresh) scrolls to it again; clearing it never yanks the list.
+  // Open-time scroll: always to the newest message (the unread divider stays visible above it),
+  // held there while the rows lay out (see openSettleUntilRef).
   useEffect(() => {
     const conversationId = selectedConversation?.id;
     if (!conversationId || loadingConversation) return;
-    if (unreadAnchorMessageId != null) {
-      autoScrolledConversationRef.current = conversationId;
-      requestAnimationFrame(() => jumpToMessage(unreadAnchorMessageId, { highlight: false }));
-      return;
-    }
     if (autoScrolledConversationRef.current !== conversationId) {
       autoScrolledConversationRef.current = conversationId;
+      isNearBottomRef.current = true;
+      userScrolledRef.current = false;
+      openSettleUntilRef.current = Date.now() + 1500;
       scrollToBottom(false);
     }
-  }, [jumpToMessage, loadingConversation, scrollToBottom, selectedConversation?.id, unreadAnchorMessageId]);
+  }, [loadingConversation, scrollToBottom, selectedConversation?.id]);
 
   useEffect(() => {
     if (!selectedConversation?.id) return;
@@ -1627,18 +1735,36 @@ export function ConversationsScreen() {
   const handleMessageListContentSizeChange = useCallback((_width: number, height: number) => {
     listContentHeightRef.current = height;
     if (skipAutoScrollRef.current) return;
-    if (unreadAnchorMessageId == null && isNearBottomRef.current) {
+    const settling = Date.now() < openSettleUntilRef.current && !userScrolledRef.current;
+    if (settling || isNearBottomRef.current) {
       scrollToBottom(false);
     }
-  }, [scrollToBottom, unreadAnchorMessageId]);
+  }, [scrollToBottom]);
 
-  const handleMessageListLayout = useCallback((event: LayoutChangeEvent) => {
-    listLayoutHeightRef.current = event.nativeEvent.layout.height;
-  }, []);
+  // The list gets shorter after opening (header/composer settle) or when the composer grows to more
+  // lines: stay on the newest message then, or it ends up cut off behind the composer.
+  const handleMessageListLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = event.nativeEvent.layout.height;
+      const previous = listLayoutHeightRef.current;
+      listLayoutHeightRef.current = height;
+      if (previous === height || skipAutoScrollRef.current) return;
+      const settling = Date.now() < openSettleUntilRef.current && !userScrolledRef.current;
+      if (settling || isNearBottomRef.current) scrollToBottom(false);
+    },
+    [scrollToBottom]
+  );
 
   const handleContentInsetChange = useCallback((insets: ChatContentInsets) => {
     listBottomInsetRef.current = insets.bottom;
   }, []);
+
+  useEffect(() => {
+    const pending = pendingJumpRef.current;
+    if (!pending || messageIndexById[pending.messageId] === undefined) return;
+    pendingJumpRef.current = null;
+    requestAnimationFrame(() => jumpToMessage(pending.messageId, pending.options));
+  }, [jumpToMessage, messageIndexById]);
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -1659,6 +1785,7 @@ export function ConversationsScreen() {
 
   const handleMessageListScrollBeginDrag = useCallback(() => {
     userScrolledRef.current = true;
+    openSettleUntilRef.current = 0;
     if (replyTarget) clearReplyTarget();
   }, [clearReplyTarget, replyTarget]);
 
@@ -1679,8 +1806,10 @@ export function ConversationsScreen() {
       }
       setShowJumpToLatest((prev) => (prev === isAway ? prev : isAway));
       setJumpAnchorMessageId((prev) => (isAway ? prev ?? latestMessageRef.current?.id ?? null : null));
-      if (contentOffset.y < 120 && nextOlderPageRef.current != null) {
-        loadOlderMessages();
+      // Not while the list is still settling at the bottom after opening (it starts at the top).
+      if (contentOffset.y < 120 && Date.now() >= openSettleUntilRef.current) {
+        if (hiddenOlderCountRef.current > 0) revealOlderMessages();
+        else if (nextOlderPageRef.current != null) loadOlderMessages();
       }
     },
     [loadOlderMessages]
@@ -1877,7 +2006,7 @@ export function ConversationsScreen() {
           onUnpin={togglePinnedMessage}
           loadingConversation={loadingConversation}
           messageListRef={messageListRef}
-          messages={sortedMessages}
+          messages={visibleMessages}
           renderMessage={renderMessage}
           loadingOlderMessages={loadingOlderMessages}
           refreshingConversation={refreshingConversation}

@@ -80,3 +80,26 @@ test("a failed read request gives the count back to the server", () => {
   forgetReadLocally(5);
   assert.equal(adjustUnreadCount(5, 2, 0), 2);
 });
+
+test("a fresh detail merges into the cached chat without losing newer or older messages", async () => {
+  const { mergeFetchedDetail } = await import("../src/components/chat/messageState.ts");
+  const at = (minute) => `2026-11-05T10:${String(minute).padStart(2, "0")}:00Z`;
+  const msg = (id, minute, text = "") => ({ id, timestamp: at(minute), text, sender: { id: 1 } });
+  // On screen: an older page (1), cached copies (5, 6 edited later on the server) and a message
+  // that arrived over the socket after the request started (9).
+  const current = [msg(1, 1), msg(5, 5, "old"), msg(6, 6), msg(9, 9)];
+  // Fresh detail: 5 edited, 6 deleted, 7 and 8 new; its window is 4..8 (it hit the detail limit).
+  const fetched = [msg(4, 4), msg(5, 5, "edited"), msg(7, 7), msg(8, 8)];
+  const merged = mergeFetchedDetail(current, fetched, Date.parse(at(8)), 4);
+  const byId = Object.fromEntries(merged.map((m) => [m.id, m]));
+  assert.deepEqual(Object.keys(byId).map(Number).sort((a, b) => a - b), [1, 4, 5, 7, 8, 9]);
+  assert.equal(byId[5].text, "edited");
+});
+
+test("under the detail limit the fresh detail is the whole history", async () => {
+  const { mergeFetchedDetail } = await import("../src/components/chat/messageState.ts");
+  const m = (id, minute) => ({ id, timestamp: `2026-11-05T10:0${minute}:00Z`, sender: { id: 1 } });
+  // 2 was deleted on the server; the detail holds everything (fewer than the limit).
+  const merged = mergeFetchedDetail([m(1, 1), m(2, 2), m(3, 3)], [m(1, 1), m(3, 3)], Date.parse("2026-11-05T10:03:00Z"), 200);
+  assert.deepEqual(merged.map((x) => x.id).sort(), [1, 3]);
+});

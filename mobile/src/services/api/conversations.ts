@@ -16,6 +16,8 @@ export function clearConversationsCache() {
   cachedConversationsAt = 0;
   conversationsRequest = null;
   cacheGeneration += 1;
+  detailCache.clear();
+  detailRequests.clear();
   resetReadState();
 }
 
@@ -68,10 +70,69 @@ export async function fetchConversations(options?: { force?: boolean }): Promise
   return request;
 }
 
-export async function fetchConversation(conversationId: number) {
-  const response = await api.get<Conversation>(`/conversations/${conversationId}/`);
-  return response.data;
+// Recently opened chats, so reopening one shows its messages at once while a fresh copy loads.
+// Memory only (cleared on logout), a few chats, short-lived, and trimmed to the newest messages.
+const DETAIL_CACHE_TTL_MS = 10 * 60_000;
+const DETAIL_CACHE_MAX_CHATS = 12;
+const DETAIL_CACHE_MAX_MESSAGES = 100;
+const detailCache = new Map<number, { detail: Conversation; at: number }>();
+const detailRequests = new Map<number, Promise<Conversation>>();
+
+function trimDetail(detail: Conversation): Conversation {
+  const messages = (detail.messages || []).filter((message) => !message.local_status && message.id > 0);
+  return {
+    ...detail,
+    messages: messages.length > DETAIL_CACHE_MAX_MESSAGES ? messages.slice(-DETAIL_CACHE_MAX_MESSAGES) : messages,
+  };
 }
+
+/** Keeps a chat's latest state (e.g. when leaving it) for an instant reopen. */
+export function rememberConversationDetail(detail: Conversation | null | undefined) {
+  if (!detail?.id) return;
+  const sorted = {
+    ...detail,
+    messages: [...(detail.messages || [])].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    ),
+  };
+  detailCache.delete(detail.id);
+  detailCache.set(detail.id, { detail: trimDetail(sorted), at: Date.now() });
+  while (detailCache.size > DETAIL_CACHE_MAX_CHATS) {
+    const oldest = detailCache.keys().next().value;
+    if (oldest === undefined) break;
+    detailCache.delete(oldest);
+  }
+}
+
+/** A recent copy of the chat (possibly missing the newest messages), or null. */
+export function getCachedConversationDetail(conversationId: number): Conversation | null {
+  const entry = detailCache.get(conversationId);
+  if (!entry) return null;
+  if (Date.now() - entry.at > DETAIL_CACHE_TTL_MS) {
+    detailCache.delete(conversationId);
+    return null;
+  }
+  return entry.detail;
+}
+
+/** Always a fresh request, shared with one already in flight for the same chat. */
+export function fetchConversation(conversationId: number): Promise<Conversation> {
+  const inFlight = detailRequests.get(conversationId);
+  if (inFlight) return inFlight;
+  const generation = cacheGeneration;
+  const request = api
+    .get<Conversation>(`/conversations/${conversationId}/`)
+    .then((response: { data: Conversation }) => {
+      if (generation === cacheGeneration) rememberConversationDetail(response.data);
+      return response.data;
+    })
+    .finally(() => {
+      if (detailRequests.get(conversationId) === request) detailRequests.delete(conversationId);
+    });
+  detailRequests.set(conversationId, request);
+  return request;
+}
+
 
 export interface ConversationMessagesPage {
   // Chronological within the page; page 1 holds the newest messages.

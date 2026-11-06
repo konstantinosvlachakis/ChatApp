@@ -98,6 +98,11 @@ export const Composer = React.memo(
           selection: { start: cursorPosition, end: cursorPosition },
         });
       };
+      // Already typing: just move the cursor to the end (dismissing would close the keyboard).
+      if (messageInputRef.current?.isFocused()) {
+        focusInput();
+        return;
+      }
       Keyboard.dismiss();
       requestAnimationFrame(focusInput);
       setTimeout(focusInput, 50);
@@ -132,14 +137,10 @@ export const Composer = React.memo(
       [onTypingStart, onTypingStop]
     );
 
+    // A tap focuses the input natively and puts the cursor where the user tapped; long-press
+    // selects text as usual. Only reply / draft activation moves the cursor to the end.
     const handleInputFocus = useCallback(() => {
       onFocus();
-      const input = messageInputRef.current;
-      if (!input) return;
-      const cursorPosition = messageTextRef.current.length;
-      input.setNativeProps({
-        selection: { start: cursorPosition, end: cursorPosition },
-      });
     }, [onFocus]);
 
     const handlePickPhoto = useCallback(async () => {
@@ -346,10 +347,7 @@ export const Composer = React.memo(
               style={styles.composerInput}
               value={messageText}
               onChangeText={handleMessageInputChange}
-              onPressIn={(event) => {
-                event.stopPropagation();
-                activateMessageInput();
-              }}
+              onPressIn={(event) => event.stopPropagation()}
               onFocus={handleInputFocus}
               multiline
               placeholder={

@@ -59,6 +59,30 @@ export function confirmPendingMessage(
   return next;
 }
 
+/**
+ * Merges a freshly fetched chat detail into the messages on screen. The detail covers
+ * [its oldest, its newest] message (all history when it holds fewer than `detailLimit`) and wins
+ * inside that window; older pages loaded meanwhile and newer live messages (sends, socket
+ * arrivals after the request) are kept. `fetchedSorted` must be sorted oldest first.
+ */
+export function mergeFetchedDetail(
+  current: ChatMessage[],
+  fetchedSorted: ChatMessage[],
+  requestedAt: number,
+  detailLimit: number
+) {
+  const time = (message: ChatMessage) => new Date(message.timestamp).getTime();
+  const fetchedIds = new Set(fetchedSorted.map((message) => message.id));
+  const windowStart = fetchedSorted.length >= detailLimit ? time(fetchedSorted[0]) : -Infinity;
+  const windowEnd = fetchedSorted.length ? time(fetchedSorted[fetchedSorted.length - 1]) : requestedAt;
+  const kept = current.filter((message) => {
+    if (fetchedIds.has(message.id)) return false;
+    const at = time(message);
+    return at < windowStart || at > windowEnd;
+  });
+  return mergeMessagesById(kept, fetchedSorted);
+}
+
 export function buildPinnedMessages(messages?: ChatMessage[] | null) {
   return [...(messages || [])]
     .filter((message) => Boolean(message?.is_pinned))

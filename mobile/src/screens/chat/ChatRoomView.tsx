@@ -239,7 +239,7 @@ export function ChatRoomView(props: ChatRoomViewProps) {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
               // Rows are variable-height bubbles: render a screenful first, then small batches.
-              initialNumToRender={16}
+              initialNumToRender={32}
               maxToRenderPerBatch={10}
               updateCellsBatchingPeriod={40}
               windowSize={11}
@@ -320,7 +320,7 @@ const createStyles = (warm: WarmColors) =>
       flexGrow: 1,
     },
     footerSpacer: {
-      height: 14,
+      height: 20,
     },
     olderLoader: {
       height: 40,
