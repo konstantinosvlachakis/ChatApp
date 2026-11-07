@@ -109,6 +109,10 @@ import { ChatOptionsSheet, type ChatOptionsState } from "./chat/ChatOptionsSheet
 import { ChatRoomView, type ChatContentInsets } from "./chat/ChatRoomView";
 import { ConversationListView } from "./chat/ConversationListView";
 import { CorrectionSheet, type CorrectionTarget } from "./chat/CorrectionSheet";
+import { ExchangeSessionSheet } from "./chat/ExchangeSessionSheet";
+import { ExchangeSessionBanner } from "../components/chat/ExchangeSessionBanner";
+import { useExchangeSession } from "./chat/useExchangeSession";
+import { isOpenSession } from "../features/exchangeSession";
 import { GroupDetailsSheet } from "./chat/GroupDetailsSheet";
 import { GroupPeopleSheet } from "./chat/GroupPeopleSheet";
 import { StickerGifSheet, type MediaPick } from "./chat/StickerGifSheet";
@@ -1032,6 +1036,13 @@ export function ConversationsScreen() {
     scheduleConversationsRefresh,
   });
 
+  // Guided exchange of the open direct chat (groups never call the session endpoint).
+  const isDirectChatOpen = Boolean(selectedConversation) && !isGroupConversation(selectedConversation);
+  const exchange = useExchangeSession({
+    conversationId: isDirectChatOpen ? selectedConversation?.id : undefined,
+    enabled: isDirectChatOpen && isFocused,
+  });
+
   // The open chat's socket (message/typing/status events for selectedConversation).
   useChatSocket({
     conversationId: selectedConversation?.id,
@@ -1050,6 +1061,7 @@ export function ConversationsScreen() {
     sendTypingEvent,
     setRemoteTyping,
     onGroupEvent: handleGroupEvent,
+    onExchangeSession: exchange.applySessionEvent,
   });
 
   // Read positions follow the open group (reset when another chat opens).
@@ -2014,6 +2026,12 @@ export function ConversationsScreen() {
     setGroupPreselected([username]);
     setGroupSheet("create");
   }, []);
+  // Header menu → "Guided exchange" start sheet.
+  const openExchangeSheet = exchange.openSheet;
+  const handleStartExchange = useCallback(() => {
+    setChatActionsMenu(null);
+    openExchangeSheet();
+  }, [openExchangeSheet]);
   const openNewGroup = useCallback(() => {
     setGroupPreselected([]);
     setGroupSheet("create");
@@ -2141,6 +2159,22 @@ export function ConversationsScreen() {
           onClosePinnedList={closePinnedList}
           onJumpToPinned={handlePinnedMessagePress}
           onUnpin={togglePinnedMessage}
+          sessionBanner={
+            !isGroup && exchange.session ? (
+              <ExchangeSessionBanner
+                warm={warm}
+                session={exchange.session}
+                offsetMs={exchange.offsetMs}
+                currentUserId={currentUserId}
+                paused={!isFocused}
+                busyAction={exchange.busyAction}
+                onAction={exchange.act}
+                onDeadline={exchange.handleDeadline}
+                onDismiss={exchange.dismiss}
+                onStartAnother={exchange.openSheet}
+              />
+            ) : null
+          }
           loadingConversation={loadingConversation}
           messageListRef={messageListRef}
           messages={visibleMessages}
@@ -2189,7 +2223,21 @@ export function ConversationsScreen() {
             onReport={handleOptionsReport}
             onToggleBlock={handleToggleUserBlock}
             onStartGroup={handleStartGroupWith}
+            onStartExchange={!isGroup && !isOpenSession(exchange.session) ? handleStartExchange : undefined}
           />
+          {isGroup ? null : (
+            <ExchangeSessionSheet
+              warm={warm}
+              reduceMotion={reduceMotion}
+              visible={exchange.sheetOpen}
+              partnerName={otherUser.username}
+              options={exchange.options}
+              optionsLoading={exchange.optionsLoading}
+              onRetryOptions={exchange.refresh}
+              onClose={exchange.closeSheet}
+              onSubmit={exchange.start}
+            />
+          )}
           {isGroup ? (
             <GroupDetailsSheet
               warm={warm}

@@ -14,6 +14,16 @@ export type PresenceEvent =
       conversation_id: number;
       display_name?: string;
       invited_by?: { username?: string; profile_image_url?: string | null } | null;
+    }
+  // Guided exchange invite (sent to the partner only; the chat socket carries `exchange_session`).
+  | {
+      type: "exchange_invite";
+      conversation_id: number;
+      session_id: number;
+      duration_minutes?: number;
+      first_language?: string;
+      second_language?: string;
+      invited_by?: { username?: string; profile_image_url?: string | null } | null;
     };
 
 export type PresenceEventHandler = (event: PresenceEvent) => void;

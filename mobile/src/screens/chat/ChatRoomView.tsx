@@ -75,6 +75,8 @@ type ChatRoomViewProps = {
   onClosePinnedList: () => void;
   onJumpToPinned: (message: ChatMessage) => void;
   onUnpin: (message: ChatMessage) => void;
+  /** Guided exchange banner (direct chats), shown under the pinned bar. */
+  sessionBanner?: ReactNode;
   // Messages
   loadingConversation: boolean;
   messageListRef: RefObject<FlatList<ChatMessage> | null>;
@@ -210,6 +212,8 @@ export function ChatRoomView(props: ChatRoomViewProps) {
           onJump={props.onJumpToPinned}
           onUnpin={props.onUnpin}
         />
+
+        {props.sessionBanner}
 
         <View style={styles.messagesArea}>
           {props.loadingConversation ? (

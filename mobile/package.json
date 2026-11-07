@@ -18,7 +18,8 @@
     "test:chat-sending": "node --experimental-strip-types --test tests/chatSending.test.mjs",
     "test:voice-notes": "node --experimental-strip-types --test tests/voiceNote.test.mjs",
     "test:message-menu": "node --experimental-strip-types --test tests/messageMenu.test.mjs",
-    "test:corrections": "node --experimental-strip-types --test tests/corrections.test.mjs"
+    "test:corrections": "node --experimental-strip-types --test tests/corrections.test.mjs",
+    "test:exchange-sessions": "node --experimental-strip-types --test tests/exchangeSession.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

@@ -320,3 +320,67 @@ export interface PhrasebookReviewBatch {
 }
 
 export type PhrasebookReviewResult = "again" | "hard" | "good" | "easy";
+
+// Guided exchange sessions ("20 minutes together", one-to-one chats; see system-map api-contract).
+export type ExchangeSessionStatus = "pending" | "active" | "ended" | "declined" | "cancelled" | "expired";
+
+export interface ExchangeSessionTopic {
+  id: string;
+  title: string;
+  prompts: string[];
+}
+
+export interface ExchangeSessionLanguageSummary {
+  /** Lowercase language name. */
+  language: string;
+  minutes: number;
+  /** Messages per user id (string keys). */
+  messages: Record<string, number>;
+  message_count: number;
+}
+
+export interface ExchangeSessionSummary {
+  /** First language, then second. */
+  languages: ExchangeSessionLanguageSummary[];
+  total_minutes: number;
+  corrections: Array<{ id: number; message_id: number; corrector_id: number }>;
+  correction_count: number;
+  corrections_truncated: boolean;
+}
+
+export interface ExchangeSession {
+  id: number;
+  conversation_id: number;
+  status: ExchangeSessionStatus;
+  created_by: { id: number; username: string };
+  partner: { id: number; username: string };
+  duration_minutes: number;
+  first_language: string;
+  second_language: string;
+  /** Server snapshot at `server_time` (active only); clients recompute it from the timestamps. */
+  current_language: string | null;
+  topic: ExchangeSessionTopic | null;
+  topic_source: "ai" | "library" | "custom" | null;
+  created_at: string;
+  expires_at: string | null;
+  started_at: string | null;
+  halfway_at: string | null;
+  switched_at: string | null;
+  ends_at: string | null;
+  ended_at: string | null;
+  /** null with status "ended" = the timer ran out. */
+  ended_by_id: number | null;
+  summary: ExchangeSessionSummary | null;
+  server_time: string;
+}
+
+/** `GET /api/conversations/<id>/session/`. */
+export interface ConversationSessionInfo {
+  session: ExchangeSession | null;
+  languages: string[];
+  /** [partner native, my native]. */
+  default_languages: string[];
+  durations: number[];
+}
+
+export type ExchangeSessionAction = "accept" | "decline" | "cancel" | "switch" | "topic" | "end";
