@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Conversation from "./Conversation";
 import api from "../../../lib/api";
 
@@ -118,5 +118,121 @@ describe("Conversation in a group chat", () => {
     render(<Conversation messages={[]} userId={1} onDeleteMessage={jest.fn()} isGroup conversationId={9} />);
 
     expect(screen.getByText("This group is brand new. Say hello to everyone!")).toBeInTheDocument();
+  });
+});
+
+describe("Conversation corrections", () => {
+  const correctable = {
+    id: 10,
+    text: "I goed home",
+    sender: partner,
+    timestamp: at(3),
+    reactions: [],
+    accepts_corrections: true,
+    corrections: [
+      {
+        id: 7,
+        corrector: me,
+        corrected_text: "I went home",
+        note: "go → went",
+        created_at: at(4),
+        updated_at: at(4),
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    api.post.mockReset();
+    api.delete.mockReset();
+  });
+
+  test("shows a word diff card with strikethrough and underline marks", () => {
+    const { container } = render(
+      <Conversation messages={[correctable]} userId={1} onDeleteMessage={jest.fn()} learningEnabled />
+    );
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(container.querySelector("del.cv-diff-del")).toHaveTextContent("goed");
+    expect(container.querySelector("ins.cv-diff-ins")).toHaveTextContent("went");
+    expect(screen.getByText("Why?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove your correction" })).toBeInTheDocument();
+  });
+
+  test("hides corrections and learning actions outside ChatRoom", () => {
+    const { container } = render(<Conversation messages={[correctable]} userId={1} onDeleteMessage={jest.fn()} />);
+    expect(container.querySelector(".cv-correction")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    expect(screen.queryByRole("button", { name: "Save to phrasebook" })).toBeNull();
+  });
+
+  test("saves a correction to the phrasebook", async () => {
+    const onPhrasebookChange = jest.fn();
+    api.post.mockResolvedValue({ entry: { id: 1 }, created: true });
+    render(
+      <Conversation
+        messages={[correctable]}
+        userId={1}
+        onDeleteMessage={jest.fn()}
+        learningEnabled
+        onPhrasebookChange={onPhrasebookChange}
+      />
+    );
+    const save = screen.getByRole("button", { name: "Save your correction to your phrasebook" });
+    fireEvent.click(save);
+    await waitFor(() => expect(onPhrasebookChange).toHaveBeenCalled());
+    await waitFor(() => expect(save).not.toBeDisabled());
+    expect(api.post).toHaveBeenCalledWith("/api/phrasebook/", {
+      message_id: 10,
+      source: "correction",
+      correction_id: 7,
+    });
+  });
+
+  test("menu offers to suggest a correction on a partner's message and ask on my own", () => {
+    const mine = { id: 11, text: "Me gusta", sender: me, timestamp: at(5), reactions: [], correction_requested: false };
+    const fresh = { ...correctable, corrections: [] };
+    render(
+      <Conversation
+        messages={[fresh, mine]}
+        userId={1}
+        onDeleteMessage={jest.fn()}
+        learningEnabled
+        correctionPreference="when_asked"
+      />
+    );
+    const toggles = screen.getAllByRole("button", { name: "Message actions" });
+    fireEvent.click(toggles[0]);
+    expect(screen.getByRole("button", { name: "Suggest a correction" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save to phrasebook" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask for corrections" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Message actions" }), { key: "Escape" });
+    fireEvent.click(toggles[1]);
+    expect(screen.getByRole("button", { name: "Ask for corrections" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest a correction" })).toBeNull();
+  });
+
+  test("the correction dialog sends the corrected sentence and merges the reply", async () => {
+    const onMessageUpdate = jest.fn();
+    const fresh = { ...correctable, corrections: [] };
+    const updated = { ...correctable };
+    api.post.mockResolvedValue(updated);
+    render(
+      <Conversation
+        messages={[fresh]}
+        userId={1}
+        onDeleteMessage={jest.fn()}
+        learningEnabled
+        onMessageUpdate={onMessageUpdate}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Suggest a correction" }));
+    const send = screen.getByRole("button", { name: "Send correction" });
+    expect(send).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Corrected sentence"), { target: { value: "I went home" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send correction" }));
+    await waitFor(() => expect(onMessageUpdate).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Send correction" })).toBeNull());
+    expect(api.post).toHaveBeenCalledWith("/api/messages/10/correction/", { corrected_text: "I went home", note: "" });
+    expect(onMessageUpdate).toHaveBeenCalledWith(updated);
   });
 });

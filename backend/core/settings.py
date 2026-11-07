@@ -490,6 +490,9 @@ REST_FRAMEWORK = {
             "profile_view": "120/minute",
             "people": "60/minute",
             "reactions": "120/minute",
+            # Partner corrections (+ correction requests) and phrasebook writes.
+            "corrections": "60/minute",
+            "phrasebook": "120/minute",
             # GIF picker search/trending (proxied to GIPHY, cached 15 min).
             "gifs": "60/minute",
             "report": "20/hour",

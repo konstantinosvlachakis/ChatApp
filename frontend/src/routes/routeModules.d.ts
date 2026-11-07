@@ -15,6 +15,7 @@ export const CommunityPage: PreloadableRoute;
 export const SettingsPage: PreloadableRoute;
 export const PublicProfilePage: PreloadableRoute;
 export const PracticePage: PreloadableRoute;
+export const PhrasebookPage: PreloadableRoute;
 export const PremiumPage: PreloadableRoute;
 export const ComparePlansPage: PreloadableRoute;
 export const ROUTE_PRELOAD_TIMEOUT_MS: number;

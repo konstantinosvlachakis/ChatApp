@@ -64,6 +64,21 @@ const EXAMPLE_LINES = {
   hindi: "क्या आप कल अभ्यास करना चाहेंगे?",
 };
 
+// Partner corrections (`correction_preference`); the chat menu reads it from UserContext.
+const CORRECTION_OPTIONS = [
+  {
+    value: "often",
+    label: "Correct me often",
+    text: "Partners can suggest a correction on any of your text messages.",
+  },
+  {
+    value: "when_asked",
+    label: "Only when I ask",
+    text: "Partners can correct a message after you choose “Ask for corrections” on it.",
+  },
+  { value: "off", label: "No corrections", text: "Nobody can suggest corrections on your messages." },
+];
+
 const NOTIFICATION_STATES = {
   granted: { label: "On", text: "You'll get a desktop notification for new messages while LangVoyage is open." },
   default: { label: "Off", text: "Allow notifications to hear about new messages while you're in another tab." },
@@ -137,6 +152,9 @@ const SettingsPage = () => {
   const translateLanguage = draftLanguage ?? savedLanguage;
   const isDirty = draftLanguage !== null && draftLanguage !== savedLanguage;
 
+  const [savingCorrections, setSavingCorrections] = useState(false);
+  const [correctionsSaved, setCorrectionsSaved] = useState(false);
+
   const [moderationLoading, setModerationLoading] = useState(true);
   const [moderationError, setModerationError] = useState(false);
   const [moderation, setModeration] = useState({ blocked_profiles: [], reported_profiles: [] });
@@ -155,7 +173,14 @@ const SettingsPage = () => {
   const [loggingOut, setLoggingOut] = useState(false);
   const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
   const deleteInputRef = useRef(null);
-  const inFlightRef = useRef({ save: false, reset: false, delete: false, logoutAll: false, unblock: new Set() });
+  const inFlightRef = useRef({
+    save: false,
+    corrections: false,
+    reset: false,
+    delete: false,
+    logoutAll: false,
+    unblock: new Set(),
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -222,6 +247,28 @@ const SettingsPage = () => {
     } finally {
       inFlightRef.current.save = false;
       setSaving(false);
+    }
+  };
+
+  // Saves on change (one field): optimistic in UserContext, rolled back on failure.
+  const handleCorrectionPreference = async (value) => {
+    const previous = user?.correction_preference || "often";
+    if (value === previous || inFlightRef.current.corrections) return;
+    inFlightRef.current.corrections = true;
+    setSavingCorrections(true);
+    setCorrectionsSaved(false);
+    setUser((prev) => (prev ? { ...prev, correction_preference: value } : prev));
+    try {
+      const payload = await api.patch("/api/profile/edit/", { correction_preference: value });
+      const saved = payload?.updated_profile?.correction_preference || value;
+      setUser((prev) => (prev ? { ...prev, correction_preference: saved } : prev));
+      setCorrectionsSaved(true);
+    } catch (err) {
+      setUser((prev) => (prev ? { ...prev, correction_preference: previous } : prev));
+      toastApiError(err, "Couldn't save your correction setting");
+    } finally {
+      inFlightRef.current.corrections = false;
+      setSavingCorrections(false);
     }
   };
 
@@ -531,6 +578,46 @@ const SettingsPage = () => {
                 Edit languages and levels
               </Link>
             </div>
+
+            <div className="st-divider" />
+
+            <fieldset className="st-subsection st-radio-group" aria-describedby="st-corrections-help">
+              <legend>
+                <h3>Corrections from partners</h3>
+              </legend>
+              <p id="st-corrections-help" className="st-help">
+                Partners can suggest a better way to say your messages. Save the ones you like to your phrasebook.
+              </p>
+              <div className="st-radio-list">
+                {CORRECTION_OPTIONS.map((option) => {
+                  const checked = (user.correction_preference || "often") === option.value;
+                  return (
+                    <label key={option.value} className={`st-radio${checked ? " is-checked" : ""}`}>
+                      <input
+                        type="radio"
+                        name="correction-preference"
+                        value={option.value}
+                        checked={checked}
+                        onChange={() => handleCorrectionPreference(option.value)}
+                        disabled={savingCorrections}
+                      />
+                      <span className="st-radio-text">
+                        <strong>{option.label}</strong>
+                        <span>{option.text}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <span className="st-status" role="status">
+                {savingCorrections ? "Saving…" : correctionsSaved ? (
+                  <>
+                    <CheckRoundedIcon aria-hidden="true" />
+                    Saved
+                  </>
+                ) : null}
+              </span>
+            </fieldset>
           </SectionCard>
 
           <SectionCard

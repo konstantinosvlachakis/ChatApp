@@ -12,6 +12,7 @@ import {
   ConversationsPage,
   EditProfilePage,
   ForgotPasswordPage,
+  PhrasebookPage,
   PracticePage,
   PremiumPage,
   PrivacyPolicyPage,
@@ -130,6 +131,22 @@ const AppRoutes = () => (
         element={
           <LazyRoute fallback={<div>Loading Practice...</div>}>
             <PracticePage />
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/phrasebook"
+        element={
+          <LazyRoute fallback={<div>Loading Phrasebook...</div>}>
+            <PhrasebookPage />
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/phrasebook/review"
+        element={
+          <LazyRoute fallback={<div>Loading Phrasebook...</div>}>
+            <PhrasebookPage />
           </LazyRoute>
         }
       />

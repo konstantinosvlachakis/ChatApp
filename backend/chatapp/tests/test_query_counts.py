@@ -22,6 +22,7 @@ from chatapp.models import (
     Follow,
     Conversation,
     Message,
+    MessageCorrection,
     MessageReaction,
     MessageTranslation,
     PracticeStats,
@@ -47,14 +48,19 @@ class FollowingQueryCountTests(TestCase):
             self.assertLessEqual(len(queries), 6)
 
 # Upper bounds (queries per request). They must not depend on data size.
+# Every serialized message batch includes one prefetch for corrections.
 MAX_QUERIES = {
-    "conversation_detail": 10,
-    "messages_page_30": 9,
-    "messages_page_100": 9,
-    "conversation_list_cold": 6,
+    "conversation_detail": 12,
+    "messages_page_30": 11,
+    "messages_page_100": 11,
+    "conversation_list_cold": 7,
     "react": 10,
-    "pin": 5,
-    "send": 7,
+    "pin": 6,
+    "send": 8,
+    "correct": 12,
+    "save_phrase": 6,
+    "phrasebook_list": 5,
+    "phrasebook_review": 6,
 }
 # practice/state/ (stats get_or_create, language progress, leaderboard incl. photos
 # via select_related, rank).
@@ -80,7 +86,7 @@ def seed_conversations(me, conversation_count, messages_per_conversation):
             ]
         )
         messages = list(conversation.messages.order_by("id"))
-        reactions, translations, updated = [], [], []
+        reactions, translations, updated, corrections = [], [], [], []
         for index, message in enumerate(messages):
             if index % 3 == 0:
                 reactions.append(MessageReaction(message=message, user=me, emoji="👍"))
@@ -97,6 +103,16 @@ def seed_conversations(me, conversation_count, messages_per_conversation):
                         translated_text=f"translated {index}",
                     )
                 )
+            if index % 6 == 1:
+                corrector = other if message.sender_id == me.id else me
+                corrections.append(
+                    MessageCorrection(
+                        message=message,
+                        corrector=corrector,
+                        corrected_text=f"corrected {index}",
+                        note="word order",
+                    )
+                )
             if index and index % 5 == 0:
                 message.reply_to = messages[index - 1]
                 updated.append(message)
@@ -106,6 +122,7 @@ def seed_conversations(me, conversation_count, messages_per_conversation):
                 updated.append(message)
         MessageReaction.objects.bulk_create(reactions)
         MessageTranslation.objects.bulk_create(translations)
+        MessageCorrection.objects.bulk_create(corrections)
         Message.objects.bulk_update(updated, ["reply_to", "pinned_at", "pinned_by"])
     return conversations
 
@@ -120,6 +137,7 @@ class QueryCountRegressionTests(TestCase):
         client.force_authenticate(user=me)
         conversation = conversations[0]
         message = conversation.messages.order_by("-id").first()
+        incoming = conversation.messages.exclude(sender=me).order_by("-id").first()
         base = f"/api/conversations/{conversation.id}"
 
         requests = [
@@ -143,6 +161,22 @@ class QueryCountRegressionTests(TestCase):
                 ),
             ),
             ("send", lambda: client.post(f"{base}/messages/", {"text": "hi"})),
+            (
+                "correct",
+                lambda: client.post(
+                    f"/api/messages/{incoming.id}/correction/",
+                    {"corrected_text": "Better sentence", "note": "tense"},
+                ),
+            ),
+            (
+                "save_phrase",
+                lambda: client.post(
+                    "/api/phrasebook/",
+                    {"message_id": incoming.id, "source": "correction"},
+                ),
+            ),
+            ("phrasebook_list", lambda: client.get("/api/phrasebook/")),
+            ("phrasebook_review", lambda: client.get("/api/phrasebook/review/")),
         ]
         counts = {}
         for label, send_request in requests:
@@ -188,6 +222,7 @@ class PrefetchedSerializationParityTests(TestCase):
         self.assertTrue(any(item["translated_text"] for item in plain))
         self.assertTrue(any(item["reply_to"] for item in plain))
         self.assertTrue(any(item["pinned_by"] for item in plain))
+        self.assertTrue(any(item["corrections"] for item in plain))
 
 
 class ConversationDetailMessageCapTests(TestCase):

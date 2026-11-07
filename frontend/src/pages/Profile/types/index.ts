@@ -15,6 +15,8 @@ export interface User {
     practice_language_levels?: Record<string, string>;
     native_language?: string;
     base_translate_language?: string;
+    /** Partner corrections: always welcome, only on messages where I ask, or never. */
+    correction_preference?: "often" | "when_asked" | "off";
     email?: string;
     email_verified?: boolean;
     profile_image_url?: string;

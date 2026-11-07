@@ -18,6 +18,8 @@ type AuthContextValue = {
   refreshProfile: () => Promise<void>;
   /** Merge a known `email_verified` (verify success, 403 email_unverified) into the user. */
   setEmailVerified: (verified: boolean) => void;
+  /** Merge saved fields (e.g. `correction_preference`) into the user without a refetch. */
+  updateUser: (fields: Partial<Profile>) => void;
   /** Set by `login(..., {verifyEmail: true})`; AppTabs consumes it and opens VerifyEmail. */
   pendingEmailVerification: boolean;
   clearPendingEmailVerification: () => void;
@@ -88,6 +90,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }, []);
 
+  const updateUser = useCallback((fields: Partial<Profile>) => {
+    setUser((current) => (current ? { ...current, ...fields } : current));
+  }, []);
+
   const clearPendingEmailVerification = useCallback(() => setPendingEmailVerification(false), []);
 
   const logout = async (options?: { sessionRevoked?: boolean }) => {
@@ -112,11 +118,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout,
       refreshProfile,
       setEmailVerified,
+      updateUser,
       pendingEmailVerification,
       clearPendingEmailVerification,
       isAuthenticated: Boolean(user),
     }),
-    [user, loading, pendingEmailVerification, setEmailVerified, clearPendingEmailVerification]
+    [user, loading, pendingEmailVerification, setEmailVerified, updateUser, clearPendingEmailVerification]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

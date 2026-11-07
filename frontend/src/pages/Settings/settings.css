@@ -138,3 +138,18 @@
   .st-dialog-actions .st-btn { flex: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .st-btn { transition: none; } }
+
+/* Corrections preference (radio cards; saves on change) */
+.st-radio-group { margin: 0; padding: 0; border: 0; min-width: 0; }
+.st-radio-group legend { padding: 0; margin-bottom: 4px; }
+.st-help { margin: 0; color: var(--lv-muted-ink); font-size: 14px; line-height: 1.5; }
+.st-radio-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.st-radio { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--lv-line); border-radius: 18px; background: var(--lv-paper); cursor: pointer; }
+.st-radio:hover { background: var(--lv-cream); }
+.st-radio.is-checked { border-color: var(--lv-teal); background: var(--lv-sage); box-shadow: inset 0 0 0 1px var(--lv-teal); }
+.st-radio input { flex-shrink: 0; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--lv-teal); }
+.st-radio input:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+.st-radio-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-radio-text strong { color: var(--lv-ink); font-size: 14px; font-weight: 700; }
+.st-radio-text span { color: var(--lv-ink-soft); font-size: 13px; line-height: 1.45; }
+.st-radio-group .st-status { min-height: 20px; }

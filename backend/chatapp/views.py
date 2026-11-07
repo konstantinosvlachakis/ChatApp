@@ -1415,6 +1415,7 @@ def profile_view(request):
         "email_verified": user.email_verified,
         "bio": user.bio or "",
         "learning_goal": user.learning_goal or "",
+        "correction_preference": user.correction_preference,
         "recent_profile_viewers": build_recent_profile_viewers(request, user),
         "support_email": SUPPORT_EMAIL,
     }
@@ -1646,6 +1647,7 @@ def public_profile_view(request, username):
         ),
         "bio": profile.bio or "",
         "learning_goal": profile.learning_goal or "",
+        "correction_preference": profile.correction_preference,
         "reviews": [],
         "is_blocked_by_me": is_blocked_by_me,
         "has_blocked_me": has_blocked_me,
@@ -1720,6 +1722,7 @@ def profile_edit_view(request):
         location = data.get("location")
         bio = data.get("bio")
         learning_goal = data.get("learning_goal")
+        correction_preference = data.get("correction_preference")
         avatar_ring_color = data.get("avatar_ring_color")
         profile_image_url = data.get("profile_image_url")
         email_changed = False
@@ -1851,6 +1854,18 @@ def profile_edit_view(request):
             user.bio = str(bio).strip()[:PROFILE_TEXT_MAX_LENGTH]
         if learning_goal is not None:
             user.learning_goal = str(learning_goal).strip()[:PROFILE_TEXT_MAX_LENGTH]
+        if correction_preference is not None:
+            normalized_preference = str(correction_preference).strip().lower()
+            allowed_preferences = {value for value, _ in Profile.CORRECTION_PREFERENCES}
+            if normalized_preference not in allowed_preferences:
+                return JsonResponse(
+                    {
+                        "error": "Invalid correction preference.",
+                        "code": "invalid_correction_preference",
+                    },
+                    status=400,
+                )
+            user.correction_preference = normalized_preference
         if avatar_ring_color is not None:
             normalized_ring_color = str(avatar_ring_color).strip().lower()
             if not re.fullmatch(r"#[0-9a-f]{6}", normalized_ring_color):
@@ -1914,6 +1929,7 @@ def profile_edit_view(request):
                     "location_updated_at": user.location_updated_at,
                     "bio": user.bio or "",
                     "learning_goal": user.learning_goal or "",
+                    "correction_preference": user.correction_preference,
                     "profile_image_url": (user.profile_image_url or None),
                     "avatar_ring_color": user.avatar_ring_color or "#1b7f79",
                 },

@@ -10,6 +10,9 @@ import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
+import BookmarkAddOutlinedIcon from "@mui/icons-material/BookmarkAddOutlined";
+import SpellcheckRoundedIcon from "@mui/icons-material/SpellcheckRounded";
+import RateReviewOutlinedIcon from "@mui/icons-material/RateReviewOutlined";
 import api, { getErrorMessage, isApiError } from "../../../lib/api";
 import { logger } from "../../../lib/logger";
 import { toast, toastApiError } from "../../../components/Toast";
@@ -26,6 +29,10 @@ import {
 } from "../utils/messageMedia";
 import { CHAT_IMAGE_WIDTH, cloudinaryImage } from "../../../lib/media";
 import StickerImage from "./StickerImage";
+import MessageCorrections from "./MessageCorrections";
+import CorrectionDialog from "./CorrectionDialog";
+import { removeCorrection, saveCorrection, setCorrectionRequested } from "../api/corrections";
+import { savePhraseFromMessage } from "../../Phrasebook/api/phrasebook";
 
 const EmojiPickerWrapper = React.lazy(() =>
   import("./EmojiPickerWrapper").then((module) => ({ default: module.EmojiPickerWrapper }))
@@ -202,6 +209,10 @@ const groupedReactions = (reactions = []) => {
   return Object.entries(counts);
 };
 
+// Server-saved message (not an optimistic copy or a local system line).
+const isSavedMessage = (msg) => typeof msg?.id === "number" && !msg.isPending && !msg.isSystem;
+const hasCorrectableText = (msg) => Boolean(msg?.text?.trim()) && !isMediaMessage(msg);
+
 const MessageAvatar = ({ sender, displayName }) =>
   sender?.id === COACH_BOT_ID ? (
     <CoachAvatar size={32} hideBadge />
@@ -236,6 +247,9 @@ const MessageRow = React.memo(function MessageRow({
   onReact,
   onOpenReactionPicker,
   onEditGroupNickname,
+  onSaveCorrectionPhrase,
+  onEditCorrection,
+  onRemoveCorrection,
 }) {
   const rawUrl = msg.attachment_url || msg.attachment || msg.attachmentUrl;
   const attachmentUrl = normalizeUrl(rawUrl);
@@ -373,7 +387,7 @@ const MessageRow = React.memo(function MessageRow({
                 </p>
               )}
 
-              {(msg.is_pinned || msg.edited_at) && (
+              {(msg.is_pinned || msg.edited_at || msg.correction_requested) && (
                 <div className="cv-bubble-tags">
                   {msg.is_pinned && (
                     <span className="cv-bubble-tag">
@@ -382,6 +396,12 @@ const MessageRow = React.memo(function MessageRow({
                     </span>
                   )}
                   {msg.edited_at && <span className="cv-bubble-tag">Edited</span>}
+                  {msg.correction_requested && (
+                    <span className="cv-bubble-tag is-corrections">
+                      <SpellcheckRoundedIcon aria-hidden="true" />
+                      Corrections welcome
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -417,6 +437,17 @@ const MessageRow = React.memo(function MessageRow({
             )}
             {!endsGroup && timeLabel && <span className="cv-msg-hover-time">{timeLabel}</span>}
           </div>
+
+          {onSaveCorrectionPhrase && msg.corrections?.length > 0 && (
+            <MessageCorrections
+              msg={msg}
+              userId={userId}
+              groupNicknames={groupNicknames}
+              onSave={onSaveCorrectionPhrase}
+              onEdit={onEditCorrection}
+              onRemove={onRemoveCorrection}
+            />
+          )}
 
           {messageReactions.length > 0 && (
             <div className="cv-reactions" aria-label="Reactions">
@@ -468,8 +499,15 @@ const Conversation = ({
   groupNicknames = null,
   onEditGroupNickname,
   seenBy = null,
+  // Corrections + phrasebook (ChatRoom only; Lumi's chat leaves them off).
+  learningEnabled = false,
+  correctionPreference = "often",
+  onMessageUpdate,
+  onPhrasebookChange,
 }) => {
   const [messageActionsMenu, setMessageActionsMenu] = useState(null);
+  // { messageId, returnFocus } while the "Suggest a correction" dialog is open.
+  const [correctionDialog, setCorrectionDialog] = useState(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [translationsByMessageId, setTranslationsByMessageId] = useState({});
@@ -685,6 +723,70 @@ const Conversation = ({
     }
   }, [closeMessageActionsMenu, onMessageReactionChange]);
 
+  // --- Corrections + phrasebook -------------------------------------------------------
+  const savePhrase = useCallback(async (body) => {
+    try {
+      const payload = await savePhraseFromMessage(body);
+      if (payload?.created === false) toast.info("Already in your phrasebook");
+      else toast.success("Saved to phrasebook");
+      onPhrasebookChange?.();
+    } catch (error) {
+      logger.warn("Phrasebook save error:", error);
+      toastApiError(error, "Couldn't save to your phrasebook");
+    }
+  }, [onPhrasebookChange]);
+
+  const handleSaveMessagePhrase = useCallback(async (msg) => {
+    closeMessageActionsMenu();
+    await savePhrase({ message_id: msg.id, source: "message" });
+  }, [closeMessageActionsMenu, savePhrase]);
+
+  const handleSaveCorrectionPhrase = useCallback(
+    (msg, correction) => savePhrase({ message_id: msg.id, source: "correction", correction_id: correction.id }),
+    [savePhrase]
+  );
+
+  const openCorrectionDialog = useCallback((msg, returnFocus = null) => {
+    setCorrectionDialog({ messageId: msg.id, returnFocus });
+  }, []);
+
+  const handleEditCorrection = useCallback((msg) => {
+    openCorrectionDialog(msg, document.activeElement);
+  }, [openCorrectionDialog]);
+
+  const handleSubmitCorrection = useCallback(async (messageId, correctedText, note) => {
+    const updated = await saveCorrection(messageId, correctedText, note);
+    onMessageUpdate?.(updated);
+    toast.success("Correction sent");
+  }, [onMessageUpdate]);
+
+  const handleRemoveCorrection = useCallback(async (messageId) => {
+    const updated = await removeCorrection(messageId);
+    onMessageUpdate?.(updated);
+    toast.info("Correction removed");
+  }, [onMessageUpdate]);
+
+  // The card's Remove button (the dialog shows its own errors inline).
+  const handleRemoveCorrectionFromCard = useCallback(async (messageId) => {
+    try {
+      await handleRemoveCorrection(messageId);
+    } catch (error) {
+      toastApiError(error, "Couldn't remove your correction");
+    }
+  }, [handleRemoveCorrection]);
+
+  const handleToggleCorrectionRequest = useCallback(async (msg) => {
+    closeMessageActionsMenu();
+    const requested = !msg.correction_requested;
+    try {
+      const updated = await setCorrectionRequested(msg.id, requested);
+      onMessageUpdate?.(updated);
+      toast.success(requested ? "Asked for corrections" : "Stopped asking for corrections");
+    } catch (error) {
+      toastApiError(error, "Couldn't update the message");
+    }
+  }, [closeMessageActionsMenu, onMessageUpdate]);
+
   const normalizeLanguageName = (language) => {
     if (!language) return "";
     return String(language).trim().toLowerCase().split("-")[0];
@@ -827,6 +929,9 @@ const Conversation = ({
               onReact={handleReact}
               onOpenReactionPicker={setReactionPickerMessageId}
               onEditGroupNickname={onEditGroupNickname}
+              onSaveCorrectionPhrase={learningEnabled ? handleSaveCorrectionPhrase : undefined}
+              onEditCorrection={handleEditCorrection}
+              onRemoveCorrection={handleRemoveCorrectionFromCard}
               onTranslate={handleTranslate}
               onTouchStart={handleTouchStart}
               onClearLongPress={clearLongPressTimer}
@@ -869,6 +974,12 @@ const Conversation = ({
                 return null;
               }
               const isSentByUser = msg.sender?.id === userId;
+              const canLearn = learningEnabled && isSavedMessage(msg) && hasCorrectableText(msg);
+              const myCorrection = msg.corrections?.find((correction) => correction.corrector?.id === userId);
+              const canSuggestCorrection =
+                canLearn && !isSentByUser && msg.sender?.id !== COACH_BOT_ID && Boolean(msg.accepts_corrections || myCorrection);
+              const canToggleRequest =
+                canLearn && isSentByUser && Boolean(msg.correction_requested || correctionPreference === "when_asked");
 
               return (
                 <>
@@ -910,13 +1021,38 @@ const Conversation = ({
                       <span>{msg.is_pinned ? "Unpin message" : "Pin message"}</span>
                     </button>
                   )}
-                  {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg)) && (
+                  {(canShowTranslate(msg, isSentByUser) || canEditMessage(msg) || canLearn) && (
                     <div className="cv-actions-sep" />
                   )}
                   {canShowTranslate(msg, isSentByUser) && (
                     <button type="button" onClick={() => handleTranslate(msg)} className="cv-actions-item">
                       <TranslateRoundedIcon />
                       <span>Translate</span>
+                    </button>
+                  )}
+                  {canLearn && (
+                    <button type="button" onClick={() => handleSaveMessagePhrase(msg)} className="cv-actions-item">
+                      <BookmarkAddOutlinedIcon />
+                      <span>Save to phrasebook</span>
+                    </button>
+                  )}
+                  {canSuggestCorrection && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openCorrectionDialog(msg, menuReturnFocusRef.current);
+                        closeMessageActionsMenu();
+                      }}
+                      className="cv-actions-item"
+                    >
+                      <RateReviewOutlinedIcon />
+                      <span>{myCorrection ? "Edit my correction" : "Suggest a correction"}</span>
+                    </button>
+                  )}
+                  {canToggleRequest && (
+                    <button type="button" onClick={() => handleToggleCorrectionRequest(msg)} className="cv-actions-item">
+                      <SpellcheckRoundedIcon />
+                      <span>{msg.correction_requested ? "Stop asking for corrections" : "Ask for corrections"}</span>
                     </button>
                   )}
                   {canEditMessage(msg) && (
@@ -965,6 +1101,24 @@ const Conversation = ({
           </div>
         </div>
       )}
+
+      {correctionDialog && (() => {
+        const msg = messages.find((message) => message.id === correctionDialog.messageId);
+        if (!msg) return null;
+        const existing = msg.corrections?.find((correction) => correction.corrector?.id === userId) || null;
+        return (
+          <CorrectionDialog
+            key={msg.id}
+            message={msg}
+            existing={existing}
+            authorName={groupNicknames?.[msg.sender?.id] || msg.sender?.username}
+            returnFocus={correctionDialog.returnFocus}
+            onSubmit={(text, note) => handleSubmitCorrection(msg.id, text, note)}
+            onRemove={existing ? () => handleRemoveCorrection(msg.id) : null}
+            onClose={() => setCorrectionDialog(null)}
+          />
+        );
+      })()}
 
       {copyFeedback && (
         <div

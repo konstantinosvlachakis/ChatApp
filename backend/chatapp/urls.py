@@ -8,6 +8,14 @@ from .group_views import (
     set_member_nickname_view,
     respond_to_invite_view,
 )
+from .learning_views import (
+    message_correction_request_view,
+    message_correction_view,
+    phrasebook_entry_view,
+    phrasebook_review_entry_view,
+    phrasebook_review_view,
+    phrasebook_view,
+)
 from .auth_views import (
     CustomObtainJWTToken,
     CustomRefreshJWTToken,
@@ -135,6 +143,24 @@ urlpatterns = [
         "messages/<int:message_id>/pin/",
         pin_message_view,
         name="pin_message",
+    ),
+    path(
+        "messages/<int:message_id>/correction/",
+        message_correction_view,
+        name="message_correction",
+    ),
+    path(
+        "messages/<int:message_id>/correction-request/",
+        message_correction_request_view,
+        name="message_correction_request",
+    ),
+    path("phrasebook/", phrasebook_view, name="phrasebook"),
+    path("phrasebook/review/", phrasebook_review_view, name="phrasebook_review"),
+    path("phrasebook/<int:entry_id>/", phrasebook_entry_view, name="phrasebook_entry"),
+    path(
+        "phrasebook/<int:entry_id>/review/",
+        phrasebook_review_entry_view,
+        name="phrasebook_review_entry",
     ),
     path("practice/state/", practice_state_view, name="practice_state"),
     path("practice/challenge/", practice_challenge_view, name="practice_challenge"),
