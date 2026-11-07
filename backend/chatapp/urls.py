@@ -16,6 +16,7 @@ from .learning_views import (
     phrasebook_review_view,
     phrasebook_view,
 )
+from .session_views import conversation_session_view, exchange_session_action_view
 from .auth_views import (
     CustomObtainJWTToken,
     CustomRefreshJWTToken,
@@ -110,6 +111,16 @@ urlpatterns = [
         "conversations/<int:conversation_id>/messages/",
         MessageListView.as_view(),
         name="conversation_messages",  # Send and receive messages
+    ),
+    path(
+        "conversations/<int:conversation_id>/session/",
+        conversation_session_view,
+        name="conversation_session",
+    ),
+    path(
+        "exchange-sessions/<int:session_id>/<str:action>/",
+        exchange_session_action_view,
+        name="exchange_session_action",
     ),
     path("stickers/", sticker_packs_view, name="sticker_packs"),
     path("gifs/", gifs_view, name="gifs"),

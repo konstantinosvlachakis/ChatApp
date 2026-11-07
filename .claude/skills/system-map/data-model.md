@@ -1,7 +1,7 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03). Reaction and group nickname models verified against the working tree based on `1ec0ffe` (2026-11-04).** Latest migration: `0043_corrections_phrasebook`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03). Reaction and group nickname models verified against the working tree based on `1ec0ffe` (2026-11-04).** Latest migration: `0044_exchange_sessions`.
 `feat/group-participants` pending (2026-11-04, based on `c0a7e06`): `Conversation.kind`/`name`, nullable `receiver` (check constraint), `ConversationParticipant`; membership checks go through `chatapp/conversation_members.py`. Groups are live since `feat/group-chats-api` (`chatapp/group_views.py`): max 8 people incl. pending, any member invites people they follow or have a direct chat with, no block (either way) between an invitee and any active/pending member or co-invitee, history from `joined_at`, per-member `last_read_at`, owner hand-over to the earliest active member, group deleted when no active member is left.
 `feat/follow` pending (2026-11-03): migration `0038_follow` adds `Follow(follower -> Profile, following -> Profile, created_at)` with a unique pair constraint, a no-self check, an index on `(follower, -created_at)` for the following list, and `(following, follower)` for reverse checks. A block deletes links in both directions. No public counts or feed.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
@@ -113,6 +113,9 @@ Unique constraint `uniq_message_user_target_translation` (message, user, target_
 
 Also in 0043: `Profile.correction_preference` Char(12) default `often`; `Message.correction_requested` Bool default False (set only by the sender via `correction-request/`).
 
+### ExchangeSession (migration 0044)
+`conversation` FK (`exchange_sessions`, direct chats only — enforced in the view), `created_by` / `partner` FK→Profile, `status` pending|active|ended|declined|cancelled|expired, `duration_minutes` (10/20/30), `first_language` / `second_language` (lowercase names), `topic` JSON `{id, title, prompts}` null, `topic_source` ai|library|custom|"", `topic_queue` JSON (unused Lumi topics), `used_topics` JSON (library ids shown), `created_at`, `expires_at` (invite), `started_at`, `switched_at`, `ended_at`, `ended_by` FK null (SET_NULL; null = timer ran out), `summary` JSON. Index `xsession_conv_created_idx` (conversation, -created_at). Partial unique `uniq_open_exchange_session` (conversation) WHERE status in (pending, active): one open session per chat. Expiry and timer end are applied lazily (`exchange_sessions.refresh_session`) on every read/action — no worker.
+
 ### BlockedUser
 `blocker` FK (`blocked_users`), `blocked` FK (`blocked_by_users`), created_at. Unique constraint `uniq_blocker_blocked_pair`.
 
@@ -178,3 +181,4 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 - feat/group-participants: `Conversation.kind`/`name`, nullable `receiver` + check constraint, `ConversationParticipant` with backfill (migration 0039); membership helpers in `conversation_members.py`. Tests: `tests/test_conversation_members.py`.
 - feat/corrections-phrasebook-api (2026-11-07): `MessageCorrection`, `PhrasebookEntry`, `Profile.correction_preference`, `Message.correction_requested` (migration 0043). Tests: `tests/test_corrections_phrasebook.py`, query bounds in `tests/test_query_counts.py`.
 - feat/group-chats-api: no schema change; group rules in `conversation_members.py` (`MAX_GROUP_MEMBERS`, `invitable_ids`, `blocked_with_any`, `visible_messages`, `can_access_message`, `group_display_name`) and `group_views.py`. Tests: `tests/test_group_chats.py`.
+- feat/exchange-sessions-api (2026-11-07): `ExchangeSession` (migration 0044). Tests: `tests/test_exchange_sessions.py`.

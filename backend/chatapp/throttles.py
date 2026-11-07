@@ -176,6 +176,15 @@ class ReactionRateThrottle(ScopedUserThrottle):
     scope = "reactions"
 
 
+class ExchangeSessionCreateRateThrottle(ScopedUserThrottle):
+    scope = "exchange_session_create"
+    methods = ("POST",)
+
+
+class ExchangeSessionActionRateThrottle(ScopedUserThrottle):
+    scope = "exchange_session_action"
+
+
 class CorrectionRateThrottle(ScopedUserThrottle):
     scope = "corrections"
 

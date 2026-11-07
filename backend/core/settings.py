@@ -490,6 +490,9 @@ REST_FRAMEWORK = {
             "profile_view": "120/minute",
             "people": "60/minute",
             "reactions": "120/minute",
+            # Guided exchange invites (each notifies the partner) and session actions.
+            "exchange_session_create": "20/hour",
+            "exchange_session_action": "120/hour",
             # Partner corrections (+ correction requests) and phrasebook writes.
             "corrections": "60/minute",
             "phrasebook": "120/minute",
