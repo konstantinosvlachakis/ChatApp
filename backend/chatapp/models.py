@@ -73,6 +73,20 @@ class Profile(AbstractBaseUser):
     # When the account was created (People "New members"). Accounts that existed
     # before migration 0037 stay NULL (never "new"); new rows get the time now.
     date_joined = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True)
+    # How partners may correct this user's messages (MessageCorrection):
+    # "often" = any text message, "when_asked" = only messages the user flagged
+    # (Message.correction_requested), "off" = never.
+    CORRECTIONS_OFTEN = "often"
+    CORRECTIONS_WHEN_ASKED = "when_asked"
+    CORRECTIONS_OFF = "off"
+    CORRECTION_PREFERENCES = [
+        (CORRECTIONS_OFTEN, "Correct me often"),
+        (CORRECTIONS_WHEN_ASKED, "Only when I ask"),
+        (CORRECTIONS_OFF, "No corrections"),
+    ]
+    correction_preference = models.CharField(
+        max_length=12, choices=CORRECTION_PREFERENCES, default=CORRECTIONS_OFTEN
+    )
 
     objects = ProfileManager()
 
@@ -337,6 +351,9 @@ class Message(models.Model):
         null=True,
         blank=True,
     )
+    # The sender asked partners to correct this message (needed when their
+    # correction_preference is "when_asked").
+    correction_requested = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         is_new = self._state.adding
@@ -420,6 +437,87 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"Reaction on message {self.message_id} by user {self.user_id}"
+
+
+class MessageCorrection(models.Model):
+    """A partner's suggested rewrite of a text message (one per corrector)."""
+
+    message = models.ForeignKey(
+        Message, related_name="corrections", on_delete=models.CASCADE
+    )
+    corrector = models.ForeignKey(
+        Profile, related_name="message_corrections", on_delete=models.CASCADE
+    )
+    corrected_text = models.TextField()
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "corrector"], name="uniq_message_corrector_correction"
+            )
+        ]
+
+    def __str__(self):
+        return f"Correction of message {self.message_id} by user {self.corrector_id}"
+
+
+class PhrasebookEntry(models.Model):
+    """A phrase a user saved to learn, with its spaced-review schedule
+    (chatapp/phrasebook.py). Text is copied, so it survives message deletion."""
+
+    SOURCE_MANUAL = "manual"
+    SOURCE_MESSAGE = "message"
+    SOURCE_TRANSLATION = "translation"
+    SOURCE_CORRECTION = "correction"
+    SOURCES = [
+        (SOURCE_MANUAL, "Manual"),
+        (SOURCE_MESSAGE, "Message"),
+        (SOURCE_TRANSLATION, "Translation"),
+        (SOURCE_CORRECTION, "Correction"),
+    ]
+
+    user = models.ForeignKey(
+        Profile, related_name="phrasebook_entries", on_delete=models.CASCADE
+    )
+    # The phrase to remember, what it means, a free note and the sentence it
+    # came from (the original message / the uncorrected sentence).
+    text = models.TextField()
+    meaning = models.TextField(blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    context = models.TextField(blank=True, default="")
+    language = models.CharField(max_length=50, blank=True, default="")
+    source = models.CharField(max_length=12, choices=SOURCES, default=SOURCE_MANUAL)
+    source_message = models.ForeignKey(
+        Message,
+        related_name="phrasebook_entries",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    source_conversation_id = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # Spaced review (SM-2 style): next due time, current interval, ease in
+    # percent (250 = x2.5), successful reviews in a row, forgotten count.
+    due_at = models.DateTimeField(default=timezone.now)
+    interval_days = models.PositiveIntegerField(default=0)
+    ease = models.PositiveSmallIntegerField(default=250)
+    repetitions = models.PositiveIntegerField(default=0)
+    lapses = models.PositiveIntegerField(default=0)
+    review_count = models.PositiveIntegerField(default=0)
+    last_reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "due_at"], name="phrase_user_due_idx"),
+            models.Index(fields=["user", "-created_at"], name="phrase_user_created_idx"),
+        ]
+
+    def __str__(self):
+        return f"Phrasebook entry {self.id} for user {self.user_id}"
 
 
 class BlockedUser(models.Model):

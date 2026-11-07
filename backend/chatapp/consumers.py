@@ -832,6 +832,17 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
         )
 
+    async def message_corrections_event(self, event):
+        # A correction was added/changed/removed, or the sender asked for one.
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_corrections",
+                    "message": event.get("message"),
+                }
+            )
+        )
+
     async def message_edit_event(self, event):
         await self.send(
             text_data=json.dumps(

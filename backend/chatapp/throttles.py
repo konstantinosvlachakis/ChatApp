@@ -176,6 +176,15 @@ class ReactionRateThrottle(ScopedUserThrottle):
     scope = "reactions"
 
 
+class CorrectionRateThrottle(ScopedUserThrottle):
+    scope = "corrections"
+
+
+class PhrasebookWriteRateThrottle(ScopedUserThrottle):
+    scope = "phrasebook"
+    methods = ("POST", "PATCH", "DELETE")
+
+
 CONVERSATION_CREATE_THROTTLES = (
     ConversationCreateRateThrottle,
     ConversationCreateDailyRateThrottle,

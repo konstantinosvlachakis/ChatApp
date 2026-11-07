@@ -1,7 +1,7 @@
 # Data model (backend/chatapp/models.py)
 
 Purpose: the database schema plus the business rules that depend on it, so you don't have to re-read models/views/consumers.
-**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03). Reaction and group nickname models verified against the working tree based on `1ec0ffe` (2026-11-04).** Latest migration: `0042_message_kind_media`.
+**Verified at commit c1d44c5 (2026-10-26); updated in PRs `fix/reliability` `fix/chat-races` (pending: practice scoring guard), `feat/mobile-push` (pending: `PushDevice`) and `feat/follow` (pending, 2026-11-03). Reaction and group nickname models verified against the working tree based on `1ec0ffe` (2026-11-04).** Latest migration: `0043_corrections_phrasebook`.
 `feat/group-participants` pending (2026-11-04, based on `c0a7e06`): `Conversation.kind`/`name`, nullable `receiver` (check constraint), `ConversationParticipant`; membership checks go through `chatapp/conversation_members.py`. Groups are live since `feat/group-chats-api` (`chatapp/group_views.py`): max 8 people incl. pending, any member invites people they follow or have a direct chat with, no block (either way) between an invitee and any active/pending member or co-invitee, history from `joined_at`, per-member `last_read_at`, owner hand-over to the earliest active member, group deleted when no active member is left.
 `feat/follow` pending (2026-11-03): migration `0038_follow` adds `Follow(follower -> Profile, following -> Profile, created_at)` with a unique pair constraint, a no-self check, an index on `(follower, -created_at)` for the following list, and `(following, follower)` for reverse checks. A block deletes links in both directions. No public counts or feed.
 Refresh: `git diff --stat c1d44c5..HEAD -- backend/chatapp/models.py backend/chatapp/migrations backend/chatapp/views.py backend/chatapp/consumers.py backend/chatapp/serializers.py backend/chatapp/storage.py backend/core/settings.py`. Re-read only the files that changed, then update this file and the commit line above.
@@ -37,8 +37,12 @@ erDiagram
     Profile ||--o{ ProfileView : "profile_views_made (viewer)"
     Profile ||--o{ ProfileView : "profile_views_received (viewed_profile)"
     Profile ||--o{ PushDevice : "push_devices"
+    Message ||--o{ MessageCorrection : "corrections"
+    Profile ||--o{ MessageCorrection : "message_corrections (corrector)"
+    Profile ||--o{ PhrasebookEntry : "phrasebook_entries"
+    Message |o--o{ PhrasebookEntry : "phrasebook_entries (source_message, SET_NULL)"
 ```
-Every FK is `on_delete=CASCADE` except `Message.reply_to`, `Message.pinned_by` and `ConversationParticipant.invited_by` (SET_NULL). Deleting a Profile removes their conversations, messages, reactions, translations, blocks, reports and views.
+Every FK is `on_delete=CASCADE` except `Message.reply_to`, `Message.pinned_by`, `ConversationParticipant.invited_by` and `PhrasebookEntry.source_message` (SET_NULL). Deleting a Profile removes their conversations, messages, reactions, translations, blocks, reports and views.
 
 ## Models
 
@@ -100,6 +104,14 @@ Unique constraint `uniq_message_user_target_translation` (message, user, target_
 
 ### MessageReaction
 `message` FK (`reactions`), `user` FK (`message_reactions`), emoji Char(16), created/updated. Unique constraint `uniq_message_user_emoji_reaction` (message, user, emoji): one of each emoji per user per message. Posting an emoji toggles that user's row for it; empty emoji removes all their reactions. `is_reaction_emoji` in views.py validates a single Unicode emoji sequence. Migration 0040 replaces the old pair constraint without deleting existing reactions.
+
+### MessageCorrection (migration 0043)
+`message` FK (`corrections`), `corrector` FK→Profile (`message_corrections`), `corrected_text` Text (≤5000 in the view), `note` Text blank (≤500), created/updated. Unique `uniq_message_corrector_correction` (message, corrector): one per corrector, POST replaces it. Rules (view): participant, not your own message, text kind with text, author's `Profile.correction_preference` (`often` default | `when_asked` → needs `Message.correction_requested` | `off`), no block between corrector and author, verified email.
+
+### PhrasebookEntry (migration 0043)
+`user` FK (`phrasebook_entries`), `text` (≤500), `meaning`, `note` (≤1000), `context` (the original sentence), `language` Char(50) lowercase or "", `source` manual|message|translation|correction, `source_message` FK null (SET_NULL: entries keep their copied text), `source_conversation_id` PositiveInt null (no FK), created/updated; review state `due_at` (default now), `interval_days`, `ease` (percent, 250 = x2.5, 130–300), `repetitions`, `lapses`, `review_count`, `last_reviewed_at`. Indexes `phrase_user_due_idx` (user, due_at), `phrase_user_created_idx` (user, -created_at). No DB uniqueness: the view returns the existing entry for the same text (iexact). Max 2000 per user. Scheduling in `chatapp/phrasebook.py`.
+
+Also in 0043: `Profile.correction_preference` Char(12) default `often`; `Message.correction_requested` Bool default False (set only by the sender via `correction-request/`).
 
 ### BlockedUser
 `blocker` FK (`blocked_users`), `blocked` FK (`blocked_by_users`), created_at. Unique constraint `uniq_blocker_blocked_pair`.
@@ -164,4 +176,5 @@ Rules: a token belongs to one user — registering it moves it to the caller (`u
 - feat/practice-levels: `PracticeLanguageProgress` (migration 0036); practice difficulty is per language and accuracy based, XP is score only.
 - feat/people-feed: `Profile.date_joined` (nullable, default now for new rows, existing rows NULL) and an index on `Profile.last_seen` (migration 0037).
 - feat/group-participants: `Conversation.kind`/`name`, nullable `receiver` + check constraint, `ConversationParticipant` with backfill (migration 0039); membership helpers in `conversation_members.py`. Tests: `tests/test_conversation_members.py`.
+- feat/corrections-phrasebook-api (2026-11-07): `MessageCorrection`, `PhrasebookEntry`, `Profile.correction_preference`, `Message.correction_requested` (migration 0043). Tests: `tests/test_corrections_phrasebook.py`, query bounds in `tests/test_query_counts.py`.
 - feat/group-chats-api: no schema change; group rules in `conversation_members.py` (`MAX_GROUP_MEMBERS`, `invitable_ids`, `blocked_with_any`, `visible_messages`, `can_access_message`, `group_display_name`) and `group_views.py`. Tests: `tests/test_group_chats.py`.

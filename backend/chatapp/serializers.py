@@ -1,5 +1,12 @@
 from rest_framework import serializers
-from .models import Conversation, Message, Profile, MessageTranslation, MessageReaction
+from .models import (
+    Conversation,
+    Message,
+    MessageCorrection,
+    MessageReaction,
+    MessageTranslation,
+    Profile,
+)
 from .conversation_members import (
     ACTIVE,
     PENDING,
@@ -56,6 +63,7 @@ PROFILE_SUMMARY_FIELDS = (
     "profile_image_url",
     "is_online",
     "last_seen",
+    "correction_preference",
 )
 
 
@@ -82,7 +90,13 @@ def with_message_relations(queryset, user=None):
             queryset=MessageReaction.objects.select_related("user").order_by(
                 "created_at"
             ),
-        )
+        ),
+        Prefetch(
+            "corrections",
+            queryset=MessageCorrection.objects.select_related("corrector").order_by(
+                "created_at", "id"
+            ),
+        ),
     )
     if user is not None and getattr(user, "is_authenticated", False):
         target_language = resolve_language_code(
@@ -141,6 +155,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "profile_image_url",
             "is_online",
             "last_seen",
+            "correction_preference",
         ]
 
     def get_profile_image_url(self, obj):
@@ -209,6 +224,8 @@ class MessageSerializer(serializers.ModelSerializer):
     reply_to = serializers.SerializerMethodField()
     pinned_by = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    corrections = serializers.SerializerMethodField()
+    accepts_corrections = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -232,6 +249,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "can_translate",
             "reactions",
             "current_user_reaction",
+            "correction_requested",
+            "accepts_corrections",
+            "corrections",
         ]
 
     def get_attachment_url(self, obj):
@@ -376,6 +396,51 @@ class MessageSerializer(serializers.ModelSerializer):
 
     def get_is_pinned(self, obj):
         return bool(getattr(obj, "pinned_at", None))
+
+    def get_corrections(self, obj):
+        if "corrections" in getattr(obj, "_prefetched_objects_cache", {}):
+            corrections = obj.corrections.all()
+        else:
+            corrections = obj.corrections.select_related("corrector").order_by(
+                "created_at", "id"
+            )
+        return [correction_payload(correction) for correction in corrections]
+
+    def get_accepts_corrections(self, obj):
+        # Not per viewer: whether partners may correct this message at all.
+        return message_accepts_corrections(obj)
+
+
+def message_accepts_corrections(message):
+    """Text messages whose sender allows corrections (always, or when asked)."""
+    if message.kind != Message.KIND_TEXT or not (message.text or "").strip():
+        return False
+    preference = getattr(message.sender, "correction_preference", Profile.CORRECTIONS_OFTEN)
+    if preference == Profile.CORRECTIONS_OFTEN:
+        return True
+    if preference == Profile.CORRECTIONS_WHEN_ASKED:
+        return bool(message.correction_requested)
+    return False
+
+
+def correction_payload(correction):
+    corrector = getattr(correction, "corrector", None)
+    return {
+        "id": correction.id,
+        "corrector": {
+            "id": correction.corrector_id,
+            "username": getattr(corrector, "username", ""),
+        },
+        "corrected_text": correction.corrected_text,
+        "note": correction.note or "",
+        # ISO strings: this payload is also broadcast over websockets (json.dumps).
+        "created_at": _iso(correction.created_at),
+        "updated_at": _iso(correction.updated_at),
+    }
+
+
+def _iso(value):
+    return serializers.DateTimeField().to_representation(value) if value else None
 
 
 class ConversationParticipantSerializer(serializers.Serializer):

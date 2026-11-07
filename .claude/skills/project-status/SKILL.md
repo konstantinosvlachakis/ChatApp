@@ -83,8 +83,8 @@ corrections / phrasebook UI (with the roadmap features below).
 | Feature | Status |
 |---|---|
 | Reciprocal partner matching (their native = my target AND vice versa, level/goal filters, "perfect match" badge) | Done (PR #10) |
-| Inline corrections (suggest correction on a partner's message, shown as diff) | Not started |
-| Phrasebook (save message/translation/correction) + daily streaks from real chat activity | Not started |
+| Inline corrections (suggest correction on a partner's message, shown as diff) | API in `feat/corrections-phrasebook-api` (pending); web + mobile stacked |
+| Phrasebook (save message/translation/correction) + daily streaks from real chat activity | Phrasebook + spaced daily review API in `feat/corrections-phrasebook-api` (pending); streaks not started |
 | Topic prompts (level-appropriate, Gemini with fallback list) + per-conversation language balance indicator | Not started |
 Update this table as features land.
 
