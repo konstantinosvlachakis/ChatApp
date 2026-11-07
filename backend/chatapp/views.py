@@ -1222,6 +1222,14 @@ def register_view(request):
             username = str(data.get("username") or "").strip()
             password = data.get("password")
             native_language = str(data.get("nativeLanguage") or "").strip()
+            # Plural fields are authoritative; retain the singular payload for older clients.
+            multiple_practice_languages = "practiceLanguages" in data
+            if multiple_practice_languages:
+                requested_languages = data["practiceLanguages"]
+                requested_levels = data.get("practiceLanguageLevels", {})
+            else:
+                requested_languages = [data.get("practiceLanguage") or ""]
+                requested_levels = None
             email = str(data.get("email") or "").strip().lower()
             date_of_birth = data.get("dateOfBirth")
 
@@ -1243,6 +1251,67 @@ def register_view(request):
                 )
             if len(native_language) > PROFILE_LANGUAGE_MAX_LENGTH:
                 return JsonResponse({"error": "Invalid native language"}, status=400)
+            if (
+                not isinstance(requested_languages, list)
+                or len(requested_languages) > PROFILE_MAX_PRACTICE_LANGUAGES
+            ):
+                return JsonResponse(
+                    {"error": "practiceLanguages must be a list of up to 20 languages", "code": "invalid_practice_language"},
+                    status=400,
+                )
+            if not requested_languages or requested_languages == [""]:
+                return JsonResponse(
+                    {
+                        "error": "Choose at least one language you want to learn.",
+                        "code": "practice_language_required",
+                    },
+                    status=400,
+                )
+            practice_languages = []
+            for language in requested_languages:
+                if not isinstance(language, str) or len(language.strip()) > PROFILE_LANGUAGE_MAX_LENGTH:
+                    return JsonResponse({"error": "Invalid practice language", "code": "invalid_practice_language"}, status=400)
+                normalized_language = language.strip().lower()
+                if not normalized_language:
+                    return JsonResponse(
+                        {"error": "Choose at least one language you want to learn.", "code": "practice_language_required"},
+                        status=400,
+                    )
+                if normalized_language == native_language.lower():
+                    return JsonResponse(
+                        {
+                            "error": "Choose a language other than your native one.",
+                            "code": "practice_language_is_native",
+                        },
+                        status=400,
+                    )
+                if normalized_language not in practice_languages:
+                    practice_languages.append(normalized_language)
+
+            if not multiple_practice_languages:
+                requested_levels = {
+                    practice_languages[0]: data.get("practiceLevel") or "beginner"
+                }
+            if not isinstance(requested_levels, dict) or len(requested_levels) > PROFILE_MAX_PRACTICE_LANGUAGES:
+                return JsonResponse(
+                    {"error": "practiceLanguageLevels must be an object of language levels", "code": "invalid_practice_level"},
+                    status=400,
+                )
+            practice_language_levels = dict.fromkeys(practice_languages, "beginner")
+            for language, level in requested_levels.items():
+                normalized_language = language.strip().lower()
+                # Match profile edits: ignore levels for languages that aren't selected.
+                if normalized_language not in practice_language_levels:
+                    continue
+                if not isinstance(level, str) or level.strip().lower() not in PRACTICE_LEVELS:
+                    return JsonResponse(
+                        {
+                            "error": "Practice language levels must be beginner, intermediate, advanced, or fluent",
+                            "code": "invalid_practice_level",
+                        },
+                        status=400,
+                    )
+                practice_language_levels[normalized_language] = level.strip().lower()
             try:
                 validate_email(email)
             except ValidationError:
@@ -1289,6 +1358,8 @@ def register_view(request):
                 username=username,
                 password=str(password),
                 native_language=native_language,
+                languages_practicing=practice_languages,
+                practice_language_levels=practice_language_levels,
                 email=email,
                 date_of_birth=parsed_date_of_birth,
                 date_joined=timezone.now(),

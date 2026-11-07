@@ -297,7 +297,7 @@ class AuthEndpointHardeningTests(TestCase):
         payload = {
             "username": "newuser",
             "password": "a-Strong-passphrase-42",
-            "nativeLanguage": "english",
+            "nativeLanguage": "english", "practiceLanguage": "french",
             "email": "New.User@Example.com",
         }
         payload.update(overrides)
