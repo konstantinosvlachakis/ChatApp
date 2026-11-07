@@ -4,11 +4,16 @@ import { clearConversationsCache } from "./conversations";
 import type { CorrectionPreference, ModerationSummary, Profile, ProfileListResponse } from "../../types";
 import type { PeopleParams } from "../../features/peopleMatching";
 
+export type RegistrationPracticeLevel = "beginner" | "intermediate" | "advanced" | "fluent";
+
 export async function register(payload: {
   username: string;
   email: string;
   password: string;
   nativeLanguage: string;
+  /** At least one learning language, excluding nativeLanguage. */
+  practiceLanguages: string[];
+  practiceLanguageLevels: Record<string, RegistrationPracticeLevel>;
   dateOfBirth?: string;
 }) {
   const response = await api.post("/register/", payload);

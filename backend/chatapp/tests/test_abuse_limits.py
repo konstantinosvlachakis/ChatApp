@@ -170,7 +170,7 @@ class ScopedThrottleTests(TestCase):
                         "username": f"newbie{i}",
                         "email": f"newbie{i}@example.com",
                         "password": "a-Strong-passphrase-42",
-                        "nativeLanguage": "english",
+                        "nativeLanguage": "english", "practiceLanguage": "french",
                     },
                     format="json",
                     REMOTE_ADDR="203.0.113.7",
@@ -292,7 +292,7 @@ class RegisterEnumerationTests(TestCase):
                 "username": username,
                 "email": email,
                 "password": "a-Strong-passphrase-42",
-                "nativeLanguage": "english",
+                "nativeLanguage": "english", "practiceLanguage": "french",
             },
             format="json",
         )

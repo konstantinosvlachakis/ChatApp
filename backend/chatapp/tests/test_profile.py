@@ -296,7 +296,7 @@ class ProfileEndpointTests(TestCase):
                 {
                     "username": "ALICE",
                     "password": "pass1234",
-                    "nativeLanguage": "english",
+                    "nativeLanguage": "english", "practiceLanguage": "french",
                     "email": "alice2@example.com",
                     "dateOfBirth": "1995-01-01",
                 }

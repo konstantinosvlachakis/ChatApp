@@ -16,15 +16,15 @@ const AuthShell = ({
   footer,
   accentLabel = "Designed for real language confidence",
   highlights = defaultHighlights,
-  leftTitle = "A learning space that feels focused, warm, and human.",
-  leftDescription = "The mobile app already has that mood. This flow brings the same identity to web so signing in feels like entering LangVoyage, not a generic dashboard.",
+  leftTitle = "Learn a language by talking to real people.",
+  leftDescription = "Meet people who speak the language you're learning and want to learn yours. Chat, practise with Lumi, and build the confidence to speak.",
 }) => {
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
+    <div className="lv-font-body relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(27,127,121,0.34),transparent_26%),radial-gradient(circle_at_86%_16%,rgba(236,177,208,0.24),transparent_22%),radial-gradient(circle_at_70%_78%,rgba(20,49,74,0.56),transparent_34%),linear-gradient(180deg,#081320_0%,#102131_52%,#10273a_100%)]" />
       <div className="absolute -left-20 top-16 h-72 w-72 rounded-full bg-[rgba(27,127,121,0.18)] blur-3xl" />
       <div className="absolute right-[-5rem] top-24 h-64 w-64 rounded-full bg-[rgba(236,177,208,0.16)] blur-3xl" />
-      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:flex-row lg:items-center lg:gap-10 lg:px-8 lg:py-6 xl:gap-12 xl:py-8">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:flex-row lg:items-start lg:gap-10 lg:px-8 lg:py-6 xl:gap-12 xl:py-8">
         <div className="flex flex-col items-center pb-4 text-center lg:hidden">
           <Link
             to="/"
@@ -39,7 +39,7 @@ const AuthShell = ({
         </div>
         <div
           style={{ "--lv-rise-y": "18px", "--lv-rise-duration": "0.55s" }}
-          className="lv-rise hidden flex-1 px-1 py-4 text-center sm:px-2 sm:py-5 lg:block lg:px-4 lg:py-3 lg:text-left"
+          className="lv-rise hidden flex-1 px-1 py-4 text-center sm:px-2 sm:py-5 lg:sticky lg:top-6 lg:block lg:px-4 lg:pb-3 lg:pt-10 lg:text-left"
         >
           <Link
             to="/"
@@ -53,7 +53,7 @@ const AuthShell = ({
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[rgba(137,218,211,0.95)] sm:text-xs sm:tracking-[0.28em]">
               {accentLabel}
             </p>
-            <h1 className="mt-3 font-['Georgia'] text-[2.35rem] font-semibold leading-[0.98] text-white sm:text-5xl lg:text-[4.2rem] xl:text-[4.8rem]">
+            <h1 className="lv-font-display mt-3 text-[2.2rem] font-bold leading-[1.04] text-white sm:text-[2.8rem] lg:text-[3.3rem] xl:text-[3.75rem]">
               {leftTitle}
             </h1>
             <p className="mt-3 max-w-lg text-[15px] leading-6 text-[rgba(233,239,247,0.76)] sm:text-lg sm:leading-7 lg:mt-3 lg:text-[1.02rem] lg:leading-7">
@@ -87,7 +87,7 @@ const AuthShell = ({
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#1b7f79] sm:text-xs sm:tracking-[0.28em]">
                 {eyebrow}
               </p>
-              <h2 className="mt-2 font-['Georgia'] text-[2rem] font-semibold leading-[0.98] text-[#14314a] sm:text-4xl lg:text-[3rem]">
+              <h2 className="lv-font-display mt-2 text-[1.75rem] font-bold leading-[1.1] text-[#14314a] sm:text-[2.1rem] lg:text-[2.35rem]">
                 {title}
               </h2>
               <p className="mx-auto mt-2.5 max-w-xl text-sm leading-6 text-[#5f7085] sm:text-base lg:mx-0">
