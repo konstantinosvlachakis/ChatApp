@@ -780,6 +780,12 @@ class ChatConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
             )
         )
 
+    async def exchange_session_event(self, event):
+        # A guided exchange in this chat was created or changed (session_views).
+        await self.send(
+            text_data=json.dumps({"type": "exchange_session", "session": event.get("session")})
+        )
+
     async def message_created_event(self, event):
         await self.send(
             text_data=json.dumps(
@@ -1030,6 +1036,22 @@ class PresenceConsumer(PresenceTrackingMixin, AsyncWebsocketConsumer):
                     "type": "group_invite",
                     "conversation_id": event.get("conversation_id"),
                     "display_name": event.get("display_name"),
+                    "invited_by": event.get("invited_by"),
+                }
+            )
+        )
+
+    async def exchange_invite_event(self, event):
+        # Sent by session_views when someone invites this user to a guided exchange.
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "exchange_invite",
+                    "conversation_id": event.get("conversation_id"),
+                    "session_id": event.get("session_id"),
+                    "duration_minutes": event.get("duration_minutes"),
+                    "first_language": event.get("first_language"),
+                    "second_language": event.get("second_language"),
                     "invited_by": event.get("invited_by"),
                 }
             )

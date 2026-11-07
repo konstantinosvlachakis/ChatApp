@@ -645,3 +645,77 @@ class PushDevice(models.Model):
 
     def __str__(self):
         return f"PushDevice({self.user_id}:{self.platform})"
+
+
+class ExchangeSession(models.Model):
+    """A timed, guided language exchange inside a direct chat (chatapp/exchange_sessions.py).
+
+    pending (invite, expires) -> active (timer runs; language switches at the
+    halfway point or earlier on request) -> ended. Or declined / cancelled /
+    expired. Expiry and the end of the timer are applied lazily on the next
+    read or action, so no background worker is needed.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_ACTIVE = "active"
+    STATUS_ENDED = "ended"
+    STATUS_DECLINED = "declined"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_EXPIRED = "expired"
+    STATUSES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_ENDED, "Ended"),
+        (STATUS_DECLINED, "Declined"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_EXPIRED, "Expired"),
+    ]
+    OPEN_STATUSES = (STATUS_PENDING, STATUS_ACTIVE)
+
+    conversation = models.ForeignKey(
+        Conversation, related_name="exchange_sessions", on_delete=models.CASCADE
+    )
+    created_by = models.ForeignKey(
+        Profile, related_name="started_exchange_sessions", on_delete=models.CASCADE
+    )
+    partner = models.ForeignKey(
+        Profile, related_name="invited_exchange_sessions", on_delete=models.CASCADE
+    )
+    status = models.CharField(max_length=10, choices=STATUSES, default=STATUS_PENDING)
+    duration_minutes = models.PositiveSmallIntegerField(default=20)
+    first_language = models.CharField(max_length=50)
+    second_language = models.CharField(max_length=50)
+    # {"id", "title", "prompts": [str]} or null; topic_queue holds suggestions
+    # not shown yet, used_topics the library ids already shown.
+    topic = models.JSONField(null=True, blank=True)
+    topic_source = models.CharField(max_length=10, blank=True, default="")
+    topic_queue = models.JSONField(default=list, blank=True)
+    used_topics = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    started_at = models.DateTimeField(null=True, blank=True)
+    switched_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(
+        Profile,
+        related_name="ended_exchange_sessions",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    summary = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["conversation", "-created_at"], name="xsession_conv_created_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation"],
+                condition=Q(status__in=["pending", "active"]),
+                name="uniq_open_exchange_session",
+            )
+        ]
+
+    def __str__(self):
+        return f"Exchange session {self.id} in conversation {self.conversation_id}"
