@@ -148,7 +148,7 @@ class PeopleFeedTests(TestCase):
         response = client.post(
             "/api/register/",
             {"username": "newbie", "email": "newbie@example.com", "password": "Sup3r-secret-pass",
-             "nativeLanguage": "English"},
+             "nativeLanguage": "English", "practiceLanguage": "french"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.content)

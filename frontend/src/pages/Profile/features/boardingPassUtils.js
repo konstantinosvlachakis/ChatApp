@@ -73,25 +73,5 @@ export const barcodeBars = (seed, count = 22) => {
   return bars;
 };
 
-// Country for each language's flag (flagcdn.com, allowed by the CSP). Unknown -> no flag.
-const FLAG_COUNTRY = {
-  english: "gb",
-  greek: "gr",
-  spanish: "es",
-  german: "de",
-  french: "fr",
-  italian: "it",
-  portuguese: "pt",
-  russian: "ru",
-  turkish: "tr",
-  arabic: "sa",
-  japanese: "jp",
-  korean: "kr",
-  chinese: "cn",
-  hindi: "in",
-};
-
-export const flagUrl = (language) => {
-  const country = FLAG_COUNTRY[normalizeLanguage(language).split(" ")[0]];
-  return country ? `https://flagcdn.com/w40/${country}.png` : null;
-};
+// Flags live with the language catalogue (asset-free, so sign-up can use them too).
+export { flagUrl } from "../../../constants/languages";

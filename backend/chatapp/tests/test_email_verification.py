@@ -41,7 +41,7 @@ class EmailVerificationTests(TestCase):
     def test_registration_sends_code_and_does_not_verify(self):
         response = APIClient().post("/api/register/", {
             "username": "newvoyager", "email": "new@example.com", "password": PASSWORD,
-            "nativeLanguage": "English",
+            "nativeLanguage": "English", "practiceLanguage": "french",
         }, format="json")
         self.assertEqual(response.status_code, 201, response.content)
         self.assertTrue(response.json()["verification_email_sent"])
@@ -58,7 +58,7 @@ class EmailVerificationTests(TestCase):
     def test_mail_failure_does_not_fail_signup(self, send):
         response = APIClient().post("/api/register/", {
             "username": "offline", "email": "offline@example.com", "password": PASSWORD,
-            "nativeLanguage": "English",
+            "nativeLanguage": "English", "practiceLanguage": "french",
         }, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertFalse(response.json()["verification_email_sent"])
