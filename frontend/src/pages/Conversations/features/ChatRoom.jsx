@@ -9,6 +9,10 @@ import TypingDots from "./TypingDots";
 import CallPanel from "./CallPanel";
 import GroupMembersPanel from "./GroupMembersPanel";
 import GroupPeoplePicker from "./GroupPeoplePicker";
+import ExchangeSessionBanner from "./ExchangeSessionBanner";
+import ExchangeSessionDialog from "./ExchangeSessionDialog";
+import useExchangeSession from "./useExchangeSession";
+import { isOpenSession } from "../utils/exchangeSessionTiming";
 import { getOtherParticipant, isGroupConversation } from "../utils/conversationSearch";
 import { buildSeenBy, mergeReads } from "../utils/groupReads";
 import api from "../../../lib/api";
@@ -43,7 +47,7 @@ import {
   isDocumentHidden,
 } from "../../../utils/reconnect";
 import { logger } from "../../../lib/logger";
-import { toastApiError } from "../../../components/Toast";
+import { toast, toastApiError } from "../../../components/Toast";
 import { confirmPendingMessage, mergeLatestPage, prependOlderMessages, restoreMessage } from "../utils/messageMerge";
 
 const CALL_TIMEOUT_MS = 30000;
@@ -204,6 +208,35 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     onConversationChangedRef.current = onConversationChanged;
   }, [onConversationChanged]);
   const navigateToConversation = useCallback((id) => navigate(`/conversations/${id}`), [navigate]);
+
+  // Guided exchange sessions (direct chats only; Lumi uses CoachChatRoom).
+  const exchange = useExchangeSession(conversation.id, { enabled: !isGroup });
+  const [showExchangeDialog, setShowExchangeDialog] = useState(false);
+  // A reconnected chat socket may have missed exchange_session broadcasts.
+  const wasReconnectingRef = useRef(false);
+  useEffect(() => {
+    if (socketStatus === "reconnecting") wasReconnectingRef.current = true;
+    else if (socketStatus === "connected" && wasReconnectingRef.current) {
+      wasReconnectingRef.current = false;
+      if (!isGroup) exchange.refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socketStatus]);
+  const exchangeOptions = exchange.options;
+  const exchangeRefresh = exchange.refresh;
+  const openExchangeDialog = useCallback(async () => {
+    // Options come with the session GET; retry it if that failed.
+    if (exchangeOptions || (await exchangeRefresh())) {
+      setShowExchangeDialog(true);
+    } else {
+      toast.error("Couldn't load the exchange options. Please try again.");
+    }
+  }, [exchangeOptions, exchangeRefresh]);
+  // Read by the socket handler through a ref so it never reopens the socket.
+  const applyExchangeSessionRef = useRef(exchange.applySession);
+  useEffect(() => {
+    applyExchangeSessionRef.current = exchange.applySession;
+  }, [exchange.applySession]);
 
   // A refetched group (someone joined/read) brings newer read positions.
   useEffect(() => {
@@ -1327,6 +1360,13 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
               queryClient.invalidateQueries({ queryKey: ["conversationsList"] });
               break;
 
+            case "exchange_session":
+              // Guided exchange changed (invite/accept/switch/topic/end/expiry): replace by id.
+              if (data.session?.id) {
+                applyExchangeSessionRef.current?.(data.session);
+              }
+              break;
+
             case "group_read":
               if (typeof data.user_id === "number" && data.last_read_at) {
                 setGroupReads((prev) => ({ ...prev, [data.user_id]: data.last_read_at }));
@@ -1891,7 +1931,20 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
           isSearchingMessages={isSearchingMessages}
           onOpenGroup={() => { setNicknameTarget(null); setGroupPanel("members"); }}
           onStartGroup={otherUser?.username ? () => setGroupPanel("start") : undefined}
+          onStartExchange={!isGroup && otherUser?.username ? openExchangeDialog : undefined}
+          exchangeOpen={isOpenSession(exchange.session)}
         />
+        {!isGroup && (
+          <ExchangeSessionBanner
+            session={exchange.session}
+            offsetMs={exchange.offsetMs}
+            currentUserId={user.user_id}
+            busyAction={exchange.busyAction}
+            onAction={exchange.runAction}
+            onStartAnother={openExchangeDialog}
+            onJumpToMessage={jumpToMessageById}
+          />
+        )}
       </div>
 
       <div
@@ -2062,6 +2115,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
           draftVersion={draftVersion}
         />
       </div>
+
+      {showExchangeDialog && exchange.options && !isGroup && (
+        <ExchangeSessionDialog
+          options={exchange.options}
+          partnerName={otherUser?.username}
+          onSubmit={exchange.start}
+          onClose={() => setShowExchangeDialog(false)}
+        />
+      )}
 
       {groupPanel === "members" && isGroup && (
         <GroupMembersPanel

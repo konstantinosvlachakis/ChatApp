@@ -9,6 +9,7 @@ import CallRoundedIcon from "@mui/icons-material/CallRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
+import TimerRoundedIcon from "@mui/icons-material/TimerRounded";
 import ChatAvatar from "./ChatAvatar";
 import GroupAvatar from "./GroupAvatar";
 import {
@@ -47,6 +48,8 @@ const ChatHeader = ({
   isSearchingMessages = false,
   onOpenGroup,
   onStartGroup,
+  onStartExchange,
+  exchangeOpen = false,
 }) => {
   const navigate = useNavigate();
   const { user } = useUser();
@@ -189,6 +192,18 @@ const ChatHeader = ({
           </button>
         ) : (
           <>
+        {onStartExchange && (
+          <button
+            type="button"
+            className={`cv-icon-button cv-xs-entry ${exchangeOpen ? "is-on" : ""}`}
+            onClick={onStartExchange}
+            disabled={exchangeOpen}
+            aria-label={exchangeOpen ? "Guided exchange in progress" : "Start a guided exchange"}
+            title={exchangeOpen ? "Guided exchange in progress" : "Guided exchange"}
+          >
+            <TimerRoundedIcon />
+          </button>
+        )}
         {onStartGroup && (
           <button
             type="button"

@@ -16,6 +16,7 @@ import { DEFAULT_AVATAR_URL } from "../constants/avatar";
 import { RouteErrorBoundary } from "../components/ErrorBoundary";
 import api from "../lib/api";
 import { showToast, toastApiError } from "../components/Toast";
+import { languageLabel } from "../pages/Conversations/utils/exchangeSessionTiming";
 import { resetConnectivity, setSocketReconnecting } from "../lib/connectivity";
 import AppHeader from "./AppHeader";
 import EmailVerificationGate from "../components/EmailVerification/EmailVerificationGate";
@@ -80,6 +81,9 @@ const Layout = () => {
   // /conversations*. Elsewhere a visible tab refetches (debounced) so the unread badge
   // stays live; a hidden tab remembers the miss and refetches on focus/entry.
   const isChatRouteRef = useRef(isChatRoute);
+  // Exchange invites skip the toast while that chat is open (its banner shows the invite).
+  const pathnameRef = useRef(location.pathname);
+  pathnameRef.current = location.pathname;
   const missedListUpdateRef = useRef(false);
   const listHiddenAtRef = useRef(null);
   const offRouteListRefetchRef = useRef(null);
@@ -243,6 +247,28 @@ const Layout = () => {
                 } },
               ],
             });
+          }
+          if (data.type === "exchange_invite" && typeof data.conversation_id === "number") {
+            const conversationId = data.conversation_id;
+            if (pathnameRef.current !== `/conversations/${conversationId}`) {
+              const inviter = data.invited_by?.username || "Someone";
+              const minutes = Number(data.duration_minutes) || 20;
+              const pair =
+                data.first_language && data.second_language
+                  ? `${languageLabel(data.first_language)} → ${languageLabel(data.second_language)}`
+                  : "";
+              showToast(`${inviter} invited you to a ${minutes}-minute exchange${pair ? `: ${pair}` : ""}`, {
+                placement: "top",
+                durationMs: 15000,
+                eyebrow: "Guided exchange",
+                avatarUrl:
+                  typeof data.invited_by?.profile_image_url === "string" ? data.invited_by.profile_image_url : undefined,
+                actions: [
+                  { label: "Later", onClick: () => {} },
+                  { label: "Open chat", primary: true, onClick: () => navigate(`/conversations/${conversationId}`) },
+                ],
+              });
+            }
           }
           if (data.type === "initial_online_users") {
             setOnlineUserIds(new Set(data.user_ids || data.userIds || []));
