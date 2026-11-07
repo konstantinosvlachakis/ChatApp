@@ -6,6 +6,7 @@ import {
   ComparePlansPage,
   ConversationsPage,
   EditProfilePage,
+  PhrasebookPage,
   ForgotPasswordPage,
   PremiumPage,
   PrivacyPolicyPage,
@@ -50,6 +51,8 @@ describe("route preload map", () => {
     expect(findRouteComponent("/profile/edit")).toBe(EditProfilePage);
     expect(findRouteComponent("/people/ana")).toBe(PublicProfilePage);
     expect(findRouteComponent("/premium")).toBe(PremiumPage);
+    expect(findRouteComponent("/phrasebook")).toBe(PhrasebookPage);
+    expect(findRouteComponent("/phrasebook/review")).toBe(PhrasebookPage);
     expect(findRouteComponent("/premium/compare")).toBe(ComparePlansPage);
     expect(findRouteComponent("/conversationsx")).toBeNull();
     expect(findRouteComponent("/nope")).toBeNull();

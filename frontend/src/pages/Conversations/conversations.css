@@ -841,3 +841,57 @@
   .cv-group-dialog { max-width: none; }
   .cv-group-panel-actions .cv-pill-button { flex: 1; }
 }
+
+/* Partner corrections (feat/corrections-phrasebook-web). Changes are struck through / underlined,
+   never colour alone: --lv-peach-ink on paper 5.5:1, --lv-teal on sage-strong 5.1:1. */
+.cv-bubble-tag.is-corrections { padding: 1px 8px; border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-teal); }
+.cv-diff-del { border-radius: 4px; padding: 0 2px; background: var(--lv-peach-soft); color: var(--lv-peach-ink); text-decoration: line-through; text-decoration-thickness: 2px; }
+.cv-diff-ins { border-radius: 4px; padding: 0 2px; background: var(--lv-sage-strong); color: var(--lv-teal); font-weight: 700; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.cv-corrections { display: flex; flex-direction: column; align-items: inherit; gap: 4px; max-width: 100%; margin-top: 4px; }
+.cv-corrections ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cv-correction { padding: 8px 12px; border: 1px solid var(--lv-line-warm); border-radius: 16px; background: var(--lv-paper); color: var(--lv-ink); font-size: 14px; line-height: 1.45; text-align: left; }
+.cv-correction-head { margin: 0; color: var(--lv-muted-ink); font-size: 12px; font-weight: 600; }
+.cv-correction-head strong { color: var(--lv-ink); }
+.cv-correction-diff { margin: 2px 0 0; font-family: var(--lv-font-text-emoji); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-correction-why { margin-top: 4px; font-size: 13px; }
+.cv-correction-why summary { width: fit-content; color: var(--lv-teal); font-weight: 700; cursor: pointer; }
+.cv-correction-why p { margin: 4px 0 0; color: var(--lv-ink-soft); white-space: pre-wrap; }
+.cv-correction-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cv-correction-actions button, .cv-corrections-more { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink-soft); font-size: 12px; font-weight: 700; cursor: pointer; }
+.cv-correction-actions button:hover, .cv-corrections-more:hover { background: var(--lv-cream); color: var(--lv-ink); }
+.cv-correction-actions button:disabled { cursor: not-allowed; opacity: .6; }
+.cv-correction-actions svg { width: 16px; height: 16px; }
+.cv-corrections-more { align-self: flex-start; border-style: dashed; }
+.cv-correction-actions button:focus-visible, .cv-corrections-more:focus-visible, .cv-correction-why summary:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+
+.cv-correct-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: auto; border: 0; border-radius: var(--lv-radius-panel); background: var(--lv-paper); color: var(--lv-ink); box-shadow: var(--lv-shadow-soft); font-family: var(--lv-font-body); }
+.cv-correct-dialog::backdrop { background: var(--lv-scrim-strong); }
+.cv-correct-body { display: flex; flex-direction: column; gap: 8px; padding: 20px 22px; }
+.cv-correct-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cv-correct-head h2 { margin: 8px 0 4px; font-family: var(--lv-font-display); font-size: 20px; font-weight: 700; }
+.cv-correct-close { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; color: var(--lv-muted-ink); cursor: pointer; }
+.cv-correct-close:hover { background: var(--lv-cream-deep); color: var(--lv-ink); }
+.cv-correct-label { color: var(--lv-ink); font-size: 13px; font-weight: 700; }
+.cv-correct-optional { color: var(--lv-muted-ink); font-weight: 500; }
+.cv-correct-original, .cv-correct-preview { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 14px; background: var(--lv-bubble-in); }
+.cv-correct-preview { border: 1px dashed var(--lv-line-warm); background: var(--lv-warm); }
+.cv-correct-original p, .cv-correct-preview p { margin: 0; font-family: var(--lv-font-text-emoji); font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-correct-hint { color: var(--lv-muted-ink); font-size: 14px !important; }
+.cv-correct-input { box-sizing: border-box; width: 100%; min-height: 72px; padding: 10px 14px; border: 1px solid var(--lv-line); border-radius: 14px; background: var(--lv-paper); color: var(--lv-ink); font: 500 15px/1.5 var(--lv-font-text-emoji); resize: vertical; }
+.cv-correct-input.is-note { min-height: 56px; font-size: 14px; }
+.cv-correct-input:focus { border-color: var(--lv-focus); outline: 2px solid var(--lv-focus); outline-offset: 0; }
+.cv-correct-count { align-self: flex-end; margin-top: -4px; color: var(--lv-muted-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cv-correct-error { margin: 0; color: var(--lv-badge); font-size: 14px; font-weight: 700; }
+.cv-correct-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.cv-correct-spacer { flex: 1; }
+.cv-correct-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border: 1px solid var(--lv-line); border-radius: var(--lv-radius-pill); background: var(--lv-paper); color: var(--lv-ink); font-size: 14px; font-weight: 700; cursor: pointer; }
+.cv-correct-btn:hover { background: var(--lv-cream-deep); }
+.cv-correct-btn.is-teal { border-color: var(--lv-teal); background: var(--lv-teal); color: var(--lv-on-navy); }
+.cv-correct-btn.is-teal:hover { background: var(--lv-teal-strong); }
+.cv-correct-btn.is-danger { border-color: var(--lv-peach-strong); color: var(--lv-peach-ink); }
+.cv-correct-btn:disabled { cursor: not-allowed; opacity: .55; }
+.cv-correct-btn:focus-visible, .cv-correct-close:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .cv-correct-spacer { display: none; }
+  .cv-correct-actions .is-danger { width: 100%; }
+}

@@ -95,6 +95,7 @@ export default function AppHeader({ user, avatarUrl, unreadCount = 0, onLogout }
           {accountOpen && (
             <div id={menuId} className="lv-account-menu">
               <Link to="/profile">My profile</Link>
+              <Link to="/phrasebook">Phrasebook</Link>
               <Link to="/settings">Settings</Link>
               <Link to="/privacy-policy">Privacy Policy</Link>
               <Link to="/terms-and-conditions">Terms and Conditions</Link>

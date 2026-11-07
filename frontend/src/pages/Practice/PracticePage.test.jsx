@@ -6,6 +6,9 @@ import { clearToasts, getToasts } from "../../components/Toast/toastStore";
 import { levelChangeMessage, progressSummary } from "./practiceUtils";
 
 let mockUser;
+// The Phrasebook card has its own React Query fetch; not under test here.
+jest.mock("./PhrasebookCard", () => ({ __esModule: true, default: () => null }));
+
 jest.mock("../../context/UserContext", () => ({
   useUser: () => ({ user: mockUser }),
 }));

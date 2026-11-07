@@ -250,4 +250,30 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
   });
+
+  test("saves the corrections preference on change and rolls back on failure", async () => {
+    api.patch.mockResolvedValueOnce({ updated_profile: { correction_preference: "when_asked" } });
+    await renderPage();
+    const group = screen.getByRole("group", { name: /corrections from partners/i });
+    expect(within(group).getByRole("radio", { name: /correct me often/i })).toBeChecked();
+
+    fireEvent.click(within(group).getByRole("radio", { name: /only when i ask/i }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/api/profile/edit/", { correction_preference: "when_asked" })
+    );
+    await waitFor(() => expect(within(group).getByText("Saved")).toBeInTheDocument());
+    // Optimistic set, then the server value.
+    const apply = (update) => update({ ...mockUser });
+    expect(mockSetUser.mock.calls.map(([update]) => apply(update).correction_preference)).toEqual([
+      "when_asked",
+      "when_asked",
+    ]);
+
+    mockSetUser.mockClear();
+    api.patch.mockRejectedValueOnce(new ApiError({ status: 400, code: "invalid_correction_preference", message: "Nope" }));
+    fireEvent.click(within(group).getByRole("radio", { name: /no corrections/i }));
+    await waitFor(() => expect(mockSetUser).toHaveBeenCalledTimes(2));
+    expect(apply(mockSetUser.mock.calls[1][0]).correction_preference).toBe("often");
+    expect(getToasts().some((toast) => toast.message.includes("Nope"))).toBe(true);
+  });
 });

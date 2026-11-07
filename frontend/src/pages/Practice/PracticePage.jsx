@@ -10,6 +10,7 @@ import LanguageLevel, { LevelChangeBanner } from "./LanguageLevel";
 import ChallengeCard from "./ChallengeCard";
 import VoiceRepeat from "./VoiceRepeat";
 import Leaderboard from "./Leaderboard";
+import PhrasebookCard from "./PhrasebookCard";
 import { DAILY_SET_STEPS, buildLanguageOptions, translateWithFallback, translationTargets } from "./practiceUtils";
 import "../Profile/features/profile.css";
 import "../Settings/settings.css";
@@ -267,6 +268,7 @@ const PracticePage = () => {
         mode={mode}
         onModeChange={onModeChange}
       />
+      <PhrasebookCard />
       {body}
     </div>
   );

@@ -16,6 +16,7 @@ import { requestEmailVerification } from "../../../features/emailVerification";
 import { deleteMessage } from "../api/deleteMessage";
 import { editMessage } from "../api/editMessage";
 import { pinMessage } from "../api/pinMessage";
+import { PHRASEBOOK_QUERY_KEY } from "../../Phrasebook/api/phrasebook";
 import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { BASE_URL, getWebSocketBaseUrl } from "../../../constants/constants";
@@ -1258,6 +1259,15 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
               invalidateConversationHistoryCache(conversation.id);
               break;
 
+            case "message_corrections":
+              // Corrections / "corrections welcome" changed. Shared payload (no per-user fields),
+              // merged like a reaction; an open edit box stays open.
+              if (data.message?.id) {
+                mergeMessageUpdate(data.message);
+              }
+              invalidateConversationHistoryCache(conversation.id);
+              break;
+
             case "message_status":
               mergeMessageStatusUpdate(data.messageIds, data.status);
               invalidateConversationHistoryCache(conversation.id);
@@ -1719,6 +1729,11 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
     invalidateConversationHistoryCache(conversation.id);
   }, [conversation.id, invalidateConversationHistoryCache, mergeMessageUpdate]);
 
+  // A phrase saved from this chat (message or correction): refresh Phrasebook lists and counts.
+  const handlePhrasebookChange = useCallback(() => {
+    queryClient.invalidateQueries(PHRASEBOOK_QUERY_KEY);
+  }, [queryClient]);
+
   const handleStartEditMessage = useCallback((message) => {
     if (!message?.id) return;
     setReplyingMessage(null);
@@ -1991,6 +2006,10 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
               onEditMessage={handleStartEditMessage}
               onCommentMessage={handleStartCommentMessage}
               onMessageReactionChange={handleMessageReactionChange}
+              onMessageUpdate={handleMessageReactionChange}
+              onPhrasebookChange={handlePhrasebookChange}
+              learningEnabled
+              correctionPreference={user.correction_preference || "often"}
               onTogglePinMessage={handleTogglePinMessage}
               baseTranslateLanguage={
                 user.base_translate_language || user.native_language || "english"

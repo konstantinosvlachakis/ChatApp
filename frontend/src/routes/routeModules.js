@@ -16,6 +16,7 @@ export const CommunityPage = lazyWithPreload(() => import("../pages/Community/pa
 export const SettingsPage = lazyWithPreload(() => import("../pages/Settings/page"));
 export const PublicProfilePage = lazyWithPreload(() => import("../pages/PublicProfile/page"));
 export const PracticePage = lazyWithPreload(() => import("../pages/Practice/PracticePage"));
+export const PhrasebookPage = lazyWithPreload(() => import("../pages/Phrasebook/PhrasebookPage"));
 export const PremiumPage = lazyWithPreload(() => import("../pages/PremiumPage"));
 export const ComparePlansPage = lazyWithPreload(() => import("../pages/ComparePlansPage"));
 
@@ -37,6 +38,7 @@ const ROUTE_COMPONENTS = [
   [exact("/community"), CommunityPage],
   [prefix("/people/"), PublicProfilePage],
   [exact("/practice"), PracticePage],
+  [section("/phrasebook"), PhrasebookPage],
   [exact("/premium/compare"), ComparePlansPage],
   [exact("/premium"), PremiumPage],
 ];
