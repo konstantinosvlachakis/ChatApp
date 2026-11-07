@@ -62,3 +62,13 @@
   --lv-header-height: 56px;
   --lv-tabbar-height: 60px;
 }
+
+/* Brand type for pages styled with Tailwind (auth pages): text in Manrope, headings in Sora. */
+.lv-font-body { font-family: var(--lv-font-body); }
+.lv-font-display { font-family: var(--lv-font-display); letter-spacing: -0.01em; }
+
+/* Sign-up language picker (components/Auth/LanguageVoyagePicker.jsx); used via motion-safe: only. */
+@keyframes lv-pop { 0% { transform: scale(0); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
+@keyframes lv-ticket-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes lv-picker-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lv-fly { 0%, 100% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }

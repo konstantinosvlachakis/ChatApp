@@ -4,39 +4,9 @@ import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
 import { startResendCooldown } from "../features/emailVerification";
+import { describeLanguage, LANGUAGE_KEYS } from "../constants/languages";
+import { FlagAvatar, LanguageSelect, LevelPicker, PickerChevron, RouteTicket } from "../components/Auth/LanguageVoyagePicker";
 
-const languageOptions = [
-  {
-    value: "English",
-    label: "English",
-    flag: "https://flagcdn.com/w320/us.png",
-  },
-  {
-    value: "Greek",
-    label: "Greek",
-    flag: "https://flagcdn.com/w320/gr.png",
-  },
-  {
-    value: "French",
-    label: "French",
-    flag: "https://flagcdn.com/w320/fr.png",
-  },
-  {
-    value: "German",
-    label: "German",
-    flag: "https://flagcdn.com/w320/de.png",
-  },
-  {
-    value: "Portuguese",
-    label: "Portuguese",
-    flag: "https://flagcdn.com/w320/pt.png",
-  },
-  {
-    value: "Russian",
-    label: "Russian",
-    flag: "https://flagcdn.com/w320/ru.png",
-  },
-];
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_.-]{3,30}$/;
@@ -90,7 +60,18 @@ const RegisterPage = () => {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [nativeLanguage, setNativeLanguage] = useState("English");
+  const [nativeLanguage, setNativeLanguage] = useState("english");
+  const [practiceLanguages, setPracticeLanguages] = useState([]);
+  const [practiceLanguageLevels, setPracticeLanguageLevels] = useState({});
+  const [initialPracticeLevel, setInitialPracticeLevel] = useState("beginner");
+  const firstPracticeLanguage = practiceLanguages[0];
+  const updatePracticeLanguages = (languages) => {
+    setPracticeLanguages(languages);
+    setPracticeLanguageLevels((previous) => Object.fromEntries(languages.map((language, index) => [
+      language, previous[language] || (index === 0 ? initialPracticeLevel : "beginner"),
+    ])));
+    setErrors((previous) => ({ ...previous, practiceLanguage: "" }));
+  };
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
@@ -187,12 +168,20 @@ const RegisterPage = () => {
     if (!dateOfBirth) {
       nextErrors.dateOfBirth = "Date of birth is required.";
     } else {
-      const dob = new Date(dateOfBirth);
+      // Local midnight, like the calendar (new Date("YYYY-MM-DD") is UTC midnight, which east of
+      // UTC is later than the local cutoff and wrongly fails the 13+ check on the latest date).
+      const dob = parseDateInputValue(dateOfBirth) || new Date(NaN);
       if (Number.isNaN(dob.getTime())) {
         nextErrors.dateOfBirth = "Date of birth is invalid.";
       } else if (dob > getMinBirthDate()) {
         nextErrors.dateOfBirth = "You must be at least 13 years old.";
       }
+    }
+
+    if (!practiceLanguages.length) {
+      nextErrors.practiceLanguage = "Choose at least one language you want to learn.";
+    } else if (practiceLanguages.includes(nativeLanguage)) {
+      nextErrors.practiceLanguage = "Choose languages other than your native one.";
     }
 
     if (!password) {
@@ -227,6 +216,8 @@ const RegisterPage = () => {
         dateOfBirth,
         password,
         nativeLanguage,
+        practiceLanguages,
+        practiceLanguageLevels,
       });
       startResendCooldown(email.trim());
       try {
@@ -250,9 +241,9 @@ const RegisterPage = () => {
   const inputClassName =
     "w-full rounded-2xl border border-[#d6e0e8] bg-white px-4 py-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#1b7f79] focus:ring-4 focus:ring-[rgba(27,127,121,0.12)]";
   const passwordFieldClassName =
-    "flex items-center gap-2 rounded-2xl border border-[#d6e0e8] bg-white px-3 shadow-sm transition focus-within:border-[#1b7f79] focus-within:ring-4 focus-within:ring-[rgba(27,127,121,0.12)]";
+    "flex w-full min-w-0 items-center gap-2 rounded-2xl border border-[#d6e0e8] bg-white px-3 shadow-sm transition focus-within:border-[#1b7f79] focus-within:ring-4 focus-within:ring-[rgba(27,127,121,0.12)]";
   const passwordInputClassName =
-    "min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
+    "w-0 min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
 
   return (
       <form onSubmit={handleRegister} className="space-y-3.5 lg:space-y-3">
@@ -313,7 +304,7 @@ const RegisterPage = () => {
                     <span className={dateOfBirth ? "text-slate-900" : "text-slate-400"}>
                       {dateOfBirth || "Select date"}
                     </span>
-                    <span className="text-slate-400">▼</span>
+                    <PickerChevron open={isCalendarOpen} />
                   </button>
 
                   {isCalendarOpen && (
@@ -445,26 +436,99 @@ const RegisterPage = () => {
               </div>
 
               <div>
-                <label
-                  htmlFor="native-language"
-                  className="mb-1.5 block text-sm font-semibold text-[#14314a]"
-                >
-                  Native language
-                </label>
-                <select
+                <p id="native-language-label" className="mb-1.5 text-sm font-semibold text-[#14314a]">
+                  I speak
+                </p>
+                <LanguageSelect
                   id="native-language"
-                  className={inputClassName}
+                  labelId="native-language-label"
                   value={nativeLanguage}
-                  onChange={(e) => setNativeLanguage(e.target.value)}
-                >
-                  {languageOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={LANGUAGE_KEYS}
+                  onChange={(language) => {
+                    setNativeLanguage(language);
+                    updatePracticeLanguages(practiceLanguages.filter((key) => key !== language));
+                  }}
+                />
               </div>
             </div>
+
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:gap-3">
+              <div>
+                <p id="practice-language-label" className="mb-1.5 text-sm font-semibold text-[#14314a]">
+                  I want to learn
+                </p>
+                <LanguageSelect
+                  id="practice-language"
+                  labelId="practice-language-label"
+                  value={practiceLanguages}
+                  multiple
+                  placeholder="Choose at least one"
+                  options={LANGUAGE_KEYS.filter((key) => key !== nativeLanguage)}
+                  onChange={updatePracticeLanguages}
+                  invalid={Boolean(errors.practiceLanguage)}
+                  describedBy={errors.practiceLanguage ? "practice-language-error" : undefined}
+                />
+                {errors.practiceLanguage && (
+                  <p id="practice-language-error" className="mt-1 text-xs text-rose-600">
+                    {errors.practiceLanguage}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p id="practice-level-label" className="mb-1.5 text-sm font-semibold text-[#14314a]">
+                  My level{practiceLanguages.length > 1 ? ` · ${describeLanguage(firstPracticeLanguage).name}` : ""}
+                </p>
+                <LevelPicker
+                  value={practiceLanguageLevels[firstPracticeLanguage] || initialPracticeLevel}
+                  onChange={(level) => {
+                    if (!firstPracticeLanguage) setInitialPracticeLevel(level);
+                    else setPracticeLanguageLevels((previous) => ({ ...previous, [firstPracticeLanguage]: level }));
+                  }}
+                />
+              </div>
+              {practiceLanguages.slice(1).map((language) => {
+                const { name, endonym } = describeLanguage(language);
+                return (
+                  <React.Fragment key={language}>
+                    <div>
+                      <p className="mb-1.5 text-sm font-semibold text-[#14314a]">Also learning</p>
+                      <div className="flex h-[50px] items-center gap-2.5 rounded-2xl border border-dashed border-[#d6e0e8] bg-white/60 px-3">
+                        <FlagAvatar language={language} size={28} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold leading-5 text-[var(--lv-ink)]">{name}</span>
+                          {endonym ? <span className="block truncate text-xs leading-4 text-[var(--lv-muted-ink)]">{endonym}</span> : null}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${name}`}
+                          onClick={() => {
+                            updatePracticeLanguages(practiceLanguages.filter((key) => key !== language));
+                            document.getElementById("practice-language")?.focus({ preventScroll: true });
+                          }}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--lv-muted-ink)] outline-none hover:bg-[var(--lv-sage)] focus-visible:ring-2 focus-visible:ring-[var(--lv-focus)]"
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                            <path d="m6 6 8 8M14 6l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <p id={`practice-level-${language}-label`} className="mb-1.5 text-sm font-semibold text-[#14314a]">My level · {name}</p>
+                      <LevelPicker
+                        id={`practice-level-${language}`}
+                        labelId={`practice-level-${language}-label`}
+                        value={practiceLanguageLevels[language] || "beginner"}
+                        onChange={(level) => setPracticeLanguageLevels((previous) => ({ ...previous, [language]: level }))}
+                      />
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            <RouteTicket nativeLanguage={nativeLanguage} practiceLanguages={practiceLanguages} />
 
             <div className="grid gap-3.5 lg:grid-cols-2 lg:gap-3">
               <div>

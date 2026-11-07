@@ -1,46 +1,16 @@
 import { BASE_URL_IMG } from "../../../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
+import { normalizeLanguage, describeLanguage, LEVELS } from "../../../constants/languages";
 
-// Short code + endonym for each language the profile editor offers (EditProfilePage LANGUAGE_OPTIONS).
-const LANGUAGE_META = {
-  english: { code: "EN", endonym: "English" },
-  spanish: { code: "ES", endonym: "Español" },
-  french: { code: "FR", endonym: "Français" },
-  german: { code: "DE", endonym: "Deutsch" },
-  italian: { code: "IT", endonym: "Italiano" },
-  portuguese: { code: "PT", endonym: "Português" },
-  greek: { code: "GR", endonym: "Ελληνικά" },
-  japanese: { code: "JA", endonym: "日本語" },
-  korean: { code: "KO", endonym: "한국어" },
-  chinese: { code: "ZH", endonym: "中文" },
-  arabic: { code: "AR", endonym: "العربية" },
-  russian: { code: "RU", endonym: "Русский" },
-  turkish: { code: "TR", endonym: "Türkçe" },
-  hindi: { code: "HI", endonym: "हिन्दी" },
-};
-
-// Same order as the editor's language list.
-export const LANGUAGE_KEYS = Object.keys(LANGUAGE_META);
-
-export const LEVELS = ["beginner", "intermediate", "advanced", "fluent"];
-
-export const normalizeLanguage = (language) => String(language || "").trim().toLowerCase();
-
-export const titleCase = (value) => value.charAt(0).toUpperCase() + value.slice(1);
-
-export const describeLanguage = (language) => {
-  const key = normalizeLanguage(language);
-  const meta = LANGUAGE_META[key];
-  const name = titleCase(key);
-  return {
-    key,
-    name,
-    code: meta?.code || key.slice(0, 2).toUpperCase(),
-    // Only shown when it adds something (not "English (English)").
-    endonym: meta && meta.endonym !== name ? meta.endonym : "",
-  };
-};
-
+// The catalogue lives in constants/languages (asset-free); re-exported for existing imports.
+export {
+  LANGUAGE_META,
+  LANGUAGE_KEYS,
+  LEVELS,
+  normalizeLanguage,
+  titleCase,
+  describeLanguage,
+} from "../../../constants/languages";
 // practice_language_levels keys are stored as the client sent them (usually title-cased), so match loosely.
 export const levelFor = (levels, language) => {
   const key = normalizeLanguage(language);

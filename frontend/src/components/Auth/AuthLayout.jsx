@@ -15,9 +15,8 @@ const backToLoginFooter = (
 const contentByPath = {
   "/login": {
     eyebrow: "Welcome Back",
-    title: "Log in and pick up exactly where you left off.",
-    description:
-      "Your conversations, coach sessions, and daily practice are all waiting. This sign-in flow now mirrors the mobile brand instead of feeling like a generic form.",
+    title: "Pick up where you left off.",
+    description: "Your conversations, practice with Lumi and language partners are waiting.",
     footer: (
       <>
         <p className="text-center text-sm text-slate-600">
@@ -42,9 +41,9 @@ const contentByPath = {
   },
   "/register": {
     eyebrow: "Create Account",
-    title: "Join LangVoyage in a page that feels calm and clear.",
+    title: "Start your language exchange.",
     description:
-      "Create your profile, choose your native language, and get into the app without the form taking over the whole screen.",
+      "Tell us what you speak and the languages you want to learn. We'll introduce you to people who fit.",
     footer: (
       <>
         <p className="text-center text-sm text-slate-600">
@@ -88,9 +87,9 @@ const AuthLayout = () => {
   const location = useLocation();
   const { user } = useUser();
   const isResetLink = location.pathname.startsWith(RESET_PASSWORD_PREFIX);
-  const content = isResetLink
-    ? resetPasswordContent
-    : contentByPath[location.pathname] || contentByPath["/login"];
+  // "/register/" (prerendered page, trailing slash) must not fall back to the login copy.
+  const path = location.pathname.replace(/\/+$/, "") || "/";
+  const content = isResetLink ? resetPasswordContent : contentByPath[path] || contentByPath["/login"];
 
   // Signed-in users have no reason to see login/register; send them into the app.
   // A remembered user (UserContext's cached profile) goes straight away instead of
