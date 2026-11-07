@@ -15,11 +15,20 @@ import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { RESEND_COOLDOWN_SECONDS } from "../features/emailVerification";
-import { register } from "../services/api/auth";
+import { register, type RegistrationPracticeLevel } from "../services/api/auth";
 import { setResendAvailableIn } from "../services/emailVerification";
 import { getErrorMessage } from "../services/api/errors";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
+import { ProfileLanguageSelector } from "../components/ProfileLanguageSelector";
+import { PROFILE_LANGUAGES } from "../features/profileLanguages";
+
+const PRACTICE_LEVELS = [
+  { value: "beginner", label: "Beginner" },
+  { value: "intermediate", label: "Intermediate" },
+  { value: "advanced", label: "Advanced" },
+  { value: "fluent", label: "Fluent" },
+] as const;
 
 export function RegisterScreen() {
   const navigation = useNavigation<any>();
@@ -29,13 +38,22 @@ export function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [nativeLanguage, setNativeLanguage] = useState("English");
+  const [nativeLanguage, setNativeLanguage] = useState("english");
+  // Every account starts with at least one learning language, each with its own level.
+  const [practiceLanguages, setPracticeLanguages] = useState<string[]>([]);
+  const [practiceLanguageLevels, setPracticeLanguageLevels] = useState<Record<string, RegistrationPracticeLevel>>({});
+  const [openPicker, setOpenPicker] = useState<"native" | "practice" | null>(null);
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async () => {
     if (!username.trim() || !email.trim() || !password || !nativeLanguage.trim()) {
       Alert.alert("Missing fields", "Please fill all required fields.");
+      return;
+    }
+    if (practiceLanguages.length === 0) {
+      Alert.alert("Choose a language", "Pick at least one language you want to learn.");
+      setOpenPicker("practice");
       return;
     }
 
@@ -47,6 +65,10 @@ export function RegisterScreen() {
         email: normalizedEmail,
         password,
         nativeLanguage: nativeLanguage.trim(),
+        practiceLanguages,
+        practiceLanguageLevels: Object.fromEntries(
+          practiceLanguages.map((language) => [language, practiceLanguageLevels[language] || "beginner"])
+        ),
         dateOfBirth: dateOfBirth.trim() || undefined,
       });
     } catch (err) {
@@ -110,13 +132,70 @@ export function RegisterScreen() {
               onChangeText={setPassword}
               placeholderTextColor={colors.mutedText}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Native language (e.g. English)"
-              value={nativeLanguage}
-              onChangeText={setNativeLanguage}
-              placeholderTextColor={colors.mutedText}
+            <ProfileLanguageSelector
+              label="I speak"
+              colors={colors}
+              options={PROFILE_LANGUAGES}
+              selected={[nativeLanguage]}
+              expanded={openPicker === "native"}
+              onToggle={() => setOpenPicker((current) => (current === "native" ? null : "native"))}
+              onSelect={(value) => {
+                setNativeLanguage(value);
+                setPracticeLanguages((current) => current.filter((language) => language !== value));
+                setPracticeLanguageLevels((current) => {
+                  const next = { ...current };
+                  delete next[value];
+                  return next;
+                });
+                setOpenPicker(null);
+              }}
             />
+            <ProfileLanguageSelector
+              label="I want to learn"
+              colors={colors}
+              options={PROFILE_LANGUAGES.filter((option) => option.value !== nativeLanguage)}
+              selected={practiceLanguages}
+              multiple
+              expanded={openPicker === "practice"}
+              onToggle={() => setOpenPicker((current) => (current === "practice" ? null : "practice"))}
+              onSelect={(value) => {
+                const removing = practiceLanguages.includes(value);
+                setPracticeLanguages((current) => removing
+                  ? current.filter((language) => language !== value)
+                  : [...current, value]);
+                setPracticeLanguageLevels((current) => {
+                  const next = { ...current };
+                  if (removing) delete next[value];
+                  else next[value] = "beginner";
+                  return next;
+                });
+              }}
+            />
+            {practiceLanguages.map((language) => {
+              const languageLabel = PROFILE_LANGUAGES.find((option) => option.value === language)?.label || language;
+              return (
+                <View key={language} style={styles.languageLevel}>
+                  <Text style={styles.fieldLabel}>My level in {languageLabel}</Text>
+                  <View style={styles.levelRow} accessibilityRole="radiogroup" accessibilityLabel={`My level in ${languageLabel}`}>
+                    {PRACTICE_LEVELS.map((level) => {
+                      const selected = (practiceLanguageLevels[language] || "beginner") === level.value;
+                      return (
+                        <Pressable
+                          key={level.value}
+                          onPress={() => setPracticeLanguageLevels((current) => ({ ...current, [language]: level.value }))}
+                          style={[styles.levelChip, selected && styles.levelChipSelected]}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`${languageLabel}: ${level.label}`}
+                          accessibilityState={{ selected }}
+                        >
+                          <Text style={[styles.levelChipText, selected && styles.levelChipTextSelected]}>{level.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
             <TextInput
               style={styles.input}
               placeholder="Date of birth YYYY-MM-DD (optional)"
@@ -217,6 +296,42 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       marginBottom: 10,
       color: colors.text,
       fontSize: 15,
+    },
+    languageLevel: {
+      marginTop: 10,
+    },
+    fieldLabel: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "700",
+      marginBottom: 8,
+    },
+    levelRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 14,
+    },
+    levelChip: {
+      minHeight: 40,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputBackground,
+      justifyContent: "center",
+    },
+    levelChipSelected: {
+      backgroundColor: colors.navy,
+      borderColor: colors.navy,
+    },
+    levelChipText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    levelChipTextSelected: {
+      color: "#fff",
     },
     button: {
       marginTop: 4,

@@ -107,7 +107,7 @@ class CommunityListInvalidationTests(TestCase):
             {
                 "username": "newcomer",
                 "password": "a-Strong-passphrase-42",
-                "nativeLanguage": "spanish",
+                "nativeLanguage": "spanish", "practiceLanguage": "french",
                 "email": "newcomer@example.com",
             },
             format="json",

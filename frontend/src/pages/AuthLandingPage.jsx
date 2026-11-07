@@ -4,7 +4,7 @@ import CoachAvatar from "../components/CoachAvatar";
 
 const AuthLandingPage = () => {
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
+    <div className="lv-font-body relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(27,127,121,0.34),transparent_26%),radial-gradient(circle_at_85%_18%,rgba(236,177,208,0.22),transparent_22%),radial-gradient(circle_at_50%_78%,rgba(20,49,74,0.6),transparent_38%),linear-gradient(180deg,#081320_0%,#102131_56%,#112a3d_100%)]" />
       <div className="absolute -left-16 top-10 h-72 w-72 rounded-full bg-[rgba(27,127,121,0.18)] blur-3xl" />
       <div className="absolute right-[-4rem] top-16 h-64 w-64 rounded-full bg-[rgba(236,177,208,0.17)] blur-3xl" />
@@ -26,7 +26,7 @@ const AuthLandingPage = () => {
           <p className="mt-10 text-xs font-semibold uppercase tracking-[0.34em] text-[rgba(137,218,211,0.94)]">
             LangVoyage
           </p>
-          <h1 className="mt-4 font-['Georgia'] text-5xl font-semibold leading-none text-white sm:text-6xl">
+          <h1 className="lv-font-display mt-4 text-[2.6rem] font-bold leading-[1.05] text-white sm:text-[3.6rem]">
             Speak with confidence,
             <br />
             every day.
