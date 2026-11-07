@@ -377,7 +377,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "text": reply.text,
             "kind": reply.kind,
             "media": message_media_payload(reply, self.context.get("request")),
-            "timestamp": reply.timestamp,
+            # ISO string, not a datetime: this payload is also broadcast over
+            # websockets (json.dumps in ChatConsumer, msgpack in channels_redis).
+            "timestamp": _iso(reply.timestamp),
             "sender": {
                 "id": sender.id if sender else None,
                 "username": sender.username if sender else "",
