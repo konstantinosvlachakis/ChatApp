@@ -752,9 +752,24 @@ export function ProfileScreen() {
             <Text style={styles.pageEyebrow}>YOUR SPACE</Text>
             <Text style={styles.pageTitle}>Profile</Text>
           </View>
-          <Pressable style={styles.settingsButton} onPress={() => navigation.navigate("Settings")}>
-            <Ionicons name="settings-outline" size={20} color={colors.text} />
-          </Pressable>
+          <View style={styles.topBarActions}>
+            <Pressable
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate("Phrasebook")}
+              accessibilityRole="button"
+              accessibilityLabel="Phrasebook"
+            >
+              <Ionicons name="book-outline" size={20} color={colors.text} />
+            </Pressable>
+            <Pressable
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate("Settings")}
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+            >
+              <Ionicons name="settings-outline" size={20} color={colors.text} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.heroCard}>
@@ -1607,6 +1622,7 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 28,
       fontFamily: fontFamilies.displayBold,
     },
+    topBarActions: { flexDirection: "row", alignItems: "center", gap: 8 },
     settingsButton: {
       width: 42,
       height: 42,

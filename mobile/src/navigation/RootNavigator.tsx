@@ -59,6 +59,8 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { VerifyEmailScreen } from "../screens/VerifyEmailScreen";
 import { PublicProfileScreen } from "../screens/PublicProfileScreen";
 import { PremiumScreen } from "../screens/PremiumScreen";
+import { PhrasebookScreen } from "../screens/PhrasebookScreen";
+import { PhrasebookReviewScreen } from "../screens/PhrasebookReviewScreen";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { messagePreviewText } from "../components/chat/attachments";
@@ -738,6 +740,8 @@ export function RootNavigator() {
         <>
           <Stack.Screen name="AppTabs" component={AppTabs} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Phrasebook" component={PhrasebookScreen} />
+          <Stack.Screen name="PhrasebookReview" component={PhrasebookReviewScreen} />
           <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         </>
       ) : (

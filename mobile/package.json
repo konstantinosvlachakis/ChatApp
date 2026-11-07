@@ -17,7 +17,8 @@
     "test:stickers-gifs": "node --experimental-strip-types --test tests/messageMedia.test.mjs",
     "test:chat-sending": "node --experimental-strip-types --test tests/chatSending.test.mjs",
     "test:voice-notes": "node --experimental-strip-types --test tests/voiceNote.test.mjs",
-    "test:message-menu": "node --experimental-strip-types --test tests/messageMenu.test.mjs"
+    "test:message-menu": "node --experimental-strip-types --test tests/messageMenu.test.mjs",
+    "test:corrections": "node --experimental-strip-types --test tests/corrections.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

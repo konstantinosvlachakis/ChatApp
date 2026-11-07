@@ -72,3 +72,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:message-menu
         working-directory: mobile
+      - run: npm run test:corrections
+        working-directory: mobile

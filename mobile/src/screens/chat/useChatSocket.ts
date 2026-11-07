@@ -18,6 +18,8 @@ type ChatPayload =
   | { type: "message_deleted"; messageId: number }
   | { type: "message_status"; messageIds?: number[]; status?: "sent" | "delivered" | "read"; actorId?: number }
   | { type: "message_edited" | "message_pinned"; message?: ChatMessage }
+  // A correction was added/replaced/removed or the sender toggled `correction_requested`.
+  | { type: "message_corrections"; message?: ChatMessage }
   | { type: "message_reaction" | "messageReaction"; message?: ChatMessage }
   | { type: "user_typing" | "user_stopped_typing"; senderId?: number }
   // Group chats (see system-map realtime-events).
@@ -195,7 +197,9 @@ export function useChatSocket({
           }
 
           if (
-            (data.type === "message_pinned" || data.type === "message_edited") &&
+            (data.type === "message_pinned" ||
+              data.type === "message_edited" ||
+              data.type === "message_corrections") &&
             (data as any).message?.id
           ) {
             applyMessageUpdate((data as any).message);

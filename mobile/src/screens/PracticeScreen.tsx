@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import * as Speech from "expo-speech";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -30,6 +30,7 @@ import {
   type VoiceSentence,
 } from "../services/api/practice";
 import { getErrorMessage } from "../services/api/errors";
+import { fetchPhrasebook } from "../services/api/phrasebook";
 import { ChatAvatar } from "../components/chat/ChatAvatar";
 import {
   ROUND_COMPLETE_MESSAGE,
@@ -100,6 +101,22 @@ export function PracticeScreen() {
   // Sentence id whose XP claim was sent (synchronous guard against double posts).
   const voiceClaimedIdRef = useRef<string | null>(null);
   const { user } = useAuth();
+  const navigation = useNavigation<any>();
+  // Phrasebook entry card: due count / total, refreshed whenever the tab gains focus.
+  const [phrasebookSummary, setPhrasebookSummary] = useState<{ due: number; total: number } | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      fetchPhrasebook({ page: 1, pageSize: 1 })
+        .then((data) => {
+          if (active) setPhrasebookSummary({ due: data.due_count || 0, total: data.pagination?.total_count || 0 });
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
   const { colors, isDark } = useTheme();
   const warm = useMemo(() => warmColors(isDark), [isDark]);
   const styles = useMemo(() => createStyles(colors, warm), [colors, warm]);
@@ -578,6 +595,34 @@ export function PracticeScreen() {
             </Text>
           </View>
         </View>
+
+        <Pressable
+          style={({ pressed }) => [styles.levelCard, styles.phrasebookCard, pressed && styles.phrasebookCardPressed]}
+          onPress={() => navigation.navigate("Phrasebook")}
+          accessibilityRole="button"
+          accessibilityLabel={
+            phrasebookSummary?.due
+              ? `Phrasebook, ${phrasebookSummary.due} due for review`
+              : "Phrasebook"
+          }
+        >
+          <View style={styles.levelIcon}>
+            <Ionicons name="book-outline" size={20} color={warm.teal} />
+          </View>
+          <View style={styles.levelBody}>
+            <Text style={styles.levelTitle}>
+              Phrasebook{phrasebookSummary?.due ? ` · ${phrasebookSummary.due} due` : ""}
+            </Text>
+            <Text style={styles.levelSummary}>
+              {phrasebookSummary?.due
+                ? "Review the phrases you saved from your chats."
+                : phrasebookSummary?.total
+                  ? "All caught up. Browse or add phrases."
+                  : "Save phrases and corrections from chats, then review them here."}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={warm.inkSoft} />
+        </Pressable>
 
         <View style={styles.modeSwitch}>
           <Pressable
@@ -1592,6 +1637,8 @@ const createStyles = (colors: ThemeColors, warm: WarmColors) =>
       backgroundColor: warm.sage,
     },
     levelBody: { flex: 1, minWidth: 0, gap: 6 },
+    phrasebookCard: { alignItems: "center" },
+    phrasebookCardPressed: { backgroundColor: warm.creamDeep },
     levelTitleRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
     levelTitle: { flexShrink: 1, color: warm.ink, fontSize: 16, fontFamily: fontFamilies.displayBold },
     levelCefr: {

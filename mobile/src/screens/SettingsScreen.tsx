@@ -23,14 +23,16 @@ import {
   fetchModerationSummary,
   logoutAll,
   unblockUser,
+  updateCorrectionPreference,
   updateSettings,
 } from "../services/api/auth";
+import { CORRECTION_PREFERENCE_OPTIONS, correctionPreferenceOf } from "../features/corrections";
 import { ApiError, getErrorMessage } from "../services/api/errors";
-import { toastApiError } from "../services/toast";
+import { showToast, toastApiError } from "../services/toast";
 import { PasswordPromptModal } from "../components/PasswordPromptModal";
 import type { ThemeColors } from "../theme/colors";
 import { fontFamilies } from "../theme/typography";
-import type { ModerationSummary } from "../types";
+import type { CorrectionPreference, ModerationSummary } from "../types";
 import { avatarImage } from "../utils/media";
 
 // Delete errors shown inside the password prompt (the user can fix them there).
@@ -50,7 +52,7 @@ const resolveMediaUrl = (path?: string | null) => {
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { user, refreshProfile, logout } = useAuth();
+  const { user, refreshProfile, logout, updateUser } = useAuth();
   const { colors, mode, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const languageOptions = useMemo<LanguageOption[]>(() => getCoachLanguageOptions(user), [user]);
@@ -64,18 +66,23 @@ export function SettingsScreen() {
   const [loggingOutEverywhere, setLoggingOutEverywhere] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<"base" | "practice" | null>(null);
   const [unblockingUsername, setUnblockingUsername] = useState<string | null>(null);
+  // Saved on tap (not with "Save changes"); chat menus read it from the auth user.
+  const [savingCorrections, setSavingCorrections] = useState<CorrectionPreference | null>(null);
+  const correctionPreference = correctionPreferenceOf(user);
   const [moderation, setModeration] = useState<ModerationSummary>({
     blocked_profiles: [],
     reported_profiles: [],
   });
 
+  // Re-seed the pickers only when the saved languages change (not when e.g. the correction
+  // preference is merged into the user, which would drop an unsaved pick).
+  const fallbackLanguage = languageOptions[0]?.value || "english";
+  const savedBaseLanguage = user?.base_translate_language || "";
+  const savedPracticeLanguage = user?.languages_practicing?.[0] || user?.native_language || "";
   useEffect(() => {
-    const fallback = languageOptions[0]?.value || "english";
-    setBaseLanguage((user?.base_translate_language || fallback).trim().toLowerCase());
-    setPracticeLanguage(
-      (user?.languages_practicing?.[0] || user?.native_language || fallback).trim().toLowerCase()
-    );
-  }, [languageOptions, user]);
+    setBaseLanguage((savedBaseLanguage || fallbackLanguage).trim().toLowerCase());
+    setPracticeLanguage((savedPracticeLanguage || fallbackLanguage).trim().toLowerCase());
+  }, [fallbackLanguage, savedBaseLanguage, savedPracticeLanguage]);
 
   useEffect(() => {
     fetchModerationSummary()
@@ -101,6 +108,23 @@ export function SettingsScreen() {
       toastApiError(error, "Could not update settings.", "Failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onCorrectionPreference = async (value: CorrectionPreference) => {
+    if (savingCorrections || value === correctionPreference) return;
+    const previous = correctionPreference;
+    setSavingCorrections(value);
+    updateUser({ correction_preference: value });
+    try {
+      const saved = await updateCorrectionPreference(value);
+      updateUser({ correction_preference: saved });
+      showToast("Correction preference saved", { variant: "success", durationMs: 2000 });
+    } catch (error) {
+      updateUser({ correction_preference: previous });
+      toastApiError(error, "Could not save your correction preference.", "Not saved");
+    } finally {
+      setSavingCorrections(null);
     }
   };
 
@@ -296,6 +320,60 @@ export function SettingsScreen() {
               <Ionicons name="chevron-down" size={18} color={colors.mutedText} />
             </Pressable>
           </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconWrap}>
+              <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.sectionHeaderCopy}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">
+                Corrections
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                Choose when chat partners can suggest a better way to say what you wrote. Saved right away.
+              </Text>
+            </View>
+          </View>
+
+          <View accessibilityRole="radiogroup" style={styles.choiceList}>
+            {CORRECTION_PREFERENCE_OPTIONS.map((option) => {
+              const selected = option.value === correctionPreference;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={[styles.choiceRow, selected && styles.choiceRowActive]}
+                  onPress={() => onCorrectionPreference(option.value)}
+                  disabled={Boolean(savingCorrections)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected, disabled: Boolean(savingCorrections) }}
+                  accessibilityLabel={option.label}
+                  accessibilityHint={option.description}
+                >
+                  <Ionicons
+                    name={selected ? "radio-button-on" : "radio-button-off"}
+                    size={20}
+                    color={selected ? colors.primary : colors.mutedText}
+                  />
+                  <View style={styles.choiceCopy}>
+                    <Text style={styles.choiceTitle}>{option.label}</Text>
+                    <Text style={styles.choiceText}>{option.description}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => navigation.navigate("Phrasebook")}
+            accessibilityRole="button"
+            accessibilityLabel="Open your phrasebook"
+          >
+            <Ionicons name="book-outline" size={18} color={colors.text} />
+            <Text style={styles.secondaryButtonText}>Open phrasebook</Text>
+          </Pressable>
         </View>
 
         <View style={styles.sectionCard}>
@@ -642,6 +720,35 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: 16,
       fontFamily: fontFamilies.bodySemiBold,
       textTransform: "capitalize",
+    },
+    choiceList: { gap: 8 },
+    choiceRow: {
+      minHeight: 56,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 12,
+    },
+    choiceRowActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surfaceMuted,
+    },
+    choiceCopy: { flex: 1, gap: 2 },
+    choiceTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fontFamilies.bodyBold,
+    },
+    choiceText: {
+      color: colors.mutedText,
+      fontSize: 13,
+      lineHeight: 18,
+      fontFamily: fontFamilies.bodyMedium,
     },
     switchCard: {
       backgroundColor: colors.surfaceMuted,

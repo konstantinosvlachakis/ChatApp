@@ -1,7 +1,7 @@
 import { api, UPLOAD_TIMEOUT_MS } from "./client";
 import { tokenStorage } from "../storage";
 import { clearConversationsCache } from "./conversations";
-import type { ModerationSummary, Profile, ProfileListResponse } from "../../types";
+import type { CorrectionPreference, ModerationSummary, Profile, ProfileListResponse } from "../../types";
 import type { PeopleParams } from "../../features/peopleMatching";
 
 export async function register(payload: {
@@ -144,6 +144,12 @@ export async function updateSettings(payload: {
 }) {
   const response = await api.patch("/profile/edit/", payload);
   return response.data;
+}
+
+/** `PATCH /profile/edit/ {correction_preference}`; returns the saved value. */
+export async function updateCorrectionPreference(preference: CorrectionPreference): Promise<CorrectionPreference> {
+  const response = await api.patch("/profile/edit/", { correction_preference: preference });
+  return (response.data?.updated_profile?.correction_preference || preference) as CorrectionPreference;
 }
 
 export async function updateProfile(payload: {

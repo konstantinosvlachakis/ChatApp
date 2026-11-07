@@ -34,9 +34,10 @@ import { scheduleOnRN } from "react-native-worklets";
 import { Ionicons } from "@expo/vector-icons";
 import { hapticLight } from "../../services/haptics";
 import type { WarmColors } from "../../theme/warm";
-import type { ChatMessage } from "../../types";
+import type { ChatMessage, MessageCorrection } from "../../types";
 import { attachmentLabel, getAttachmentKind, messagePreviewText } from "./attachments";
 import { ChatAvatar } from "./ChatAvatar";
+import { CorrectionCards } from "./CorrectionCards";
 import { MESSAGE_AVATAR_SIZE, type ChatStyles } from "./chatStyles";
 import { MessageAttachment } from "./MessageAttachment";
 import { isMediaMessage, MessageMediaView } from "./MessageMediaView";
@@ -102,6 +103,10 @@ export type MessageRowProps = {
   onToggleTranslation: (message: ChatMessage) => void;
   /** Opens the full-screen viewer with the original image URL. */
   onOpenImage: (url: string) => void;
+  /** Correction cards under the bubble: save to phrasebook, edit / remove my own. */
+  onSaveCorrection: (message: ChatMessage, correction: MessageCorrection) => void;
+  onEditCorrection: (message: ChatMessage) => void;
+  onRemoveCorrection: (message: ChatMessage) => void;
 };
 
 type BubbleTouchAreaProps = {
@@ -260,6 +265,9 @@ function MessageRowComponent({
   onTap,
   onToggleTranslation,
   onOpenImage,
+  onSaveCorrection,
+  onEditCorrection,
+  onRemoveCorrection,
 }: MessageRowProps) {
   const swipeableRef = useRef<SwipeableMethods | null>(null);
   const attachmentUrl = item.attachment_url || null;
@@ -270,6 +278,9 @@ function MessageRowComponent({
   const isMedia = isMediaMessage(item);
   const showText = hasText || (!attachmentUrl && !isMedia);
   const hasAttachment = !isMedia && Boolean(attachmentUrl && attachmentKind);
+  // "Corrections welcome" on my own messages that ask for corrections.
+  const showCorrectionsWelcome = isMine && Boolean(item.correction_requested);
+  const correctionCount = item.corrections?.length || 0;
 
   const handleTap = useCallback(() => onTap(item), [item, onTap]);
   const handleDoubleTap = useCallback(() => {
@@ -347,12 +358,15 @@ function MessageRowComponent({
     if (translatedText) parts.push(`Translation: ${translatedText}`);
     if (item.edited_at) parts.push("edited");
     if (item.is_pinned) parts.push("pinned");
+    if (showCorrectionsWelcome) parts.push("corrections welcome");
+    if (correctionCount) parts.push(correctionCount === 1 ? "1 correction below" : `${correctionCount} corrections below`);
     parts.push(timeLabel);
     if (isMine) parts.push(isPending ? "sending" : tickLabel.toLowerCase());
     return parts.filter(Boolean).join(", ");
   }, [
     attachmentKind,
     avatarName,
+    correctionCount,
     hasAttachment,
     hasText,
     isMedia,
@@ -364,6 +378,7 @@ function MessageRowComponent({
     item.reply_to,
     item.text,
     replyAuthor,
+    showCorrectionsWelcome,
     tickLabel,
     timeLabel,
     translatedText,
@@ -443,7 +458,7 @@ function MessageRowComponent({
           </Text>
         </Animated.View>
       ) : null}
-      {item.is_pinned || item.edited_at ? (
+      {item.is_pinned || item.edited_at || showCorrectionsWelcome ? (
         <View style={styles.messageFlagRow}>
           {item.is_pinned ? (
             <>
@@ -453,6 +468,13 @@ function MessageRowComponent({
           ) : null}
           {item.edited_at ? (
             <Text style={styles.messageFlagText}>{item.is_pinned ? " · Edited" : "Edited"}</Text>
+          ) : null}
+          {showCorrectionsWelcome ? (
+            <>
+              {item.is_pinned || item.edited_at ? <Text style={styles.messageFlagText}> · </Text> : null}
+              <Ionicons name="pencil" size={11} color={warm.inkSoft} />
+              <Text style={styles.messageFlagText}>Corrections welcome</Text>
+            </>
           ) : null}
         </View>
       ) : null}
@@ -468,7 +490,8 @@ function MessageRowComponent({
     onDoubleTap: handleDoubleTap,
     onLongPress: handleLongPress,
   };
-  const hasTextSection = showText || translating || Boolean(translatedText) || item.is_pinned || Boolean(item.edited_at);
+  const hasTextSection =
+    showText || translating || Boolean(translatedText) || item.is_pinned || Boolean(item.edited_at) || showCorrectionsWelcome;
 
   let bubbleContent: ReactNode;
   if (isMedia) {
@@ -679,6 +702,18 @@ function MessageRowComponent({
               </View>
             </View>
           </Swipeable>
+
+          {correctionCount ? (
+            <CorrectionCards
+              message={item}
+              currentUserId={currentUserId}
+              isMine={isMine}
+              warm={warm}
+              onSave={onSaveCorrection}
+              onEdit={onEditCorrection}
+              onRemove={onRemoveCorrection}
+            />
+          ) : null}
 
           {reactionEntries.length > 0 ? <View style={styles.reactionsRow}>
               {reactionEntries.map(([emoji, count]) => (

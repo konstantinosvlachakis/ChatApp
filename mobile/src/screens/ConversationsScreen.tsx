@@ -78,10 +78,20 @@ import {
   deleteConversationMessage,
   pinConversationMessage,
   reactToMessage,
+  removeMessageCorrection,
   sendConversationMessage,
   sendMediaMessage,
+  setMessageCorrectionRequest,
+  suggestMessageCorrection,
   translateConversationMessage,
 } from "../services/api/conversations";
+import { savePhraseFromChat } from "../services/api/phrasebook";
+import {
+  canRequestCorrections,
+  canSuggestCorrection,
+  correctionPreferenceOf,
+  findMyCorrection,
+} from "../features/corrections";
 import { getErrorMessage } from "../services/api/errors";
 import { fetchGroupInvites, respondToGroupInvite } from "../services/api/groups";
 import { subscribeToPresenceEvents } from "../services/presenceEvents";
@@ -94,10 +104,11 @@ import { setOpenConversationId } from "../services/push";
 import { confirmReadLocally, forgetReadLocally, markReadLocally } from "../services/readState";
 import { fontFamilies } from "../theme/typography";
 import { warmColors, type WarmColors } from "../theme/warm";
-import type { ChatMessage, Conversation, GroupInvite } from "../types";
+import type { ChatMessage, Conversation, GroupInvite, MessageCorrection } from "../types";
 import { ChatOptionsSheet, type ChatOptionsState } from "./chat/ChatOptionsSheet";
 import { ChatRoomView, type ChatContentInsets } from "./chat/ChatRoomView";
 import { ConversationListView } from "./chat/ConversationListView";
+import { CorrectionSheet, type CorrectionTarget } from "./chat/CorrectionSheet";
 import { GroupDetailsSheet } from "./chat/GroupDetailsSheet";
 import { GroupPeopleSheet } from "./chat/GroupPeopleSheet";
 import { StickerGifSheet, type MediaPick } from "./chat/StickerGifSheet";
@@ -208,6 +219,9 @@ export function ConversationsScreen() {
   const [unreadAnchorMessageId, setUnreadAnchorMessageId] = useState<number | null>(null);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [messageMenu, setMessageMenu] = useState<MessageMenuState>(null);
+  // "Suggest a correction" sheet (partner's message), with my existing correction when editing.
+  const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget>(null);
+  const correctionPreference = correctionPreferenceOf(user);
   const [chatActionsMenu, setChatActionsMenu] = useState<ChatOptionsState>(null);
   const [chatActionLoading, setChatActionLoading] = useState(false);
   const [reportTargetUsername, setReportTargetUsername] = useState<string | null>(null);
@@ -1351,6 +1365,88 @@ export function ConversationsScreen() {
     setMessageMenu(null);
   }, []);
 
+  // ---- Corrections and phrasebook (REST responses replace the message in place).
+  const openCorrectionSheet = useStableCallback((message: ChatMessage) => {
+    setCorrectionTarget({ message, existing: findMyCorrection(message, currentUserId) });
+  });
+  const closeCorrectionSheet = useCallback(() => setCorrectionTarget(null), []);
+
+  // Errors propagate to the sheet, which shows them inline.
+  const submitCorrection = useStableCallback(async (message: ChatMessage, correctedText: string, note: string) => {
+    const updated = await suggestMessageCorrection(message.id, correctedText, note);
+    applyMessageUpdate(updated);
+    setCorrectionTarget(null);
+    hapticSuccess();
+    showToast("Correction shared", { variant: "success", durationMs: 2000 });
+  });
+
+  const removeCorrectionFromSheet = useStableCallback(async (message: ChatMessage) => {
+    const updated = await removeMessageCorrection(message.id);
+    applyMessageUpdate(updated);
+    setCorrectionTarget(null);
+  });
+
+  // Card "Remove": confirm first.
+  const confirmRemoveCorrection = useStableCallback((message: ChatMessage) => {
+    Alert.alert("Remove your correction?", "It will disappear for everyone in this chat.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          removeMessageCorrection(message.id)
+            .then(applyMessageUpdate)
+            .catch((error) => toastApiError(error, "Could not remove your correction.", "Not removed"));
+        },
+      },
+    ]);
+  });
+
+  const toggleCorrectionRequest = useStableCallback(async (message: ChatMessage) => {
+    const requested = !message.correction_requested;
+    try {
+      const updated = await setMessageCorrectionRequest(message.id, requested);
+      applyMessageUpdate(updated);
+      hapticSelection();
+      showToast(requested ? "Partners can now correct this message" : "No longer asking for corrections", {
+        variant: "success",
+        durationMs: 2000,
+      });
+    } catch (error) {
+      toastApiError(error, "Could not update this message.", "Not updated");
+    }
+  });
+
+  const announcePhraseSaved = (created: boolean) => {
+    hapticSuccess();
+    showToast(created ? "Saved to phrasebook" : "Already in your phrasebook", {
+      variant: created ? "success" : "info",
+      durationMs: 2500,
+    });
+  };
+
+  const saveMessageToPhrasebook = useStableCallback(async (message: ChatMessage) => {
+    try {
+      const { created } = await savePhraseFromChat({ messageId: message.id, source: "message" });
+      announcePhraseSaved(created);
+    } catch (error) {
+      toastApiError(error, "Could not save to your phrasebook.", "Not saved");
+    }
+  });
+
+  const saveCorrectionToPhrasebook = useStableCallback(async (message: ChatMessage, correction: MessageCorrection) => {
+    try {
+      const { created } = await savePhraseFromChat({
+        messageId: message.id,
+        source: "correction",
+        correctionId: correction.id,
+      });
+      announcePhraseSaved(created);
+    } catch (error) {
+      toastApiError(error, "Could not save to your phrasebook.", "Not saved");
+    }
+  });
+
   // Same actions as the web right-click menu: React, Reply, Copy, Speak, Pin, Translate, Edit, Delete.
   const buildMessageMenuActions = useCallback(
     (message: ChatMessage, isMine: boolean) => {
@@ -1445,6 +1541,43 @@ export function ConversationsScreen() {
         });
       }
 
+      if (canSuggestCorrection(message, currentUserId)) {
+        const mine = findMyCorrection(message, currentUserId);
+        actions.push({
+          key: "correct",
+          label: mine ? "Edit my correction" : "Suggest a correction",
+          icon: "pencil-outline",
+          onPress: () => {
+            closeMessageMenu();
+            openCorrectionSheet(message);
+          },
+        });
+      }
+
+      if (text && message.id > 0) {
+        actions.push({
+          key: "phrasebook",
+          label: "Save to phrasebook",
+          icon: "bookmark-outline",
+          onPress: () => {
+            closeMessageMenu();
+            saveMessageToPhrasebook(message);
+          },
+        });
+      }
+
+      if (canRequestCorrections(message, currentUserId, correctionPreference)) {
+        actions.push({
+          key: "correction-request",
+          label: message.correction_requested ? "Stop asking for corrections" : "Ask for corrections",
+          icon: message.correction_requested ? "close-circle-outline" : "school-outline",
+          onPress: () => {
+            closeMessageMenu();
+            toggleCorrectionRequest(message);
+          },
+        });
+      }
+
       if (isMine) {
         if (isTextKind && text && message.id > 0) {
           actions.push({
@@ -1472,6 +1605,7 @@ export function ConversationsScreen() {
     },
     [
       closeMessageMenu,
+      correctionPreference,
       currentUserId,
       currentUsername,
       deleteMessage,
@@ -1598,6 +1732,9 @@ export function ConversationsScreen() {
           onTap={handleMessageTap}
           onToggleTranslation={handleToggleTranslation}
           onOpenImage={openImageViewer}
+          onSaveCorrection={saveCorrectionToPhrasebook}
+          onEditCorrection={openCorrectionSheet}
+          onRemoveCorrection={confirmRemoveCorrection}
         />
       );
     },
@@ -2097,6 +2234,14 @@ export function ConversationsScreen() {
             actions={messageMenuActions}
             reduceMotion={reduceMotion}
             onClose={closeMessageMenu}
+          />
+          <CorrectionSheet
+            warm={warm}
+            reduceMotion={reduceMotion}
+            target={correctionTarget}
+            onClose={closeCorrectionSheet}
+            onSubmit={submitCorrection}
+            onRemove={removeCorrectionFromSheet}
           />
           <ImageViewer url={viewerImageUrl} onClose={closeImageViewer} />
         </ChatRoomView>

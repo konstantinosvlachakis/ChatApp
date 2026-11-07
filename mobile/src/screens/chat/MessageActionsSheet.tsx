@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { messagePreviewText } from "../../components/chat/attachments";
 import { fontFamilies } from "../../theme/typography";
@@ -31,6 +31,8 @@ type MessageActionsSheetProps = {
 /** Long-press menu of a message as a bottom sheet (preview + actions). */
 export function MessageActionsSheet({ warm, menu, actions, reduceMotion, onClose }: MessageActionsSheetProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
+  // Up to ~11 actions (corrections, phrasebook): scroll on short screens instead of overflowing.
+  const { height } = useWindowDimensions();
   return (
     <BottomSheet warm={warm} visible={Boolean(menu)} reduceMotion={reduceMotion} onClose={onClose} scrim={false}>
       {menu ? (
@@ -43,6 +45,7 @@ export function MessageActionsSheet({ warm, menu, actions, reduceMotion, onClose
               {messagePreviewText(menu.message) || "Message"}
             </Text>
           </View>
+          <ScrollView style={{ maxHeight: Math.round(height * 0.62) }} bounces={false}>
           {actions.map((action) => (
             <Pressable
               key={`${menu.message.id}-${action.key}`}
@@ -57,6 +60,7 @@ export function MessageActionsSheet({ warm, menu, actions, reduceMotion, onClose
               <Text style={[styles.itemText, action.destructive && styles.itemTextDanger]}>{action.label}</Text>
             </Pressable>
           ))}
+          </ScrollView>
         </>
       ) : null}
     </BottomSheet>

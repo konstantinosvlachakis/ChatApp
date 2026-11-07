@@ -291,3 +291,28 @@ export async function fetchChatOpeners(conversationId: number, signal?: AbortSig
   const openers = response.data?.openers;
   return Array.isArray(openers) ? openers.filter((line): line is string => typeof line === "string") : [];
 }
+
+/** Create or replace your correction of a partner's message; returns the updated message. */
+export async function suggestMessageCorrection(
+  messageId: number,
+  correctedText: string,
+  note = ""
+): Promise<ChatMessage> {
+  const response = await api.post<ChatMessage>(`/messages/${messageId}/correction/`, {
+    corrected_text: correctedText,
+    note,
+  });
+  return response.data;
+}
+
+/** Remove your own correction of a message; returns the updated message. */
+export async function removeMessageCorrection(messageId: number): Promise<ChatMessage> {
+  const response = await api.delete<ChatMessage>(`/messages/${messageId}/correction/`);
+  return response.data;
+}
+
+/** Sender only: ask (or stop asking) partners to correct this message. */
+export async function setMessageCorrectionRequest(messageId: number, requested: boolean): Promise<ChatMessage> {
+  const response = await api.post<ChatMessage>(`/messages/${messageId}/correction-request/`, { requested });
+  return response.data;
+}

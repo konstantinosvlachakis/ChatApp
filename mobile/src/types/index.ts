@@ -1,5 +1,10 @@
+/** Who may correct my messages: always, only messages I flag, or nobody. */
+export type CorrectionPreference = "often" | "when_asked" | "off";
+
 export interface Profile {
   user_id?: number;
+  /** Own and public profile; missing on older servers (treat as "often"). */
+  correction_preference?: CorrectionPreference;
   username: string;
   email?: string;
   /** Own profile only. Missing on older servers: treat `undefined` as verified. */
@@ -44,6 +49,18 @@ export interface ConversationParticipant {
   native_language?: string | null;
   profile_image_url?: string | null;
   is_online?: boolean;
+  /** Message senders (ProfileSummary). */
+  correction_preference?: CorrectionPreference;
+}
+
+/** A partner's suggested rewrite of a message (one per corrector, oldest first). */
+export interface MessageCorrection {
+  id: number;
+  corrector: { id: number; username: string };
+  corrected_text: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /** Sticker message media as served (`url` null if the sticker left the pack). */
@@ -120,6 +137,11 @@ export interface ChatMessage {
     emoji: string;
   }>;
   current_user_reaction?: string | null;
+  /** The sender asked for corrections on this message. */
+  correction_requested?: boolean;
+  /** Partners may correct it (text message, sender's preference allows it). Not per viewer. */
+  accepts_corrections?: boolean;
+  corrections?: MessageCorrection[];
   /** Client-only: set on the optimistic bubble while an attachment upload is in flight. */
   local_status?: "sending";
   /** Client-only: content type of a locally picked attachment (optimistic bubble). */
@@ -249,3 +271,52 @@ export interface ModerationSummary {
     created_at: string;
   }>;
 }
+
+export type PhrasebookSource = "manual" | "message" | "translation" | "correction";
+
+/** `GET /api/phrasebook/` entry (private to its owner). */
+export interface PhrasebookEntry {
+  id: number;
+  text: string;
+  meaning: string;
+  note: string;
+  context: string;
+  /** Lowercase language name, or "". */
+  language: string;
+  source: PhrasebookSource;
+  source_message_id: number | null;
+  source_conversation_id: number | null;
+  created_at: string;
+  updated_at: string;
+  due_at: string;
+  interval_days: number;
+  repetitions: number;
+  lapses: number;
+  review_count: number;
+  last_reviewed_at: string | null;
+}
+
+export interface PhrasebookPage {
+  entries: PhrasebookEntry[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total_pages: number;
+    total_count: number;
+    has_next: boolean;
+    has_previous: boolean;
+  };
+  due_count: number;
+  languages: string[];
+}
+
+export interface PhrasebookReviewBatch {
+  /** Due cards, oldest due first (at most 20). */
+  cards: PhrasebookEntry[];
+  due_count: number;
+  total_count: number;
+  reviewed_today: number;
+  next_due_at: string | null;
+}
+
+export type PhrasebookReviewResult = "again" | "hard" | "good" | "easy";
