@@ -65,6 +65,11 @@ export function setOpenConversationId(conversationId: number | null) {
   openConversationId = conversationId;
 }
 
+/** The conversation currently on screen, if any (in-app banners skip it). */
+export function getOpenConversationId() {
+  return openConversationId;
+}
+
 function messageConversationId(data: unknown): number | null {
   if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;

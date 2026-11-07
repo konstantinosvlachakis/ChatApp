@@ -156,3 +156,9 @@ Clean (0 errors) as of 2026-10-27 on `feat/mobile-push` with dependencies instal
 - Root stack routes `Phrasebook` and `PhrasebookReview` (no tab). Entry points: PracticeScreen card, ProfileScreen top-bar book icon, Settings Corrections section.
 - Settings: Corrections radio card (saves on tap, `AuthContext.updateUser` optimistic + rollback); language pickers re-seed only when the saved languages change.
 - Tests: `npm run test:corrections` (`tests/corrections.test.mjs`, in CI).
+
+## Guided exchange sessions (`feat/exchange-sessions-mobile`, pending, 2026-11-07)
+- `screens/chat/useExchangeSession.ts` (state, clock offset, deadline refetch, dismiss per app run), `components/chat/ExchangeSessionBanner.tsx` (1 s tick paused off-focus/background; pending/active/ended/closed states; halfway nudge announced once; collapsible; no animations), `screens/chat/ExchangeSessionSheet.tsx` (start sheet), helpers `features/exchangeSession.ts`.
+- Start from the chat header options (`ChatOptionsSheet onStartExchange`, direct chats only, hidden when blocked or a session is open); banner rendered by `ChatRoomView sessionBanner` under PinnedBar.
+- Presence `exchange_invite` → RootNavigator banner. No push for invites yet.
+- Tests: `npm run test:exchange-sessions` (in CI).

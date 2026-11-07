@@ -74,3 +74,5 @@ jobs:
         working-directory: mobile
       - run: npm run test:corrections
         working-directory: mobile
+      - run: npm run test:exchange-sessions
+        working-directory: mobile

@@ -21,6 +21,8 @@ type ChatOptionsSheetProps = {
   onToggleBlock: () => void;
   /** Start a new group with this person (they're preselected). */
   onStartGroup?: (username: string) => void;
+  /** Start a guided exchange (direct chats; hidden while one is open or the user is blocked). */
+  onStartExchange?: () => void;
 };
 
 /** Header overflow menu: view profile, report, block/unblock. */
@@ -34,6 +36,7 @@ export function ChatOptionsSheet({
   onReport,
   onToggleBlock,
   onStartGroup,
+  onStartExchange,
 }: ChatOptionsSheetProps) {
   const styles = useMemo(() => createStyles(warm), [warm]);
   return (
@@ -60,6 +63,23 @@ export function ChatOptionsSheet({
               <Text style={styles.itemSubtitle}>See photos, languages, and profile details</Text>
             </View>
           </Pressable>
+
+          {onStartExchange && !menu.isBlocked ? (
+            <Pressable
+              style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+              onPress={onStartExchange}
+              accessibilityRole="button"
+              accessibilityLabel={`Guided exchange with ${menu.username}`}
+            >
+              <View style={styles.itemIcon}>
+                <Ionicons name="timer-outline" size={20} color={warm.teal} />
+              </View>
+              <View style={styles.itemBody}>
+                <Text style={styles.itemTitle}>Guided exchange</Text>
+                <Text style={styles.itemSubtitle}>Timed practice: half in each language, with a topic</Text>
+              </View>
+            </Pressable>
+          ) : null}
 
           {onStartGroup && !menu.isBlocked ? (
             <Pressable

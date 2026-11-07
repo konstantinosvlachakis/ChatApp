@@ -38,6 +38,7 @@ import {
   startPresenceHeartbeat,
 } from "../services/realtime";
 import {
+  getOpenConversationId,
   registerForPushNotifications,
   subscribeToNotificationOpens,
   subscribeToFollowNotificationOpens,
@@ -64,6 +65,7 @@ import { PhrasebookReviewScreen } from "../screens/PhrasebookReviewScreen";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { messagePreviewText } from "../components/chat/attachments";
+import { exchangeLanguageLabel } from "../features/exchangeSession";
 
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
@@ -498,6 +500,33 @@ function AppTabs() {
                 navigation.navigate("AppTabs", {
                   screen: "Chats",
                   params: { screen: "ChatsHome", params: { showInvitesAt: Date.now() } },
+                });
+              }
+            );
+          }
+          if (
+            payload?.type === "exchange_invite" &&
+            typeof payload.conversation_id === "number" &&
+            payload.conversation_id !== getOpenConversationId()
+          ) {
+            // The open chat already shows the invite in its exchange banner.
+            const inviter = payload.invited_by?.username || "Someone";
+            const plan =
+              payload.first_language && payload.second_language
+                ? `${exchangeLanguageLabel(payload.first_language)} → ${exchangeLanguageLabel(payload.second_language)}`
+                : "Guided exchange";
+            const conversationId = payload.conversation_id;
+            showBanner(
+              `${inviter} invited you to a ${payload.duration_minutes || 20}-minute exchange`,
+              `${plan} · Tap to open the chat`,
+              payload.invited_by?.profile_image_url,
+              () => {
+                navigation.navigate("AppTabs", {
+                  screen: "Chats",
+                  params: {
+                    screen: "ChatsHome",
+                    params: { openConversationId: conversationId, openFromBannerAt: Date.now() },
+                  },
                 });
               }
             );

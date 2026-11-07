@@ -8,7 +8,7 @@ import {
 import { markConversationRead } from "../../services/api/conversations";
 import { confirmReadLocally, forgetReadLocally, markReadLocally } from "../../services/readState";
 import { tokenStorage } from "../../services/storage";
-import type { ChatMessage, Conversation } from "../../types";
+import type { ChatMessage, Conversation, ExchangeSession } from "../../types";
 
 // Message events are broadcast by the server after REST writes (to every socket in the
 // room, including the sender's). Their `message` omits per-user fields
@@ -24,7 +24,9 @@ type ChatPayload =
   | { type: "user_typing" | "user_stopped_typing"; senderId?: number }
   // Group chats (see system-map realtime-events).
   | { type: "group_updated"; conversation_id?: number; trigger?: string; user_ids?: number[] }
-  | { type: "group_read"; conversation_id?: number; user_id?: number; last_read_at?: string };
+  | { type: "group_read"; conversation_id?: number; user_id?: number; last_read_at?: string }
+  // Guided exchange session changed (invite, accept, decline, cancel, switch, topic, end, expiry).
+  | { type: "exchange_session"; session?: ExchangeSession };
 
 /** Group events and typing senders, for the screen (groups name who is typing). */
 export type ChatGroupEvent =
@@ -58,6 +60,8 @@ type UseChatSocketArgs = {
   setRemoteTyping: (conversationId: number, isTyping: boolean) => void;
   /** Must be stable (useStableCallback): it's an effect dependency. */
   onGroupEvent?: (event: ChatGroupEvent) => void;
+  /** `exchange_session` for this chat. Must be stable (useStableCallback): it's an effect dependency. */
+  onExchangeSession?: (session: ExchangeSession) => void;
 };
 
 /**
@@ -81,6 +85,7 @@ export function useChatSocket({
   sendTypingEvent,
   setRemoteTyping,
   onGroupEvent,
+  onExchangeSession,
 }: UseChatSocketArgs) {
   useEffect(() => {
     let mounted = true;
@@ -226,6 +231,15 @@ export function useChatSocket({
 
           if (data.type === "group_read" && typeof data.user_id === "number" && data.last_read_at) {
             onGroupEvent?.({ type: "group_read", userId: data.user_id, lastReadAt: data.last_read_at });
+            return;
+          }
+
+          if (data.type === "exchange_session") {
+            const session = data.session;
+            if (session && typeof session.id === "number" && session.conversation_id === conversationId) {
+              onExchangeSession?.(session);
+            }
+            return;
           }
         } catch {}
       };
@@ -251,6 +265,7 @@ export function useChatSocket({
     initialUnreadCountRef,
     isFocused,
     isLocalUserTypingRef,
+    onExchangeSession,
     onGroupEvent,
     scheduleConversationsRefresh,
     selectedConversationIdRef,
