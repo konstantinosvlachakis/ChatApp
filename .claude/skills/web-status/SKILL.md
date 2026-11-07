@@ -96,3 +96,8 @@ Geolocation auto-requested and sent to a third-party geocoder (make opt-in); leg
 - `/phrasebook` and `/phrasebook/review` (`pages/Phrasebook/`, lazy `PhrasebookPage`): list/search/language filter/inline edit/manual add, review session (Space/Enter reveal, 1–4 grade). Entry points: header account menu, Practice `PhrasebookCard`; the Practice nav item matches `/phrasebook*`.
 - Settings: "Corrections from partners" radio group in Language & translation (saves on change).
 - Known: `MESSAGE_ACTIONS_MENU_HEIGHT` (320) underestimates the taller menu (it scrolls).
+
+## Guided exchange sessions (`feat/exchange-sessions-web`, pending, 2026-11-07)
+- `pages/Conversations/features/useExchangeSession.js` (state, clock offset from `server_time`, deadline refetch with retries, merge rule `shouldReplaceSession`), `ExchangeSessionBanner.jsx` (pending/active/ended/closed; collapsible; switch notice once per session), `ExchangeSessionDialog.jsx` (start), helpers `utils/exchangeSessionTiming.ts`, API `api/exchangeSessions.ts`. No React Query keys; sessionStorage `lv:xs-collapsed`, `lv:xs-dismissed:<id>`, `lv:xs-switch-notice:<id>`.
+- Start from the `ChatHeader` timer button (direct chats only; disabled while a session is open). Layout shows the `exchange_invite` toast.
+- Known: the phone header now has five icons (name gets narrower).
