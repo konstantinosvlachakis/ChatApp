@@ -4,6 +4,7 @@ import SettingsPage from "./page";
 import api from "../../lib/api";
 import { ApiError } from "../../lib/apiError";
 import { clearToasts, getToasts } from "../../components/Toast/toastStore";
+import { CONSENT_STORAGE_KEY, getAnalyticsConsent, resetAnalyticsForTests } from "../../lib/analytics";
 
 const mockSetUser = jest.fn();
 const mockRefreshUserProfile = jest.fn(() => Promise.resolve());
@@ -300,5 +301,46 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledTimes(2));
     expect(apply(mockSetUser.mock.calls[1][0]).correction_preference).toBe("often");
     expect(getToasts().some((toast) => toast.message.includes("Nope"))).toBe(true);
+  });
+
+  describe("analytics cookies", () => {
+    const originalId = process.env.REACT_APP_GA_MEASUREMENT_ID;
+
+    beforeEach(() => {
+      resetAnalyticsForTests();
+      window.localStorage.removeItem(CONSENT_STORAGE_KEY);
+    });
+
+    afterEach(() => {
+      if (originalId === undefined) delete process.env.REACT_APP_GA_MEASUREMENT_ID;
+      else process.env.REACT_APP_GA_MEASUREMENT_ID = originalId;
+      window.localStorage.removeItem(CONSENT_STORAGE_KEY);
+      document.querySelectorAll('script[src^="https://www.googletagmanager.com/"]').forEach((node) => node.remove());
+    });
+
+    test("has no Cookies section without a measurement id", async () => {
+      delete process.env.REACT_APP_GA_MEASUREMENT_ID;
+      await renderPage();
+      expect(screen.queryByRole("heading", { level: 2, name: "Cookies" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    });
+
+    test("the switch reflects the stored choice and toggles consent", async () => {
+      process.env.REACT_APP_GA_MEASUREMENT_ID = "G-TEST123";
+      window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify({ choice: "denied", updatedAt: "x" }));
+      await renderPage();
+
+      expect(screen.getByRole("heading", { level: 2, name: "Cookies" })).toBeInTheDocument();
+      const toggle = screen.getByRole("switch", { name: "Analytics cookies" });
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+      expect(getAnalyticsConsent()).toBe("granted");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+      expect(getAnalyticsConsent()).toBe("denied");
+    });
   });
 });

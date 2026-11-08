@@ -8,6 +8,7 @@ import type { PartnerMatch } from "../../../components/Cards";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { avatarImage } from "../../../lib/media";
 import { languageTheyLearnFromViewer } from "../utils/conversationStarters";
+import { trackEvent } from "../../../lib/analytics";
 
 export interface ExchangeProfile {
   username: string;
@@ -63,6 +64,11 @@ interface Props {
   onSayHello: (username: string, starter?: string) => void;
 }
 
+/** Card click handler (capture): a click on any profile link counts as partner_profile_viewed. */
+export const trackProfileLinkClick = (event: React.MouseEvent<HTMLElement>) => {
+  if ((event.target as Element | null)?.closest?.('a[href^="/people/"]')) trackEvent("partner_profile_viewed", { source: "people" });
+};
+
 /**
  * "More people to meet" card: portrait on the left with Profile and Say hello stacked at the
  * bottom (level with the goal); tag, name, native language and city, practised-language chips
@@ -77,7 +83,7 @@ export default function ExchangeProfileCard({ profile, viewerLanguage, busy, sta
   const goal = profile.learningGoal.trim();
 
   return (
-    <article className="exchange-card">
+    <article className="exchange-card" onClickCapture={trackProfileLinkClick}>
       <div className="exchange-card-side">
         <Link to={profilePath} state={{ profile }} className="exchange-portrait" tabIndex={-1} aria-hidden="true">
           <img

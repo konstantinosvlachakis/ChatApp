@@ -2,6 +2,10 @@ import React from "react";
 import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import AuthShell from "./AuthShell";
 import { useUser } from "../../context/UserContext";
+import CookieChoicesButton from "../CookieChoicesButton";
+
+const cookieChoicesClassName =
+  "mt-1 block w-full text-center text-xs font-medium text-[#1b7f79] underline-offset-2 hover:text-[#14314a] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1b7f79]";
 
 const backToLoginFooter = (
   <p className="text-center text-sm text-slate-600">
@@ -36,6 +40,7 @@ const contentByPath = {
           </Link>
           .
         </p>
+        <CookieChoicesButton className={cookieChoicesClassName} />
       </>
     ),
   },
@@ -63,6 +68,7 @@ const contentByPath = {
           </Link>
           .
         </p>
+        <CookieChoicesButton className={cookieChoicesClassName} />
       </>
     ),
   },

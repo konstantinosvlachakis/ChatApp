@@ -153,3 +153,13 @@
 .st-radio-text strong { color: var(--lv-ink); font-size: 14px; font-weight: 700; }
 .st-radio-text span { color: var(--lv-ink-soft); font-size: 13px; line-height: 1.45; }
 .st-radio-group .st-status { min-height: 20px; }
+
+/* Analytics cookies switch (Cookies section). */
+.st-switch { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--lv-ink); font-size: 14px; font-weight: 700; cursor: pointer; }
+.st-switch-track { position: relative; width: 46px; height: 28px; border: 1.5px solid var(--lv-muted-ink); border-radius: var(--lv-radius-pill); background: var(--lv-cream-deep); transition: background-color .15s ease, border-color .15s ease; }
+.st-switch-thumb { position: absolute; top: 3px; left: 3px; width: 19px; height: 19px; border-radius: 50%; background: var(--lv-muted-ink); transition: transform .15s ease, background-color .15s ease; }
+.st-switch.is-on .st-switch-track { border-color: var(--lv-teal); background: var(--lv-teal); }
+.st-switch.is-on .st-switch-thumb { transform: translateX(18px); background: var(--lv-paper); }
+.st-switch-label { min-width: 2em; text-align: left; }
+.st-switch:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; border-radius: var(--lv-radius-pill); }
+@media (prefers-reduced-motion: reduce) { .st-switch-track, .st-switch-thumb { transition: none; } }

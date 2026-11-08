@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import CoachAvatar from "../components/CoachAvatar";
+import { trackEvent } from "../lib/analytics";
 
 const features = [
   {
@@ -39,6 +40,9 @@ const comparison = [
 ];
 
 const PremiumPage = () => {
+  useEffect(() => {
+    trackEvent("premium_viewed");
+  }, []);
   return (
     <div className="min-h-full bg-[var(--lv-background)] px-3 py-4 sm:px-5 md:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">

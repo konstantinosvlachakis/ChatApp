@@ -13,12 +13,20 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
+import CookieOutlinedIcon from "@mui/icons-material/CookieOutlined";
 import { DEFAULT_AVATAR_URL, handleAvatarError } from "../../constants/avatar";
 import { useUser } from "../../context/UserContext";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import { avatarImage } from "../../lib/media";
 import { toast, toastApiError } from "../../components/Toast";
 import { clearClientSessionData } from "../../utils/auth";
+import {
+  CONSENT_CHANGE_EVENT,
+  denyAnalyticsConsent,
+  getAnalyticsConsent,
+  grantAnalyticsConsent,
+  isAnalyticsEnabled,
+} from "../../lib/analytics";
 import { getNotificationPermission, requestNotificationPermission } from "../../utils/notifications";
 import {
   LANGUAGE_KEYS,
@@ -43,6 +51,8 @@ const SECTIONS = [
   { id: "st-language", label: "Language & translation", icon: TranslateRoundedIcon },
   { id: "st-notifications", label: "Notifications", icon: NotificationsNoneRoundedIcon },
   { id: "st-privacy", label: "Privacy & safety", icon: ShieldOutlinedIcon },
+  // Only when analytics is configured (REACT_APP_GA_MEASUREMENT_ID).
+  { id: "st-cookies", label: "Cookies", icon: CookieOutlinedIcon },
   { id: "st-danger", label: "Danger zone", icon: WarningAmberRoundedIcon },
 ];
 
@@ -143,6 +153,14 @@ const SettingsPage = () => {
   const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
+  const analyticsEnabled = isAnalyticsEnabled();
+  const [analyticsOn, setAnalyticsOn] = useState(() => getAnalyticsConsent() === "granted");
+  useEffect(() => {
+    const sync = () => setAnalyticsOn(getAnalyticsConsent() === "granted");
+    window.addEventListener(CONSENT_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(CONSENT_CHANGE_EVENT, sync);
+  }, []);
+  const toggleAnalytics = () => (analyticsOn ? denyAnalyticsConsent() : grantAnalyticsConsent());
 
   // Translate language: a draft only while the user has changed it.
   const savedLanguage = savedTranslateLanguage(user);
@@ -420,7 +438,7 @@ const SettingsPage = () => {
 
       <div className="st-layout">
         <nav className="pf-card st-nav" aria-label="Settings sections">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
+          {SECTIONS.filter(({ id }) => analyticsEnabled || id !== "st-cookies").map(({ id, label, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
@@ -725,6 +743,34 @@ const SettingsPage = () => {
               )}
             </div>
           </SectionCard>
+
+          {analyticsEnabled && (
+            <SectionCard id="st-cookies" title="Cookies" icon={CookieOutlinedIcon}>
+              <div className="st-row">
+                <div className="st-row-text">
+                  <h3 id="st-analytics-label">Analytics cookies</h3>
+                  <p id="st-analytics-help">
+                    Help us understand how LangVoyage is used. No ads, no message content.{" "}
+                    <Link to="/privacy-policy" className="pf-link">Privacy policy</Link>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={analyticsOn}
+                  aria-labelledby="st-analytics-label"
+                  aria-describedby="st-analytics-help"
+                  className={`st-switch${analyticsOn ? " is-on" : ""}`}
+                  onClick={toggleAnalytics}
+                >
+                  <span className="st-switch-track" aria-hidden="true">
+                    <span className="st-switch-thumb" />
+                  </span>
+                  <span className="st-switch-label">{analyticsOn ? "On" : "Off"}</span>
+                </button>
+              </div>
+            </SectionCard>
+          )}
 
           <SectionCard id="st-danger" title="Danger zone" icon={WarningAmberRoundedIcon} tone="is-danger">
             <div className="st-row">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isAbortError } from "../../../lib/api";
 import { toastApiError, toast } from "../../../components/Toast";
 import { logger } from "../../../lib/logger";
+import { trackEvent } from "../../../lib/analytics";
 import {
   fetchConversationSession,
   runExchangeSessionAction,
@@ -60,6 +61,10 @@ export default function useExchangeSession(conversationId, { enabled = true } = 
     (incoming) => {
       if (!incoming || Number(incoming.conversation_id) !== Number(conversationId)) return;
       if (!shouldReplaceSession(sessionRef.current, incoming)) return;
+      const previous = sessionRef.current;
+      if (previous?.id === incoming.id && previous.status === "active" && incoming.status === "ended") {
+        trackEvent("exchange_completed", { duration_minutes: incoming.duration_minutes, ended_early: incoming.ended_by_id != null });
+      }
       updateSeqRef.current += 1;
       sessionRef.current = incoming;
       setState({ session: incoming, offsetMs: clockOffsetMs(incoming.server_time, Date.now()) });
@@ -133,6 +138,7 @@ export default function useExchangeSession(conversationId, { enabled = true } = 
       setBusyAction(action);
       try {
         const data = await runExchangeSessionAction(current.id, action, body);
+        if (action === "accept") trackEvent("exchange_accepted");
         if (mountedRef.current) applySession(data?.session);
         return data?.session || null;
       } catch (error) {
@@ -155,6 +161,7 @@ export default function useExchangeSession(conversationId, { enabled = true } = 
     async (input) => {
       try {
         const data = await startExchangeSession(conversationId, input);
+        trackEvent("exchange_started", { duration_minutes: input?.duration_minutes });
         applySession(data?.session);
         return data?.session || null;
       } catch (error) {

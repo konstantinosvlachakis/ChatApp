@@ -1,8 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RegisterPage from "./RegisterPage";
+import { trackEvent } from "../lib/analytics";
 import api from "../lib/api";
 import { ApiError } from "../lib/apiError";
+
+jest.mock("../lib/analytics", () => ({ trackEvent: jest.fn() }));
 
 jest.mock("../lib/api", () => {
   const actual = jest.requireActual("../lib/apiError");
@@ -86,6 +89,7 @@ describe("RegisterPage onboarding", () => {
     expect(screen.getByRole("list", { name: "Sign-up progress" }).querySelector('[aria-current="step"]')).toHaveTextContent(
       "Your language"
     );
+    expect(trackEvent).toHaveBeenCalledWith("onboarding_step", { step: "native" });
   });
 
   test("leaves the native language empty when the browser language isn't offered", () => {
@@ -179,6 +183,9 @@ describe("RegisterPage onboarding", () => {
       })
     );
     expect(await screen.findByText("Verify email page")).toBeInTheDocument();
+    expect(trackEvent).toHaveBeenCalledWith("onboarding_step", { step: "practice" });
+    expect(trackEvent).toHaveBeenCalledWith("onboarding_step", { step: "account" });
+    expect(trackEvent).toHaveBeenCalledWith("sign_up", { method: "email" });
   });
 
   test("account step validates its fields before submitting", () => {
@@ -265,6 +272,7 @@ describe("RegisterPage onboarding", () => {
       });
       expect(await screen.findByText("App home")).toBeInTheDocument();
       expect(mockRefreshUserProfile).toHaveBeenCalled();
+      expect(trackEvent).toHaveBeenCalledWith("sign_up", { method: "google" });
     });
 
     test("a Google sign-in carried over from log in offers \"Continue as\" without a second Google click", async () => {
@@ -316,6 +324,7 @@ describe("RegisterPage onboarding", () => {
       await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
       await act(async () => googleCallback({ credential: "tok" }));
       expect(await screen.findByText("App home")).toBeInTheDocument();
+      expect(trackEvent).toHaveBeenCalledWith("login", { method: "google" });
     });
 
     test("a practice-language error sends the user back to step 2 with the message", async () => {
