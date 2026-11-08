@@ -73,11 +73,13 @@ const SESSION_STORAGE_KEYS_TO_CLEAR = ["user_profile_cache:v1"];
 /**
  * Clears every piece of client-side session state: legacy tokens, the cached CSRF
  * token (Django rotates it on login/logout), the cached profile and message drafts.
+ * Right after a successful login pass `keepSessionHint: true`: the server has just set
+ * the new session's `lv_signed_in` hint, and deleting it makes the app look logged out.
  */
-export const clearClientSessionData = () => {
+export const clearClientSessionData = ({ keepSessionHint = false }: { keepSessionHint?: boolean } = {}) => {
   if (typeof window === "undefined") return;
   clearLegacyTokens();
-  clearSessionHint();
+  if (!keepSessionHint) clearSessionHint();
   sessionStorage.removeItem(CSRF_STORAGE_KEY);
   try {
     SESSION_STORAGE_KEYS_TO_CLEAR.forEach((key) => localStorage.removeItem(key));

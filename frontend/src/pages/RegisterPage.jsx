@@ -291,7 +291,7 @@ const RegisterPage = () => {
       startResendCooldown(email.trim());
       try {
         const tokens = await api.post("/api/token/", { email: email.trim().toLowerCase(), password, remember_me: false });
-        clearClientSessionData();
+        clearClientSessionData({ keepSessionHint: true });
         if (shouldUseLegacyAuthFallback()) setLegacyTokens(tokens);
         await refreshUserProfile();
         navigate("/verify-email");

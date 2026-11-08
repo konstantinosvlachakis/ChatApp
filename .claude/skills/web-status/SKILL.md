@@ -114,3 +114,4 @@ Geolocation auto-requested and sent to a third-party geocoder (make opt-in); leg
 - Settings: `has_password === false` → delete dialog asks to type DELETE (no password field) and sends `{confirm: "DELETE"}` (`confirmation_required` shown inline); Password row says "Set a password" (same reset-email flow).
 - Tests: `RegisterPage.test.jsx` (14), `LoginPage.test.jsx` (5), `FinishProfilePage.test.jsx` (5), `components/Auth/RequireCompleteProfile.test.jsx` (6), `lib/googleIdentity.test.tsx` (3), Settings Google-only delete (+1). GIS is mocked through `window.google`.
 - Known: Edit profile's email change still asks for the current password; a Google-only account can't change email until it sets a password (backend decides).
+- fix/session-hint-after-login (2026-11-08): post-login cleanup (`useCompleteSignIn`, register auto-login) calls `clearClientSessionData({ keepSessionHint: true })`; deleting the fresh `lv_signed_in` hint made production logins land back on /login.
