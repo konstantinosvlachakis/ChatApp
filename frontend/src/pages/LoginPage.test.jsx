@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import LoginPage from "./LoginPage";
 import api from "../lib/api";
 import { ApiError } from "../lib/apiError";
@@ -21,6 +21,11 @@ jest.mock("../context/UserContext", () => ({
   useUser: () => ({ refreshUserProfile: mockRefreshUserProfile }),
 }));
 
+const RegisterProbe = () => {
+  const { state } = useLocation();
+  return <p>Register page for {state?.pendingGoogle?.email} with {state?.pendingGoogle?.credential}</p>;
+};
+
 const renderPage = () =>
   render(
     <MemoryRouter initialEntries={["/login"]}>
@@ -28,6 +33,7 @@ const renderPage = () =>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/profile" element={<p>App home</p>} />
         <Route path="/finish-profile" element={<p>Finish profile page</p>} />
+        <Route path="/register" element={<RegisterProbe />} />
       </Routes>
     </MemoryRouter>
   );
@@ -98,17 +104,42 @@ describe("LoginPage", () => {
 
     await act(async () => googleCallback({ credential: "google-id-token" }));
 
-    expect(api.post).toHaveBeenCalledWith("/api/auth/google/", { credential: "google-id-token", remember_me: true });
+    expect(api.post).toHaveBeenCalledWith("/api/auth/google/", {
+      credential: "google-id-token",
+      remember_me: true,
+      intent: "login",
+    });
     expect(await screen.findByText("App home")).toBeInTheDocument();
   });
 
-  test("a new Google account without languages goes to finish-profile", async () => {
+  test("an existing account that still needs its languages goes to finish-profile", async () => {
     installGoogle();
-    api.post.mockResolvedValue({ created: true, profile_complete: false, username: "user_8f2a" });
+    api.post.mockResolvedValue({ created: false, profile_complete: false, username: "user_8f2a" });
     renderPage();
     await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
     await act(async () => googleCallback({ credential: "tok" }));
     expect(await screen.findByText("Finish profile page")).toBeInTheDocument();
+  });
+
+  test("an unknown Google account is offered sign-up instead of being created", async () => {
+    installGoogle();
+    api.post.mockRejectedValue(
+      new ApiError({ status: 404, code: "account_not_found", message: "x", data: { email: "new@example.com" } })
+    );
+    renderPage();
+    await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+    await act(async () => googleCallback({ credential: "fresh-token" }));
+
+    expect(await screen.findByText("No account yet")).toBeInTheDocument();
+    expect(screen.getByText("new@example.com")).toBeInTheDocument();
+    expect(mockRefreshUserProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use another account" }));
+    expect(screen.queryByText("No account yet")).not.toBeInTheDocument();
+
+    await act(async () => googleCallback({ credential: "fresh-token" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create account" }));
+    expect(await screen.findByText("Register page for new@example.com with fresh-token")).toBeInTheDocument();
   });
 
   test("shows a disabled account error from Google sign-in", async () => {

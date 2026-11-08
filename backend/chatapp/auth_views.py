@@ -585,8 +585,9 @@ def _google_account_for(subject):
 @permission_classes([AllowAny])
 @throttle_classes([AuthRateThrottle])
 def google_auth_view(request):
-    """POST {credential, remember_me?, profile?} → sign in or sign up with a
-    Google ID token. Same tokens and cookies as password login, plus
+    """POST {credential, remember_me?, profile?, intent?} → sign in or sign up with a
+    Google ID token. ``intent: "login"`` (the log-in page) never creates an account:
+    an unknown Google account gets 404 ``account_not_found`` with its ``email``. Same tokens and cookies as password login, plus
     {created, profile_complete, username}. See system-map flows (Google)."""
     data = request.data if isinstance(request.data, dict) else {}
     credential = data.get("credential")
@@ -618,6 +619,14 @@ def google_auth_view(request):
     else:
         user = Profile.objects.filter(email__iexact=email).order_by("id").first()
         profile_fields = None
+        if user is None and data.get("intent") == "login":
+            # Their own address (from their own Google token): the client offers sign-up.
+            return error_response(
+                "There's no LangVoyage account for this Google account yet.",
+                "account_not_found",
+                404,
+                email=email,
+            )
         if user is None:
             try:
                 profile_fields = _clean_signup_profile(data.get("profile"))

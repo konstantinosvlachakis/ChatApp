@@ -27,16 +27,29 @@ export const googleSignIn = ({
   credential,
   rememberMe = true,
   profile,
+  intent,
 }: {
   credential: string;
   rememberMe?: boolean;
   profile?: ProfileLanguages;
+  /** "login": never create an account (404 `account_not_found` with `email` instead). */
+  intent?: "login";
 }) =>
   api.post<GoogleSignInResponse>("/api/auth/google/", {
     credential,
     remember_me: rememberMe,
     ...(profile ? { profile } : {}),
+    ...(intent ? { intent } : {}),
   });
+
+/** Google sign-in passed from the log-in page to sign-up (router state, memory only). */
+export type PendingGoogleSignUp = { credential: string; email: string; receivedAt: number };
+
+/** Google ID tokens live ~1 h; stop offering "Continue as …" a bit before that. */
+export const PENDING_GOOGLE_MAX_AGE_MS = 50 * 60 * 1000;
+
+export const isPendingGoogleFresh = (pending: PendingGoogleSignUp | null | undefined, now = Date.now()) =>
+  Boolean(pending?.credential && pending?.email && now - pending.receivedAt < PENDING_GOOGLE_MAX_AGE_MS);
 
 /** Finish a profile created without languages (e.g. "Continue with Google" on log in). */
 export const completeProfile = (profile: ProfileLanguages) =>

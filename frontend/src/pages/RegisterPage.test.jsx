@@ -21,9 +21,9 @@ jest.mock("../context/UserContext", () => ({
   useUser: () => ({ refreshUserProfile: mockRefreshUserProfile }),
 }));
 
-const renderPage = () =>
+const renderPage = (state) =>
   render(
-    <MemoryRouter initialEntries={["/register"]}>
+    <MemoryRouter initialEntries={[{ pathname: "/register", state }]}>
       <Routes>
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/profile" element={<p>App home</p>} />
@@ -265,6 +265,47 @@ describe("RegisterPage onboarding", () => {
       });
       expect(await screen.findByText("App home")).toBeInTheDocument();
       expect(mockRefreshUserProfile).toHaveBeenCalled();
+    });
+
+    test("a Google sign-in carried over from log in offers \"Continue as\" without a second Google click", async () => {
+      installGoogle();
+      api.post.mockResolvedValue({ created: true, profile_complete: true, username: "neo" });
+      renderPage({ pendingGoogle: { credential: "carried-token", email: "neo@example.com", receivedAt: Date.now() } });
+      expect(screen.getByRole("status")).toHaveTextContent("Signing up with neo@example.com");
+      goToAccountStep();
+
+      fireEvent.click(screen.getByRole("button", { name: "Continue as neo@example.com" }));
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith("/api/auth/google/", {
+          credential: "carried-token",
+          remember_me: true,
+          profile: {
+            nativeLanguage: "english",
+            practiceLanguages: ["spanish"],
+            practiceLanguageLevels: { spanish: "beginner" },
+          },
+        })
+      );
+      expect(await screen.findByText("App home")).toBeInTheDocument();
+    });
+
+    test("an expired carried-over Google sign-in falls back to the Google button", async () => {
+      installGoogle();
+      const old = Date.now() - 2 * 60 * 60 * 1000;
+      renderPage({ pendingGoogle: { credential: "old-token", email: "neo@example.com", receivedAt: old } });
+      goToAccountStep();
+      expect(screen.queryByRole("button", { name: /Continue as/ })).not.toBeInTheDocument();
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+    });
+
+    test("a rejected carried-over token switches to the Google button", async () => {
+      installGoogle();
+      api.post.mockRejectedValue(new ApiError({ status: 401, code: "google_token_invalid", message: "x" }));
+      renderPage({ pendingGoogle: { credential: "bad-token", email: "neo@example.com", receivedAt: Date.now() } });
+      goToAccountStep();
+      fireEvent.click(screen.getByRole("button", { name: "Continue as neo@example.com" }));
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: /Continue as/ })).not.toBeInTheDocument();
     });
 
     test("an existing Google account (created: false) just logs in", async () => {

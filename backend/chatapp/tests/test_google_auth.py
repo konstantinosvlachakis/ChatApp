@@ -100,6 +100,30 @@ class GoogleAuthTests(TestCase):
         second = self.sign_in(google_claims(sub="google-sub-2", email="m2@example.com"))
         self.assertEqual(second.json()["username"], "Maria3")
 
+    # --- log-in page (intent=login) -----------------------------------------
+
+    def test_login_intent_never_creates_an_account(self):
+        response = self.sign_in(intent="login", profile=VALID_PROFILE)
+
+        self.assertEqual(response.status_code, 404, response.content)
+        body = response.json()
+        self.assertEqual(body["code"], "account_not_found")
+        self.assertEqual(body["email"], "maria@example.com")
+        self.assertFalse(Profile.objects.filter(email__iexact="maria@example.com").exists())
+        self.assertFalse(SocialAccount.objects.exists())
+        self.assertNotIn(settings.AUTH_COOKIE_ACCESS, response.cookies)
+
+    def test_login_intent_signs_in_linked_and_email_matched_accounts(self):
+        self.sign_in(profile=VALID_PROFILE)  # creates + links google-sub-1
+        linked = self.sign_in(intent="login")
+        self.assertEqual(linked.status_code, 200, linked.content)
+        self.assertFalse(linked.json()["created"])
+
+        make_user(username="ben", email="ben@example.com")
+        matched = self.sign_in(google_claims(sub="google-sub-ben", email="ben@example.com"), intent="login")
+        self.assertEqual(matched.status_code, 200, matched.content)
+        self.assertEqual(matched.json()["username"], "ben")
+
     def test_generated_username_falls_back_to_email_local_part(self):
         response = self.sign_in(google_claims(given_name="", email="jo.doe+x@example.com"))
         self.assertEqual(response.json()["username"], "jo.doe+x")
