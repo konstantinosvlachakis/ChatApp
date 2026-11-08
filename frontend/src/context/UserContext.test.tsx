@@ -32,13 +32,35 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
+const setHint = (present: boolean) => {
+  document.cookie = present ? "lv_signed_in=1; path=/" : "lv_signed_in=; Max-Age=0; path=/";
+};
+
 beforeEach(() => {
   localStorage.clear();
   mockFetch.mockReset();
   loadingStates.length = 0;
+  // jsdom starts on "/" (a public page): most tests model a signed-in browser.
+  setHint(true);
 });
 
 describe("UserProvider", () => {
+  it("doesn't ask the server on a public page when there is no session hint", async () => {
+    setHint(false);
+    renderProvider();
+    await waitFor(() => expect(ctx.loading).toBe(false));
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.getByTestId("name").textContent).toBe("none");
+  });
+
+  it("still checks a public page when a cached user exists without a hint", async () => {
+    setHint(false);
+    localStorage.setItem("user_profile_cache:v1", JSON.stringify({ user: { username: "ana" }, cachedAt: Date.now() }));
+    mockFetch.mockResolvedValueOnce({ username: "ana" });
+    renderProvider();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  });
+
   it("keeps the user and stays out of loading during a background refresh", async () => {
     mockFetch.mockResolvedValueOnce({ username: "ana" });
     renderProvider();

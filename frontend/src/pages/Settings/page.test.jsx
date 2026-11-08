@@ -207,6 +207,31 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(onLogout).toHaveBeenCalledWith({ accountDeleted: true }));
   });
 
+  test("a Google-only account (no password) types DELETE and sends a confirmation instead", async () => {
+    mockUser = { ...mockUser, has_password: false };
+    const { onLogout } = await renderPage();
+
+    // Password row offers to set one rather than change it.
+    expect(screen.getByRole("button", { name: /set a password/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete account/i }));
+    const dialog = screen.getByRole("dialog", { name: "Delete your account?" });
+    expect(within(dialog).queryByLabelText("Your current password")).not.toBeInTheDocument();
+    const confirm = within(dialog).getByRole("button", { name: "Delete account" });
+    const input = within(dialog).getByLabelText(/Type DELETE to confirm/i);
+
+    fireEvent.change(input, { target: { value: "kostas" } });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(input, { target: { value: "DELETE" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith("/api/profile/delete/", { body: { confirm: "DELETE" } })
+    );
+    await waitFor(() => expect(onLogout).toHaveBeenCalledWith({ accountDeleted: true }));
+  });
+
   test("delete account shows a wrong password inside the dialog and stays signed in", async () => {
     api.delete.mockRejectedValue(
       new ApiError({ status: 403, code: "invalid_password", message: "Your current password is incorrect." })
