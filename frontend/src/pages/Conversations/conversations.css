@@ -610,10 +610,10 @@
   .cv-chat-back { display: inline-flex; }
   .cv-chat-name { font-size: 16px; }
   .cv-chat-actions { gap: 2px; }
-  .cv-chat-actions > .cv-icon-button { width: 40px; height: 40px; }
-  .cv-chat-actions > .cv-icon-button svg { width: 20px; height: 20px; }
+  .cv-chat-actions > .cv-icon-button, .cv-chat-actions > .md-menu > .cv-icon-button { width: 40px; height: 40px; }
+  .cv-chat-actions > .cv-icon-button svg, .cv-chat-actions > .md-menu > .cv-icon-button svg { width: 20px; height: 20px; }
   .cv-chat-identity { gap: 8px; }
-  .cv-chat-header.is-searching .cv-chat-identity, .cv-chat-header.is-searching .cv-call-action { display: none; }
+  .cv-chat-header.is-searching .cv-chat-identity, .cv-chat-header.is-searching .cv-call-action, .cv-chat-header.is-searching .md-menu { display: none; }
   .cv-chat-search { max-width: none; }
   .cv-messages { padding: 8px 10px 16px; }
   .cv-msg { gap: 6px; }

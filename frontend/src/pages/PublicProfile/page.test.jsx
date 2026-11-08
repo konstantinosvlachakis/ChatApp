@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "react-query";
 import PublicProfilePage from "./page";
 import ProfilePage from "../Profile/page";
 import api from "../../lib/api";
@@ -38,12 +39,14 @@ jest.mock("../../context/PresenceContext", () => ({ usePresence: () => ({ online
 
 const renderAt = (path) =>
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/people/:username" element={<PublicProfilePage />} />
-      </Routes>
-    </MemoryRouter>
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/people/:username" element={<PublicProfilePage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 
 beforeEach(() => jest.clearAllMocks());
@@ -90,6 +93,11 @@ describe("public profile", () => {
     expect(screen.getByRole("button", { name: /Message/ })).toBeInTheDocument();
     expect(screen.getByText("Your exchange")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Level 1 of 4" })).toBeInTheDocument();
+    const more = screen.getByRole("button", { name: "More options for maria" });
+    expect(more).toHaveAttribute("aria-haspopup", "menu");
+    fireEvent.click(more);
+    expect(screen.getByRole("menuitem", { name: "Report maria" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Block maria" })).toBeInTheDocument();
   });
 
   test("viewing your own public profile offers Edit instead of Message", async () => {
@@ -98,6 +106,7 @@ describe("public profile", () => {
     expect(await screen.findByText("This is how other people see your profile.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Message/ })).toBeNull();
     expect(screen.getByRole("link", { name: /Edit profile/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More options/ })).toBeNull();
   });
 });
 
@@ -133,12 +142,14 @@ describe("own profile", () => {
       });
     });
     render(
-      <MemoryRouter initialEntries={["/people/anna"]}>
-        <Link to="/people/bruno">Go to Bruno</Link>
-        <Routes>
-          <Route path="/people/:username" element={<PublicProfilePage />} />
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={["/people/anna"]}>
+          <Link to="/people/bruno">Go to Bruno</Link>
+          <Routes>
+            <Route path="/people/:username" element={<PublicProfilePage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
     expect(await screen.findByRole("heading", { name: "anna, 31" })).toBeInTheDocument();
 

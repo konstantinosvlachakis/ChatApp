@@ -7,9 +7,21 @@ const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
 const OG_IMAGE_ALT = "LangVoyage logo — language exchange and daily speaking practice";
 const DEFAULT_DESCRIPTION =
-  "LangVoyage helps language learners build confidence through guided practice, thoughtful conversations, and a calmer daily rhythm.";
+  "LangVoyage is a language exchange app: meet native speakers who want to learn your language, chat, run guided exchanges and keep their corrections.";
+
+// Public landing copy (also rendered on the pages, so FAQ JSON-LD matches the visible text).
+// require(): this file stays CommonJS for scripts/prerender.js and the sitemap generator.
+const { getExchangePair } = require("../pages/Exchange/pairs");
+const { EXCHANGE_PATH_PREFIX } = require("../pages/Exchange/pairSlugs");
+const { HOME_FAQ } = require("../pages/Landing/landingContent");
 
 const titleWithSite = (title) => (title ? `${title} | ${SITE_NAME}` : SITE_NAME);
+
+/** "/exchange/x/" -> "/exchange/x" (the backend serves both; canonicals use no slash). */
+const normalizePathname = (pathname) => {
+  const path = String(pathname || "/").split(/[?#]/)[0] || "/";
+  return path.length > 1 ? path.replace(/\/+$/, "") || "/" : path;
+};
 
 const baseStructuredData = {
   "@context": "https://schema.org",
@@ -19,6 +31,7 @@ const baseStructuredData = {
       "@id": `${SITE_URL}/#organization`,
       name: SITE_NAME,
       url: SITE_URL,
+      logo: `${SITE_URL}/logo512.png`,
       email: "support@langvoyage.app",
     },
     {
@@ -39,40 +52,139 @@ const baseStructuredData = {
       operatingSystem: "Web",
       url: SITE_URL,
       description: DEFAULT_DESCRIPTION,
+      // Joining, matching, chat and guided exchanges are free (Premium is not on sale).
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
     },
   ],
 };
 
+const HOME_TITLE = "Language Exchange App: Practise with Native Speakers";
+const HOME_DESCRIPTION =
+  "Find language exchange partners who speak the language you're learning and want to learn yours. Free chat, voice notes, guided 10–30 minute exchanges and corrections.";
+
+const faqPageNode = (url, faq) => ({
+  "@type": "FAQPage",
+  "@id": `${url}#faq`,
+  mainEntity: faq.map(({ question, answer }) => ({
+    "@type": "Question",
+    name: question,
+    acceptedAnswer: { "@type": "Answer", text: answer },
+  })),
+});
+
+const webPageNode = (url, title, description) => ({
+  "@type": "WebPage",
+  "@id": `${url}#webpage`,
+  url,
+  name: titleWithSite(title),
+  description,
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  about: { "@id": `${SITE_URL}/#app` },
+});
+
+const breadcrumbNode = (url, crumbs) => ({
+  "@type": "BreadcrumbList",
+  "@id": `${url}#breadcrumb`,
+  itemListElement: crumbs.map(({ name, path }, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    name,
+    item: `${SITE_URL}${path}`,
+  })),
+});
+
+const [organizationNode, websiteNode, appNode] = baseStructuredData["@graph"];
+
+const HOW_IT_WORKS_TITLE = "How Language Exchange Works on LangVoyage";
+const HOW_IT_WORKS_DESCRIPTION =
+  "How LangVoyage language exchange works: reciprocal partner matching, chat and calls, guided exchanges that switch language halfway, corrections, a phrasebook and Lumi.";
+
+/** WebPage + breadcrumb (+ FAQPage) graph for a public content page. */
+const contentPageGraph = ({ path, title, description, crumbs, faq }) => {
+  const url = `${SITE_URL}${path}`;
+  const graph = [
+    organizationNode,
+    websiteNode,
+    appNode,
+    { ...webPageNode(url, title, description), breadcrumb: { "@id": `${url}#breadcrumb` } },
+    breadcrumbNode(url, crumbs),
+  ];
+  if (faq) graph.push(faqPageNode(url, faq));
+  return { "@context": "https://schema.org", "@graph": graph };
+};
+
+const exchangeSeoModel = (pathname) => {
+  const pair = getExchangePair(pathname.slice(EXCHANGE_PATH_PREFIX.length));
+  if (!pair) {
+    // Not prerendered: served by app-shell.html; the page shows a "not found" state.
+    return {
+      title: "Exchange Not Found",
+      description: "This language exchange page doesn't exist. See the exchanges LangVoyage has guides for.",
+      path: pathname,
+      shouldIndex: false,
+    };
+  }
+  return {
+    title: pair.seoTitle,
+    description: pair.seoDescription,
+    path: pair.path,
+    shouldIndex: true,
+    structuredData: contentPageGraph({
+      path: pair.path,
+      title: pair.seoTitle,
+      description: pair.seoDescription,
+      crumbs: [
+        { name: "Home", path: "/" },
+        { name: `${pair.label} exchange`, path: pair.path },
+      ],
+      faq: pair.faq,
+    }),
+  };
+};
+
 const getDefaultStructuredData = () => baseStructuredData;
 
-const buildSeoModel = (pathname, params = {}) => {
+const buildSeoModel = (rawPathname, params = {}) => {
+  const pathname = normalizePathname(rawPathname);
   if (pathname === "/") {
     return {
-      title: "Language Exchange and Daily Speaking Practice",
-      description:
-        "Build speaking confidence with guided conversations, daily language practice, and a calmer social experience for learners.",
+      title: HOME_TITLE,
+      description: HOME_DESCRIPTION,
       path: "/",
       keywords:
-        "language exchange app, speaking practice, language learning community, conversation practice, LangVoyage",
+        "language exchange app, language exchange partner, speaking practice, conversation practice, LangVoyage",
       shouldIndex: true,
       structuredData: {
         ...baseStructuredData,
         "@graph": [
           ...baseStructuredData["@graph"],
-          {
-            "@type": "WebPage",
-            "@id": `${SITE_URL}/#webpage`,
-            url: SITE_URL,
-            name: titleWithSite("Language Exchange and Daily Speaking Practice"),
-            description:
-              "Build speaking confidence with guided conversations, daily language practice, and a calmer social experience for learners.",
-            isPartOf: {
-              "@id": `${SITE_URL}/#website`,
-            },
-          },
+          webPageNode(`${SITE_URL}/`, HOME_TITLE, HOME_DESCRIPTION),
+          faqPageNode(`${SITE_URL}/`, HOME_FAQ),
         ],
       },
     };
+  }
+
+  if (pathname === "/how-it-works") {
+    return {
+      title: HOW_IT_WORKS_TITLE,
+      description: HOW_IT_WORKS_DESCRIPTION,
+      path: "/how-it-works",
+      shouldIndex: true,
+      structuredData: contentPageGraph({
+        path: "/how-it-works",
+        title: HOW_IT_WORKS_TITLE,
+        description: HOW_IT_WORKS_DESCRIPTION,
+        crumbs: [
+          { name: "Home", path: "/" },
+          { name: "How it works", path: "/how-it-works" },
+        ],
+      }),
+    };
+  }
+
+  if (pathname.startsWith(EXCHANGE_PATH_PREFIX)) {
+    return exchangeSeoModel(pathname);
   }
 
   if (pathname === "/login") {
@@ -154,6 +266,18 @@ const escapeHtml = (value) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+/**
+ * JSON for an inline <script type="application/ld+json">: "<", ">" and "&" become \u
+ * escapes so the content can never close the element or start a comment; U+2028/2029 too.
+ */
+const serializeJsonLd = (data) =>
+  JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+
 const buildHeadTags = (pathname, params = {}) => {
   const { title, description, path, keywords, shouldIndex, structuredData } = buildSeoModel(
     pathname,
@@ -184,10 +308,9 @@ const buildHeadTags = (pathname, params = {}) => {
     `<meta name="twitter:description" content="${escapeHtml(description)}" />`,
     `<meta name="twitter:image" content="${escapeHtml(DEFAULT_OG_IMAGE)}" />`,
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`,
-    // Escape "<" so JSON content can never close the <script> element early.
-    `<script type="application/ld+json" data-seo="structured-data">${JSON.stringify(
+    `<script type="application/ld+json" data-seo="structured-data">${serializeJsonLd(
       resolvedStructuredData
-    ).replace(/</g, "\\u003c")}</script>`,
+    )}</script>`,
   ];
 
   if (keywords) {
@@ -211,4 +334,6 @@ module.exports = {
   buildSeoModel,
   buildHeadTags,
   getDefaultStructuredData,
+  serializeJsonLd,
+  normalizePathname,
 };

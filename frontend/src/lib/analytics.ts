@@ -11,6 +11,7 @@
  *   events/params are allowlisted, so no message text, usernames, emails or ids reach GA.
  * No GTM container snippet in public/index.html: this module is the whole integration.
  */
+import { isExchangePairSlug } from "../pages/Exchange/pairSlugs";
 
 export const CONSENT_STORAGE_KEY = "lv:analytics-consent";
 /** window event: open the cookie banner again (footer "Cookie choices"). */
@@ -198,6 +199,11 @@ const ROUTE_TITLES: Record<string, string> = {
   "/finish-profile": "Finish profile",
   "/privacy-policy": "Privacy policy",
   "/terms-and-conditions": "Terms and conditions",
+  "/how-it-works": "How it works",
+  "/exchange/english-spanish": "Exchange english-spanish",
+  "/exchange/greek-spanish": "Exchange greek-spanish",
+  "/exchange/italian-english": "Exchange italian-english",
+  "/exchange/:pair": "Exchange not found",
   "/profile": "Profile",
   "/profile/edit": "Edit profile",
   "/profile/public/:username": "Public profile",
@@ -244,6 +250,9 @@ export const sanitizePath = (pathname: string): string => {
       placeholders = DYNAMIC_PREFIXES[segment];
       out.push(segment);
       prefixLength = out.length;
+    } else if (index === 1 && segments[0] === "exchange") {
+      // Public pair slugs are kept; anything else typed after /exchange/ is not.
+      out.push(isExchangePairSlug(segment) ? segment : ":pair");
     } else if (index === 1 && segments[0] === "profile" && segment === "public") {
       placeholders = [":username"];
       out.push(segment);
@@ -320,6 +329,8 @@ const EVENT_PARAMS: Record<string, readonly string[]> = {
   exchange_accepted: [],
   exchange_completed: ["duration_minutes", "ended_early"],
   premium_viewed: [],
+  // Sign-up CTAs on public pages: page = home|how_it_works|pair, pair = the pair slug.
+  landing_cta_clicked: ["page", "pair"],
 };
 
 export type AnalyticsEventName = keyof typeof EVENT_PARAMS;

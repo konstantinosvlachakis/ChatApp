@@ -3,6 +3,8 @@ import type { ComponentType, LazyExoticComponent } from "react";
 
 type PreloadableRoute = LazyExoticComponent<ComponentType<any>> & { preload: () => Promise<unknown> };
 
+export const HowItWorksPage: PreloadableRoute;
+export const ExchangePairPage: PreloadableRoute;
 export const PrivacyPolicyPage: PreloadableRoute;
 export const TermsAndConditionsPage: PreloadableRoute;
 export const ForgotPasswordPage: PreloadableRoute;

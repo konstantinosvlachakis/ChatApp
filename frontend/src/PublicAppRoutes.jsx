@@ -7,11 +7,15 @@ import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsAndConditionsPage from "./pages/TermsAndConditionsPage";
+import HowItWorksPage from "./pages/HowItWorksPage";
+import ExchangePairPage from "./pages/Exchange/ExchangePairPage";
 
 // Rendered at build time by scripts/prerender.js for routes/prerenderedRoutes.js.
 const PublicAppRoutes = () => (
   <Routes>
     <Route path="/" element={<AuthLandingPage />} />
+    <Route path="/how-it-works" element={<HowItWorksPage />} />
+    <Route path="/exchange/:pair" element={<ExchangePairPage />} />
     <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
     <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
     <Route element={<AuthLayout />}>

@@ -188,6 +188,11 @@ describe("analytics", () => {
     ["/phrasebook/review", "/phrasebook/review", "Phrasebook review"],
     ["/premium/compare", "/premium/compare", "Compare plans"],
     ["/something/123/me@example.com", "/something/:id/:token", "Other"],
+    ["/how-it-works", "/how-it-works", "How it works"],
+    ["/exchange/english-spanish", "/exchange/english-spanish", "Exchange english-spanish"],
+    ["/exchange/italian-english/?ref=x", "/exchange/italian-english", "Exchange italian-english"],
+    ["/exchange/me@example.com", "/exchange/:pair", "Exchange not found"],
+    ["/exchange/klingon-english", "/exchange/:pair", "Exchange not found"],
   ])("sanitizes %s", (input, path, title) => {
     expect(sanitizePath(input)).toBe(path);
     expect(routeTitle(path)).toBe(title);
@@ -210,6 +215,16 @@ describe("analytics", () => {
       ["event", "exchange_completed", { duration_minutes: 20, ended_early: true }],
     ]);
     expect(eventCalls("exchange_started")).toEqual([["event", "exchange_started", {}]]);
+  });
+
+  test("landing_cta_clicked keeps only page and pair", () => {
+    grantAnalyticsConsent();
+    trackEvent("landing_cta_clicked", { page: "pair", pair: "greek-spanish", href: "/register?speak=greek" });
+    trackEvent("landing_cta_clicked", { page: "home" });
+    expect(eventCalls("landing_cta_clicked")).toEqual([
+      ["event", "landing_cta_clicked", { page: "pair", pair: "greek-spanish" }],
+      ["event", "landing_cta_clicked", { page: "home" }],
+    ]);
   });
 
   test("message_sent is sent once per conversation and never carries the id", () => {

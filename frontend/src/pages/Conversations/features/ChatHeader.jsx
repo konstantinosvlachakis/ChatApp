@@ -12,6 +12,7 @@ import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
 import TimerRoundedIcon from "@mui/icons-material/TimerRounded";
 import ChatAvatar from "./ChatAvatar";
 import GroupAvatar from "./GroupAvatar";
+import UserSafetyMenu from "../../../components/Moderation/UserSafetyMenu";
 import {
   conversationTitle,
   formatListTime,
@@ -235,6 +236,14 @@ const ChatHeader = ({
         >
           <VideocamRoundedIcon />
         </button>
+        {/* Block / Report live in the overflow menu (direct chats with a real person only). */}
+        {otherUser.username && !otherUser.is_virtual_online && (
+          <UserSafetyMenu
+            username={otherUser.username}
+            triggerClassName="cv-icon-button"
+            afterBlockPath="/conversations"
+          />
+        )}
           </>
         )}
       </div>

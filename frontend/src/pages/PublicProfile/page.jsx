@@ -14,6 +14,7 @@ import { usePresence } from "../../context/PresenceContext";
 import { AboutCard, LanguagesCard, PhotosCard, ProfileHero } from "../Profile/features/ProfileParts";
 import { describeLanguage, exchangeMatch, resolveMediaUrl, validRingColor } from "../Profile/features/profileUtils";
 import { shareProfileLink } from "../Profile/features/shareProfile";
+import UserSafetyMenu from "../../components/Moderation/UserSafetyMenu";
 
 const ExchangeStrip = ({ me, profile, match }) => {
   if (!match.teachesMe && !match.learnsMine) return null;
@@ -209,6 +210,9 @@ const PublicProfileView = ({ username }) => {
           <IosShareRoundedIcon aria-hidden="true" />
           Share
         </button>
+        {!isOwnProfile && profile.username && (
+          <UserSafetyMenu username={profile.username} triggerClassName="pf-btn" afterBlockPath="/community" />
+        )}
       </ProfileHero>
       {followError && <p className="pf-state" role="alert">{followError}</p>}
 

@@ -88,6 +88,8 @@ corrections / phrasebook UI (with the roadmap features below).
 | Topic prompts (level-appropriate, Gemini with fallback list) + per-conversation language balance indicator | Inside guided exchange sessions: API in `feat/exchange-sessions-api` (pending); web + mobile stacked |
 Update this table as features land.
 
+Marketing / SEO (`feat/seo-landing-pages`, pending, 2026-11-08): Google had indexed nothing (Search Console now set up). Public indexable pages: `/`, `/how-it-works`, `/exchange/{english-spanish,greek-spanish,italian-english}`, privacy, terms — prerendered with per-page title/description/canonical/JSON-LD; `build/sitemap.xml` generated at build time. Next: watch Search Console coverage, add pair pages only with genuinely distinct copy, give web users block/report in the UI (copy says members can block/report; today web only lists/undoes blocks in Settings, the actions are in mobile).
+
 ## Conventions
 - Commits: author as `konstantinosvlachakis` (per-command `git -c user.name/user.email`), never a Claude co-author line. Short `type(scope): summary` + bullets. Ask before committing/pushing.
 - Never open or print `.env` files or secret values; refer to env vars by name only.

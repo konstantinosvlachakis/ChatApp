@@ -12,11 +12,19 @@ export const LANGUAGE_ERRORS = {
   practiceIsNative: "Choose a language other than your native one.",
 };
 
-/** State for both language steps; kept by the page so going back never loses choices. */
-export function useLanguageChoices(initialNative = "") {
+/**
+ * State for both language steps; kept by the page so going back never loses choices.
+ * `initialPractice` (e.g. from /register?learn=) is used only when it differs from the
+ * native language; callers validate both against LANGUAGE_KEYS.
+ */
+export function useLanguageChoices(initialNative = "", initialPractice = "") {
   const [nativeLanguage, setNativeLanguageState] = useState(initialNative);
-  const [practiceLanguages, setPracticeLanguages] = useState([]);
-  const [practiceLanguageLevels, setPracticeLanguageLevels] = useState({});
+  const [practiceLanguages, setPracticeLanguages] = useState(() =>
+    initialPractice && initialPractice !== initialNative ? [initialPractice] : []
+  );
+  const [practiceLanguageLevels, setPracticeLanguageLevels] = useState(() =>
+    initialPractice && initialPractice !== initialNative ? { [initialPractice]: "beginner" } : {}
+  );
   const [initialPracticeLevel, setInitialPracticeLevel] = useState("beginner");
   const [errors, setErrors] = useState({ native: "", practice: "" });
 

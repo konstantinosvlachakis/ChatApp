@@ -6,6 +6,8 @@ import {
   ComparePlansPage,
   ConversationsPage,
   EditProfilePage,
+  ExchangePairPage,
+  HowItWorksPage,
   PhrasebookPage,
   ForgotPasswordPage,
   PremiumPage,
@@ -29,7 +31,16 @@ const EAGER_ROUTES = ["/", "/login", "/register"];
 describe("route preload map", () => {
   it("covers every prerendered public route that is lazy in AppRoutes", () => {
     expect(PRERENDERED_ROUTES).toEqual(
-      expect.arrayContaining([...EAGER_ROUTES, "/forgot-password", "/privacy-policy", "/terms-and-conditions"])
+      expect.arrayContaining([
+        ...EAGER_ROUTES,
+        "/how-it-works",
+        "/exchange/english-spanish",
+        "/exchange/greek-spanish",
+        "/exchange/italian-english",
+        "/forgot-password",
+        "/privacy-policy",
+        "/terms-and-conditions",
+      ])
     );
     PRERENDERED_ROUTES.forEach((path) => {
       if (EAGER_ROUTES.includes(path)) {
@@ -42,6 +53,9 @@ describe("route preload map", () => {
 
   it("maps public and app paths to their lazy page", () => {
     expect(findRouteComponent("/privacy-policy")).toBe(PrivacyPolicyPage);
+    expect(findRouteComponent("/how-it-works")).toBe(HowItWorksPage);
+    expect(findRouteComponent("/exchange/english-spanish")).toBe(ExchangePairPage);
+    expect(findRouteComponent("/exchange/unknown-pair/")).toBe(ExchangePairPage);
     expect(findRouteComponent("/terms-and-conditions/")).toBe(TermsAndConditionsPage);
     expect(findRouteComponent("/forgot-password")).toBe(ForgotPasswordPage);
     expect(findRouteComponent("/reset-password/MQ/abc-123")).toBe(ResetPasswordPage);

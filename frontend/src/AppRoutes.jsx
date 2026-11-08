@@ -12,8 +12,10 @@ import {
   CommunityPage,
   ConversationsPage,
   EditProfilePage,
+  ExchangePairPage,
   FinishProfilePage,
   ForgotPasswordPage,
+  HowItWorksPage,
   PhrasebookPage,
   PracticePage,
   PremiumPage,
@@ -32,6 +34,23 @@ import {
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<AuthLandingPage />} />
+    <Route
+      path="/how-it-works"
+      element={
+        <LazyRoute fallback={null}>
+          <HowItWorksPage />
+        </LazyRoute>
+      }
+    />
+    {/* Language-pair guides; an unknown pair renders a "not found" state (noindex). */}
+    <Route
+      path="/exchange/:pair"
+      element={
+        <LazyRoute fallback={null}>
+          <ExchangePairPage />
+        </LazyRoute>
+      }
+    />
     <Route path="/verify-email" element={<LazyRoute fallback={null}><VerifyEmailPage /></LazyRoute>} />
     {/* Signed-in accounts without languages (Google sign-in); outside Layout so its guard can't loop. */}
     <Route path="/finish-profile" element={<LazyRoute fallback={null}><FinishProfilePage /></LazyRoute>} />
