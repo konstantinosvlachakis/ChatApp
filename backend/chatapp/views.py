@@ -123,6 +123,11 @@ from .tokens import (
     revoke_user_tokens,
 )
 from .email_verification import EMAIL_UNVERIFIED_CODE, RequireVerifiedEmail, send_verification_email
+from .social_auth import (
+    PROFILE_INCOMPLETE_CODE,
+    PROFILE_INCOMPLETE_MESSAGE,
+    RequireCompleteProfile,
+)
 from .practice_library import PRACTICE_LIBRARY
 from .practice_progress import (
     challenge_bucket,
@@ -1210,6 +1215,99 @@ REGISTRATION_FAILED_MESSAGE = (
 )
 
 
+
+class ProfileFieldError(Exception):
+    """A profile field failed validation; ``payload()`` is the 400 envelope."""
+
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+    def payload(self):
+        return {"error": self.message, "code": self.code}
+
+
+INVALID_USERNAME_MESSAGE = (
+    "Username must be at most 30 characters and contain only letters, numbers, and . @ + - _"
+)
+
+
+def clean_profile_languages(
+    native_language, requested_languages, requested_levels, single_language_level=None
+):
+    """Validate the language part of a new profile (register, Google sign-up,
+    complete-profile). Returns ``(native_language, practice_languages, levels)``
+    or raises ``ProfileFieldError``.
+
+    ``requested_levels=None`` is the legacy singular payload: the one practice
+    language gets ``single_language_level`` (default beginner).
+    """
+    native_language = str(native_language or "").strip()
+    if not native_language or len(native_language) > PROFILE_LANGUAGE_MAX_LENGTH:
+        raise ProfileFieldError("Invalid native language", "invalid_native_language")
+    if (
+        not isinstance(requested_languages, list)
+        or len(requested_languages) > PROFILE_MAX_PRACTICE_LANGUAGES
+    ):
+        raise ProfileFieldError(
+            "practiceLanguages must be a list of up to 20 languages", "invalid_practice_language"
+        )
+    if not requested_languages or requested_languages == [""]:
+        raise ProfileFieldError(
+            "Choose at least one language you want to learn.", "practice_language_required"
+        )
+    practice_languages = []
+    for language in requested_languages:
+        if not isinstance(language, str) or len(language.strip()) > PROFILE_LANGUAGE_MAX_LENGTH:
+            raise ProfileFieldError("Invalid practice language", "invalid_practice_language")
+        normalized_language = language.strip().lower()
+        if not normalized_language:
+            raise ProfileFieldError(
+                "Choose at least one language you want to learn.", "practice_language_required"
+            )
+        if normalized_language == native_language.lower():
+            raise ProfileFieldError(
+                "Choose a language other than your native one.", "practice_language_is_native"
+            )
+        if normalized_language not in practice_languages:
+            practice_languages.append(normalized_language)
+
+    if requested_levels is None:
+        requested_levels = {practice_languages[0]: single_language_level or "beginner"}
+    if not isinstance(requested_levels, dict) or len(requested_levels) > PROFILE_MAX_PRACTICE_LANGUAGES:
+        raise ProfileFieldError(
+            "practiceLanguageLevels must be an object of language levels", "invalid_practice_level"
+        )
+    practice_language_levels = dict.fromkeys(practice_languages, "beginner")
+    for language, level in requested_levels.items():
+        normalized_language = str(language).strip().lower()
+        # Match profile edits: ignore levels for languages that aren't selected.
+        if normalized_language not in practice_language_levels:
+            continue
+        if not isinstance(level, str) or level.strip().lower() not in PRACTICE_LEVELS:
+            raise ProfileFieldError(
+                "Practice language levels must be beginner, intermediate, advanced, or fluent",
+                "invalid_practice_level",
+            )
+        practice_language_levels[normalized_language] = level.strip().lower()
+    return native_language, practice_languages, practice_language_levels
+
+
+def clean_new_username(username, exclude_user_id=None):
+    """Validate a chosen username (pattern + case-insensitive uniqueness).
+    Returns the stripped username or raises ``ProfileFieldError``."""
+    username = str(username or "").strip()
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ProfileFieldError(INVALID_USERNAME_MESSAGE, "invalid_username")
+    taken = Profile.objects.filter(username__iexact=username)
+    if exclude_user_id is not None:
+        taken = taken.exclude(id=exclude_user_id)
+    if taken.exists():
+        raise ProfileFieldError("Username already exists", "username_taken")
+    return username
+
+
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -1249,69 +1347,19 @@ def register_view(request):
                     },
                     status=400,
                 )
-            if len(native_language) > PROFILE_LANGUAGE_MAX_LENGTH:
-                return JsonResponse({"error": "Invalid native language"}, status=400)
-            if (
-                not isinstance(requested_languages, list)
-                or len(requested_languages) > PROFILE_MAX_PRACTICE_LANGUAGES
-            ):
-                return JsonResponse(
-                    {"error": "practiceLanguages must be a list of up to 20 languages", "code": "invalid_practice_language"},
-                    status=400,
-                )
-            if not requested_languages or requested_languages == [""]:
-                return JsonResponse(
-                    {
-                        "error": "Choose at least one language you want to learn.",
-                        "code": "practice_language_required",
-                    },
-                    status=400,
-                )
-            practice_languages = []
-            for language in requested_languages:
-                if not isinstance(language, str) or len(language.strip()) > PROFILE_LANGUAGE_MAX_LENGTH:
-                    return JsonResponse({"error": "Invalid practice language", "code": "invalid_practice_language"}, status=400)
-                normalized_language = language.strip().lower()
-                if not normalized_language:
-                    return JsonResponse(
-                        {"error": "Choose at least one language you want to learn.", "code": "practice_language_required"},
-                        status=400,
+            try:
+                native_language, practice_languages, practice_language_levels = (
+                    clean_profile_languages(
+                        native_language,
+                        requested_languages,
+                        requested_levels,
+                        single_language_level=None
+                        if multiple_practice_languages
+                        else data.get("practiceLevel"),
                     )
-                if normalized_language == native_language.lower():
-                    return JsonResponse(
-                        {
-                            "error": "Choose a language other than your native one.",
-                            "code": "practice_language_is_native",
-                        },
-                        status=400,
-                    )
-                if normalized_language not in practice_languages:
-                    practice_languages.append(normalized_language)
-
-            if not multiple_practice_languages:
-                requested_levels = {
-                    practice_languages[0]: data.get("practiceLevel") or "beginner"
-                }
-            if not isinstance(requested_levels, dict) or len(requested_levels) > PROFILE_MAX_PRACTICE_LANGUAGES:
-                return JsonResponse(
-                    {"error": "practiceLanguageLevels must be an object of language levels", "code": "invalid_practice_level"},
-                    status=400,
                 )
-            practice_language_levels = dict.fromkeys(practice_languages, "beginner")
-            for language, level in requested_levels.items():
-                normalized_language = language.strip().lower()
-                # Match profile edits: ignore levels for languages that aren't selected.
-                if normalized_language not in practice_language_levels:
-                    continue
-                if not isinstance(level, str) or level.strip().lower() not in PRACTICE_LEVELS:
-                    return JsonResponse(
-                        {
-                            "error": "Practice language levels must be beginner, intermediate, advanced, or fluent",
-                            "code": "invalid_practice_level",
-                        },
-                        status=400,
-                    )
-                practice_language_levels[normalized_language] = level.strip().lower()
+            except ProfileFieldError as error:
+                return JsonResponse(error.payload(), status=400)
             try:
                 validate_email(email)
             except ValidationError:
@@ -1413,6 +1461,10 @@ def profile_view(request):
         "date_of_birth": user.date_of_birth,  # Include the date of birth
         "email": user.email,  # Include the email
         "email_verified": user.email_verified,
+        # Social sign-ups: false until POST /api/auth/complete-profile/.
+        "profile_complete": bool(user.profile_completed),
+        # False for Google-only accounts (delete account asks for "DELETE").
+        "has_password": user.has_usable_password(),
         "bio": user.bio or "",
         "learning_goal": user.learning_goal or "",
         "correction_preference": user.correction_preference,
@@ -1493,7 +1545,8 @@ def profile_data_view(request):
 
     now = timezone.now()
     blocked_user_ids = get_blocked_user_ids(request.user.id)
-    profiles_qs = Profile.objects.exclude(id=request.user.id)
+    # Social sign-ups without languages stay hidden until they finish their profile.
+    profiles_qs = Profile.objects.exclude(id=request.user.id).filter(profile_completed=True)
     if blocked_user_ids:
         profiles_qs = profiles_qs.exclude(id__in=blocked_user_ids)
 
@@ -1618,6 +1671,8 @@ def profile_data_view(request):
 @throttle_classes(with_default_throttles(PublicProfileRateThrottle))
 def public_profile_view(request, username):
     profile = get_profile_by_username_or_404(username)
+    if not profile.profile_completed and profile.id != request.user.id:
+        raise Http404("No Profile matches the given query.")
     is_blocked_by_me, has_blocked_me = get_block_state(request.user.id, profile.id)
     if is_blocked_by_me or has_blocked_me:
         return JsonResponse({"error": "This user is unavailable.", "code": "blocked"}, status=403)
@@ -2004,9 +2059,15 @@ def profile_location_update_view(request):
 def delete_account_view(request):
     user = request.user
     data = request.data if isinstance(request.data, dict) else {}
-    password_error = verify_current_password(user, data.get("current_password"))
-    if password_error is not None:
-        return password_error
+    if user.has_usable_password():
+        password_error = verify_current_password(user, data.get("current_password"))
+        if password_error is not None:
+            return password_error
+    elif str(data.get("confirm") or "").strip() != "DELETE":
+        # Google-only accounts have no password to re-enter.
+        return error_response(
+            'Type "DELETE" to confirm deleting your account.', "confirmation_required", 400
+        )
     user_id = user.id
     username = user.username
     # Blacklist refresh tokens and close the user's sockets before the row goes.
@@ -2028,7 +2089,9 @@ def delete_account_view(request):
 def following_list_view(request):
     page, page_size = parse_page_params(request.query_params, FOLLOWING_LIST_DEFAULT_PAGE_SIZE)
     blocked_ids = get_blocked_user_ids(request.user.id)
-    links = Follow.objects.filter(follower_id=request.user.id).exclude(
+    links = Follow.objects.filter(
+        follower_id=request.user.id, following__profile_completed=True
+    ).exclude(
         following_id__in=blocked_ids
     ).select_related("following").annotate(follows_you=Exists(
         Follow.objects.filter(follower_id=OuterRef("following_id"), following_id=request.user.id)
@@ -2056,6 +2119,8 @@ def following_list_view(request):
 @throttle_classes(with_default_throttles(*FOLLOW_THROTTLES))
 def follow_user_view(request, username):
     target = get_profile_by_username_or_404(username)
+    if request.method == "POST" and not target.profile_completed:
+        raise Http404("No Profile matches the given query.")
     if target.id == request.user.id:
         return error_response("You cannot follow yourself.", "cannot_follow_self", status_code=400)
     if users_are_blocked(request.user.id, target.id):
@@ -2264,7 +2329,7 @@ def mark_messages_delivered(messages_qs, user):
 
 
 class MessageListView(APIView):
-    permission_classes = [IsAuthenticated, RequireVerifiedEmail]
+    permission_classes = [IsAuthenticated, RequireVerifiedEmail, RequireCompleteProfile]
 
     def get(self, request, conversation_id):
         conversation = get_object_or_404(
@@ -2708,7 +2773,7 @@ class ConversationDetailView(APIView):
 
 
 class ConversationListView(APIView):
-    permission_classes = [IsAuthenticated, RequireVerifiedEmail]
+    permission_classes = [IsAuthenticated, RequireVerifiedEmail, RequireCompleteProfile]
 
     def get(self, request):
         user = request.user
@@ -2879,6 +2944,8 @@ class ConversationListView(APIView):
             return Response({"error": "User not found"}, status=404)
         if participant.id == user.id:
             return Response({"error": "You cannot message yourself."}, status=400)
+        if not participant.profile_completed:
+            return error_response(PROFILE_INCOMPLETE_MESSAGE, PROFILE_INCOMPLETE_CODE, 403)
         if users_are_blocked(user.id, participant.id):
             return Response(
                 {"error": "You cannot start a conversation with this user.", "code": "blocked"},

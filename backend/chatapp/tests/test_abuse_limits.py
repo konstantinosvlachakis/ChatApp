@@ -470,7 +470,7 @@ class SecurityHeaderTests(TestCase):
         self.assertIn("camera=(self)", response["Permissions-Policy"])
         self.assertIn("microphone=(self)", response["Permissions-Policy"])
         self.assertIn("geolocation=(self)", response["Permissions-Policy"])
-        self.assertEqual(response["Cross-Origin-Opener-Policy"], "same-origin")
+        self.assertEqual(response["Cross-Origin-Opener-Policy"], "same-origin-allow-popups")
         self.assertFalse(response.has_header("Content-Security-Policy"))
         self.assertFalse(response.has_header("Content-Security-Policy-Report-Only"))
 
@@ -489,6 +489,10 @@ class SecurityHeaderTests(TestCase):
         self.assertIn("frame-ancestors 'none'", policy)
         self.assertIn("https://res.cloudinary.com", policy)
         self.assertIn("https://fonts.gstatic.com", policy)
+        # Google Identity Services (web "Sign in with Google").
+        self.assertIn("script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client", policy)
+        self.assertIn("frame-src https://accounts.google.com/gsi/", policy)
+        self.assertIn("https://accounts.google.com/gsi/style", policy)
 
     @override_settings(CSP_MODE="enforce")
     def test_csp_can_be_enforced(self):

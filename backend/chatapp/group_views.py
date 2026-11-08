@@ -30,6 +30,7 @@ from .conversation_members import (
     invitable_ids,
 )
 from .email_verification import RequireVerifiedEmail
+from .social_auth import PROFILE_INCOMPLETE_CODE, PROFILE_INCOMPLETE_MESSAGE, RequireCompleteProfile
 from .models import BlockedUser, Conversation, ConversationParticipant, Profile
 from .push import schedule_group_invite_push
 from .serializers import ConversationSerializer, ProfileSerializer
@@ -111,6 +112,10 @@ def _resolve_usernames(raw, exclude_user_id):
             usernames=missing,
         )
     profiles = [by_name[name.lower()] for name in wanted if by_name[name.lower()].id != exclude_user_id]
+    if any(not profile.profile_completed for profile in profiles):
+        return None, error_response(
+            PROFILE_INCOMPLETE_MESSAGE, PROFILE_INCOMPLETE_CODE, status.HTTP_403_FORBIDDEN
+        )
     if not profiles:
         return None, error_response("Choose who to invite.", "invalid_members", status.HTTP_400_BAD_REQUEST)
     return profiles, None
@@ -200,7 +205,7 @@ def _current_ids(conversation, statuses=(ACTIVE, PENDING)):
 # ---------------------------------------------------------------- endpoints
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, RequireVerifiedEmail])
+@permission_classes([IsAuthenticated, RequireVerifiedEmail, RequireCompleteProfile])
 @throttle_classes(with_default_throttles(*CONVERSATION_CREATE_THROTTLES, *GROUP_INVITE_THROTTLES))
 def create_group_view(request):
     """POST {members: [username], name?} → 201 conversation (you are the owner; the
@@ -246,7 +251,7 @@ def create_group_view(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, RequireVerifiedEmail])
+@permission_classes([IsAuthenticated, RequireVerifiedEmail, RequireCompleteProfile])
 @throttle_classes(with_default_throttles(*GROUP_INVITE_THROTTLES))
 def invite_members_view(request, conversation_id):
     """POST {usernames: [...]} → invite people (any member). People already in the

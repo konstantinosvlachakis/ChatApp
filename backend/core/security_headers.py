@@ -8,8 +8,19 @@ pages); JSON API responses don't need one. It is report-only unless
 from django.conf import settings
 
 
+# Google Identity Services ("Sign in with Google" button on the web app).
+GOOGLE_GSI_SCRIPT = "https://accounts.google.com/gsi/client"
+GOOGLE_GSI_ORIGIN = "https://accounts.google.com/gsi/"
+GOOGLE_GSI_STYLE = "https://accounts.google.com/gsi/style"
+
+
 def build_content_security_policy():
-    connect_src = ["'self'", "https://api.bigdatacloud.net", *settings.CSP_EXTRA_CONNECT_SRC]
+    connect_src = [
+        "'self'",
+        "https://api.bigdatacloud.net",
+        GOOGLE_GSI_ORIGIN,
+        *settings.CSP_EXTRA_CONNECT_SRC,
+    ]
     img_src = [
         "'self'",
         "data:",
@@ -29,8 +40,15 @@ def build_content_security_policy():
         "form-action": ["'self'"],
         # The CRA build inlines its runtime chunk and index.html has an onload
         # handler on the font stylesheet link.
-        "script-src": ["'self'", "'unsafe-inline'"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        "script-src": ["'self'", "'unsafe-inline'", GOOGLE_GSI_SCRIPT],
+        "style-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://fonts.googleapis.com",
+            GOOGLE_GSI_STYLE,
+        ],
+        # The Google sign-in button renders in an iframe.
+        "frame-src": [GOOGLE_GSI_ORIGIN],
         "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
         "img-src": img_src,
         "media-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
