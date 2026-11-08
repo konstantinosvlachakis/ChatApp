@@ -20,6 +20,8 @@ from .session_views import conversation_session_view, exchange_session_action_vi
 from .auth_views import (
     CustomObtainJWTToken,
     CustomRefreshJWTToken,
+    complete_profile_view,
+    google_auth_view,
     logout_all_view,
     logout_view,
     password_reset_confirm_view,
@@ -41,6 +43,8 @@ urlpatterns = [
     path("logout/", logout_view, name="logout"),
     path("auth/logout-all/", logout_all_view, name="logout_all"),
     path("register/", register_view, name="register"),
+    path("auth/google/", google_auth_view, name="google_auth"),
+    path("auth/complete-profile/", complete_profile_view, name="complete_profile"),
     path("auth/password-reset/", password_reset_request_view, name="password_reset"),
     path(
         "auth/password-reset/confirm/",

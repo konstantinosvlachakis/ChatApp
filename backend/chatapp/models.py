@@ -73,6 +73,10 @@ class Profile(AbstractBaseUser):
     # When the account was created (People "New members"). Accounts that existed
     # before migration 0037 stay NULL (never "new"); new rows get the time now.
     date_joined = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True)
+    # False only for accounts created by social sign-in (chatapp/social_auth.py)
+    # that haven't chosen their languages yet: they are hidden from People and
+    # public profiles and can't start chats until POST /api/auth/complete-profile/.
+    profile_completed = models.BooleanField(default=True)
     # How partners may correct this user's messages (MessageCorrection):
     # "often" = any text message, "when_asked" = only messages the user flagged
     # (Message.correction_requested), "off" = never.
@@ -719,3 +723,33 @@ class ExchangeSession(models.Model):
 
     def __str__(self):
         return f"Exchange session {self.id} in conversation {self.conversation_id}"
+
+
+class SocialAccount(models.Model):
+    """A verified identity from an outside provider linked to a Profile.
+
+    ``subject`` is the provider's stable user id (Google ``sub``); ``email`` is
+    the address the provider reported at the last sign-in (informational; the
+    login identity is (provider, subject)).
+    """
+
+    PROVIDER_GOOGLE = "google"
+    PROVIDER_APPLE = "apple"
+    PROVIDERS = [(PROVIDER_GOOGLE, "Google"), (PROVIDER_APPLE, "Apple")]
+
+    user = models.ForeignKey(Profile, related_name="social_accounts", on_delete=models.CASCADE)
+    provider = models.CharField(max_length=20, choices=PROVIDERS)
+    subject = models.CharField(max_length=255)
+    email = models.CharField(max_length=254, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "subject"], name="uniq_social_provider_subject"
+            )
+        ]
+
+    def __str__(self):
+        return f"SocialAccount({self.provider}:{self.user_id})"

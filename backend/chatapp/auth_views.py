@@ -1,5 +1,5 @@
 from django.conf import settings
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -16,13 +16,16 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import EmailMultiAlternatives
+from django.db import IntegrityError, transaction
+from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.html import escape
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
 from core.exceptions import error_response
 
-from .models import Profile
+from . import social_auth
+from .models import Profile, SocialAccount
 from .throttles import (
     AuthRateThrottle,
     LogoutAllRateThrottle,
@@ -34,14 +37,24 @@ from .tokens import (
     LoginSerializer,
     RotatingTokenRefreshSerializer,
     blacklist_refresh_token,
+    issue_token_pair,
     refresh_lifetime,
     revoke_user_tokens,
 )
-from .views import release_db_connection
+from .views import (
+    USERNAME_PATTERN,
+    ProfileFieldError,
+    bump_profile_cache_version,
+    clean_new_username,
+    clean_profile_languages,
+    release_db_connection,
+)
 
 import hashlib
 import logging
 import os
+import re
+import secrets
 import threading
 
 logger = logging.getLogger(__name__)
@@ -94,6 +107,10 @@ def clear_login_failures(email):
         pass
 
 
+def _parse_remember_me(data):
+    return str(data.get("remember_me", "")).lower() in ("1", "true", "yes", "on")
+
+
 def _get_cookie_max_age(delta):
     return int(delta.total_seconds())
 
@@ -120,6 +137,13 @@ def _set_auth_cookies(response, access_token, refresh_token, remember_me=False):
         max_age=_get_cookie_max_age(refresh_lifetime(remember_me)),
         **cookie_kwargs,
     )
+    # Not a credential: lets the web app skip the profile check when logged out.
+    response.set_cookie(
+        settings.AUTH_COOKIE_HINT,
+        "1",
+        max_age=_get_cookie_max_age(refresh_lifetime(remember_me)),
+        **{**cookie_kwargs, "httponly": False},
+    )
 
 
 def _clear_auth_cookies(response):
@@ -133,6 +157,11 @@ def _clear_auth_cookies(response):
         path="/",
         samesite=settings.SESSION_COOKIE_SAMESITE,
     )
+    response.delete_cookie(
+        settings.AUTH_COOKIE_HINT,
+        path="/",
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+    )
 
 
 # Custom JWT Token Obtain Pair View
@@ -143,7 +172,7 @@ class CustomObtainJWTToken(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         data = request.data
-        remember_me = str(data.get("remember_me", "")).lower() in ("1", "true", "yes", "on")
+        remember_me = _parse_remember_me(data)
         serializer_data = {
             "email": str(data.get("email") or "").strip().lower(),
             "password": data.get("password"),
@@ -410,6 +439,8 @@ def password_reset_confirm_view(request):
     # The new password hash invalidates this and every other reset link, and
     # the token_version bump signs out every device (access + refresh tokens).
     revoke_user_tokens(user, deactivate_push=True)
+    # Own profile payload carries has_password (Google-only accounts set one here).
+    bump_profile_cache_version(user.pk)
     # A reset proves control of the inbox: lift any login lockout for it.
     clear_login_failures(str(user.email or "").strip().lower())
     logger.info("Password reset completed for user_id=%s", user.pk)
@@ -417,3 +448,264 @@ def password_reset_confirm_view(request):
     response = Response({"message": "Your password has been reset. You can now log in."})
     _clear_auth_cookies(response)
     return response
+
+
+# --- Sign in with Google ----------------------------------------------------
+
+GOOGLE_TOKEN_INVALID_MESSAGE = "We couldn't verify your Google sign-in. Please try again."
+GOOGLE_EMAIL_UNVERIFIED_MESSAGE = (
+    "Your Google account's email address isn't verified, so it can't be used to sign in."
+)
+ACCOUNT_DISABLED_MESSAGE = "This account has been disabled."
+GENERATED_USERNAME_FALLBACK = "voyager"
+USERNAME_MAX_LENGTH = 30
+
+
+def _generated_username_base(claims):
+    raw = str(claims.get("given_name") or "").strip()
+    if not raw:
+        raw = str(claims.get("email") or "").split("@")[0]
+    # USERNAME_PATTERN's alphabet minus "@" (no address-looking names).
+    base = re.sub(r"[^\w.+-]+", "", raw)[:USERNAME_MAX_LENGTH]
+    if not base or not USERNAME_PATTERN.fullmatch(base):
+        base = GENERATED_USERNAME_FALLBACK
+    return base
+
+
+def generate_unique_username(claims):
+    """A free username from the Google first name (or the email's local part):
+    the base itself, else base + the lowest free number, within 30 characters.
+    One query."""
+    base = _generated_username_base(claims)
+    stem = base[: USERNAME_MAX_LENGTH - 4]
+    taken = {
+        name.lower()
+        for name in Profile.objects.filter(username__istartswith=stem).values_list(
+            "username", flat=True
+        )
+    }
+    if base.lower() not in taken:
+        return base
+    for number in range(2, 10000):
+        candidate = f"{stem}{number}"
+        if candidate.lower() not in taken:
+            return candidate
+    return f"{base[: USERNAME_MAX_LENGTH - 8]}{secrets.token_hex(4)}"
+
+
+def _clean_signup_profile(raw_profile):
+    """Validated profile fields for a new social account, or None when no
+    profile was sent. Same rules and error codes as register. Raises
+    ProfileFieldError."""
+    if raw_profile is None:
+        return None
+    if not isinstance(raw_profile, dict):
+        raise ProfileFieldError("profile must be an object.", "invalid_request")
+    native_language, practice_languages, levels = clean_profile_languages(
+        raw_profile.get("nativeLanguage"),
+        raw_profile.get("practiceLanguages"),
+        raw_profile.get("practiceLanguageLevels", {}),
+    )
+    username = raw_profile.get("username")
+    if username is not None and str(username).strip():
+        username = clean_new_username(username)
+    else:
+        username = None
+    return {
+        "native_language": native_language,
+        "languages_practicing": practice_languages,
+        "practice_language_levels": levels,
+        "username": username,
+    }
+
+
+def _create_google_user(claims, email, profile_fields, now):
+    username = (profile_fields or {}).get("username") or generate_unique_username(claims)
+    extra = {
+        "email": email,
+        "email_verified_at": now,
+        "date_joined": now,
+        "native_language": "",
+        "languages_practicing": [],
+        "practice_language_levels": {},
+        "profile_completed": False,
+    }
+    if profile_fields:
+        extra.update(
+            native_language=profile_fields["native_language"],
+            languages_practicing=profile_fields["languages_practicing"],
+            practice_language_levels=profile_fields["practice_language_levels"],
+            profile_completed=True,
+        )
+    # password=None → unusable password: sign-in only through Google until the
+    # user sets one with "Forgot password".
+    user = Profile.objects.create_user(username=username, password=None, **extra)
+    SocialAccount.objects.create(
+        user=user,
+        provider=SocialAccount.PROVIDER_GOOGLE,
+        subject=claims["sub"],
+        email=email,
+        last_login_at=now,
+    )
+    return user
+
+
+def _link_google_account(user, claims, email, now):
+    """Attach a Google identity to the existing account with the same email.
+
+    Account-takeover rule: if that account never verified its email, whoever
+    registered it may not own the address, so its password and every session
+    are dropped and the Google owner (who proved the address) gets the account.
+    """
+    if user.email_verified_at is None:
+        user.set_unusable_password()
+        user.email_verified_at = now
+        user.save(update_fields=["password", "email_verified_at"])
+        revoke_user_tokens(user, deactivate_push=True)
+        logger.info("Google sign-in took over an unverified account: user_id=%s", user.pk)
+    SocialAccount.objects.create(
+        user=user,
+        provider=SocialAccount.PROVIDER_GOOGLE,
+        subject=claims["sub"],
+        email=email,
+        last_login_at=now,
+    )
+
+
+def _google_account_for(subject):
+    return (
+        SocialAccount.objects.select_related("user")
+        .filter(provider=SocialAccount.PROVIDER_GOOGLE, subject=subject)
+        .first()
+    )
+
+
+@api_view(("POST",))
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
+def google_auth_view(request):
+    """POST {credential, remember_me?, profile?} → sign in or sign up with a
+    Google ID token. Same tokens and cookies as password login, plus
+    {created, profile_complete, username}. See system-map flows (Google)."""
+    data = request.data if isinstance(request.data, dict) else {}
+    credential = data.get("credential")
+    if not isinstance(credential, str) or not credential.strip():
+        return error_response("Missing Google credential.", "invalid_request", 400)
+    if not getattr(settings, "GOOGLE_OAUTH_CLIENT_IDS", None):
+        return error_response(
+            "Google sign-in isn't available right now.", "google_not_configured", 503
+        )
+    remember_me = _parse_remember_me(data)
+
+    # Verify (may fetch Google's keys) before any DB work.
+    try:
+        claims = social_auth.verify_google_id_token(credential)
+    except social_auth.SocialTokenError:
+        return error_response(GOOGLE_TOKEN_INVALID_MESSAGE, "google_token_invalid", 401)
+    email = str(claims.get("email") or "").strip().lower()
+    if claims.get("email_verified") not in (True, "true") or not email:
+        return error_response(GOOGLE_EMAIL_UNVERIFIED_MESSAGE, "google_email_unverified", 401)
+
+    now = timezone.now()
+    created = False
+    account = _google_account_for(claims["sub"])
+    if account is not None:
+        user = account.user
+        if not getattr(user, "is_active", True):
+            return error_response(ACCOUNT_DISABLED_MESSAGE, "account_disabled", 403)
+        SocialAccount.objects.filter(pk=account.pk).update(last_login_at=now, email=email)
+    else:
+        user = Profile.objects.filter(email__iexact=email).order_by("id").first()
+        profile_fields = None
+        if user is None:
+            try:
+                profile_fields = _clean_signup_profile(data.get("profile"))
+            except ProfileFieldError as error:
+                return error_response(error.message, error.code, 400)
+        elif not getattr(user, "is_active", True):
+            return error_response(ACCOUNT_DISABLED_MESSAGE, "account_disabled", 403)
+        try:
+            with transaction.atomic():
+                if user is not None:
+                    _link_google_account(user, claims, email, now)
+                else:
+                    user = _create_google_user(claims, email, profile_fields, now)
+                    created = True
+        except IntegrityError:
+            # A concurrent request linked or created this Google identity (or
+            # took the username) first: sign in to whatever won, once.
+            created = False
+            account = _google_account_for(claims["sub"])
+            if account is None:
+                logger.warning("Google sign-in hit a conflict and found no linked account")
+                return error_response(
+                    "Sign-in conflicted with another request. Please try again.", "conflict", 409
+                )
+            user = account.user
+            if not getattr(user, "is_active", True):
+                return error_response(ACCOUNT_DISABLED_MESSAGE, "account_disabled", 403)
+        # email_verified / has_password may have changed (own profile cache).
+        bump_profile_cache_version(user.pk)
+
+    Profile.objects.filter(pk=user.pk).update(last_login=now)
+    tokens = issue_token_pair(user, remember_me=remember_me)
+    logger.info("Google sign-in: user_id=%s created=%s", user.pk, created)
+
+    response = Response(
+        {
+            "access": tokens["access"],
+            "refresh": tokens["refresh"],
+            "created": created,
+            "profile_complete": bool(user.profile_completed),
+            "username": user.username,
+        }
+    )
+    _set_auth_cookies(response, tokens["access"], tokens["refresh"], remember_me=remember_me)
+    return response
+
+
+@api_view(("POST",))
+@permission_classes([IsAuthenticated])
+def complete_profile_view(request):
+    """POST {nativeLanguage, practiceLanguages, practiceLanguageLevels, username?}
+    → finish a social sign-up. Only while profile_completed is False (409 after)."""
+    user = request.user
+    if user.profile_completed:
+        return error_response("Your profile is already complete.", "profile_already_complete", 409)
+    data = request.data if isinstance(request.data, dict) else {}
+    try:
+        native_language, practice_languages, levels = clean_profile_languages(
+            data.get("nativeLanguage"),
+            data.get("practiceLanguages"),
+            data.get("practiceLanguageLevels", {}),
+        )
+        username = data.get("username")
+        if username is not None and str(username).strip():
+            username = clean_new_username(username, exclude_user_id=user.pk)
+        else:
+            username = None
+    except ProfileFieldError as error:
+        return error_response(error.message, error.code, 400)
+
+    user.native_language = native_language
+    user.languages_practicing = practice_languages
+    user.practice_language_levels = levels
+    user.profile_completed = True
+    update_fields = [
+        "native_language",
+        "languages_practicing",
+        "practice_language_levels",
+        "profile_completed",
+    ]
+    if username:
+        user.username = username
+        update_fields.append("username")
+    try:
+        with transaction.atomic():
+            user.save(update_fields=update_fields)
+    except IntegrityError:
+        return error_response("Username already exists", "username_taken", 400)
+    # People lists pick the profile up within their 30 s TTL (as after register).
+    bump_profile_cache_version(user.pk)
+    return Response({"username": user.username, "profile_complete": True})

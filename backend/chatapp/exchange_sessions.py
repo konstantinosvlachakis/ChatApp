@@ -163,13 +163,16 @@ def build_summary(session):
         (session.second_language, point, end),
     ]
     languages = []
-    for language, window_start, window_end in windows:
+    for index, (language, window_start, window_end) in enumerate(windows):
         seconds = max(0.0, (window_end - window_start).total_seconds())
+        # The last window includes its end: a message in the same clock tick as
+        # "end" (coarse clocks) still counts.
+        end_filter = {"timestamp__lte" if index == len(windows) - 1 else "timestamp__lt": window_end}
         counts = dict(
             Message.objects.filter(
                 conversation_id=session.conversation_id,
                 timestamp__gte=window_start,
-                timestamp__lt=window_end,
+                **end_filter,
             )
             .values_list("sender_id")
             .annotate(count=Count("id"))

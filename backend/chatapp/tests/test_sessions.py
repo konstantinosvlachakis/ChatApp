@@ -128,6 +128,18 @@ class RefreshRotationTests(SessionTestCase):
             response.cookies[settings.AUTH_COOKIE_ACCESS].value, response.json()["access"]
         )
 
+    def test_signed_in_hint_cookie_follows_the_session(self):
+        client, pair = self.login()
+        response = client.post(REFRESH_URL, {}, format="json")
+        hint = response.cookies[settings.AUTH_COOKIE_HINT]
+        self.assertEqual(hint.value, "1")  # never a token
+        self.assertFalse(hint["httponly"])  # the web app reads it
+        self.assertEqual(int(hint["max-age"]), int(response.cookies[settings.AUTH_COOKIE_REFRESH]["max-age"]))
+
+        response = client.post(LOGOUT_URL, {}, format="json")
+        self.assertEqual(response.cookies[settings.AUTH_COOKIE_HINT].value, "")
+        self.assertEqual(int(response.cookies[settings.AUTH_COOKIE_HINT]["max-age"]), 0)
+
     def test_remember_me_lifetime_is_kept_across_rotation(self):
         client, pair = self.login(remember_me=True)
         response = client.post(REFRESH_URL, {}, format="json")

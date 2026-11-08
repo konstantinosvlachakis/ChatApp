@@ -271,7 +271,9 @@ CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
-SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+# same-origin-allow-popups (not same-origin): the Google Identity Services
+# sign-in popup must be able to post the credential back to the opener.
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"
 # Sent by core.security_headers.SecurityHeadersMiddleware. Camera/microphone are
 # used by calls and voice messages, geolocation by the profile location.
 PERMISSIONS_POLICY = os.environ.get(
@@ -289,8 +291,15 @@ CSP_EXTRA_CONNECT_SRC = env_list(
     "CSP_EXTRA_CONNECT_SRC", ["https://*.ingest.sentry.io", "https://*.ingest.us.sentry.io"]
 )
 CSP_EXTRA_IMG_SRC = env_list("CSP_EXTRA_IMG_SRC", [])
+# "Sign in with Google": OAuth client ids (web, iOS, Android; comma separated)
+# accepted as the ID token audience by POST /api/auth/google/. Empty = the
+# endpoint answers 503 google_not_configured.
+GOOGLE_OAUTH_CLIENT_IDS = env_list("GOOGLE_OAUTH_CLIENT_IDS", [])
 AUTH_COOKIE_ACCESS = "lv_access"
 AUTH_COOKIE_REFRESH = "lv_refresh"
+# Readable "a session exists" hint (value "1", no token): the web app skips the
+# profile/refresh round trip on public pages when it is absent.
+AUTH_COOKIE_HINT = "lv_signed_in"
 # Requests authenticated via the JWT cookie must carry a valid X-CSRFToken header.
 AUTH_COOKIE_ENFORCE_CSRF = os.environ.get("AUTH_COOKIE_ENFORCE_CSRF", "true").lower() == "true"
 

@@ -84,6 +84,7 @@ Browser storage:
   - `clearConversationsCache()`: nulls everything and bumps the generation. Called by `logout()` and `deleteAccount()` (`services/api/auth.ts`).
   - `ConversationsScreen.loadConversations`: shows the cache, then revalidates with force. Throttled to once per 4 s unless forced; `conversation_update` forces it.
   - `RootNavigator.loadUnreadChatsCount`: always `force: true`, but has a 4 s non-forced throttle and an in-flight skip.
+- **Cookie `lv_signed_in`** (web, readable, value `1`): set/cleared by the backend with `lv_access`/`lv_refresh`; also deleted by `clearClientSessionData`. Only a hint that a session may exist (public pages skip the profile check without it).
 - **SecureStore** (`keychainService "langvoyage.auth"`): `lv_access_token`, `lv_refresh_token` (`tokenStorage` in `services/storage.ts`). Cleared by `logout`, `deleteAccount`, failed refresh (`client.ts`) and a failed bootstrap (`AuthContext.hydrate`).
 - **AsyncStorage**: `lv_theme_mode` (`ThemeContext`), `lv_profile_view_last_notified_at:{userId}` (`RootNavigator` profile-view notifications), `coach:messages:{userId|guest}` and `coach:preferences:{userId|guest}` (`features/coachConversation.ts`). None of these are cleared on logout or account deletion.
 
