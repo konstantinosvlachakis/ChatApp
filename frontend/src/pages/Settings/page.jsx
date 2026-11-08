@@ -39,6 +39,7 @@ import {
   validRingColor,
 } from "../Profile/features/profileUtils";
 import ConfirmDialog from "./ConfirmDialog";
+import { unblockUser } from "../Profile/api/moderation";
 import "../Profile/features/profile.css";
 import "./settings.css";
 
@@ -296,7 +297,7 @@ const SettingsPage = () => {
     pending.add(username);
     setUnblockingUsername(username);
     try {
-      await api.delete(`/api/profile/public/${encodeURIComponent(username)}/block/`);
+      await unblockUser(username);
       setModeration((prev) => ({
         ...prev,
         blocked_profiles: prev.blocked_profiles.filter((entry) => entry.username !== username),

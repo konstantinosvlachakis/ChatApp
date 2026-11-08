@@ -25,6 +25,7 @@ import { isOpenChatPath } from "./navItems";
 import { messagePreviewText } from "../pages/Conversations/utils/messageMedia";
 import { getNotificationPermission, requestNotificationPermission } from "../utils/notifications";
 import CookieChoicesButton from "../components/CookieChoicesButton";
+import { EXCHANGE_PAIRS } from "../pages/Exchange/pairs";
 import "./appShell.css";
 import {
   SESSION_REFRESHED_EVENT,
@@ -519,6 +520,15 @@ const Layout = () => {
               {user?.support_email && (
                 <a href={`mailto:${user.support_email}?subject=${encodeURIComponent("Bug report")}`}>Report a bug</a>
               )}
+            </nav>
+            <nav className="lv-footer-col" aria-label="Exchanges">
+              <strong>Exchanges</strong>
+              <Link to="/how-it-works">How it works</Link>
+              {EXCHANGE_PAIRS.map((pair) => (
+                <Link key={pair.slug} to={pair.path}>
+                  {pair.label} exchange
+                </Link>
+              ))}
             </nav>
             <nav className="lv-footer-col" aria-label="Legal">
               <strong>Legal</strong>

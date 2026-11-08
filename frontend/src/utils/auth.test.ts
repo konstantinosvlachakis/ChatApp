@@ -1,4 +1,4 @@
-import { clearClientSessionData, hasSessionHint, shouldCheckSession } from "./auth";
+import { clearClientSessionData, hasSessionHint, isPublicPath, shouldCheckSession } from "./auth";
 
 const setHint = () => {
   document.cookie = "lv_signed_in=1; path=/";
@@ -25,5 +25,11 @@ describe("session hint", () => {
 
   test("app pages are always checked", () => {
     expect(shouldCheckSession("/profile")).toBe(true);
+  });
+
+  test("landing pages are public (no session check without a hint)", () => {
+    expect(isPublicPath("/how-it-works")).toBe(true);
+    expect(isPublicPath("/exchange/english-spanish")).toBe(true);
+    expect(shouldCheckSession("/exchange/greek-spanish")).toBe(false);
   });
 });

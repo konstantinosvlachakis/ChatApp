@@ -1,0 +1,85 @@
+/* Block / report "More" menu and report form (md-*). Dialog chrome comes from
+   pages/Settings/settings.css (st-dialog, ConfirmDialog). Tokens only: src/styles/tokens.css. */
+.md-menu { position: relative; display: inline-flex; flex-shrink: 0; }
+.md-trigger[aria-expanded="true"] { background: var(--lv-cream-deep); }
+.pf-btn.md-trigger { padding: 0 14px; }
+.md-trigger:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+
+.md-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  border: 1px solid var(--lv-line);
+  border-radius: 18px;
+  background: var(--lv-paper);
+  box-shadow: var(--lv-shadow-soft);
+  font-family: var(--lv-font-body);
+}
+.md-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--lv-ink);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.md-menu-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+/* --lv-badge stays >= 4.5:1 on paper and cream. */
+.md-menu-item.is-danger { color: var(--lv-badge); }
+.md-menu-item:hover, .md-menu-item:focus-visible { background: var(--lv-cream); }
+.md-menu-item:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: -3px; }
+
+/* Report form */
+.md-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.md-reasons { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.md-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--lv-line);
+  border-radius: 14px;
+  background: var(--lv-paper);
+  cursor: pointer;
+}
+.md-reason:hover { background: var(--lv-cream); }
+.md-reason:has(input:checked) { border-color: var(--lv-teal); background: var(--lv-cream); box-shadow: inset 0 0 0 1px var(--lv-teal); }
+.md-reason:has(input:focus-visible) { outline: 3px solid var(--lv-focus); outline-offset: 2px; }
+.md-reason input { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--lv-teal); }
+.md-reason-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.md-reason-label { color: var(--lv-ink); font-size: 15px; font-weight: 700; }
+.md-reason-hint { color: var(--lv-muted-ink); font-size: 13px; line-height: 1.4; }
+
+.md-field { display: flex; flex-direction: column; gap: 6px; }
+.md-textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--lv-line);
+  border-radius: 14px;
+  background: var(--lv-paper);
+  color: var(--lv-ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.md-textarea::placeholder { color: var(--lv-muted-ink); }
+.md-textarea:focus-visible { outline: 3px solid var(--lv-focus); outline-offset: 1px; border-color: var(--lv-teal); }
+.md-counter { align-self: flex-end; color: var(--lv-muted-ink); font-size: 13px; }
+
+.md-check { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--lv-ink); font-size: 15px; font-weight: 700; cursor: pointer; }
+.md-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--lv-badge); }
+.md-check:has(input:focus-visible) { outline: 3px solid var(--lv-focus); outline-offset: 2px; border-radius: 8px; }

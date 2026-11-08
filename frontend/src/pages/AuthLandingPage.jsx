@@ -1,8 +1,104 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import CoachAvatar from "../components/CoachAvatar";
+import CtaLink from "../components/Public/CtaLink";
+import FaqList from "../components/Public/FaqList";
+import PublicFooter from "../components/Public/PublicFooter";
+import { FlagPair, LineIcon } from "../components/Public/PublicIcons";
+import { HOME_FAQ, HOME_FEATURES, HOME_STEPS } from "./Landing/landingContent";
+import { EXCHANGE_PAIRS } from "./Exchange/pairs";
 
-const AuthLandingPage = () => {
+// Home: the original full-screen hero, then short sections for visitors and search
+// engines (how it works, features, exchange guides, FAQ). Styles: src/styles/public.css.
+const HomeSections = () => (
+  <>
+    <section className="lp-section" aria-labelledby="home-how">
+      <div className="lp-container">
+        <p className="lp-eyebrow">How it works</p>
+        <h2 id="home-how">A language exchange in three steps</h2>
+        <ol className="lp-steps lp-steps-3">
+          {HOME_STEPS.map((step) => (
+            <li key={step.title} className="lp-card">
+              <h3>{step.title}</h3>
+              <p>{step.text}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="lp-section-lead">
+          <Link to="/how-it-works" className="lp-link">
+            Read the full guide to how LangVoyage works
+          </Link>
+        </p>
+      </div>
+    </section>
+
+    <section className="lp-section lp-section-alt" aria-labelledby="home-features">
+      <div className="lp-container">
+        <p className="lp-eyebrow">What you get</p>
+        <h2 id="home-features">Everything a language exchange needs</h2>
+        <ul className="lp-grid lp-grid-3" style={{ listStyle: "none", padding: 0 }}>
+          {HOME_FEATURES.map((feature) => (
+            <li key={feature.title} className="lp-card">
+              <span className="lp-icon">
+                <LineIcon name={feature.icon} />
+              </span>
+              <h3>{feature.title}</h3>
+              <p>{feature.text}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <section className="lp-section" aria-labelledby="home-pairs">
+      <div className="lp-container">
+        <p className="lp-eyebrow">Exchange guides</p>
+        <h2 id="home-pairs">Featured language exchanges</h2>
+        <p className="lp-section-lead">
+          Tips for each side, conversation topics by level and common questions.
+        </p>
+        <div className="lp-grid lp-grid-3">
+          {EXCHANGE_PAIRS.map((pair) => (
+            <Link key={pair.slug} to={pair.path} className="lp-card lp-pair-card">
+              <FlagPair languages={pair.languages} small />
+              <h3>{pair.label} exchange</h3>
+              <p>{pair.heading}.</p>
+              <span className="lp-link">Read the guide</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section className="lp-section lp-section-alt" aria-labelledby="home-faq">
+      <div className="lp-container lp-narrow">
+        <p className="lp-eyebrow">FAQ</p>
+        <h2 id="home-faq">Questions about LangVoyage</h2>
+        <FaqList items={HOME_FAQ} />
+      </div>
+    </section>
+
+    <section className="lp-section" aria-labelledby="home-cta">
+      <div className="lp-container">
+        <div className="lp-cta-band">
+          <h2 id="home-cta">Find your first exchange partner</h2>
+          <p className="lp-section-lead">Free to join. Pick your languages and see who is learning yours.</p>
+          <div className="lp-actions">
+            <CtaLink to="/register" page="home" className="lp-btn lp-btn-primary">
+              Create a free account
+            </CtaLink>
+            <Link to="/login" className="lp-btn lp-btn-outline">
+              Log in
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  </>
+);
+
+// The original hero, unchanged (full screen on first load).
+const LandingHero = () => {
   return (
     <div className="lv-font-body relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(27,127,121,0.34),transparent_26%),radial-gradient(circle_at_85%_18%,rgba(236,177,208,0.22),transparent_22%),radial-gradient(circle_at_50%_78%,rgba(20,49,74,0.6),transparent_38%),linear-gradient(180deg,#081320_0%,#102131_56%,#112a3d_100%)]" />
@@ -43,12 +139,13 @@ const AuthLandingPage = () => {
             >
               Log in
             </Link>
-            <Link
+            <CtaLink
               to="/register"
+              page="home"
               className="inline-flex min-w-[220px] items-center justify-center rounded-full border border-white/14 bg-white/6 px-7 py-4 text-base font-semibold text-white backdrop-blur transition hover:bg-white/10"
             >
               Create account
-            </Link>
+            </CtaLink>
           </div>
 
           <div className="mt-12 grid gap-3 sm:grid-cols-3">
@@ -71,5 +168,15 @@ const AuthLandingPage = () => {
     </div>
   );
 };
+
+const AuthLandingPage = () => (
+  <div className="lp-page">
+    <main>
+      <LandingHero />
+      <HomeSections />
+    </main>
+    <PublicFooter />
+  </div>
+);
 
 export default AuthLandingPage;

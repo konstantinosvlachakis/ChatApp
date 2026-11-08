@@ -12,11 +12,13 @@ const AppProviders = require("../src/AppProviders").default;
 const PublicAppRoutes = require("../src/PublicAppRoutes").default;
 const { SITE_NAME, buildHeadTags } = require("../src/seo/config");
 const { PRERENDERED_ROUTES } = require("../src/routes/prerenderedRoutes");
+const { buildSitemapXml } = require("../src/seo/sitemap");
 
 const buildDir = path.resolve(__dirname, "../build");
 const templatePath = path.join(buildDir, "index.html");
 
 const shellPath = path.join(buildDir, "app-shell.html");
+const sitemapPath = path.join(buildDir, "sitemap.xml");
 
 const routes = PRERENDERED_ROUTES.map((routePath) => ({ path: routePath }));
 
@@ -53,8 +55,18 @@ const renderRoute = (routePath) => {
 const injectMarkup = (html, markup) =>
   html.replace('<div id="root"></div>', `<div id="root">${markup}</div>`);
 
+// The backend renders these files with the Django template engine (core/views.py front),
+// so generated markup must not contain template syntax or Django would rewrite it.
+const assertNoTemplateSyntax = (routePath, fragment) => {
+  const match = fragment.match(/\{\{|\{%|\{#/);
+  if (match) {
+    throw new Error(`Prerendered ${routePath} contains Django template syntax "${match[0]}"`);
+  }
+};
+
 const injectHead = (html, routePath) => {
   const managedHead = buildHeadTags(routePath);
+  assertNoTemplateSyntax(routePath, managedHead);
   const cleanedHtml = stripManagedSeoTags(html);
   return cleanedHtml.replace("</head>", `${managedHead}\n</head>`);
 };
@@ -90,6 +102,7 @@ if (!template.includes('<div id="root"></div>')) {
 
 routes.forEach(({ path: routePath }) => {
   const markup = renderRoute(routePath);
+  assertNoTemplateSyntax(routePath, markup);
   const withMarkup = injectMarkup(template, markup);
   const withHead = injectHead(withMarkup, routePath);
   writeRouteHtml(routePath, withHead);
@@ -98,3 +111,7 @@ routes.forEach(({ path: routePath }) => {
 
 fs.writeFileSync(shellPath, buildShellHtml(template));
 process.stdout.write("Wrote app-shell.html\n");
+
+// Replaces the old hand-written public/sitemap.xml: indexable prerendered routes only.
+fs.writeFileSync(sitemapPath, buildSitemapXml(PRERENDERED_ROUTES, new Date()));
+process.stdout.write("Wrote sitemap.xml\n");

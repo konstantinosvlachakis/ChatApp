@@ -4,7 +4,7 @@ import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
 import { startResendCooldown } from "../features/emailVerification";
-import { browserNativeLanguage } from "../constants/languages";
+import { browserNativeLanguage, LANGUAGE_KEYS, normalizeLanguage } from "../constants/languages";
 import { PickerChevron } from "../components/Auth/LanguageVoyagePicker";
 import {
   NativeLanguageStep,
@@ -66,6 +66,20 @@ const parseDateInputValue = (value) => {
   return new Date(year, month - 1, day);
 };
 
+/**
+ * Sign-up links from the language-pair pages: /register?speak=<native>&learn=<practice>.
+ * Only offered language keys count (anything else is ignored); useLanguageChoices drops
+ * a `learn` equal to the native language.
+ */
+export const languagePrefillFromSearch = (search) => {
+  const params = new URLSearchParams(search || "");
+  const pick = (name) => {
+    const value = normalizeLanguage(params.get(name));
+    return LANGUAGE_KEYS.includes(value) ? value : "";
+  };
+  return { speak: pick("speak"), learn: pick("learn") };
+};
+
 const isSameDay = (a, b) =>
   a &&
   b &&
@@ -75,8 +89,12 @@ const isSameDay = (a, b) =>
 
 const RegisterPage = () => {
   const [step, setStep] = useState(STEP_NATIVE);
-  // Browser language when the app offers it (createRoot replaces the prerendered markup).
-  const choices = useLanguageChoices(browserNativeLanguage());
+  const location = useLocation();
+  // ?speak=/&learn= from a pair page win; otherwise the browser language when the app
+  // offers it (createRoot replaces the prerendered markup). Both stay editable.
+  const [prefill] = useState(() => languagePrefillFromSearch(location.search));
+  const initialNative = prefill.speak || browserNativeLanguage();
+  const choices = useLanguageChoices(initialNative, prefill.learn);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -100,7 +118,6 @@ const RegisterPage = () => {
   const googleBusyRef = useRef(false);
 
   const navigate = useNavigate();
-  const location = useLocation();
   // Google sign-in carried over from the log-in page ("No account yet → Create account").
   // Kept in memory only: dropped from the history entry so a reload doesn't keep the token.
   const [pendingGoogle, setPendingGoogle] = useState(() => location.state?.pendingGoogle || null);

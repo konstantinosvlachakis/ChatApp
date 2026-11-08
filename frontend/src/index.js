@@ -7,6 +7,7 @@ import { logger } from './lib/logger';
 import { scheduleSentryInit } from './lib/sentry';
 import { preloadRoute } from './routes/routeModules';
 import './styles/tokens.css';
+import './styles/public.css';
 import './index.css';  // Ensure this line is present to import Tailwind CSS
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

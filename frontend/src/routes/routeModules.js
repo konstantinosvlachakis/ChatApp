@@ -6,6 +6,8 @@ export const PrivacyPolicyPage = lazyWithPreload(() => import("../pages/PrivacyP
 export const TermsAndConditionsPage = lazyWithPreload(() =>
   import("../pages/TermsAndConditionsPage")
 );
+export const HowItWorksPage = lazyWithPreload(() => import("../pages/HowItWorksPage"));
+export const ExchangePairPage = lazyWithPreload(() => import("../pages/Exchange/ExchangePairPage"));
 export const ForgotPasswordPage = lazyWithPreload(() => import("../pages/ForgotPasswordPage"));
 export const ResetPasswordPage = lazyWithPreload(() => import("../pages/ResetPasswordPage"));
 export const VerifyEmailPage = lazyWithPreload(() => import("../pages/VerifyEmailPage"));
@@ -27,6 +29,8 @@ const section = (path) => (pathname) => pathname === path || pathname.startsWith
 
 // Order matters: more specific paths first. Keep in sync with AppRoutes.jsx.
 const ROUTE_COMPONENTS = [
+  [exact("/how-it-works"), HowItWorksPage],
+  [prefix("/exchange/"), ExchangePairPage],
   [exact("/privacy-policy"), PrivacyPolicyPage],
   [exact("/terms-and-conditions"), TermsAndConditionsPage],
   [exact("/forgot-password"), ForgotPasswordPage],

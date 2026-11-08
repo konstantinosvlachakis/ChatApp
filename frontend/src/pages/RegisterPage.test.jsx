@@ -24,9 +24,9 @@ jest.mock("../context/UserContext", () => ({
   useUser: () => ({ refreshUserProfile: mockRefreshUserProfile }),
 }));
 
-const renderPage = (state) =>
+const renderPage = (state, search = "") =>
   render(
-    <MemoryRouter initialEntries={[{ pathname: "/register", state }]}>
+    <MemoryRouter initialEntries={[{ pathname: "/register", search, state }]}>
       <Routes>
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/profile" element={<p>App home</p>} />
@@ -99,6 +99,63 @@ describe("RegisterPage onboarding", () => {
     fireEvent.click(continueButton());
     expect(screen.getByText("Choose the language you speak.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "I speak…" })).toBeInTheDocument();
+  });
+
+  describe("prefill from a language-pair page", () => {
+    test("?speak=&learn= preselect steps 1 and 2, and both stay editable", () => {
+      renderPage(undefined, "?speak=spanish&learn=english");
+      expect(screen.getByRole("button", { name: /I speak… Spanish/ })).toBeInTheDocument();
+      fireEvent.click(continueButton());
+      expect(screen.getByRole("heading", { name: "I want to practise…" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Language English/ })).toBeInTheDocument();
+      pickLanguage("^Language", /Italian/);
+      expect(screen.getByRole("button", { name: /^Language Italian/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+      pickLanguage("I speak", /Greek/);
+      expect(screen.getByRole("button", { name: /I speak… Greek/ })).toBeInTheDocument();
+    });
+
+    test("the prefilled languages go to the server unchanged", async () => {
+      api.post.mockResolvedValue({});
+      renderPage(undefined, "?speak=greek&learn=spanish");
+      fireEvent.click(continueButton());
+      fireEvent.click(continueButton());
+      expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
+      fillAccount();
+      fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+      await waitFor(() =>
+        expect(api.post).toHaveBeenCalledWith(
+          "/api/register/",
+          expect.objectContaining({
+            nativeLanguage: "greek",
+            practiceLanguages: ["spanish"],
+            practiceLanguageLevels: { spanish: "beginner" },
+          })
+        )
+      );
+      expect(await screen.findByText("Verify email page")).toBeInTheDocument();
+    });
+
+    test("invalid values are ignored (browser language is the fallback)", () => {
+      renderPage(undefined, "?speak=klingon&learn=%3Cscript%3E");
+      expect(screen.getByRole("button", { name: /I speak… English/ })).toBeInTheDocument();
+      fireEvent.click(continueButton());
+      expect(screen.getByRole("button", { name: /^Language Choose a language/ })).toBeInTheDocument();
+    });
+
+    test("learn equal to speak is dropped", () => {
+      renderPage(undefined, "?speak=italian&learn=italian");
+      expect(screen.getByRole("button", { name: /I speak… Italian/ })).toBeInTheDocument();
+      fireEvent.click(continueButton());
+      expect(screen.getByRole("button", { name: /^Language Choose a language/ })).toBeInTheDocument();
+    });
+
+    test("only learn given: keeps the browser native language and preselects learn", () => {
+      renderPage(undefined, "?learn=SPANISH");
+      expect(screen.getByRole("button", { name: /I speak… English/ })).toBeInTheDocument();
+      fireEvent.click(continueButton());
+      expect(screen.getByRole("button", { name: /^Language Spanish/ })).toBeInTheDocument();
+    });
   });
 
   test("step 2 needs a language other than the native one", () => {

@@ -8,9 +8,11 @@ const PUBLIC_PATHS = new Set([
   "/verify-email",
   "/privacy-policy",
   "/terms-and-conditions",
+  "/how-it-works",
 ]);
-// Dynamic public routes (the emailed password reset link: /reset-password/<uid>/<token>).
-const PUBLIC_PATH_PREFIXES = ["/reset-password/"];
+// Dynamic public routes (the emailed password reset link: /reset-password/<uid>/<token>,
+// the language-pair guides /exchange/<pair>).
+const PUBLIC_PATH_PREFIXES = ["/reset-password/", "/exchange/"];
 const ACCESS_TOKEN_KEY = "accessToken";
 const REFRESH_TOKEN_KEY = "refreshToken";
 // Must match CSRF_STORAGE_KEY in ./csrf (not imported to avoid a circular dependency).
