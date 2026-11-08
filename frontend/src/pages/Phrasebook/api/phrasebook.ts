@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from "react-query";
+import { trackEvent } from "../../../lib/analytics";
 import api from "../../../lib/api";
 
 /** Phrasebook endpoints (backend `chatapp/learning_views.py`, `chatapp/phrasebook.py`). */
@@ -69,6 +70,12 @@ export const getPhrasebookPage = (params: { page?: number; pageSize?: number; q?
   });
 
 /** Save from a chat message: its text, its translation or a correction (`correction_id`). */
+// phrase_saved for new entries only (created: false = already in the phrasebook).
+const trackPhraseSaved = (source: PhraseSource) => (result: SavePhraseResult) => {
+  if (result?.created !== false) trackEvent("phrase_saved", { source });
+  return result;
+};
+
 export const savePhraseFromMessage = (body: {
   message_id: number;
   source: Exclude<PhraseSource, "manual">;
@@ -77,7 +84,7 @@ export const savePhraseFromMessage = (body: {
   meaning?: string;
   note?: string;
   language?: string;
-}) => api.post<SavePhraseResult>("/api/phrasebook/", body);
+}) => api.post<SavePhraseResult>("/api/phrasebook/", body).then(trackPhraseSaved(body.source));
 
 export const addManualPhrase = (body: {
   text: string;
@@ -85,7 +92,7 @@ export const addManualPhrase = (body: {
   note?: string;
   context?: string;
   language?: string;
-}) => api.post<SavePhraseResult>("/api/phrasebook/", body);
+}) => api.post<SavePhraseResult>("/api/phrasebook/", body).then(trackPhraseSaved("manual"));
 
 export const updatePhrase = (
   id: number,

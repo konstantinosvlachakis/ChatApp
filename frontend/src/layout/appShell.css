@@ -218,6 +218,9 @@
 .lv-footer-col a { color: var(--lv-on-navy-muted); font-size: 14px; text-decoration: none; }
 .lv-footer-col a:hover { color: var(--lv-on-navy); text-decoration: underline; }
 .lv-footer-col a:focus-visible { outline: 3px solid var(--lv-premium); outline-offset: 2px; border-radius: 4px; }
+.lv-footer-linkbtn { padding: 0; border: 0; background: none; color: var(--lv-on-navy-muted); font: inherit; font-size: 14px; cursor: pointer; }
+.lv-footer-linkbtn:hover { color: var(--lv-on-navy); text-decoration: underline; }
+.lv-footer-linkbtn:focus-visible { outline: 3px solid var(--lv-premium); outline-offset: 2px; border-radius: 4px; }
 .lv-footer-copy { max-width: 1120px; margin: 32px auto 0; padding-top: 18px; border-top: 1px solid #ffffff26; font-size: 13px; }
 
 /* Keep toasts clear of the phone tab bar. */

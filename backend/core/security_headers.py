@@ -13,12 +13,27 @@ GOOGLE_GSI_SCRIPT = "https://accounts.google.com/gsi/client"
 GOOGLE_GSI_ORIGIN = "https://accounts.google.com/gsi/"
 GOOGLE_GSI_STYLE = "https://accounts.google.com/gsi/style"
 
+# Google Analytics 4 (web app, frontend/src/lib/analytics.ts). gtag.js is injected
+# only after the visitor accepts analytics cookies; hits go to the regional
+# *.google-analytics.com / *.analytics.google.com collectors.
+GOOGLE_TAG_SCRIPT = "https://www.googletagmanager.com"
+GOOGLE_ANALYTICS_CONNECT = [
+    "https://*.google-analytics.com",
+    "https://*.analytics.google.com",
+    "https://*.googletagmanager.com",
+]
+GOOGLE_ANALYTICS_IMG = [
+    "https://*.google-analytics.com",
+    "https://*.googletagmanager.com",
+]
+
 
 def build_content_security_policy():
     connect_src = [
         "'self'",
         "https://api.bigdatacloud.net",
         GOOGLE_GSI_ORIGIN,
+        *GOOGLE_ANALYTICS_CONNECT,
         *settings.CSP_EXTRA_CONNECT_SRC,
     ]
     img_src = [
@@ -30,6 +45,7 @@ def build_content_security_policy():
         "https://randomuser.me",  # old demo portraits, until `load_dummy_data --refresh-photos` runs
         "https://i.pravatar.cc",  # demo portraits (chatapp/demo_profiles.py)
         "https://*.giphy.com",  # GIF messages / picker (chatapp/giphy.py)
+        *GOOGLE_ANALYTICS_IMG,
         *settings.CSP_EXTRA_IMG_SRC,
     ]
     directives = {
@@ -40,7 +56,7 @@ def build_content_security_policy():
         "form-action": ["'self'"],
         # The CRA build inlines its runtime chunk and index.html has an onload
         # handler on the font stylesheet link.
-        "script-src": ["'self'", "'unsafe-inline'", GOOGLE_GSI_SCRIPT],
+        "script-src": ["'self'", "'unsafe-inline'", GOOGLE_GSI_SCRIPT, GOOGLE_TAG_SCRIPT],
         "style-src": [
             "'self'",
             "'unsafe-inline'",

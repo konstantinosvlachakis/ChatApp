@@ -6,7 +6,7 @@ import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { cloudinaryImage } from "../../../lib/media";
 import { languageTheyLearnFromViewer } from "../utils/conversationStarters";
-import { ExchangeProfile, languageLabel, languageLevel } from "./ExchangeProfileCard";
+import { ExchangeProfile, languageLabel, languageLevel, trackProfileLinkClick } from "./ExchangeProfileCard";
 
 // Largest rendered photo (community.css `.photo-card-media`, square); Cloudinary crops to it.
 export const PHOTO_CARD_SIZE = 280;
@@ -49,7 +49,7 @@ export default function PhotoExchangeCard({ profile, viewerLanguage, busy, start
   const goal = profile.learningGoal.trim() || "You speak the language they’re learning. They speak one of yours.";
 
   return (
-    <article className="photo-card">
+    <article className="photo-card" onClickCapture={trackProfileLinkClick}>
       <Link to={profilePath} state={{ profile }} className={`photo-card-media ${ownPhoto ? "" : "photo-card-media-fallback"}`} tabIndex={-1} aria-hidden="true">
         {ownPhoto ? (
           <img src={photo} alt="" loading={imageLoading} decoding="async" onError={() => setImageFailed(true)} />

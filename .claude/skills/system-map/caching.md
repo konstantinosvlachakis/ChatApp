@@ -72,6 +72,7 @@ Browser storage:
 | `user_profile_cache:v1` → `{user, cachedAt}` | localStorage | `UserContext` effect whenever `user` changes. Hydrates the initial state (24 h TTL), then `refreshUserProfile` refetches `/api/profile/` | `clearClientSessionData`, set when `user` becomes null, expiry/parse error. Contains the own profile including email/DOB |
 | `chat:draft:{conversationId}` / `chat:draft:global` | localStorage | `MessageInput.jsx` | Send; `clearClientSessionData` (prefix `chat:draft:`) |
 | `chat:coach:messages:{userId\|guest}`, `chat:coach:preferences:{userId\|guest}` | localStorage | `pages/Conversations/features/coachConversation.js` | **Never** (survives logout) |
+| `lv:analytics-consent` → `{choice: "granted"\|"denied", updatedAt}` | localStorage | `lib/analytics.ts` (cookie banner, Settings Cookies switch); only when `REACT_APP_GA_MEASUREMENT_ID` is set | **Never** (a device-level choice, survives logout). GA's own `_ga*` cookies are expired on decline |
 | `csrfToken` | sessionStorage | `utils/csrf.ts` (from `/api/csrf/`) | `clearClientSessionData` |
 | `accessToken`, `refreshToken` | session + local (local only with rememberMe) | `setLegacyTokens` (legacy localhost-only fallback) | `clearLegacyTokens` (inside `clearClientSessionData`; also on profile 401) |
 | `csrfToken`, `authToken` | localStorage | `utils/storage.js` | Dead file, not imported |
@@ -112,3 +113,4 @@ Browser storage:
 - feat/people-feed: `profile_data` key gains `sec:`, `sort:`, `qf:` (quick-filter/counts flags) and `sel:` (language subsets, include groups, viewer location and levels).
 - feat/group-chats-api: list cache key gains `:groups:{0|1}`; group changes (create, invite, accept/decline, leave/remove, rename, group mark-read for the reader) bump the conversation-list version of every participant row (active + pending) and of removed/declining users.
 - feat/corrections-phrasebook-web (2026-11-07): React Query keys `["phrasebook"]` prefix (invalidated after every phrasebook write and after saves from chat, `ChatRoom.handlePhrasebookChange`), `["phrasebook","list",{q,language}]` (infinite, keepPreviousData), `["phrasebook","summary"]` (staleTime 60 s), `["phrasebook","review"]` (refetchOnMount always in review mode). Own `correction_preference` is patched into `UserContext` optimistically by Settings.
+- feat/web-analytics (2026-11-08): web localStorage `lv:analytics-consent` (GA4 consent choice + timestamp; not cleared by `clearClientSessionData`).

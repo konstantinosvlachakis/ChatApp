@@ -493,6 +493,18 @@ class SecurityHeaderTests(TestCase):
         self.assertIn("script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client", policy)
         self.assertIn("frame-src https://accounts.google.com/gsi/", policy)
         self.assertIn("https://accounts.google.com/gsi/style", policy)
+        # Google Analytics 4 (gtag.js after cookie consent).
+        directives = dict(part.split(" ", 1) for part in policy.split("; "))
+        self.assertIn("https://www.googletagmanager.com", directives["script-src"].split())
+        for origin in (
+            "https://*.google-analytics.com",
+            "https://*.analytics.google.com",
+            "https://*.googletagmanager.com",
+        ):
+            self.assertIn(origin, directives["connect-src"].split())
+        for origin in ("https://*.google-analytics.com", "https://*.googletagmanager.com"):
+            self.assertIn(origin, directives["img-src"].split())
+        self.assertIn("https://accounts.google.com/gsi/", directives["connect-src"].split())
 
     @override_settings(CSP_MODE="enforce")
     def test_csp_can_be_enforced(self):

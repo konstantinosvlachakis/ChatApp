@@ -6,6 +6,7 @@ import CelebrationOutlinedIcon from "@mui/icons-material/CelebrationOutlined";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import { getErrorMessage } from "../../lib/api";
 import { toastApiError } from "../../components/Toast";
+import { trackEvent } from "../../lib/analytics";
 import {
   PHRASEBOOK_QUERY_KEY,
   PHRASEBOOK_REVIEW_KEY,
@@ -67,6 +68,7 @@ export default function ReviewSession() {
   const finish = useCallback(() => {
     setSession(null);
     setFinished(true);
+    trackEvent("review_completed"); // only reached after at least one graded card
     // Fresh counts + next_due_at for the finish screen and the list header.
     queryClient.invalidateQueries(PHRASEBOOK_QUERY_KEY);
   }, [queryClient]);

@@ -6,6 +6,8 @@ import Seo from "./components/Seo";
 import PullToRefresh from "./components/PullToRefresh";
 import ConnectivityBanner from "./components/ConnectivityBanner";
 import { ToastViewport } from "./components/Toast";
+import AnalyticsRouteTracker from "./components/AnalyticsRouteTracker";
+import CookieConsent from "./components/CookieConsent";
 
 
 function App() {
@@ -13,11 +15,13 @@ function App() {
     <AppProviders>
       <Router>
         <Seo />
+        <AnalyticsRouteTracker />
         <PullToRefresh />
         <ConnectivityBanner />
         <div className="App">
           <AppRoutes />
         </div>
+        <CookieConsent />
         <ToastViewport />
       </Router>
     </AppProviders>

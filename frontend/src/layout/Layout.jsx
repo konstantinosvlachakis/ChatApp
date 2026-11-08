@@ -24,6 +24,7 @@ import BottomTabBar from "./BottomTabBar";
 import { isOpenChatPath } from "./navItems";
 import { messagePreviewText } from "../pages/Conversations/utils/messageMedia";
 import { getNotificationPermission, requestNotificationPermission } from "../utils/notifications";
+import CookieChoicesButton from "../components/CookieChoicesButton";
 import "./appShell.css";
 import {
   SESSION_REFRESHED_EVENT,
@@ -523,6 +524,7 @@ const Layout = () => {
               <strong>Legal</strong>
               <Link to="/terms-and-conditions">Terms of Service</Link>
               <Link to="/privacy-policy">Privacy</Link>
+              <CookieChoicesButton className="lv-footer-linkbtn" />
             </nav>
           </div>
           <p className="lv-footer-copy">© {new Date().getFullYear()} LangVoyage. All rights reserved.</p>

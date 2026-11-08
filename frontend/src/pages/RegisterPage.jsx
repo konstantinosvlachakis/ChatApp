@@ -18,6 +18,7 @@ import AuthDivider from "../components/Auth/AuthDivider";
 import { useCompleteSignIn } from "../components/Auth/useCompleteSignIn";
 import { GoogleSignInButton, isGoogleSignInEnabled } from "../lib/googleIdentity";
 import { googleSignIn, GOOGLE_ERROR_MESSAGES, isPendingGoogleFresh, PROFILE_ERROR_FIELDS } from "../lib/authApi";
+import { trackEvent } from "../lib/analytics";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_.-]{3,30}$/;
@@ -43,6 +44,7 @@ export const SIGNUP_STEPS = ["Your language", "Language to practise", "Your acco
 const STEP_NATIVE = 0;
 const STEP_PRACTICE = 1;
 const STEP_ACCOUNT = 2;
+const STEP_ANALYTICS_NAMES = ["native", "practice", "account"];
 
 const getMinBirthDate = () => {
   const now = new Date();
@@ -108,6 +110,9 @@ const RegisterPage = () => {
   const pendingGoogleFresh = isPendingGoogleFresh(pendingGoogle);
   const { refreshUserProfile } = useUser();
   const completeSignIn = useCompleteSignIn();
+  useEffect(() => {
+    trackEvent("onboarding_step", { step: STEP_ANALYTICS_NAMES[step] });
+  }, [step]);
   const googleEnabled = isGoogleSignInEnabled();
   const maxBirthDate = getMinBirthDate();
   const selectedDate = parseDateInputValue(dateOfBirth);
@@ -296,6 +301,7 @@ const RegisterPage = () => {
         password,
         ...choices.toPayload(),
       });
+      trackEvent("sign_up", { method: "email" });
       startResendCooldown(email.trim());
       try {
         const tokens = await api.post("/api/token/", { email: email.trim().toLowerCase(), password, remember_me: false });
@@ -322,6 +328,7 @@ const RegisterPage = () => {
     setGoogleBusy(true);
     try {
       const result = await googleSignIn({ credential, rememberMe: true, profile: choices.toPayload() });
+      trackEvent(result?.created ? "sign_up" : "login", { method: "google" });
       // created: false = an existing account, which simply logs in.
       await completeSignIn(result, { rememberMe: true });
     } catch (error) {

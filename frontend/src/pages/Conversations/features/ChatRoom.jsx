@@ -47,6 +47,7 @@ import {
   isDocumentHidden,
 } from "../../../utils/reconnect";
 import { logger } from "../../../lib/logger";
+import { messageKindFromForm, trackEvent, trackMessageSent } from "../../../lib/analytics";
 import { toast, toastApiError } from "../../../components/Toast";
 import { confirmPendingMessage, mergeLatestPage, prependOlderMessages, restoreMessage } from "../utils/messageMerge";
 
@@ -1579,6 +1580,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
   // Shows `tempMessage` at once, posts the form and swaps in the saved copy. Throws on
   // failure (the optimistic copy is removed first); the caller toasts.
   const submitMessage = async (formData, tempMessage) => {
+    // The first message of a direct chat with no history (Say hello opened it).
+    const startsConversation = !isGroup && !loadingHistory && !hasOlderMessages && messages.length === 0;
     setMessages((prev) => [...prev, tempMessage]);
     requestAnimationFrame(() => scrollToBottom("smooth"));
 
@@ -1589,6 +1592,8 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
       setMessages((prev) => prev.filter((msg) => msg.id !== tempMessage.id));
       throw error;
     }
+    if (startsConversation) trackEvent("conversation_started");
+    trackMessageSent(conversation.id, messageKindFromForm(formData));
     if (!applyNewMessageToConversationList(queryClient, conversation.id, savedMessage)) {
       queryClient.invalidateQueries({ queryKey: CONVERSATIONS_LIST_QUERY_KEY });
     }

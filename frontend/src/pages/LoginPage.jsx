@@ -5,6 +5,7 @@ import AuthDivider from "../components/Auth/AuthDivider";
 import { useCompleteSignIn } from "../components/Auth/useCompleteSignIn";
 import { GoogleSignInButton, isGoogleSignInEnabled } from "../lib/googleIdentity";
 import { googleSignIn, GOOGLE_ERROR_MESSAGES } from "../lib/authApi";
+import { trackEvent } from "../lib/analytics";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -64,6 +65,7 @@ const LoginPage = () => {
         password,
         remember_me: rememberMe,
       });
+      trackEvent("login", { method: "email" });
 
       // Drops any state left by a previous session (tokens, cached CSRF token, drafts),
       // reloads the user and opens the app (or /finish-profile for an incomplete profile).
@@ -94,6 +96,7 @@ const LoginPage = () => {
     setNoAccount(null);
     try {
       const result = await googleSignIn({ credential, rememberMe, intent: "login" });
+      trackEvent(result?.created ? "sign_up" : "login", { method: "google" });
       await completeSignIn(result, { rememberMe, next: nextPath });
     } catch (googleFailure) {
       if (googleFailure?.code === "account_not_found") {

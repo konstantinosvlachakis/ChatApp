@@ -3,6 +3,9 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import LoginPage from "./LoginPage";
 import api from "../lib/api";
 import { ApiError } from "../lib/apiError";
+import { trackEvent } from "../lib/analytics";
+
+jest.mock("../lib/analytics", () => ({ trackEvent: jest.fn() }));
 
 jest.mock("../lib/api", () => {
   const actual = jest.requireActual("../lib/apiError");
@@ -81,6 +84,7 @@ describe("LoginPage", () => {
       remember_me: true,
     });
     expect(mockRefreshUserProfile).toHaveBeenCalled();
+    expect(trackEvent).toHaveBeenCalledWith("login", { method: "email" });
   });
 
   test("has no Google button without REACT_APP_GOOGLE_CLIENT_ID", () => {
@@ -110,6 +114,8 @@ describe("LoginPage", () => {
       intent: "login",
     });
     expect(await screen.findByText("App home")).toBeInTheDocument();
+    expect(trackEvent).toHaveBeenCalledWith("login", { method: "google" });
+    expect(trackEvent).not.toHaveBeenCalledWith("sign_up", expect.anything());
   });
 
   test("an existing account that still needs its languages goes to finish-profile", async () => {
@@ -119,6 +125,7 @@ describe("LoginPage", () => {
     await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
     await act(async () => googleCallback({ credential: "tok" }));
     expect(await screen.findByText("Finish profile page")).toBeInTheDocument();
+    expect(trackEvent).toHaveBeenCalledWith("login", { method: "google" });
   });
 
   test("an unknown Google account is offered sign-up instead of being created", async () => {
@@ -150,5 +157,6 @@ describe("LoginPage", () => {
     await act(async () => googleCallback({ credential: "tok" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("This account has been disabled.");
     expect(screen.queryByText("App home")).not.toBeInTheDocument();
+    expect(trackEvent).not.toHaveBeenCalled();
   });
 });

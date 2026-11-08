@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useQueryClient } from "react-query";
 import api, { getErrorMessage } from "../lib/api";
 import { completeProfile, PROFILE_ERROR_FIELDS } from "../lib/authApi";
+import { trackEvent } from "../lib/analytics";
 import { useUser } from "../context/UserContext";
 import { browserNativeLanguage, normalizeLanguage, LANGUAGE_KEYS } from "../constants/languages";
 import AuthShell from "../components/Auth/AuthShell";
@@ -117,6 +118,7 @@ const FinishProfilePage = () => {
     setSubmitting(true);
     try {
       await completeProfile(payload);
+      trackEvent("profile_completed");
       await goHome();
     } catch (error) {
       if (error?.code === "profile_already_complete") {
