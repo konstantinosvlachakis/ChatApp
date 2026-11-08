@@ -16,7 +16,8 @@ export function useCompleteSignIn() {
 
   return useCallback(
     async (tokens, { rememberMe = true, next = "/profile" } = {}) => {
-      clearClientSessionData();
+      // Keep the hint the login response just set (the new session's).
+      clearClientSessionData({ keepSessionHint: true });
       if (shouldUseLegacyAuthFallback()) {
         setLegacyTokens({ access: tokens?.access, refresh: tokens?.refresh, rememberMe });
       }
