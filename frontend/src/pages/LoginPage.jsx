@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
 import AuthDivider from "../components/Auth/AuthDivider";
 import { useCompleteSignIn } from "../components/Auth/useCompleteSignIn";
@@ -19,7 +19,10 @@ const LoginPage = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [googleError, setGoogleError] = useState("");
   const [googleBusy, setGoogleBusy] = useState(false);
+  // An unknown Google account on log in: offer sign-up instead of creating it here.
+  const [noAccount, setNoAccount] = useState(null);
   const googleBusyRef = useRef(false);
+  const navigate = useNavigate();
   const completeSignIn = useCompleteSignIn();
   const googleEnabled = isGoogleSignInEnabled();
   const nextPath = location.state?.verifyEmail ? "/verify-email" : "/profile";
@@ -80,18 +83,23 @@ const LoginPage = () => {
   const passwordInputClassName =
     "min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
 
-  // No `profile`: an unknown Google account is created without languages and the
-  // response's profile_complete: false sends it to /finish-profile.
+  // intent "login": an unknown Google account isn't created here; the server answers
+  // account_not_found and we offer sign-up (carrying this Google sign-in along).
   const handleGoogleCredential = async (credential) => {
     if (googleBusyRef.current || loading) return;
     googleBusyRef.current = true;
     setGoogleBusy(true);
     setGoogleError("");
     setError("");
+    setNoAccount(null);
     try {
-      const result = await googleSignIn({ credential, rememberMe });
+      const result = await googleSignIn({ credential, rememberMe, intent: "login" });
       await completeSignIn(result, { rememberMe, next: nextPath });
     } catch (googleFailure) {
+      if (googleFailure?.code === "account_not_found") {
+        setNoAccount({ credential, email: googleFailure?.data?.email || "", receivedAt: Date.now() });
+        return;
+      }
       setGoogleError(
         GOOGLE_ERROR_MESSAGES[googleFailure?.code] ||
           getErrorMessage(googleFailure, "Google sign-in failed. Please try again.")
@@ -216,6 +224,35 @@ const LoginPage = () => {
             {googleError && (
               <div role="alert" className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {googleError}
+              </div>
+            )}
+            {noAccount && (
+              <div
+                role="alert"
+                className="mt-3 rounded-2xl border border-[#d6e0e8] bg-[var(--lv-paper,#fffaf3)] px-4 py-4 text-sm text-[#14314a]"
+              >
+                <p className="font-semibold">No account yet</p>
+                <p className="mt-1 text-slate-600">
+                  There&apos;s no LangVoyage account for{" "}
+                  {noAccount.email ? <strong className="break-all">{noAccount.email}</strong> : "this Google account"}{" "}
+                  yet. Create one — it takes a minute.
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/register", { state: { pendingGoogle: noAccount } })}
+                    className="rounded-full bg-[#1b7f79] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#166b66]"
+                  >
+                    Create account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNoAccount(null)}
+                    className="rounded-full border border-[#d6e0e8] bg-white px-5 py-2.5 text-sm font-semibold text-[#14314a] transition hover:bg-slate-50"
+                  >
+                    Use another account
+                  </button>
+                </div>
               </div>
             )}
           </>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
 import { useUser } from "../context/UserContext";
 import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
@@ -17,7 +17,7 @@ import {
 import AuthDivider from "../components/Auth/AuthDivider";
 import { useCompleteSignIn } from "../components/Auth/useCompleteSignIn";
 import { GoogleSignInButton, isGoogleSignInEnabled } from "../lib/googleIdentity";
-import { googleSignIn, GOOGLE_ERROR_MESSAGES, PROFILE_ERROR_FIELDS } from "../lib/authApi";
+import { googleSignIn, GOOGLE_ERROR_MESSAGES, isPendingGoogleFresh, PROFILE_ERROR_FIELDS } from "../lib/authApi";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_.-]{3,30}$/;
@@ -98,6 +98,14 @@ const RegisterPage = () => {
   const googleBusyRef = useRef(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
+  // Google sign-in carried over from the log-in page ("No account yet → Create account").
+  // Kept in memory only: dropped from the history entry so a reload doesn't keep the token.
+  const [pendingGoogle, setPendingGoogle] = useState(() => location.state?.pendingGoogle || null);
+  useEffect(() => {
+    if (location.state?.pendingGoogle) navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+  const pendingGoogleFresh = isPendingGoogleFresh(pendingGoogle);
   const { refreshUserProfile } = useUser();
   const completeSignIn = useCompleteSignIn();
   const googleEnabled = isGoogleSignInEnabled();
@@ -317,6 +325,8 @@ const RegisterPage = () => {
       // created: false = an existing account, which simply logs in.
       await completeSignIn(result, { rememberMe: true });
     } catch (error) {
+      // A carried-over token that expired or was rejected: fall back to the Google button.
+      if (error?.code === "google_token_invalid") setPendingGoogle(null);
       if (!showProfileError(error, { viaGoogle: true })) {
         setGoogleError(GOOGLE_ERROR_MESSAGES[error?.code] || getErrorMessage(error, "Google sign-in failed. Please try again."));
       }
@@ -338,6 +348,11 @@ const RegisterPage = () => {
   return (
     <div>
       <StepProgress steps={SIGNUP_STEPS} current={step} />
+      {pendingGoogleFresh && step !== STEP_ACCOUNT && (
+        <p role="status" className="mb-3 rounded-2xl bg-[var(--lv-sage,#e7f1ee)] px-4 py-2.5 text-sm text-[#14314a]">
+          Signing up with <strong className="break-all">{pendingGoogle.email}</strong>. Pick your languages first.
+        </p>
+      )}
 
       {step === STEP_NATIVE && (
         <form onSubmit={handleNativeContinue} noValidate aria-labelledby="native-language-label">
@@ -596,7 +611,27 @@ const RegisterPage = () => {
             {googleEnabled && (
               <>
                 <AuthDivider>or</AuthDivider>
-                <GoogleSignInButton text="continue_with" onCredential={handleGoogleCredential} />
+                {pendingGoogleFresh ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleGoogleCredential(pendingGoogle.credential)}
+                      disabled={submitting || googleBusy}
+                      className="w-full max-w-[400px] rounded-full border border-[#d6e0e8] bg-white px-5 py-3 text-sm font-semibold text-[#14314a] shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Continue as <span className="break-all">{pendingGoogle.email}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingGoogle(null)}
+                      className="text-xs font-semibold text-[#1b7f79] underline-offset-2 hover:underline"
+                    >
+                      Use a different Google account
+                    </button>
+                  </div>
+                ) : (
+                  <GoogleSignInButton text="continue_with" onCredential={handleGoogleCredential} />
+                )}
                 {googleBusy && (
                   <p role="status" className="mt-2 text-center text-sm text-[var(--lv-muted-ink)]">
                     Creating your account with Google…
