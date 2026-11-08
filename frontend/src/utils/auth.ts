@@ -77,6 +77,7 @@ const SESSION_STORAGE_KEYS_TO_CLEAR = ["user_profile_cache:v1"];
 export const clearClientSessionData = () => {
   if (typeof window === "undefined") return;
   clearLegacyTokens();
+  clearSessionHint();
   sessionStorage.removeItem(CSRF_STORAGE_KEY);
   try {
     SESSION_STORAGE_KEYS_TO_CLEAR.forEach((key) => localStorage.removeItem(key));
@@ -90,6 +91,24 @@ export const clearClientSessionData = () => {
 
 export const isPublicPath = (pathname: string) =>
   PUBLIC_PATHS.has(pathname) || PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+
+// Readable cookie the backend sets next to the httpOnly auth cookies (value "1",
+// never a token; settings.AUTH_COOKIE_HINT). Absent → no session to check.
+export const SESSION_HINT_COOKIE = "lv_signed_in";
+
+export const hasSessionHint = () => {
+  if (typeof document === "undefined") return false;
+  if (getLegacyAccessToken() || getLegacyRefreshToken()) return true;
+  return document.cookie.split(";").some((part) => part.trim().startsWith(`${SESSION_HINT_COOKIE}=`));
+};
+
+const clearSessionHint = () => {
+  if (typeof document === "undefined") return;
+  document.cookie = `${SESSION_HINT_COOKIE}=; Max-Age=0; path=/`;
+};
+
+/** Public pages only ask the server who is signed in when a session may exist. */
+export const shouldCheckSession = (pathname: string) => !isPublicPath(pathname) || hasSessionHint();
 
 export const refreshSession = async () => {
   const refreshToken = shouldUseLegacyAuthFallback() ? getLegacyRefreshToken() : "";

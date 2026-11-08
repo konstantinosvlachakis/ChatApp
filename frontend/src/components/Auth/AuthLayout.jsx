@@ -43,7 +43,7 @@ const contentByPath = {
     eyebrow: "Create Account",
     title: "Start your language exchange.",
     description:
-      "Tell us what you speak and the languages you want to learn. We'll introduce you to people who fit.",
+      "Tell us what you speak and the language you want to learn. We'll introduce you to people who fit.",
     footer: (
       <>
         <p className="text-center text-sm text-slate-600">

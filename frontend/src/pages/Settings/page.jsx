@@ -105,7 +105,7 @@ const reasonLabel = (reason) => {
 };
 
 // Errors shown inside the delete dialog (the user can fix them there); others are toasts.
-const DELETE_INLINE_ERROR_CODES = new Set(["invalid_password", "password_required", "throttled"]);
+const DELETE_INLINE_ERROR_CODES = new Set(["invalid_password", "password_required", "confirmation_required", "throttled"]);
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
@@ -347,9 +347,12 @@ const SettingsPage = () => {
     }
   };
 
-  const deleteConfirmWord = user?.username || "DELETE";
+  // Google-only accounts (has_password === false) have no password to confirm with: they
+  // type DELETE and the request sends {confirm: "DELETE"}. A missing flag = has a password.
+  const hasPassword = user?.has_password !== false;
+  const deleteConfirmWord = hasPassword ? user?.username || "DELETE" : "DELETE";
   const deleteConfirmed = deleteConfirmText.trim() === deleteConfirmWord;
-  const canDelete = deleteConfirmed && deletePassword.length > 0;
+  const canDelete = deleteConfirmed && (!hasPassword || deletePassword.length > 0);
 
   const handleDeleteAccount = async () => {
     if (!canDelete || inFlightRef.current.delete) return;
@@ -357,7 +360,9 @@ const SettingsPage = () => {
     setDeleting(true);
     setDeleteError("");
     try {
-      await api.delete("/api/profile/delete/", { body: { current_password: deletePassword } });
+      await api.delete("/api/profile/delete/", {
+        body: hasPassword ? { current_password: deletePassword } : { confirm: "DELETE" },
+      });
     } catch (err) {
       if (DELETE_INLINE_ERROR_CODES.has(err?.code)) {
         setDeleteError(getErrorMessage(err, "Couldn't delete your account."));
@@ -454,7 +459,11 @@ const SettingsPage = () => {
             <div className="st-row">
               <div className="st-row-text">
                 <h3>Password</h3>
-                <p>We'll email you a link to choose a new password.</p>
+                <p>
+                  {hasPassword
+                    ? "We'll email you a link to choose a new password."
+                    : "You sign in with Google. To also log in with your email, we'll email you a link to set a password."}
+                </p>
                 {resetSentTo && (
                   <p className="st-note is-success" role="status">
                     <CheckRoundedIcon aria-hidden="true" />
@@ -469,7 +478,7 @@ const SettingsPage = () => {
                 disabled={!email || resetSending}
               >
                 <LockResetRoundedIcon aria-hidden="true" />
-                Change password
+                {hasPassword ? "Change password" : "Set a password"}
               </button>
             </div>
 
@@ -740,7 +749,7 @@ const SettingsPage = () => {
 
       <ConfirmDialog
         open={dialog === "password"}
-        title="Change password?"
+        title={hasPassword ? "Change password?" : "Set a password?"}
         confirmLabel="Send link"
         busyLabel="Sending…"
         busy={resetSending}
@@ -799,23 +808,27 @@ const SettingsPage = () => {
           spellCheck={false}
           disabled={deleting}
         />
-        <label htmlFor="delete-password" className="st-dialog-label">
-          Your current password
-        </label>
-        <input
-          id="delete-password"
-          type="password"
-          className="st-select"
-          value={deletePassword}
-          onChange={(event) => {
-            setDeletePassword(event.target.value);
-            setDeleteError("");
-          }}
-          autoComplete="current-password"
-          disabled={deleting}
-          aria-invalid={deleteError ? "true" : undefined}
-          aria-describedby={deleteError ? "delete-password-error" : undefined}
-        />
+        {hasPassword && (
+          <>
+            <label htmlFor="delete-password" className="st-dialog-label">
+              Your current password
+            </label>
+            <input
+              id="delete-password"
+              type="password"
+              className="st-select"
+              value={deletePassword}
+              onChange={(event) => {
+                setDeletePassword(event.target.value);
+                setDeleteError("");
+              }}
+              autoComplete="current-password"
+              disabled={deleting}
+              aria-invalid={deleteError ? "true" : undefined}
+              aria-describedby={deleteError ? "delete-password-error" : undefined}
+            />
+          </>
+        )}
         {deleteError && (
           <p id="delete-password-error" className="st-note is-error" role="alert">
             {deleteError}

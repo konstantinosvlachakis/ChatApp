@@ -4,6 +4,7 @@ import Layout from "./layout/Layout";
 import { LazyRoute } from "./components/ErrorBoundary";
 import AuthLandingPage from "./pages/AuthLandingPage";
 import AuthLayout from "./components/Auth/AuthLayout";
+import RequireCompleteProfile from "./components/Auth/RequireCompleteProfile";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import {
@@ -11,6 +12,7 @@ import {
   CommunityPage,
   ConversationsPage,
   EditProfilePage,
+  FinishProfilePage,
   ForgotPasswordPage,
   PhrasebookPage,
   PracticePage,
@@ -31,6 +33,8 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<AuthLandingPage />} />
     <Route path="/verify-email" element={<LazyRoute fallback={null}><VerifyEmailPage /></LazyRoute>} />
+    {/* Signed-in accounts without languages (Google sign-in); outside Layout so its guard can't loop. */}
+    <Route path="/finish-profile" element={<LazyRoute fallback={null}><FinishProfilePage /></LazyRoute>} />
     <Route
       path="/privacy-policy"
       element={
@@ -69,6 +73,8 @@ const AppRoutes = () => (
       />
     </Route>
 
+    {/* Incomplete profiles (Google sign-in without languages) go to /finish-profile first. */}
+    <Route element={<RequireCompleteProfile />}>
     <Route element={<Layout />}>
       <Route
         path="/profile"
@@ -166,6 +172,7 @@ const AppRoutes = () => (
           </LazyRoute>
         }
       />
+    </Route>
     </Route>
   </Routes>
 );

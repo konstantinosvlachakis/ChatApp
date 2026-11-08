@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fetchUserProfile } from "../pages/Conversations/api/fetchUserProfile";
 import { User } from "../pages/Profile/types";
-import { clearClientSessionData, isPublicPath } from "../utils/auth";
+import { clearClientSessionData, isPublicPath, shouldCheckSession } from "../utils/auth";
 
 interface UserContextType {
   user: User | null;
@@ -69,6 +69,12 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     const refreshId = ++latestRefreshRef.current;
     const epoch = sessionEpochRef.current;
     const isCurrent = () => refreshId === latestRefreshRef.current && epoch === sessionEpochRef.current;
+    // Logged-out visitor on a public page (no session hint, no cached user): nothing
+    // to ask the server, and asking would only log a 401 + failed refresh.
+    if (!userRef.current && typeof window !== "undefined" && !shouldCheckSession(window.location.pathname)) {
+      setLoading(false);
+      return;
+    }
     // Background refreshes (after a save, on settings) keep showing the current user;
     // only a first load without one shows loading, so pages don't blank and remount.
     if (!userRef.current) setLoading(true);
