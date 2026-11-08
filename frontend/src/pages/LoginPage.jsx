@@ -1,8 +1,10 @@
-import React, { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import React, { useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import api, { getErrorMessage } from "../lib/api";
-import { useUser } from "../context/UserContext";
-import { clearClientSessionData, setLegacyTokens, shouldUseLegacyAuthFallback } from "../utils/auth";
+import AuthDivider from "../components/Auth/AuthDivider";
+import { useCompleteSignIn } from "../components/Auth/useCompleteSignIn";
+import { GoogleSignInButton, isGoogleSignInEnabled } from "../lib/googleIdentity";
+import { googleSignIn, GOOGLE_ERROR_MESSAGES } from "../lib/authApi";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -15,8 +17,12 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-  const navigate = useNavigate();
-  const { refreshUserProfile } = useUser();
+  const [googleError, setGoogleError] = useState("");
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const googleBusyRef = useRef(false);
+  const completeSignIn = useCompleteSignIn();
+  const googleEnabled = isGoogleSignInEnabled();
+  const nextPath = location.state?.verifyEmail ? "/verify-email" : "/profile";
 
   const validate = () => {
     const nextErrors = {};
@@ -56,19 +62,9 @@ const LoginPage = () => {
         remember_me: rememberMe,
       });
 
-      // Drop any state left by a previous session (tokens, cached CSRF token, drafts).
-      clearClientSessionData();
-      if (shouldUseLegacyAuthFallback()) {
-        setLegacyTokens({
-          access: tokens?.access,
-          refresh: tokens?.refresh,
-          rememberMe,
-        });
-      }
-
-      await refreshUserProfile();
-
-      navigate(location.state?.verifyEmail ? "/verify-email" : "/profile");
+      // Drops any state left by a previous session (tokens, cached CSRF token, drafts),
+      // reloads the user and opens the app (or /finish-profile for an incomplete profile).
+      await completeSignIn(tokens, { rememberMe, next: nextPath });
     } catch (error) {
       // ApiError.message is the envelope's `error` (or a friendly network/status text).
       setError(getErrorMessage(error, "Invalid credentials."));
@@ -84,7 +80,30 @@ const LoginPage = () => {
   const passwordInputClassName =
     "min-w-0 flex-1 border-0 bg-transparent py-3.5 pl-1 pr-0 text-sm text-slate-900 outline-none placeholder:text-slate-400";
 
+  // No `profile`: an unknown Google account is created without languages and the
+  // response's profile_complete: false sends it to /finish-profile.
+  const handleGoogleCredential = async (credential) => {
+    if (googleBusyRef.current || loading) return;
+    googleBusyRef.current = true;
+    setGoogleBusy(true);
+    setGoogleError("");
+    setError("");
+    try {
+      const result = await googleSignIn({ credential, rememberMe });
+      await completeSignIn(result, { rememberMe, next: nextPath });
+    } catch (googleFailure) {
+      setGoogleError(
+        GOOGLE_ERROR_MESSAGES[googleFailure?.code] ||
+          getErrorMessage(googleFailure, "Google sign-in failed. Please try again.")
+      );
+    } finally {
+      googleBusyRef.current = false;
+      setGoogleBusy(false);
+    }
+  };
+
   return (
+    <div>
       <form onSubmit={handleLogin} className="space-y-3.5 lg:space-y-3">
         <div>
           <label htmlFor="email" className="mb-1.5 block text-sm font-semibold text-[#14314a]">
@@ -162,7 +181,7 @@ const LoginPage = () => {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || googleBusy}
           className="w-full rounded-full bg-[#14314a] py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(20,49,74,0.22)] transition hover:bg-[#10263a] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? (
@@ -185,6 +204,22 @@ const LoginPage = () => {
             "Log in"
           )}
         </button>
+        {googleEnabled && (
+          <>
+            <AuthDivider>or</AuthDivider>
+            <GoogleSignInButton text="signin_with" onCredential={handleGoogleCredential} />
+            {googleBusy && (
+              <p role="status" className="mt-2 text-center text-sm text-[var(--lv-muted-ink)]">
+                Signing you in with Google…
+              </p>
+            )}
+            {googleError && (
+              <div role="alert" className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {googleError}
+              </div>
+            )}
+          </>
+        )}
 
         <div className="hidden gap-3 rounded-[1.6rem] border border-[#d6e0e8] bg-[#f7fafc] px-4 py-3.5 sm:grid sm:grid-cols-3">
           <div>
@@ -201,6 +236,7 @@ const LoginPage = () => {
           </div>
         </div>
       </form>
+    </div>
   );
 };
 

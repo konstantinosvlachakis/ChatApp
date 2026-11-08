@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RegisterPage from "./RegisterPage";
 import api from "../lib/api";
+import { ApiError } from "../lib/apiError";
 
 jest.mock("../lib/api", () => {
   const actual = jest.requireActual("../lib/apiError");
@@ -15,25 +16,24 @@ jest.mock("../lib/api", () => {
   };
 });
 
+const mockRefreshUserProfile = jest.fn();
 jest.mock("../context/UserContext", () => ({
-  useUser: () => ({ refreshUserProfile: jest.fn().mockResolvedValue(null) }),
+  useUser: () => ({ refreshUserProfile: mockRefreshUserProfile }),
 }));
 
 const renderPage = () =>
   render(
-    <MemoryRouter>
-      <RegisterPage />
+    <MemoryRouter initialEntries={["/register"]}>
+      <Routes>
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/profile" element={<p>App home</p>} />
+        <Route path="/finish-profile" element={<p>Finish profile page</p>} />
+        <Route path="/verify-email" element={<p>Verify email page</p>} />
+      </Routes>
     </MemoryRouter>
   );
 
-const fillBasics = () => {
-  fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alex_ross" } });
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "Alex@Example.com" } });
-  fireEvent.click(screen.getByLabelText("Date of birth"));
-  fireEvent.click(screen.getByRole("button", { name: "Use latest allowed" }));
-  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Str0ng!pass" } });
-  fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "Str0ng!pass" } });
-};
+const continueButton = () => screen.getByRole("button", { name: "Continue" });
 
 const pickLanguage = (field, option) => {
   fireEvent.click(screen.getByRole("button", { name: new RegExp(field) }));
@@ -42,118 +42,167 @@ const pickLanguage = (field, option) => {
   if (done) fireEvent.click(done);
 };
 
-describe("RegisterPage", () => {
-  afterEach(() => {
-    jest.resetAllMocks();
+/** Step 1 (English, from the browser) → step 2 with `languages` → step 3. */
+const goToAccountStep = (languages = [/Spanish/]) => {
+  fireEvent.click(continueButton());
+  languages.forEach((language) => pickLanguage("^Language", language));
+  fireEvent.click(continueButton());
+  expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
+};
+
+const fillAccount = () => {
+  fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alex_ross" } });
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "Alex@Example.com" } });
+  fireEvent.click(screen.getByLabelText("Date of birth"));
+  fireEvent.click(screen.getByRole("button", { name: "Use latest allowed" }));
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Str0ng!pass" } });
+  fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "Str0ng!pass" } });
+};
+
+const setBrowserLanguages = (languages) =>
+  jest.spyOn(window.navigator, "languages", "get").mockReturnValue(languages);
+
+describe("RegisterPage onboarding", () => {
+  const originalClientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
+  beforeEach(() => {
+    mockRefreshUserProfile.mockResolvedValue(null);
+    setBrowserLanguages(["en-US", "en"]);
   });
 
-  test("sends the language to learn and the level", async () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
+    delete window.google;
+    if (originalClientId === undefined) delete process.env.REACT_APP_GOOGLE_CLIENT_ID;
+    else process.env.REACT_APP_GOOGLE_CLIENT_ID = originalClientId;
+  });
+
+  test("pre-selects the native language from the browser and shows progress", () => {
+    setBrowserLanguages(["el-GR", "en"]);
+    renderPage();
+    expect(screen.getByRole("heading", { name: "I speak…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /I speak… Greek/ })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Sign-up progress" }).querySelector('[aria-current="step"]')).toHaveTextContent(
+      "Your language"
+    );
+  });
+
+  test("leaves the native language empty when the browser language isn't offered", () => {
+    setBrowserLanguages(["nl-NL"]);
+    renderPage();
+    expect(screen.getByRole("button", { name: /I speak… Choose a language/ })).toBeInTheDocument();
+    fireEvent.click(continueButton());
+    expect(screen.getByText("Choose the language you speak.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "I speak…" })).toBeInTheDocument();
+  });
+
+  test("step 2 needs a language other than the native one", () => {
+    renderPage();
+    fireEvent.click(continueButton());
+    expect(screen.getByRole("heading", { name: "I want to practise…" })).toHaveFocus();
+
+    fireEvent.click(continueButton());
+    expect(screen.getByText("Choose the language you want to practise.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
+    expect(screen.queryByRole("option", { name: /English/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /German/ }));
+    expect(screen.queryByText("Choose the language you want to practise.")).not.toBeInTheDocument();
+    expect(screen.getByText("Your first voyage")).toBeInTheDocument();
+  });
+
+  test("going back keeps every choice", () => {
+    renderPage();
+    pickLanguage("I speak", /Greek/);
+    fireEvent.click(continueButton());
+    pickLanguage("^Language", /Spanish/);
+    fireEvent.click(screen.getByRole("button", { name: /My level/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Advanced/ }));
+    fireEvent.click(continueButton());
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alex_ross" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByRole("button", { name: /^Language Spanish/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /My level Advanced/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByRole("button", { name: /I speak… Greek/ })).toBeInTheDocument();
+
+    fireEvent.click(continueButton());
+    fireEvent.click(continueButton());
+    expect(screen.getByLabelText("Username")).toHaveValue("alex_ross");
+  });
+
+  test("changing the native language to the practice language clears it", () => {
+    renderPage();
+    fireEvent.click(continueButton());
+    pickLanguage("^Language", /Greek/);
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    pickLanguage("I speak", /Greek/);
+    fireEvent.click(continueButton());
+
+    expect(screen.queryByRole("button", { name: /^Language Greek/ })).not.toBeInTheDocument();
+    fireEvent.click(continueButton());
+    expect(screen.getByText("Choose the language you want to practise.")).toBeInTheDocument();
+  });
+
+  test("step 2 offers a single practice language", () => {
+    renderPage();
+    fireEvent.click(continueButton());
+    pickLanguage("^Language", /Spanish/);
+    pickLanguage("^Language", /French/);
+    expect(screen.getByRole("button", { name: /^Language French/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Spanish/ })).not.toBeInTheDocument();
+  });
+
+  test("email sign-up sends the languages from steps 1–2 and opens email verification", async () => {
     api.post.mockResolvedValue({});
     renderPage();
-    fillBasics();
-
-    pickLanguage("I want to learn", /Spanish/);
+    fireEvent.click(continueButton());
+    pickLanguage("^Language", /Spanish/);
     fireEvent.click(screen.getByRole("button", { name: /My level/ }));
     fireEvent.click(screen.getByRole("option", { name: /Intermediate/ }));
-    expect(screen.getByText("Your first voyage")).toBeInTheDocument();
+    fireEvent.click(continueButton());
+    fillAccount();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
 
-    await waitFor(() => expect(api.post).toHaveBeenCalled());
-    expect(api.post.mock.calls[0][0]).toBe("/api/register/");
-    expect(api.post.mock.calls[0][1]).toMatchObject({
-      email: "alex@example.com",
-      nativeLanguage: "english",
-      practiceLanguages: ["spanish"],
-      practiceLanguageLevels: { spanish: "intermediate" },
-    });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled());
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/register/", {
+        username: "alex_ross",
+        email: "alex@example.com",
+        dateOfBirth: expect.any(String),
+        password: "Str0ng!pass",
+        nativeLanguage: "english",
+        practiceLanguages: ["spanish"],
+        practiceLanguageLevels: { spanish: "intermediate" },
+      })
+    );
+    expect(await screen.findByText("Verify email page")).toBeInTheDocument();
   });
 
-  test("asks for a language to learn before submitting", () => {
+  test("account step validates its fields before submitting", () => {
     renderPage();
-    fillBasics();
-
+    goToAccountStep();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    expect(screen.getByText("Choose at least one language you want to learn.")).toBeInTheDocument();
+    expect(screen.getByText("Username is required.")).toBeInTheDocument();
+    expect(screen.getByText("Date of birth is required.")).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  test("the native language isn't offered to learn and resets a clashing choice", () => {
+  test("a taken username from the server shows under the username field", async () => {
+    api.post.mockRejectedValue(new ApiError({ status: 400, code: "username_taken", message: "That username is taken." }));
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /I want to learn/ }));
-    expect(screen.queryByRole("option", { name: /English/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: /Greek/ }));
-    expect(screen.getByText("Your first voyage")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-
-    pickLanguage("I speak", /Greek/);
-
-    expect(screen.queryByText("Your first voyage")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /I want to learn/ }));
-    expect(screen.queryByRole("option", { name: /Greek/ })).not.toBeInTheDocument();
-  });
-
-  test("the dropdown works from the keyboard", () => {
-    renderPage();
-    fireEvent.keyDown(screen.getByRole("button", { name: /I want to learn/ }), { key: "ArrowDown" });
-    const list = screen.getByRole("listbox");
-    fireEvent.keyDown(list, { key: "g" }); // jump to German
-    fireEvent.keyDown(list, { key: "Enter" });
-    expect(screen.getByRole("option", { name: /German/ })).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(list, { key: "Escape" });
-
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /I want to learn German/ })).toBeInTheDocument();
-  });
-
-  test("saves multiple languages with independent levels", async () => {
-    api.post.mockResolvedValue({});
-    renderPage();
-    fillBasics();
-
-    fireEvent.click(screen.getByRole("button", { name: /I want to learn Choose at least one/ }));
-    const list = screen.getByRole("listbox", { name: "I want to learn" });
-    expect(list).toHaveAttribute("aria-multiselectable", "true");
-    fireEvent.click(screen.getByRole("option", { name: /Spanish/ }));
-    fireEvent.click(screen.getByRole("option", { name: /French/ }));
-    expect(screen.getByRole("option", { name: /Spanish/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("option", { name: /French/ })).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-
-    fireEvent.click(screen.getByRole("button", { name: /My level · Spanish/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Intermediate/ }));
-    fireEvent.click(screen.getByRole("button", { name: /My level · French/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Advanced/ }));
+    goToAccountStep();
+    fillAccount();
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/register/", expect.objectContaining({
-      practiceLanguages: ["spanish", "french"],
-      practiceLanguageLevels: { spanish: "intermediate", french: "advanced" },
-    })));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled());
-  });
-
-  test("changing native language removes only the conflicting learning language", () => {
-    renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /I want to learn/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Spanish/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Greek/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    pickLanguage("I speak", /Greek/);
-
-    expect(screen.getByRole("button", { name: /I want to learn Spanish/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /My level · Greek/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Your first voyage")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /I want to learn/ }));
-    fireEvent.click(screen.getByRole("option", { name: /Spanish/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Done", exact: true }));
-    expect(screen.getByRole("button", { name: /I want to learn Choose at least one/ })).toBeInTheDocument();
-    expect(screen.queryByText("Your first voyage")).not.toBeInTheDocument();
+    expect(await screen.findByText("That username is taken.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
   });
 
   test("the level picker selects with the keyboard and restores focus", () => {
     renderPage();
+    fireEvent.click(continueButton());
     const trigger = screen.getByRole("button", { name: /My level Beginner/ });
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const list = screen.getByRole("listbox", { name: "My level" });
@@ -164,11 +213,91 @@ describe("RegisterPage", () => {
     expect(trigger).toHaveTextContent("Fluent");
     expect(trigger).toHaveFocus();
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(trigger);
-    expect(screen.getByRole("option", { name: /Fluent/ })).toHaveAttribute("aria-selected", "true");
-    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
-    expect(trigger).toHaveFocus();
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  describe("Continue with Google", () => {
+    let googleCallback;
+    const installGoogle = () => {
+      process.env.REACT_APP_GOOGLE_CLIENT_ID = "test-client.apps.googleusercontent.com";
+      window.google = {
+        accounts: {
+          id: {
+            initialize: jest.fn((config) => {
+              googleCallback = config.callback;
+            }),
+            renderButton: jest.fn(),
+          },
+        },
+      };
+    };
+
+    test("is absent without REACT_APP_GOOGLE_CLIENT_ID", () => {
+      delete process.env.REACT_APP_GOOGLE_CLIENT_ID;
+      renderPage();
+      goToAccountStep();
+      expect(screen.queryByTestId("google-signin-button")).not.toBeInTheDocument();
+      expect(screen.queryByText("or")).not.toBeInTheDocument();
+    });
+
+    test("sends the onboarding languages as the new account's profile", async () => {
+      installGoogle();
+      api.post.mockResolvedValue({ access: "a", refresh: "r", created: true, profile_complete: true, username: "alex" });
+      renderPage();
+      goToAccountStep();
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+      expect(window.google.accounts.id.initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ client_id: "test-client.apps.googleusercontent.com", ux_mode: "popup", auto_select: false })
+      );
+      expect(window.google.accounts.id.renderButton.mock.calls[0][1]).toMatchObject({ text: "continue_with", shape: "pill" });
+
+      await act(async () => {
+        googleCallback({ credential: "google-id-token" });
+      });
+
+      expect(api.post).toHaveBeenCalledWith("/api/auth/google/", {
+        credential: "google-id-token",
+        remember_me: true,
+        profile: {
+          nativeLanguage: "english",
+          practiceLanguages: ["spanish"],
+          practiceLanguageLevels: { spanish: "beginner" },
+        },
+      });
+      expect(await screen.findByText("App home")).toBeInTheDocument();
+      expect(mockRefreshUserProfile).toHaveBeenCalled();
+    });
+
+    test("an existing Google account (created: false) just logs in", async () => {
+      installGoogle();
+      api.post.mockResolvedValue({ created: false, profile_complete: true, username: "old" });
+      renderPage();
+      goToAccountStep();
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+      await act(async () => googleCallback({ credential: "tok" }));
+      expect(await screen.findByText("App home")).toBeInTheDocument();
+    });
+
+    test("a practice-language error sends the user back to step 2 with the message", async () => {
+      installGoogle();
+      api.post.mockRejectedValue(
+        new ApiError({ status: 400, code: "invalid_practice_level", message: "Pick a valid level." })
+      );
+      renderPage();
+      goToAccountStep();
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+      await act(async () => googleCallback({ credential: "tok" }));
+      expect(await screen.findByText("Pick a valid level.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "I want to practise…" })).toBeInTheDocument();
+    });
+
+    test("other Google errors show on the account step", async () => {
+      installGoogle();
+      api.post.mockRejectedValue(new ApiError({ status: 401, code: "google_email_unverified", message: "x" }));
+      renderPage();
+      goToAccountStep();
+      await waitFor(() => expect(window.google.accounts.id.renderButton).toHaveBeenCalled());
+      await act(async () => googleCallback({ credential: "tok" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Google account's email isn't verified/);
+    });
   });
 });

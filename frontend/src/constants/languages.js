@@ -64,3 +64,37 @@ export const flagUrl = (language, width = 40) => {
   const country = FLAG_COUNTRY[normalizeLanguage(language).split(" ")[0]];
   return country ? `https://flagcdn.com/w${width}/${country}.png` : null;
 };
+
+// ISO 639-1 code -> app language key, for guessing the native language from the browser.
+const LOCALE_LANGUAGE = {
+  en: "english",
+  es: "spanish",
+  fr: "french",
+  de: "german",
+  it: "italian",
+  pt: "portuguese",
+  el: "greek",
+  ja: "japanese",
+  ko: "korean",
+  zh: "chinese",
+  ar: "arabic",
+  ru: "russian",
+  tr: "turkish",
+  hi: "hindi",
+};
+
+/** First of `locales` (e.g. navigator.languages: ["el-GR", "en"]) that the app offers, or "". */
+export const languageFromLocales = (locales) => {
+  for (const locale of locales || []) {
+    const code = String(locale || "").trim().toLowerCase().split(/[-_]/)[0];
+    if (LOCALE_LANGUAGE[code]) return LOCALE_LANGUAGE[code];
+  }
+  return "";
+};
+
+/** The browser's preferred language as an app key ("" when unknown or not offered). */
+export const browserNativeLanguage = () => {
+  if (typeof navigator === "undefined") return "";
+  const locales = navigator.languages?.length ? navigator.languages : [navigator.language];
+  return languageFromLocales(locales);
+};

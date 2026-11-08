@@ -19,6 +19,10 @@ export interface User {
     correction_preference?: "often" | "when_asked" | "off";
     email?: string;
     email_verified?: boolean;
+    /** False until an account created without languages (Google) finishes /finish-profile. */
+    profile_complete?: boolean;
+    /** False for Google-only accounts (no usable password yet). */
+    has_password?: boolean;
     profile_image_url?: string;
     complementary_image_1_url?: string;
     complementary_image_2_url?: string;
