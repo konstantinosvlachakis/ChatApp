@@ -187,3 +187,95 @@
 .lp-footer-col a:hover, .lp-footer-linkbtn:hover { color: var(--lv-on-navy); text-decoration: underline; }
 .lp-footer-linkbtn { padding: 0; border: 0; background: none; font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
 .lp-footer-copy { margin: 32px 0 0; padding-top: 18px; border-top: 1px solid #ffffff26; font-size: 13px; }
+
+/* ---------------------------------------------------------------------------------
+ * Warm ivory palette + scroll motion (feat/landing-hero-unified).
+ * Public pages only; the app keeps --lv-cream. Motion is progressive: content is visible
+ * in the prerendered HTML and without JS; `.lp-js` (added on mount by useLandingMotion)
+ * enables the reveal, and reduced-motion users get no movement.
+ * ------------------------------------------------------------------------------- */
+.lp-page,
+.lp-auth {
+  --lp-bg: #fcf8f2;
+  --lp-bg-alt: #f6efe4;
+  --lp-card: #fffdf9;
+  background: var(--lp-bg);
+}
+
+/* Log in / sign up / forgot password / finish profile / verify email (AuthShell) */
+.lp-auth {
+  background:
+    radial-gradient(55% 45% at 12% 0%, #fbe8da 0%, rgba(251, 232, 218, 0) 70%),
+    radial-gradient(45% 40% at 100% 100%, #e7f1ee 0%, rgba(231, 241, 238, 0) 70%),
+    var(--lp-bg);
+}
+.lp-auth-brand { font-size: 15px; text-decoration: none; }
+.lp-auth-brand:hover { color: var(--lv-teal-strong); }
+.lp-auth-card {
+  background: var(--lp-card);
+  border: 1px solid var(--lv-line-warm);
+  box-shadow: 0 24px 60px rgba(20, 49, 74, 0.08), 0 2px 6px rgba(20, 49, 74, 0.04);
+}
+.lp-section-alt {
+  border: 0;
+  background: linear-gradient(
+    180deg,
+    var(--lp-bg) 0,
+    var(--lp-bg-alt) 72px,
+    var(--lp-bg-alt) calc(100% - 72px),
+    var(--lp-bg) 100%
+  );
+}
+.lp-card,
+.lp-faq-item { background: var(--lp-card); border-color: var(--lv-line-warm); }
+.lp-section-alt .lp-card,
+.lp-section-alt .lp-faq-item { background: var(--lp-card); }
+.lp-card { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .lp-card:hover { transform: translateY(-3px); box-shadow: 0 18px 40px rgba(20, 49, 74, 0.09); }
+}
+
+/* Hero */
+.lp-home-hero {
+  position: relative;
+  background:
+    radial-gradient(60% 55% at 50% 0%, #fbe8da 0%, rgba(251, 232, 218, 0) 70%),
+    var(--lp-bg);
+}
+.lp-home-hero .lp-hero-mark { filter: drop-shadow(0 16px 30px rgba(20, 49, 74, 0.18)); }
+.lp-hero-point { background: var(--lp-card); border: 1px solid var(--lv-line-warm); }
+.lp-hero-dot { background: var(--lv-teal); }
+
+/* Scroll reveal */
+.lp-js .lp-reveal {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0);
+  transition:
+    opacity 0.7s ease var(--lp-delay, 0ms),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--lp-delay, 0ms);
+}
+.lp-js .lp-reveal.is-visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .lp-js .lp-reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* Slim header that appears after the hero */
+.lp-stickybar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 900;
+  background: rgba(252, 248, 242, 0.86);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--lv-line-warm);
+  transform: translate3d(0, -100%, 0);
+  visibility: hidden;
+  transition: transform 0.35s ease, visibility 0s linear 0.35s;
+}
+.lp-stickybar.is-shown { transform: none; visibility: visible; transition: transform 0.35s ease, visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .lp-stickybar { transition: none; } }
+.lp-stickybar-inner { display: flex; align-items: center; gap: 12px; min-height: 60px; }
+.lp-stickybar-brand { display: inline-flex; align-items: center; gap: 10px; margin-right: auto; color: var(--lv-ink); font-family: var(--lv-font-display); font-weight: 700; font-size: 17px; text-decoration: none; }
+.lp-stickybar-link { color: var(--lv-ink); font-size: 14px; font-weight: 600; text-decoration: none; padding: 8px 10px; border-radius: var(--lv-radius-pill); }
+.lp-stickybar-link:hover { background: var(--lp-bg-alt); }
+@media (max-width: 599px) { .lp-stickybar-hide-sm { display: none; } }
