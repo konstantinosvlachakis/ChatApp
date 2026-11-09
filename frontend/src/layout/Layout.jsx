@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PREMIUM_ENABLED } from "../constants/features";
 import { Link, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
@@ -511,7 +512,7 @@ const Layout = () => {
               <strong>Explore</strong>
               <Link to="/community">People</Link>
               <Link to="/practice">Practice</Link>
-              <Link to="/premium">Premium</Link>
+              {PREMIUM_ENABLED && <Link to="/premium">Premium</Link>}
             </nav>
             <nav className="lv-footer-col" aria-label="Help">
               <strong>Help</strong>
