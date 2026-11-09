@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Regenerates every logo asset from src/brand/logoMark.js (web favicons + PWA icons and the
-// Expo app icon, adaptive icon, splash and in-app mark). Run after changing the logo:
+// Expo app icon, adaptive icon, splash and in-app mark) and the 1200x630 link preview
+// (public/og-image.png, ivory landing style). Run after changing the logo:
 //   node scripts/build-brand-icons.js
 // Uses the Playwright Chromium already installed for dev; set CHROME=<path to chrome.exe>
-// if Playwright's bundled browser version isn't downloaded.
+// if Playwright's bundled browser version isn't downloaded. The link preview loads Sora/Manrope
+// from Google Fonts, so it needs a network connection.
 
 require("sucrase/register");
 
@@ -35,6 +37,38 @@ const targets = [
   { file: path.join(mobileAssets, "brand/logo-mark.png"), svg: fullBleed, size: 512, opaque: true },
 ];
 const icoSizes = [16, 32, 48, 64];
+
+// Link preview: the landing page's ivory surface, the mark and the headline.
+const OG_WIDTH = 1200;
+const OG_HEIGHT = 630;
+const ogPreviewHtml = () => `<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&family=Sora:wght@700&display=block">
+<style>
+  html,body{margin:0}
+  .og{position:relative;width:${OG_WIDTH}px;height:${OG_HEIGHT}px;overflow:hidden;box-sizing:border-box;
+    display:flex;align-items:center;gap:72px;padding:0 96px;color:#152f3d;font-family:Manrope,sans-serif;
+    background:
+      radial-gradient(55% 60% at 8% 0%, #fbe8da 0%, rgba(251,232,218,0) 70%),
+      radial-gradient(50% 55% at 100% 100%, #e7f1ee 0%, rgba(231,241,238,0) 70%),
+      #fcf8f2}
+  .mark{flex:none;width:300px;height:300px;filter:drop-shadow(0 24px 40px rgba(21,47,61,.18))}
+  .mark svg{width:100%;height:100%;display:block}
+  .eyebrow{margin:0;font-size:22px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:#0f5f56}
+  h1{margin:18px 0 0;font-family:Sora,sans-serif;font-size:76px;line-height:1.04;letter-spacing:-.01em}
+  p.lead{margin:22px 0 0;font-size:31px;line-height:1.35;color:#56656c;max-width:640px}
+  .row{display:flex;align-items:center;gap:22px;margin-top:36px}
+  .cta{display:inline-block;padding:16px 34px;border-radius:999px;background:#176e65;color:#fff;font-size:27px;font-weight:700;
+    box-shadow:0 12px 28px rgba(23,110,101,.22)}
+  .url{font-size:25px;font-weight:700;color:#56656c}
+</style></head><body><div class="og">
+  <div class="mark">${rounded}</div>
+  <div>
+    <p class="eyebrow">LangVoyage</p>
+    <h1>Speak with confidence, every day.</h1>
+    <p class="lead">Language exchange with native speakers who are learning your language.</p>
+    <div class="row"><span class="cta">Find a partner</span><span class="url">langvoyage.com</span></div>
+  </div>
+</div></body></html>`;
 
 // ICO container holding PNG images (supported by every current browser).
 function buildIco(pngs) {
@@ -84,6 +118,15 @@ async function main() {
   fs.writeFileSync(path.join(webPublic, "favicon.ico"), buildIco(icoImages));
   fs.writeFileSync(path.join(webPublic, "logo.svg"), `${rounded}\n`);
   console.log("wrote frontend/public/favicon.ico, frontend/public/logo.svg");
+
+  await page.setViewportSize({ width: OG_WIDTH, height: OG_HEIGHT });
+  await page.setContent(ogPreviewHtml(), { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+  fs.writeFileSync(
+    path.join(webPublic, "og-image.png"),
+    await page.screenshot({ clip: { x: 0, y: 0, width: OG_WIDTH, height: OG_HEIGHT } })
+  );
+  console.log("wrote frontend/public/og-image.png");
   await browser.close();
 }
 
