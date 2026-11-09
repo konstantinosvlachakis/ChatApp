@@ -20,20 +20,18 @@ const AuthShell = ({
   leftDescription = "Meet people who speak the language you're learning and want to learn yours. Chat, practise with Lumi, and build the confidence to speak.",
 }) => {
   return (
-    <div className="lv-font-body relative min-h-[100dvh] overflow-hidden bg-[#081320] text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(27,127,121,0.34),transparent_26%),radial-gradient(circle_at_86%_16%,rgba(236,177,208,0.24),transparent_22%),radial-gradient(circle_at_70%_78%,rgba(20,49,74,0.56),transparent_34%),linear-gradient(180deg,#081320_0%,#102131_52%,#10273a_100%)]" />
-      <div className="absolute -left-20 top-16 h-72 w-72 rounded-full bg-[rgba(27,127,121,0.18)] blur-3xl" />
-      <div className="absolute right-[-5rem] top-24 h-64 w-64 rounded-full bg-[rgba(236,177,208,0.16)] blur-3xl" />
+    // Same warm ivory surface as the public pages (styles/public.css `.lp-auth`).
+    <div className="lp-auth lv-font-body relative min-h-[100dvh] overflow-hidden text-[var(--lv-ink)]">
       <div className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col px-4 py-4 sm:px-6 sm:py-5 lg:flex-row lg:items-start lg:gap-10 lg:px-8 lg:py-6 xl:gap-12 xl:py-8">
         <div className="flex flex-col items-center pb-4 text-center lg:hidden">
           <Link
             to="/"
-            className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-sm text-white/90 backdrop-blur"
+            className="lp-auth-brand inline-flex items-center gap-3 text-[var(--lv-ink)]"
           >
             <CoachAvatar size={36} hideBadge />
             <span className="font-semibold tracking-tight">LangVoyage</span>
           </Link>
-          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.24em] text-[rgba(137,218,211,0.95)]">
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--lv-teal-strong)]">
             {accentLabel}
           </p>
         </div>
@@ -43,20 +41,20 @@ const AuthShell = ({
         >
           <Link
             to="/"
-            className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-3 py-2 text-sm text-white/90 backdrop-blur"
+            className="lp-auth-brand inline-flex items-center gap-3 text-[var(--lv-ink)]"
           >
             <CoachAvatar size={40} hideBadge />
             <span className="font-semibold tracking-tight">LangVoyage</span>
           </Link>
 
           <div className="mx-auto mt-5 max-w-xl lg:mx-0 lg:mt-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[rgba(137,218,211,0.95)] sm:text-xs sm:tracking-[0.28em]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--lv-teal-strong)] sm:text-xs sm:tracking-[0.28em]">
               {accentLabel}
             </p>
-            <h1 className="lv-font-display mt-3 text-[2.2rem] font-bold leading-[1.04] text-white sm:text-[2.8rem] lg:text-[3.3rem] xl:text-[3.75rem]">
+            <h1 className="lv-font-display mt-3 text-[2.2rem] font-bold leading-[1.04] text-[var(--lv-ink)] sm:text-[2.8rem] lg:text-[3.3rem] xl:text-[3.75rem]">
               {leftTitle}
             </h1>
-            <p className="mt-3 max-w-lg text-[15px] leading-6 text-[rgba(233,239,247,0.76)] sm:text-lg sm:leading-7 lg:mt-3 lg:text-[1.02rem] lg:leading-7">
+            <p className="mt-3 max-w-lg text-[15px] leading-6 text-[var(--lv-muted-ink)] sm:text-lg sm:leading-7 lg:mt-3 lg:text-[1.02rem] lg:leading-7">
               {leftDescription}
             </p>
           </div>
@@ -65,10 +63,10 @@ const AuthShell = ({
             {highlights.map((item) => (
               <div
                 key={item}
-                className="rounded-3xl border border-white/10 bg-white/6 px-4 py-3.5 backdrop-blur"
+                className="lp-hero-point rounded-3xl px-4 py-3.5"
               >
-                <div className="mb-2.5 h-2.5 w-2.5 rounded-full bg-[#ecb1d0]" />
-                <p className="text-sm leading-6 text-[rgba(236,242,248,0.88)]">{item}</p>
+                <div aria-hidden="true" className="lp-hero-dot mb-2.5 h-2.5 w-2.5 rounded-full" />
+                <p className="text-sm leading-6 text-[var(--lv-ink)]">{item}</p>
               </div>
             ))}
           </div>
@@ -82,7 +80,7 @@ const AuthShell = ({
           }}
           className="lv-rise w-full max-w-2xl flex-1 lg:max-w-[42rem]"
         >
-          <div className="flex flex-col rounded-[1.75rem] border border-white/12 bg-[linear-gradient(180deg,rgba(248,251,255,0.97),rgba(239,246,252,0.95))] p-4 shadow-[0_20px_64px_rgba(3,11,20,0.26)] sm:p-7 lg:min-h-[46rem] lg:justify-center lg:rounded-[2rem] lg:p-7 xl:p-8">
+          <div className="lp-auth-card flex flex-col rounded-[1.75rem] p-4 sm:p-7 lg:min-h-[46rem] lg:justify-center lg:rounded-[2rem] lg:p-7 xl:p-8">
             <div className="mb-4 text-center sm:mb-5 lg:mb-4 lg:text-left">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#1b7f79] sm:text-xs sm:tracking-[0.28em]">
                 {eyebrow}

@@ -97,3 +97,53 @@ describe("PublicFooter", () => {
     expect(screen.getByRole("link", { name: "Terms and conditions" })).toHaveAttribute("href", "/terms-and-conditions");
   });
 });
+
+describe("home page motion", () => {
+  const originalObserver = window.IntersectionObserver;
+  let observers;
+
+  const installObserver = () => {
+    observers = [];
+    window.IntersectionObserver = jest.fn(function MockObserver(callback) {
+      this.callback = callback;
+      this.targets = [];
+      this.observe = (target) => this.targets.push(target);
+      this.unobserve = jest.fn();
+      this.disconnect = jest.fn();
+      observers.push(this);
+    });
+  };
+
+  afterEach(() => {
+    window.IntersectionObserver = originalObserver;
+  });
+
+  test("without IntersectionObserver every section stays visible", () => {
+    delete window.IntersectionObserver;
+    const { container } = renderAt("/", <AuthLandingPage />);
+    expect(container.querySelector(".lp-page")).not.toHaveClass("lp-js");
+    container.querySelectorAll(".lp-reveal").forEach((item) => expect(item).toHaveClass("is-visible"));
+  });
+
+  test("reveals sections on scroll and shows the slim header after the hero", () => {
+    installObserver();
+    const { container } = renderAt("/", <AuthLandingPage />);
+    expect(container.querySelector(".lp-page")).toHaveClass("lp-js");
+    const [revealer, heroWatcher] = observers;
+    const first = revealer.targets[0];
+    expect(first).not.toHaveClass("is-visible");
+
+    revealer.callback([{ isIntersecting: true, target: first }]);
+    expect(first).toHaveClass("is-visible");
+
+    const bar = container.querySelector(".lp-stickybar");
+    expect(bar).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getAllByRole("link", { name: "Create account" })).toHaveLength(1);
+
+    const { act } = require("@testing-library/react");
+    act(() => heroWatcher.callback([{ isIntersecting: false, boundingClientRect: { top: -40 } }]));
+    expect(bar).toHaveClass("is-shown");
+    expect(bar).not.toHaveAttribute("aria-hidden");
+    expect(screen.getAllByRole("link", { name: "Create account" })).toHaveLength(2);
+  });
+});
