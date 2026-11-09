@@ -72,6 +72,15 @@ export const cloudinaryImage = (url: string | null | undefined, options: Cloudin
   return parsed.toString();
 };
 
+/**
+ * True for "no photo": empty, or the server's default `profile_images/MainAfter.jpg`
+ * (Profile.profile_image_url's default). That file isn't served in production (uploads
+ * live on Cloudinary), so requesting it is a 404 per avatar; callers show the default
+ * avatar straight away instead. Mobile has the same check (ProfileAvatarImage).
+ */
+export const isPlaceholderPhoto = (url?: string | null) =>
+  !url || /(^|\/)MainAfter\.[a-z0-9]+(\?.*)?$/i.test(url);
+
 /** Square avatar / portrait shown at `size` CSS px. */
 export const avatarImage = (url: string | null | undefined, size: number) =>
   cloudinaryImage(url, { width: size, crop: "fill" });

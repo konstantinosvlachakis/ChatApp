@@ -1,4 +1,5 @@
 import { BASE_URL_IMG } from "../../../constants/constants";
+import { isPlaceholderPhoto } from "../../../lib/media";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
 import { normalizeLanguage, describeLanguage, LEVELS } from "../../../constants/languages";
 
@@ -25,7 +26,7 @@ export const learningLanguages = (profile) =>
     .filter((lang, index, list) => lang && list.indexOf(lang) === index);
 
 export const resolveMediaUrl = (path) => {
-  if (!path) return "";
+  if (isPlaceholderPhoto(path)) return "";
   if (path.startsWith("http")) return path;
   if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
   return `${BASE_URL_IMG}/media/${path}`;
