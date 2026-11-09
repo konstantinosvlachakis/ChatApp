@@ -7,11 +7,18 @@ import { HEADER_NAV_ITEMS, TAB_NAV_ITEMS, isNavItemActive, isOpenChatPath } from
 const renderAt = (path, ui) => render(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
 const item = (items, key) => items.find((entry) => entry.key === key);
 
+describe("Premium while the app is free", () => {
+  test("is not in the header or the tab bar", () => {
+    expect(item(HEADER_NAV_ITEMS, "premium")).toBeUndefined();
+    expect(item(TAB_NAV_ITEMS, "premium")).toBeUndefined();
+  });
+});
+
 describe("nav helpers", () => {
   test("matches nested routes to their section", () => {
     expect(isNavItemActive("/people/maria", item(HEADER_NAV_ITEMS, "people"))).toBe(true);
     expect(isNavItemActive("/conversations/12", item(HEADER_NAV_ITEMS, "chats"))).toBe(true);
-    expect(isNavItemActive("/premium/compare", item(HEADER_NAV_ITEMS, "premium"))).toBe(true);
+    expect(isNavItemActive("/practice/daily", item(HEADER_NAV_ITEMS, "practice"))).toBe(true);
     expect(isNavItemActive("/profile/edit", item(TAB_NAV_ITEMS, "profile"))).toBe(true);
     expect(isNavItemActive("/practiced", item(HEADER_NAV_ITEMS, "practice"))).toBe(false);
   });
@@ -54,11 +61,11 @@ describe("AppHeader", () => {
 });
 
 describe("BottomTabBar", () => {
-  test("renders the five tabs with the active one marked", () => {
+  test("renders the four tabs with the active one marked (no Premium while the app is free)", () => {
     renderAt("/community", <BottomTabBar unreadCount={2} />);
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(5);
-    ["People", "Practice", /^Chats.*2 unread conversations$/, "Profile", "Premium"].forEach((name) =>
+    expect(links).toHaveLength(4);
+    ["People", "Practice", /^Chats.*2 unread conversations$/, "Profile"].forEach((name) =>
       expect(screen.getByRole("link", { name })).toBeInTheDocument()
     );
     expect(screen.getByRole("link", { name: "People" })).toHaveAttribute("aria-current", "page");

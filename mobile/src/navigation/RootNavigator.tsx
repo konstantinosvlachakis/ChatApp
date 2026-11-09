@@ -61,6 +61,7 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { VerifyEmailScreen } from "../screens/VerifyEmailScreen";
 import { PublicProfileScreen } from "../screens/PublicProfileScreen";
 import { PremiumScreen } from "../screens/PremiumScreen";
+import { PREMIUM_ENABLED } from "../config/features";
 import { PhrasebookScreen } from "../screens/PhrasebookScreen";
 import { PhrasebookReviewScreen } from "../screens/PhrasebookReviewScreen";
 import { useTheme } from "../context/ThemeContext";
@@ -741,7 +742,8 @@ function AppTabs() {
           }}
         />
         <Tabs.Screen name="Profile" component={ProfileScreen} />
-        <Tabs.Screen name="Premium" component={PremiumScreen} />
+        {/* Premium is hidden while the app is free (config/features.ts). */}
+        {PREMIUM_ENABLED && <Tabs.Screen name="Premium" component={PremiumScreen} />}
       </Tabs.Navigator>
     </View>
   );

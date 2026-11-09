@@ -163,3 +163,4 @@ Clean (0 errors) as of 2026-10-27 on `feat/mobile-push` with dependencies instal
 - Start from the chat header options (`ChatOptionsSheet onStartExchange`, direct chats only, hidden when blocked or a session is open); banner rendered by `ChatRoomView sessionBanner` under PinnedBar.
 - Presence `exchange_invite` → RootNavigator banner. No push for invites yet.
 - Tests: `npm run test:exchange-sessions` (in CI).
+- feat/hide-premium (2026-11-10): `config/features.ts` `PREMIUM_ENABLED = false` hides the Premium tab (RootNavigator); PremiumScreen kept. Flip with the web flag to restore.

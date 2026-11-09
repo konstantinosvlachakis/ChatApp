@@ -1,5 +1,6 @@
 import React from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { PREMIUM_ENABLED } from "./constants/features";
 import Layout from "./layout/Layout";
 import { LazyRoute } from "./components/ErrorBoundary";
 import AuthLandingPage from "./pages/AuthLandingPage";
@@ -175,20 +176,29 @@ const AppRoutes = () => (
           </LazyRoute>
         }
       />
+      {/* Premium is hidden while the app is free (constants/features.js). */}
       <Route
         path="/premium"
         element={
-          <LazyRoute fallback={<div>Loading Premium...</div>}>
-            <PremiumPage />
-          </LazyRoute>
+          PREMIUM_ENABLED ? (
+            <LazyRoute fallback={<div>Loading Premium...</div>}>
+              <PremiumPage />
+            </LazyRoute>
+          ) : (
+            <Navigate to="/community" replace />
+          )
         }
       />
       <Route
         path="/premium/compare"
         element={
-          <LazyRoute fallback={<div>Loading Compare Plans...</div>}>
-            <ComparePlansPage />
-          </LazyRoute>
+          PREMIUM_ENABLED ? (
+            <LazyRoute fallback={<div>Loading Compare Plans...</div>}>
+              <ComparePlansPage />
+            </LazyRoute>
+          ) : (
+            <Navigate to="/community" replace />
+          )
         }
       />
     </Route>
