@@ -38,6 +38,7 @@ import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
+  SOCKET_STABLE_MS,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../utils/reconnect";
@@ -185,13 +186,17 @@ const Layout = () => {
       // Authenticated by the lv_access cookie (the server no longer accepts ?token=).
       const socket = new WebSocket(`${wsBaseUrl}/ws/presence/`);
       presenceSocketRef.current = socket;
+      let stableTimer = null;
 
       socket.onopen = () => {
         clearPresenceTimers();
         setSocketReconnecting(false);
-        reconnectAttempt = 0;
-        stoppedForAuth = false;
-        authRefreshUsed = false;
+        // See SOCKET_STABLE_MS: a rejected socket opens, then closes with its code.
+        stableTimer = window.setTimeout(() => {
+          reconnectAttempt = 0;
+          stoppedForAuth = false;
+          authRefreshUsed = false;
+        }, SOCKET_STABLE_MS);
         if (hasConnectedBefore) {
           // The socket was down, so conversation_update events may have been missed.
           missedListUpdateRef.current = false;
@@ -303,6 +308,7 @@ const Layout = () => {
       };
 
       socket.onclose = (event) => {
+        window.clearTimeout(stableTimer);
         clearPresenceTimers();
         if (isUnmounted || presenceSocketRef.current !== socket) return;
         if (SOCKET_AUTH_CLOSE_CODES.has(event.code)) {

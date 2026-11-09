@@ -43,6 +43,7 @@ import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
+  SOCKET_STABLE_MS,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../../../utils/reconnect";
@@ -1220,12 +1221,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
 
       const nextSocket = new WebSocket(url);
       socket.current = nextSocket;
+      let stableTimer = null;
 
       nextSocket.onopen = () => {
-        reconnectAttemptRef.current = 0;
-        stoppedForAuth = false;
-        authRefreshUsed = false;
         setSocketStatus("connected");
+        // See SOCKET_STABLE_MS: a rejected socket opens, then closes with its code.
+        stableTimer = window.setTimeout(() => {
+          reconnectAttemptRef.current = 0;
+          stoppedForAuth = false;
+          authRefreshUsed = false;
+        }, SOCKET_STABLE_MS);
       };
 
       nextSocket.onmessage = async (e) => {
@@ -1442,6 +1447,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
       };
 
       nextSocket.onclose = (event) => {
+        window.clearTimeout(stableTimer);
         if (isDisposed || socket.current !== nextSocket) {
           return;
         }
