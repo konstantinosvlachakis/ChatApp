@@ -15,6 +15,17 @@ describe("link preview tags", () => {
   });
 });
 
+describe("brand sitelink candidates", () => {
+  it("lets Google index log in and sign up with their own titles", () => {
+    for (const [path, title] of [["/login", "Log In | LangVoyage"], ["/register", "Sign Up Free | LangVoyage"]]) {
+      const head = buildHeadTags(path);
+      expect(head).toContain('<meta name="robots" content="index,follow" />');
+      expect(head).toContain(`<title>${title}</title>`);
+      expect(head).toContain(`<link rel="canonical" href="https://www.langvoyage.com${path}" />`);
+    }
+  });
+});
+
 describe("password reset pages", () => {
   it("are noindex and keep the emailed token out of the canonical URL", () => {
     const head = buildHeadTags("/reset-password/MQ/abc-123");
