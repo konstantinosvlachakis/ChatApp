@@ -388,6 +388,16 @@ class PublicRootFileRouteTests(SimpleTestCase):
         self.assertIs(match.func, serve)
         self.assertEqual(match.kwargs["path"], "og-image.png")
 
+    def test_logo_icons_are_served_from_the_build_root(self):
+        from django.urls import resolve
+        from django.views.static import serve
+
+        for name in ("logo.svg", "apple-touch-icon.png", "logo-maskable-512.png", "logo512.png"):
+            with self.subTest(name=name):
+                match = resolve(f"/{name}")
+                self.assertIs(match.func, serve)
+                self.assertEqual(match.kwargs["path"], name)
+
 
 class FrontendTemplateTests(SimpleTestCase):
     """The SPA fallback serves prerendered pages for their own paths and the
