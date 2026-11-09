@@ -2,10 +2,11 @@ const SITE_NAME = "LangVoyage";
 const DEFAULT_SITE_URL = "https://www.langvoyage.com";
 const SITE_URL = (process.env.REACT_APP_SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
 // Link previews (WhatsApp, Slack, Teams, X…) need an absolute PNG/JPG URL; .ico is ignored.
-const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png`;
+// Bump ?v= when the image changes: apps cache previews by URL.
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.png?v=2`;
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
-const OG_IMAGE_ALT = "LangVoyage logo — language exchange and daily speaking practice";
+const OG_IMAGE_ALT = "LangVoyage — Speak with confidence, every day. Language exchange with native speakers.";
 const DEFAULT_DESCRIPTION =
   "LangVoyage is a language exchange app: meet native speakers who want to learn your language, chat, run guided exchanges and keep their corrections.";
 

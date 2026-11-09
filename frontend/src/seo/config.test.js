@@ -2,7 +2,7 @@ import { buildHeadTags, buildSeoModel, DEFAULT_OG_IMAGE, serializeJsonLd } from 
 
 describe("link preview tags", () => {
   it("uses an absolute PNG preview image, not the favicon", () => {
-    expect(DEFAULT_OG_IMAGE).toMatch(/^https:\/\/.+\/og-image\.png$/);
+    expect(DEFAULT_OG_IMAGE).toMatch(/^https:\/\/.+\/og-image\.png(\?v=\d+)?$/);
   });
 
   it("emits a large-image card with size and alt text", () => {
