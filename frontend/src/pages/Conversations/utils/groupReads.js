@@ -26,7 +26,8 @@ export const mergeReads = (current, participants = []) => {
 
 /**
  * The viewer's latest sent message and who (other active members) has read it.
- * Returns { messageId, label } or null when the viewer hasn't sent anything yet.
+ * Returns { messageId, label, readers, allRead } or null when the viewer hasn't sent anything
+ * yet. label is null until someone has read it (the ticks show "sent" on their own).
  */
 export const buildSeenBy = (messages = [], reads = {}, participants = [], viewerId) => {
   const lastOwn = [...messages]
@@ -44,12 +45,13 @@ export const buildSeenBy = (messages = [], reads = {}, participants = [], viewer
     })
     .map((participant) => participant.nickname || participant.user.username);
 
-  let label = "Sent";
-  if (others.length && readers.length === others.length) {
+  const allRead = others.length > 0 && readers.length === others.length;
+  let label = null;
+  if (allRead) {
     label = others.length === 1 ? `Seen by ${readers[0]}` : "Seen by everyone";
   } else if (readers.length) {
     const shown = readers.slice(0, 2).join(", ");
     label = readers.length > 2 ? `Seen by ${shown} +${readers.length - 2}` : `Seen by ${shown}`;
   }
-  return { messageId: lastOwn.id, label, readers };
+  return { messageId: lastOwn.id, label, readers, allRead };
 };

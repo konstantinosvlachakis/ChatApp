@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import MessageTicks from "./MessageTicks";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import ChatOpeners from "./ChatOpeners";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
@@ -113,16 +114,6 @@ const formatDaySeparator = (timestamp) => {
   } catch {
     return "";
   }
-};
-
-const MessageStatusMeta = ({ status = "sent" }) => {
-  const label = status === "read" ? "Seen" : status === "delivered" ? "Delivered" : "Sent";
-  return (
-    <span className={`cv-ticks ${status === "read" ? "is-read" : ""}`} title={label}>
-      <span aria-hidden="true">{status === "sent" ? "✓" : "✓✓"}</span>
-      <span className="lv-visually-hidden">{label}</span>
-    </span>
-  );
 };
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -243,6 +234,7 @@ const MessageRow = React.memo(function MessageRow({
   isGroup = false,
   groupNicknames = null,
   seenLabel = null,
+  groupTickStatus = null,
   userId,
   onReact,
   onOpenReactionPicker,
@@ -467,11 +459,11 @@ const MessageRow = React.memo(function MessageRow({
           {(endsGroup || seenLabel) && (timeLabel || isSentByUser) && (
             <div className="cv-msg-meta">
               {timeLabel && <time dateTime={msg.timestamp}>{timeLabel}</time>}
-              {/* Groups: "Seen by …" on your latest message instead of ticks. */}
-              {isSentByUser && !isGroup && <MessageStatusMeta status={msg.status || "sent"} />}
+              {/* Groups also name who has seen your latest message. */}
               {isSentByUser && isGroup && seenLabel && (
-                <span className={`cv-seen-by ${seenLabel.startsWith("Seen") ? "is-read" : ""}`}>{seenLabel}</span>
+                <span className={`cv-seen-by${groupTickStatus === "read" ? " is-read" : ""}`}>{seenLabel}</span>
               )}
+              {isSentByUser && <MessageTicks status={(isGroup && groupTickStatus) || msg.status || "sent"} />}
             </div>
           )}
         </div>
@@ -904,6 +896,10 @@ const Conversation = ({
     };
   };
 
+  // Groups: your messages up to the one in "Seen by" share its read state.
+  const seenByIndex = seenBy ? messages.findIndex((message) => message.id === seenBy.messageId) : -1;
+  const seenByTickStatus = seenBy?.allRead ? "read" : seenBy?.readers?.length ? "delivered" : null;
+
   return (
     <div className="cv-thread">
       {messages.length > 0 ? (
@@ -938,6 +934,7 @@ const Conversation = ({
               isGroup={isGroup}
               groupNicknames={groupNicknames}
               seenLabel={seenBy && seenBy.messageId === msg.id ? seenBy.label : null}
+              groupTickStatus={isGroup && isSentByUser && index <= seenByIndex ? seenByTickStatus : null}
             />
           );
         })

@@ -22,7 +22,12 @@ const messages = [
 
 describe("buildSeenBy", () => {
   test("names the members who read my latest message (pending invitees don't count)", () => {
-    expect(buildSeenBy(messages, {}, participants, 1)).toEqual({ messageId: 11, label: "Seen by ana", readers: ["ana"] });
+    expect(buildSeenBy(messages, {}, participants, 1)).toEqual({
+      messageId: 11,
+      label: "Seen by ana",
+      readers: ["ana"],
+      allRead: false,
+    });
   });
 
   test("uses a group nickname in read receipts", () => {
@@ -32,11 +37,15 @@ describe("buildSeenBy", () => {
 
   test("says everyone once every other member has read it", () => {
     const reads = { 3: "2026-11-04T10:02:00Z" };
-    expect(buildSeenBy(messages, reads, participants, 1).label).toBe("Seen by everyone");
+    expect(buildSeenBy(messages, reads, participants, 1)).toMatchObject({ label: "Seen by everyone", allRead: true });
   });
 
-  test("just Sent when nobody has, and null before I've written anything", () => {
-    expect(buildSeenBy(messages, { 2: "2026-11-04T09:59:00Z" }, participants, 1).label).toBe("Sent");
+  test("no label when nobody has read it (ticks only), and null before I've written anything", () => {
+    expect(buildSeenBy(messages, { 2: "2026-11-04T09:59:00Z" }, participants, 1)).toMatchObject({
+      label: null,
+      readers: [],
+      allRead: false,
+    });
     expect(buildSeenBy([messages[0]], {}, participants, 1)).toBeNull();
   });
 

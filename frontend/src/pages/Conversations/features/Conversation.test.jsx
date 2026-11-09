@@ -81,14 +81,14 @@ describe("Conversation in a group chat", () => {
     { id: 13, text: "Καλά!", sender: me, timestamp: at(3), status: "sent", reactions: [] },
   ];
 
-  test("names each sender once per run and shows Seen by instead of ticks", () => {
+  test("names each sender once per run and shows Seen by next to the ticks", () => {
     const { container } = render(
       <Conversation
         messages={groupMessages}
         userId={1}
         onDeleteMessage={jest.fn()}
         isGroup
-        seenBy={{ messageId: 13, label: "Seen by ana" }}
+        seenBy={{ messageId: 13, label: "Seen by ana", readers: ["ana"], allRead: false }}
       />
     );
 
@@ -97,7 +97,24 @@ describe("Conversation in a group chat", () => {
       "konstantinos",
     ]);
     expect(screen.getByText("Seen by ana")).toBeInTheDocument();
-    expect(container.querySelector(".cv-ticks")).toBeNull();
+    const ticks = container.querySelector(".cv-ticks");
+    expect(ticks).toHaveAttribute("title", "Delivered");
+    expect(ticks).not.toHaveClass("is-read");
+  });
+
+  test("group ticks: a single tick until someone reads, blue once everyone has", () => {
+    const props = { messages: groupMessages, userId: 1, onDeleteMessage: jest.fn(), isGroup: true };
+    const { container, rerender } = render(
+      <Conversation {...props} seenBy={{ messageId: 13, label: null, readers: [], allRead: false }} />
+    );
+    expect(container.querySelector(".cv-ticks")).toHaveAttribute("title", "Sent");
+    expect(screen.queryByText("Sent", { selector: ".cv-seen-by" })).toBeNull();
+
+    rerender(
+      <Conversation {...props} seenBy={{ messageId: 13, label: "Seen by everyone", readers: ["ana"], allRead: true }} />
+    );
+    expect(container.querySelector(".cv-ticks")).toHaveClass("is-read");
+    expect(screen.getByText("Seen by everyone")).toHaveClass("is-read");
   });
 
   test("shows the group nickname as a message sender", () => {

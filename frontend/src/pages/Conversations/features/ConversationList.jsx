@@ -29,21 +29,13 @@ import GroupAvatar from "./GroupAvatar";
 import GroupInvites from "./GroupInvites";
 import { messagePreviewText } from "../utils/messageMedia";
 import CoachAvatar from "../../../components/CoachAvatar";
+import MessageTicks from "./MessageTicks";
 import {
   COACH_CONVERSATION_ID,
   COACH_CONVERSATION_UPDATED_EVENT,
   getCoachConversation,
 } from "./coachConversation";
 
-const MessageStatusTicks = ({ status = "sent" }) => {
-  const label = status === "read" ? "Seen" : status === "delivered" ? "Delivered" : "Sent";
-  return (
-    <span className={`cv-ticks ${status === "read" ? "is-read" : ""}`} title={label}>
-      <span aria-hidden="true">{status === "sent" ? "✓" : "✓✓"}</span>
-      <span className="lv-visually-hidden">{label}</span>
-    </span>
-  );
-};
 
 function ConversationList({
   onSelectConversation,
@@ -459,7 +451,7 @@ function ConversationList({
                   ) : (
                     <>
                       {isLastMessageFromCurrentUser && !isGroup && (
-                        <MessageStatusTicks status={lastMessage?.status} />
+                        <MessageTicks status={lastMessage?.status} />
                       )}
                       <span className="cv-row-preview">{preview}</span>
                     </>

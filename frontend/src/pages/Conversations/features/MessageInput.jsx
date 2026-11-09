@@ -51,8 +51,6 @@ const MessageInput = ({
   const [isRecording, setIsRecording] = useState(false);
   const [composerError, setComposerError] = useState("");
   const [isSending, setIsSending] = useState(false);
-  // The first "connecting" after opening a chat is normal; only a lost connection is worth a note.
-  const connectionProblem = connectionStatus === "reconnecting" || connectionStatus === "offline";
 
   const emojiPickerRef = useRef(null);
   const emojiButtonRef = useRef(null);
@@ -714,17 +712,10 @@ const MessageInput = ({
         </button>
       </div>
 
-      {(composerError || connectionProblem || isRecording) && (
+      {(composerError || isRecording) && (
         <div className="cv-composer-notes" role="status">
           {isRecording && <span className="is-warning">Recording… tap stop when you're done.</span>}
           {composerError && <span className="is-error">{composerError}</span>}
-          {connectionProblem && (
-            <span className="is-warning">
-              {connectionStatus === "reconnecting"
-                ? "Chat is reconnecting. Draft is saved."
-                : "Chat is offline. Draft is saved."}
-            </span>
-          )}
         </div>
       )}
     </div>

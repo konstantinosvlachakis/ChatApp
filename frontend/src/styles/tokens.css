@@ -38,6 +38,8 @@
   /* Lines, accents, states */
   --lv-line: #e8e7e0;
   --lv-line-warm: #ecdfd0;
+  /* Read receipts: a distinct hue from muted-ink (teal was the same lightness). 4.4:1 on ivory. */
+  --lv-read: #1a73e8;
   --lv-focus: #177f79;
   --lv-online: #1f9d6b;
   --lv-badge: #c2412f;
