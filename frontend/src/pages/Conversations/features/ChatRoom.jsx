@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { isPlaceholderPhoto } from "../../../lib/media";
 import { useNavigate } from "react-router-dom";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
@@ -108,7 +109,7 @@ const formatDuration = (seconds) => {
 };
 
 const resolveAvatarUrl = (path) => {
-  if (!path) return DEFAULT_AVATAR_URL;
+  if (isPlaceholderPhoto(path)) return DEFAULT_AVATAR_URL;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   if (path.startsWith("/media/")) return `${BASE_URL}${path}`;
   if (path.startsWith("media/")) return `${BASE_URL}/${path}`;

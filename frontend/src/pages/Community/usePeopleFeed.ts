@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isPlaceholderPhoto } from "../../lib/media";
 import { BASE_URL } from "../../constants/constants";
 import api, { getErrorMessage, isAbortError } from "../../lib/api";
 import type { ExchangeProfile } from "./components/ExchangeProfileCard";
@@ -8,7 +9,7 @@ export const PEOPLE_PAGE_SIZE = 24;
 
 // Accept API media paths and HTTP(S) URLs, never executable URL schemes.
 export const mediaUrl = (value?: string) => {
-  if (!value) return undefined;
+  if (!value || isPlaceholderPhoto(value)) return undefined;
   try {
     const path = /^(https?:\/\/|\/)/i.test(value) ? value : `/media/${value.replace(/^media\//, "")}`;
     const url = new URL(path, BASE_URL || window.location.origin);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isPlaceholderPhoto } from "../lib/media";
 import { Link, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
@@ -46,7 +47,7 @@ import {
 const DEFAULT_PROFILE_AVATAR = DEFAULT_AVATAR_URL;
 
 const resolveAvatarUrl = (image) => {
-  if (!image) return DEFAULT_PROFILE_AVATAR;
+  if (isPlaceholderPhoto(image)) return DEFAULT_PROFILE_AVATAR;
   if (image.startsWith("http://") || image.startsWith("https://")) return image;
   if (image.startsWith("/media/")) return `${BASE_URL}${image}`;
   if (image.startsWith("media/")) return `${BASE_URL}/${image}`;
