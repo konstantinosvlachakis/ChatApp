@@ -31,14 +31,26 @@ const baseStructuredData = {
       "@type": "Organization",
       "@id": `${SITE_URL}/#organization`,
       name: SITE_NAME,
+      alternateName: ["Lang Voyage"],
       url: SITE_URL,
-      logo: `${SITE_URL}/logo512.png`,
+      logo: {
+        "@type": "ImageObject",
+        "@id": `${SITE_URL}/#logo`,
+        url: `${SITE_URL}/logo512.png`,
+        width: 512,
+        height: 512,
+        caption: SITE_NAME,
+      },
       email: "support@langvoyage.app",
+      // Add official profiles here as they go live (Instagram, TikTok, LinkedIn, app stores):
+      // they help Google connect the brand. sameAs: ["https://www.instagram.com/…"],
     },
     {
       "@type": "WebSite",
       "@id": `${SITE_URL}/#website`,
+      // Google's site-name signal: the name to show for the site and other names people use.
       name: SITE_NAME,
+      alternateName: ["Lang Voyage", "LangVoyage app"],
       url: SITE_URL,
       description: DEFAULT_DESCRIPTION,
       publisher: {
@@ -191,18 +203,21 @@ const buildSeoModel = (rawPathname, params = {}) => {
   if (pathname === "/login") {
     return {
       title: "Log In",
-      description: "Log in to LangVoyage and continue your conversations, practice streaks, and coach sessions.",
+      description:
+        "Log in to LangVoyage to pick up your language exchange chats, guided sessions and phrasebook where you left off.",
       path: "/login",
-      shouldIndex: false,
+      // Indexable so Google can offer it as a sitelink under brand searches.
+      shouldIndex: true,
     };
   }
 
   if (pathname === "/register") {
     return {
-      title: "Create Account",
-      description: "Create a LangVoyage account and start practicing languages through guided conversations and daily routines.",
+      title: "Sign Up Free",
+      description:
+        "Create your free LangVoyage account: pick the language you speak and the one you're learning, then meet native speakers who want to swap.",
       path: "/register",
-      shouldIndex: false,
+      shouldIndex: true,
     };
   }
 
