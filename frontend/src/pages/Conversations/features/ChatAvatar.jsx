@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { BASE_URL_IMG } from "../../../constants/constants";
 import { DEFAULT_AVATAR_URL } from "../../../constants/avatar";
-import { avatarImage } from "../../../lib/media";
+import { avatarImage, isPlaceholderPhoto } from "../../../lib/media";
 
 // Media paths from the API may be absolute, /media/…, media/… or bare storage names.
 export const resolveAvatarUrl = (path) => {
-  if (!path || typeof path !== "string") return null;
+  if (typeof path !== "string" || isPlaceholderPhoto(path)) return null;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   if (path.startsWith("/media/")) return `${BASE_URL_IMG}${path}`;
   if (path.startsWith("media/")) return `${BASE_URL_IMG}/${path}`;

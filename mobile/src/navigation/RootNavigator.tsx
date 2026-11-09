@@ -33,6 +33,7 @@ import {
 import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
+  SOCKET_STABLE_MS,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
   getReconnectDelayMs,
   startPresenceHeartbeat,
@@ -470,11 +471,15 @@ function AppTabs() {
         },
       });
       presenceUpdatesSocketRef.current = socket;
+      let stableTimer: ReturnType<typeof setTimeout> | null = null;
 
       socket.onopen = () => {
-        reconnectAttempt = 0;
         setSocketReconnecting(false);
-        authRefreshUsed = false;
+        // See SOCKET_STABLE_MS: a rejected socket opens, then closes with its code.
+        stableTimer = setTimeout(() => {
+          reconnectAttempt = 0;
+          authRefreshUsed = false;
+        }, SOCKET_STABLE_MS);
         stopHeartbeat?.();
         stopHeartbeat = startPresenceHeartbeat(socket);
       };
@@ -539,6 +544,7 @@ function AppTabs() {
       };
 
       socket.onclose = (event: WebSocketCloseEvent) => {
+        if (stableTimer) clearTimeout(stableTimer);
         if (cancelled || presenceUpdatesSocketRef.current !== socket) return;
         stopHeartbeat?.();
         stopHeartbeat = null;

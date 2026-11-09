@@ -156,13 +156,27 @@ const AUTH_ENDPOINT_PATHS = new Set([
 export const isAuthEndpoint = (pathname: string) => AUTH_ENDPOINT_PATHS.has(pathname);
 
 let refreshInFlight: Promise<boolean> | null = null;
+// Cookies from a refresh this recent are still fresh (access tokens live an hour), so
+// another 401 now is not an expired session: don't spend the per-IP refresh budget
+// (20/min, shared with log in) on it. Caps refreshes even if a caller ends up looping.
+export const REFRESH_COOLDOWN_MS = 10_000;
+let lastRefreshAt = 0;
+
+/** Test hook: forget the last refresh time. */
+export const resetRefreshCooldown = () => {
+  lastRefreshAt = 0;
+};
 
 /** Single-flight session refresh shared by fetch, axios and the websockets. */
 export const refreshSessionOnce = (): Promise<boolean> => {
+  if (!refreshInFlight && Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS) {
+    return Promise.resolve(true);
+  }
   if (!refreshInFlight) {
     refreshInFlight = refreshSession()
       .catch(() => false)
       .then((refreshed) => {
+        if (refreshed) lastRefreshAt = Date.now();
         if (refreshed && typeof window !== "undefined") {
           window.dispatchEvent(new Event(SESSION_REFRESHED_EVENT));
         }

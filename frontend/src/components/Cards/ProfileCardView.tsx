@@ -1,4 +1,5 @@
 import React from "react";
+import { isPlaceholderPhoto } from "../../lib/media";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import ArrowOutwardRoundedIcon from "@mui/icons-material/ArrowOutwardRounded";
 import { BASE_URL_IMG } from "../../constants/constants";
@@ -67,11 +68,11 @@ const ProfileCardView: React.FC<ProfileCardProps> = ({
   onClick,
 }) => {
   const matchSummary = getMatchSummary(match);
-  const profileSrc = profileImage?.startsWith("http")
-    ? profileImage
-    : profileImage
-      ? `${BASE_URL_IMG}/media/${profileImage}`
-      : DEFAULT_AVATAR_URL;
+  const profileSrc = isPlaceholderPhoto(profileImage)
+    ? DEFAULT_AVATAR_URL
+    : profileImage?.startsWith("http")
+      ? profileImage
+      : `${BASE_URL_IMG}/media/${profileImage}`;
 
   const cardTone = isPremium
     ? {

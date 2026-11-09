@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PREMIUM_ENABLED } from "../constants/features";
+import { isPlaceholderPhoto } from "../lib/media";
 import { Link, Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "react-query";
 import { PresenceProvider } from "../context/PresenceContext";
@@ -39,6 +40,7 @@ import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
+  SOCKET_STABLE_MS,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../utils/reconnect";
@@ -46,7 +48,7 @@ import {
 const DEFAULT_PROFILE_AVATAR = DEFAULT_AVATAR_URL;
 
 const resolveAvatarUrl = (image) => {
-  if (!image) return DEFAULT_PROFILE_AVATAR;
+  if (isPlaceholderPhoto(image)) return DEFAULT_PROFILE_AVATAR;
   if (image.startsWith("http://") || image.startsWith("https://")) return image;
   if (image.startsWith("/media/")) return `${BASE_URL}${image}`;
   if (image.startsWith("media/")) return `${BASE_URL}/${image}`;
@@ -186,13 +188,17 @@ const Layout = () => {
       // Authenticated by the lv_access cookie (the server no longer accepts ?token=).
       const socket = new WebSocket(`${wsBaseUrl}/ws/presence/`);
       presenceSocketRef.current = socket;
+      let stableTimer = null;
 
       socket.onopen = () => {
         clearPresenceTimers();
         setSocketReconnecting(false);
-        reconnectAttempt = 0;
-        stoppedForAuth = false;
-        authRefreshUsed = false;
+        // See SOCKET_STABLE_MS: a rejected socket opens, then closes with its code.
+        stableTimer = window.setTimeout(() => {
+          reconnectAttempt = 0;
+          stoppedForAuth = false;
+          authRefreshUsed = false;
+        }, SOCKET_STABLE_MS);
         if (hasConnectedBefore) {
           // The socket was down, so conversation_update events may have been missed.
           missedListUpdateRef.current = false;
@@ -304,6 +310,7 @@ const Layout = () => {
       };
 
       socket.onclose = (event) => {
+        window.clearTimeout(stableTimer);
         clearPresenceTimers();
         if (isUnmounted || presenceSocketRef.current !== socket) return;
         if (SOCKET_AUTH_CLOSE_CODES.has(event.code)) {

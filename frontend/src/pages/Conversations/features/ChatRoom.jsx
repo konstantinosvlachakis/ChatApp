@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { isPlaceholderPhoto } from "../../../lib/media";
 import { useNavigate } from "react-router-dom";
 import ChatHeader from "./ChatHeader";
 import Conversation from "./Conversation";
@@ -43,6 +44,7 @@ import {
   RATE_LIMITED_RECONNECT_ATTEMPT,
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
+  SOCKET_STABLE_MS,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../../../utils/reconnect";
@@ -107,7 +109,7 @@ const formatDuration = (seconds) => {
 };
 
 const resolveAvatarUrl = (path) => {
-  if (!path) return DEFAULT_AVATAR_URL;
+  if (isPlaceholderPhoto(path)) return DEFAULT_AVATAR_URL;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   if (path.startsWith("/media/")) return `${BASE_URL}${path}`;
   if (path.startsWith("media/")) return `${BASE_URL}/${path}`;
@@ -1220,12 +1222,16 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
 
       const nextSocket = new WebSocket(url);
       socket.current = nextSocket;
+      let stableTimer = null;
 
       nextSocket.onopen = () => {
-        reconnectAttemptRef.current = 0;
-        stoppedForAuth = false;
-        authRefreshUsed = false;
         setSocketStatus("connected");
+        // See SOCKET_STABLE_MS: a rejected socket opens, then closes with its code.
+        stableTimer = window.setTimeout(() => {
+          reconnectAttemptRef.current = 0;
+          stoppedForAuth = false;
+          authRefreshUsed = false;
+        }, SOCKET_STABLE_MS);
       };
 
       nextSocket.onmessage = async (e) => {
@@ -1442,6 +1448,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
       };
 
       nextSocket.onclose = (event) => {
+        window.clearTimeout(stableTimer);
         if (isDisposed || socket.current !== nextSocket) {
           return;
         }
