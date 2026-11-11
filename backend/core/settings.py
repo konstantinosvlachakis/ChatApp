@@ -468,7 +468,9 @@ REST_FRAMEWORK = {
             "anon": "300/hour",
             "user": "3000/hour",
             # Login / register / token refresh (per client IP) - brute-force protection.
-            "auth": "20/minute",
+            # Local dev (DJANGO_DEBUG) logs in and refreshes far more often (hot reload,
+            # React StrictMode double effects); production keeps 20/min.
+            "auth": "200/minute" if DEBUG else "20/minute",
             # Account creation per IP, on top of "auth".
             "register": "5/hour",
             "password_reset": "5/hour",

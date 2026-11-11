@@ -41,6 +41,7 @@ import {
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
   SOCKET_STABLE_MS,
+  closeSocketQuietly,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../utils/reconnect";
@@ -368,7 +369,7 @@ const Layout = () => {
       window.removeEventListener(SESSION_REFRESHED_EVENT, handleSessionRefreshed);
       clearPresenceTimers();
       setSocketReconnecting(false);
-      presenceSocketRef.current?.close();
+      closeSocketQuietly(presenceSocketRef.current);
       presenceSocketRef.current = null;
       setOnlineUserIds(new Set());
     };
