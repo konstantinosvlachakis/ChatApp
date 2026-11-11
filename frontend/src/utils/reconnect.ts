@@ -27,5 +27,22 @@ export const getReconnectDelayMs = (attempt: number, random: () => number = Math
   return Math.round(ceiling / 2 + random() * (ceiling / 2));
 };
 
+/**
+ * Close a socket we no longer need. One that is still connecting (e.g. React StrictMode's
+ * dev double-mount, or leaving a chat right after opening it) is closed once it opens,
+ * which avoids the browser's "WebSocket is closed before the connection is established"
+ * warning. Callers' onclose handlers still run and ignore the disposed socket.
+ */
+export const closeSocketQuietly = (socket?: WebSocket | null) => {
+  if (!socket) return;
+  socket.onmessage = null;
+  socket.onerror = null;
+  if (socket.readyState === WebSocket.CONNECTING) {
+    socket.onopen = () => socket.close();
+  } else if (socket.readyState === WebSocket.OPEN) {
+    socket.close();
+  }
+};
+
 export const isDocumentHidden = () =>
   typeof document !== "undefined" && document.visibilityState === "hidden";

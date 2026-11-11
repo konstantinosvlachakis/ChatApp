@@ -45,6 +45,7 @@ import {
   SOCKET_AUTH_CLOSE_CODES,
   SOCKET_RATE_LIMIT_CLOSE_CODE,
   SOCKET_STABLE_MS,
+  closeSocketQuietly,
   getReconnectDelayMs,
   isDocumentHidden,
 } from "../../../utils/reconnect";
@@ -1527,7 +1528,7 @@ const ChatRoom = ({ conversation, onConversationTypingChange, onConversationChan
         });
       }
       cleanupCallResources();
-      socket.current?.close();
+      closeSocketQuietly(socket.current);
       socket.current = null;
       setSocketStatus("offline");
       onConversationTypingChange?.(conversation.id, false);
